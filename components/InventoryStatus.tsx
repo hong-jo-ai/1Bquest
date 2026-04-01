@@ -1,6 +1,6 @@
 "use client";
 
-import { inventory } from "@/lib/dummyData";
+import type { InventoryItem } from "@/lib/cafe24Data";
 import { AlertTriangle, XCircle, CheckCircle, AlertCircle } from "lucide-react";
 
 const statusConfig = {
@@ -38,14 +38,14 @@ const statusConfig = {
   },
 };
 
-export default function InventoryStatus() {
-  const sorted = [...inventory].sort((a, b) => {
+export default function InventoryStatus({ items }: { items: InventoryItem[] }) {
+  const sorted = [...items].sort((a, b) => {
     const order = { soldout: 0, critical: 1, warning: 2, ok: 3 };
-    return order[a.status as keyof typeof order] - order[b.status as keyof typeof order];
+    return order[a.status] - order[b.status];
   });
 
-  const critical = inventory.filter((i) => i.status === "soldout" || i.status === "critical").length;
-  const warning = inventory.filter((i) => i.status === "warning").length;
+  const critical = items.filter((i) => i.status === "soldout" || i.status === "critical").length;
+  const warning = items.filter((i) => i.status === "warning").length;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-6">
@@ -65,18 +65,13 @@ export default function InventoryStatus() {
         </div>
       </div>
       <p className="text-xs text-zinc-400 mb-4">임계값 이하 항목은 상단에 강조 표시됩니다</p>
-
       <div className="space-y-2">
-        {sorted.map((item) => {
-          const cfg = statusConfig[item.status as keyof typeof statusConfig];
+        {sorted.map((item, idx) => {
+          const cfg = statusConfig[item.status];
           const Icon = cfg.icon;
           const pct = item.stock === 0 ? 0 : Math.min((item.stock / (item.threshold * 3)) * 100, 100);
-
           return (
-            <div
-              key={item.sku}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${cfg.rowClass} transition-all`}
-            >
+            <div key={item.sku || idx} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${cfg.rowClass}`}>
               <Icon size={16} className={cfg.iconClass} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
@@ -84,19 +79,14 @@ export default function InventoryStatus() {
                     {item.name}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">
-                      {item.stock}개
-                    </span>
+                    <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">{item.stock}개</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.badgeClass}`}>
                       {cfg.label}
                     </span>
                   </div>
                 </div>
                 <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${cfg.barClass} rounded-full transition-all duration-500`}
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className={`h-full ${cfg.barClass} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
                 </div>
                 <p className="text-xs text-zinc-400 mt-0.5">임계값: {item.threshold}개 · SKU: {item.sku}</p>
               </div>

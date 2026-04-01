@@ -56,7 +56,7 @@ export const hourlyOrders = [
   { hour: "23시", orders: 2, revenue: 1_600_000 },
 ];
 
-export const inventory = [
+export const inventory: import("./cafe24Data").InventoryItem[] = [
   { name: "폴바이스 클래식 오토매틱 블랙", sku: "PW-CA-001-BK", stock: 3, threshold: 5, status: "critical" },
   { name: "폴바이스 크로노그래프 네이비", sku: "PW-CH-003-NV", stock: 4, threshold: 5, status: "critical" },
   { name: "폴바이스 다이버 블루", sku: "PW-DV-005-BL", stock: 7, threshold: 10, status: "warning" },

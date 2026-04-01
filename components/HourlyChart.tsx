@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart,
   Bar,
   XAxis,
   YAxis,
@@ -10,9 +9,8 @@ import {
   ResponsiveContainer,
   Line,
   ComposedChart,
-  Area,
 } from "recharts";
-import { hourlyOrders } from "@/lib/dummyData";
+import type { HourlyData } from "@/lib/cafe24Data";
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -21,7 +19,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <p className="font-semibold mb-1">{label}</p>
         <p className="text-violet-300">주문 {payload[0]?.value}건</p>
         <p className="text-emerald-300">
-          {(payload[1]?.value / 10000).toLocaleString("ko-KR")}만원
+          {((payload[1]?.value ?? 0) / 10000).toLocaleString("ko-KR")}만원
         </p>
       </div>
     );
@@ -29,7 +27,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function HourlyChart() {
+export default function HourlyChart({ data }: { data: HourlyData[] }) {
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-6">
       <div className="flex items-center justify-between mb-5">
@@ -48,7 +46,7 @@ export default function HourlyChart() {
         </div>
       </div>
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={hourlyOrders} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
           <XAxis
             dataKey="hour"
@@ -72,21 +70,8 @@ export default function HourlyChart() {
             tickFormatter={(v) => `${(v / 1000000).toFixed(0)}M`}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar
-            yAxisId="left"
-            dataKey="orders"
-            fill="#a78bfa"
-            radius={[4, 4, 0, 0]}
-            maxBarSize={28}
-          />
-          <Line
-            yAxisId="right"
-            type="monotone"
-            dataKey="revenue"
-            stroke="#34d399"
-            strokeWidth={2}
-            dot={false}
-          />
+          <Bar yAxisId="left" dataKey="orders" fill="#a78bfa" radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#34d399" strokeWidth={2} dot={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
