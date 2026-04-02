@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { LogIn, LogOut, AlertCircle, RefreshCw } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { AlertCircle, UploadCloud } from "lucide-react";
 
 import ChannelTabs from "@/components/ChannelTabs";
 import ChannelComparisonChart from "@/components/ChannelComparisonChart";
@@ -10,6 +10,7 @@ import HourlyChart from "@/components/HourlyChart";
 import WeeklyChart from "@/components/WeeklyChart";
 import TopProducts from "@/components/TopProducts";
 import InventoryStatus from "@/components/InventoryStatus";
+import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 
 import {
   wconceptDummy,
@@ -28,6 +29,20 @@ import {
 } from "@/lib/dummyData";
 import type { DashboardData } from "@/lib/cafe24Data";
 
+// ── localStorage 키 ────────────────────────────────────────────────────────
+const LS_KEY = {
+  wconcept: { data: "wconcept_excel_data", meta: "wconcept_excel_meta" },
+  musinsa:  { data: "musinsa_excel_data",  meta: "musinsa_excel_meta"  },
+} as const;
+
+interface UploadMeta {
+  fileName: string;
+  rowCount: number;
+  period: { start: string; end: string };
+  uploadedAt: string;
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────
 interface Props {
   cafe24Data: DashboardData | null;
   isAuthenticated: boolean;
@@ -37,6 +52,45 @@ interface Props {
 
 export default function DashboardClient({ cafe24Data, isAuthenticated, apiError, now }: Props) {
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
+  const [showUpload, setShowUpload]       = useState(false);
+
+  // 업로드된 데이터 상태
+  const [wconceptUpload, setWconceptUpload] = useState<MultiChannelData | null>(null);
+  const [wconceptMeta,   setWconceptMeta]   = useState<UploadMeta | null>(null);
+  const [musinsaUpload,  setMusinsaUpload]  = useState<MultiChannelData | null>(null);
+  const [musinsaMeta,    setMusinsaMeta]    = useState<UploadMeta | null>(null);
+
+  // localStorage에서 복원
+  useEffect(() => {
+    try {
+      const wd = localStorage.getItem(LS_KEY.wconcept.data);
+      const wm = localStorage.getItem(LS_KEY.wconcept.meta);
+      if (wd && wm) { setWconceptUpload(JSON.parse(wd)); setWconceptMeta(JSON.parse(wm)); }
+
+      const md = localStorage.getItem(LS_KEY.musinsa.data);
+      const mm = localStorage.getItem(LS_KEY.musinsa.meta);
+      if (md && mm) { setMusinsaUpload(JSON.parse(md)); setMusinsaMeta(JSON.parse(mm)); }
+    } catch { /* localStorage 접근 불가 시 무시 */ }
+  }, []);
+
+  // 업로드 데이터 저장
+  const handleDataLoaded = useCallback((ch: "wconcept" | "musinsa") => (data: MultiChannelData, meta: UploadMeta) => {
+    try {
+      localStorage.setItem(LS_KEY[ch].data, JSON.stringify(data));
+      localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(meta));
+    } catch { /* 용량 초과 등 무시 */ }
+    if (ch === "wconcept") { setWconceptUpload(data); setWconceptMeta(meta); }
+    else                   { setMusinsaUpload(data);  setMusinsaMeta(meta);  }
+    setShowUpload(false);
+  }, []);
+
+  // 업로드 데이터 삭제
+  const handleClear = useCallback((ch: "wconcept" | "musinsa") => () => {
+    localStorage.removeItem(LS_KEY[ch].data);
+    localStorage.removeItem(LS_KEY[ch].meta);
+    if (ch === "wconcept") { setWconceptUpload(null); setWconceptMeta(null); }
+    else                   { setMusinsaUpload(null);  setMusinsaMeta(null);  }
+  }, []);
 
   // 카페24 데이터를 MultiChannelData 형태로 변환
   const cafe24Channel: MultiChannelData = useMemo(() => ({
@@ -47,26 +101,34 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
     inventory:    (cafe24Data?.inventory?.length ?? 0) > 0 ? cafe24Data!.inventory : dummyInventory,
   }), [cafe24Data]);
 
-  // 선택한 채널에 따라 표시 데이터 결정
+  // 실제 표시 데이터 (업로드 > 더미)
+  const wconceptData = wconceptUpload ?? wconceptDummy;
+  const musinsaData  = musinsaUpload  ?? musinsaDummy;
+
   const displayData: MultiChannelData = useMemo(() => {
     switch (activeChannel) {
       case "cafe24":   return cafe24Channel;
-      case "wconcept": return wconceptDummy;
-      case "musinsa":  return musinsaDummy;
+      case "wconcept": return wconceptData;
+      case "musinsa":  return musinsaData;
       case "all":
-      default:
-        return mergeChannelData([cafe24Channel, wconceptDummy, musinsaDummy]);
+      default:         return mergeChannelData([cafe24Channel, wconceptData, musinsaData]);
     }
-  }, [activeChannel, cafe24Channel]);
+  }, [activeChannel, cafe24Channel, wconceptData, musinsaData]);
 
-  const cafe24IsReal = cafe24Data?.isReal === true;
-  const isSampleChannel = activeChannel === "wconcept" || activeChannel === "musinsa";
+  const cafe24IsReal     = cafe24Data?.isReal === true;
+  const activeIsWconcept = activeChannel === "wconcept";
+  const activeIsMusinsa  = activeChannel === "musinsa";
+  const isSampleChannel  = activeIsWconcept || activeIsMusinsa;
+
+  const activeHasUpload  = activeIsWconcept ? !!wconceptUpload : activeIsMusinsa ? !!musinsaUpload : false;
+  const activeMeta       = activeIsWconcept ? wconceptMeta     : activeIsMusinsa ? musinsaMeta     : null;
+  const activeChannelMeta = CHANNELS.find(c => c.id === activeChannel);
 
   // ChannelComparisonChart 에 넘길 3개 채널 고정 데이터
   const comparisonChannels = [
     { channelId: "cafe24",   name: "카페24", color: CHANNELS[1].color, data: cafe24Channel },
-    { channelId: "wconcept", name: "W컨셉",  color: CHANNELS[2].color, data: wconceptDummy },
-    { channelId: "musinsa",  name: "무신사", color: CHANNELS[3].color, data: musinsaDummy  },
+    { channelId: "wconcept", name: "W컨셉",  color: CHANNELS[2].color, data: wconceptData  },
+    { channelId: "musinsa",  name: "무신사", color: CHANNELS[3].color, data: musinsaData   },
   ];
 
   return (
@@ -93,13 +155,40 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
         </div>
       )}
 
-      {/* 샘플 데이터 배너 (W컨셉 / 무신사) */}
+      {/* W컨셉 / 무신사 배너 */}
       {isSampleChannel && (
         <div className="max-w-7xl mx-auto px-6 pt-4">
-          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 rounded-xl px-4 py-3 text-sm">
-            <AlertCircle size={16} className="shrink-0" />
-            {activeChannel === "wconcept" ? "W컨셉" : "무신사"} 데이터는 현재 샘플 데이터입니다. 실데이터 연동은 준비 중입니다.
-          </div>
+          {activeHasUpload ? (
+            /* 실 데이터 사용 중 */
+            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl px-4 py-3 text-sm">
+              <AlertCircle size={16} className="shrink-0" />
+              <span className="flex-1">
+                {activeIsWconcept ? "W컨셉" : "무신사"} 실 데이터 사용 중 —{" "}
+                {activeMeta?.fileName} ({activeMeta?.period.start} ~ {activeMeta?.period.end})
+              </span>
+              <button
+                onClick={() => setShowUpload(v => !v)}
+                className="shrink-0 underline font-medium hover:opacity-70"
+              >
+                {showUpload ? "닫기" : "재업로드"}
+              </button>
+            </div>
+          ) : (
+            /* 샘플 데이터 */
+            <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 rounded-xl px-4 py-3 text-sm">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{activeIsWconcept ? "W컨셉" : "무신사"} 샘플 데이터 표시 중 — 엑셀을 업로드해 실 데이터를 볼 수 있습니다.</span>
+              </div>
+              <button
+                onClick={() => setShowUpload(v => !v)}
+                className="shrink-0 ml-4 flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-70"
+              >
+                <UploadCloud size={14} />
+                {showUpload ? "닫기" : "엑셀 업로드"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -110,10 +199,24 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
         <div className="bg-zinc-100/70 dark:bg-zinc-800/50 rounded-2xl p-2">
           <ChannelTabs
             activeChannel={activeChannel}
-            onChange={setActiveChannel}
+            onChange={ch => { setActiveChannel(ch); setShowUpload(false); }}
             cafe24IsReal={cafe24IsReal}
+            wconceptHasUpload={!!wconceptUpload}
+            musinsaHasUpload={!!musinsaUpload}
           />
         </div>
+
+        {/* 엑셀 업로드 패널 (W컨셉/무신사만) */}
+        {isSampleChannel && showUpload && activeChannelMeta && (
+          <ExcelUploadPanel
+            channel={activeChannel as "wconcept" | "musinsa"}
+            channelName={activeChannelMeta.name}
+            channelColor={activeChannelMeta.color}
+            onDataLoaded={handleDataLoaded(activeChannel as "wconcept" | "musinsa")}
+            onClear={handleClear(activeChannel as "wconcept" | "musinsa")}
+            currentMeta={activeMeta}
+          />
+        )}
 
         {/* 매출 요약 */}
         <SalesSummary data={displayData.salesSummary} />
@@ -139,7 +242,7 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
                 : displayData.topProducts
             }
             month={displayData.topProducts}
-            isReal={cafe24IsReal && !isSampleChannel}
+            isReal={cafe24IsReal && !isSampleChannel || activeHasUpload}
           />
         </div>
 

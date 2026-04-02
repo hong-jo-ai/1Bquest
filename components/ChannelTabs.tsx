@@ -6,15 +6,23 @@ interface Props {
   activeChannel: ChannelId;
   onChange: (id: ChannelId) => void;
   cafe24IsReal: boolean;
+  wconceptHasUpload?: boolean;
+  musinsaHasUpload?: boolean;
 }
 
-export default function ChannelTabs({ activeChannel, onChange, cafe24IsReal }: Props) {
+export default function ChannelTabs({
+  activeChannel, onChange, cafe24IsReal,
+  wconceptHasUpload = false, musinsaHasUpload = false,
+}: Props) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {CHANNELS.map((ch) => {
         const isActive = activeChannel === ch.id;
-        const isSample = ch.id === "wconcept" || ch.id === "musinsa";
+        const hasUpload =
+          (ch.id === "wconcept" && wconceptHasUpload) ||
+          (ch.id === "musinsa"  && musinsaHasUpload);
         const isReal   = ch.id === "cafe24" && cafe24IsReal;
+        const isSample = (ch.id === "wconcept" || ch.id === "musinsa") && !hasUpload;
 
         return (
           <button
@@ -35,12 +43,18 @@ export default function ChannelTabs({ activeChannel, onChange, cafe24IsReal }: P
             {ch.name}
 
             {/* 카페24 실데이터 뱃지 */}
-            {ch.id === "cafe24" && isReal && (
+            {isReal && (
               <span className="text-[10px] font-semibold bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300 px-1.5 py-0.5 rounded-full">
                 실데이터
               </span>
             )}
-            {/* W컨셉 / 무신사 샘플 뱃지 */}
+            {/* 업로드된 실데이터 뱃지 */}
+            {hasUpload && (
+              <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">
+                업로드됨
+              </span>
+            )}
+            {/* 샘플 뱃지 */}
             {isSample && (
               <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-400 dark:bg-zinc-700 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
                 샘플
