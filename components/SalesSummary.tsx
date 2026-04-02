@@ -9,17 +9,16 @@ function fmt(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
 
-const now = new Date();
-const prevMonthLabel = `${now.getMonth() === 0 ? 12 : now.getMonth()}월 매출`;
-
-const cards = [
-  { label: "오늘 매출",   period: "today"     as const, color: "from-violet-500 to-purple-600",  icon: Clock       },
-  { label: "이번 주 매출", period: "week"      as const, color: "from-blue-500 to-cyan-600",      icon: TrendingUp  },
-  { label: "이번 달 매출", period: "month"     as const, color: "from-emerald-500 to-teal-600",   icon: ShoppingCart },
-  { label: prevMonthLabel, period: "prevMonth" as const, color: "from-zinc-500 to-zinc-600",      icon: Calendar    },
-];
-
 export default function SalesSummary({ data }: { data: SalesSummaryData }) {
+  // 모듈 최상위가 아닌 렌더 내부에서 계산 — hydration 불일치 방지
+  const prevMonthNum = new Date().getMonth() === 0 ? 12 : new Date().getMonth();
+  const cards = [
+    { label: "오늘 매출",             period: "today"     as const, color: "from-violet-500 to-purple-600",  icon: Clock       },
+    { label: "이번 주 매출",           period: "week"      as const, color: "from-blue-500 to-cyan-600",      icon: TrendingUp  },
+    { label: "이번 달 매출",           period: "month"     as const, color: "from-emerald-500 to-teal-600",   icon: ShoppingCart },
+    { label: `${prevMonthNum}월 매출`, period: "prevMonth" as const, color: "from-zinc-500 to-zinc-600",      icon: Calendar    },
+  ];
+
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map(({ label, period, color, icon: Icon }) => {
