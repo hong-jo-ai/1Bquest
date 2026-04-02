@@ -12,6 +12,7 @@ export interface SalesSummaryData {
   today: PeriodSummary;
   week: PeriodSummary;
   month: PeriodSummary;
+  prevMonth: PeriodSummary;
 }
 
 export interface ProductRank {
@@ -162,9 +163,16 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const monthStartStr = kstStr(monthStart);
 
-  // 이번 달 주문 + 상품 목록 병렬 조회
-  const [monthOrders, productsData] = await Promise.all([
+  // 지난 달 범위
+  const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const prevMonthEnd   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+  const prevMonthStartStr = kstStr(prevMonthStart);
+  const prevMonthEndStr   = kstStr(prevMonthEnd);
+
+  // 이번 달 + 지난 달 주문 + 상품 목록 병렬 조회
+  const [monthOrders, prevMonthOrders, productsData] = await Promise.all([
     fetchAllOrders(token, monthStartStr, todayStr),
+    fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr),
     cafe24Get("/api/v2/admin/products?limit=100&display=T", token),
   ]);
 
@@ -232,9 +240,10 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
 
   return {
     salesSummary: {
-      today: summarize(todayOrders),
-      week: summarize(weekOrders),
-      month: summarize(monthOrders),
+      today:     summarize(todayOrders),
+      week:      summarize(weekOrders),
+      month:     summarize(monthOrders),
+      prevMonth: summarize(prevMonthOrders),
     },
     topProducts,
     topProductsToday,

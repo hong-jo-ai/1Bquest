@@ -14,6 +14,11 @@ export const salesSummary = {
     orders: 197,
     avgOrder: 653_553,
   },
+  prevMonth: {
+    revenue: 143_200_000,
+    orders: 218,
+    avgOrder: 656_881,
+  },
 };
 
 export const topProducts = [

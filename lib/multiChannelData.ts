@@ -35,9 +35,10 @@ export interface MultiChannelData {
 
 export const wconceptDummy: MultiChannelData = {
   salesSummary: {
-    today: { revenue: 2_100_000, orders: 3, avgOrder: 700_000 },
-    week:  { revenue: 14_800_000, orders: 21, avgOrder: 704_762 },
-    month: { revenue: 58_400_000, orders: 87, avgOrder: 671_264 },
+    today:     { revenue: 2_100_000,  orders: 3,  avgOrder: 700_000 },
+    week:      { revenue: 14_800_000, orders: 21, avgOrder: 704_762 },
+    month:     { revenue: 58_400_000, orders: 87, avgOrder: 671_264 },
+    prevMonth: { revenue: 61_200_000, orders: 92, avgOrder: 665_217 },
   },
   topProducts: [
     { rank: 1, name: "폴바이스 클래식 오토매틱 블랙", sku: "PW-CA-001-BK", sold: 18, revenue: 16_200_000, image: "⌚" },
@@ -78,9 +79,10 @@ export const wconceptDummy: MultiChannelData = {
 
 export const musinsaDummy: MultiChannelData = {
   salesSummary: {
-    today: { revenue: 3_200_000, orders: 8, avgOrder: 400_000 },
-    week:  { revenue: 22_600_000, orders: 57, avgOrder: 396_491 },
-    month: { revenue: 89_300_000, orders: 226, avgOrder: 395_133 },
+    today:     { revenue: 3_200_000,  orders: 8,   avgOrder: 400_000 },
+    week:      { revenue: 22_600_000, orders: 57,  avgOrder: 396_491 },
+    month:     { revenue: 89_300_000, orders: 226, avgOrder: 395_133 },
+    prevMonth: { revenue: 95_100_000, orders: 241, avgOrder: 394_606 },
   },
   topProducts: [
     { rank: 1, name: "폴바이스 슬림 쿼츠 화이트",   sku: "PW-SQ-002-WH", sold: 52, revenue: 26_000_000, image: "⌚" },
@@ -128,9 +130,10 @@ function sumPeriod(arr: SalesSummaryData[keyof SalesSummaryData][]) {
 export function mergeChannelData(datasets: MultiChannelData[]): MultiChannelData {
   // Sales summary
   const salesSummary: SalesSummaryData = {
-    today: sumPeriod(datasets.map((d) => d.salesSummary.today)),
-    week:  sumPeriod(datasets.map((d) => d.salesSummary.week)),
-    month: sumPeriod(datasets.map((d) => d.salesSummary.month)),
+    today:     sumPeriod(datasets.map((d) => d.salesSummary.today)),
+    week:      sumPeriod(datasets.map((d) => d.salesSummary.week)),
+    month:     sumPeriod(datasets.map((d) => d.salesSummary.month)),
+    prevMonth: sumPeriod(datasets.map((d) => d.salesSummary.prevMonth)),
   };
 
   // Top products — SKU 기준 합산 후 재정렬

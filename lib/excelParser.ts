@@ -143,28 +143,51 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
 
   // ── 매출 요약 ──────────────────────────────────────────────────────────────
   const now = new Date();
-  const todayStr = fmt(now);
-  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayStr      = fmt(now);
+  const weekAgo       = new Date(now.getTime() - 7 * 86_400_000);
+  // 이번 달: 현재 연/월과 일치하는 행
+  const curYear  = now.getFullYear();
+  const curMonth = now.getMonth(); // 0-indexed
+  // 지난 달
+  const prevMonthYear  = curMonth === 0 ? curYear - 1 : curYear;
+  const prevMonthMonth = curMonth === 0 ? 11 : curMonth - 1;
 
-  let todayRev = 0, todayOrders = 0;
-  let weekRev = 0, weekOrders = 0;
-  let monthRev = 0, monthOrders = 0;
+  let todayRev = 0,     todayOrders = 0;
+  let weekRev = 0,      weekOrders = 0;
+  let monthRev = 0,     monthOrders = 0;
+  let prevMonthRev = 0, prevMonthOrders = 0;
 
   for (const r of rows) {
-    monthRev    += r.revenue;
-    monthOrders += r.qty;
-    if (r.date) {
-      if (r.date >= weekAgo)   { weekRev  += r.revenue; weekOrders  += r.qty; }
-      if (r.date >= monthStart){ /* already counted */ }
-      if (fmt(r.date) === todayStr) { todayRev += r.revenue; todayOrders += r.qty; }
+    if (!r.date) continue;
+    const ry = r.date.getFullYear();
+    const rm = r.date.getMonth();
+    // 이번달
+    if (ry === curYear && rm === curMonth) {
+      monthRev    += r.revenue;
+      monthOrders += r.qty;
+    }
+    // 지난달
+    if (ry === prevMonthYear && rm === prevMonthMonth) {
+      prevMonthRev    += r.revenue;
+      prevMonthOrders += r.qty;
+    }
+    // 이번주 (최근 7일)
+    if (r.date >= weekAgo) {
+      weekRev    += r.revenue;
+      weekOrders += r.qty;
+    }
+    // 오늘
+    if (fmt(r.date) === todayStr) {
+      todayRev    += r.revenue;
+      todayOrders += r.qty;
     }
   }
 
   const salesSummary = {
-    today: { revenue: todayRev,  orders: todayOrders,  avgOrder: todayOrders  > 0 ? Math.round(todayRev  / todayOrders)  : 0 },
-    week:  { revenue: weekRev,   orders: weekOrders,   avgOrder: weekOrders   > 0 ? Math.round(weekRev   / weekOrders)   : 0 },
-    month: { revenue: monthRev,  orders: monthOrders,  avgOrder: monthOrders  > 0 ? Math.round(monthRev  / monthOrders)  : 0 },
+    today:     { revenue: todayRev,     orders: todayOrders,     avgOrder: todayOrders     > 0 ? Math.round(todayRev     / todayOrders)     : 0 },
+    week:      { revenue: weekRev,      orders: weekOrders,      avgOrder: weekOrders      > 0 ? Math.round(weekRev      / weekOrders)      : 0 },
+    month:     { revenue: monthRev,     orders: monthOrders,     avgOrder: monthOrders     > 0 ? Math.round(monthRev     / monthOrders)     : 0 },
+    prevMonth: { revenue: prevMonthRev, orders: prevMonthOrders, avgOrder: prevMonthOrders > 0 ? Math.round(prevMonthRev / prevMonthOrders) : 0 },
   };
 
   // ── 상품 순위 ──────────────────────────────────────────────────────────────
