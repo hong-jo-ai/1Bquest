@@ -78,19 +78,26 @@ function kstDateStr(isoString: string): string {
 
 // ── 주문 페이징 조회 ───────────────────────────────────────────────────────
 
-export async function fetchAllOrders(token: string, startDate: string, endDate: string) {
+export async function fetchAllOrders(
+  token: string,
+  startDate: string,
+  endDate: string,
+  embedItems = true,
+) {
   const all: any[] = [];
   let offset = 0;
   const limit = 100;
 
   while (true) {
-    const qs = new URLSearchParams({
+    const params: Record<string, string> = {
       start_date: startDate,
-      end_date: endDate,
-      limit: String(limit),
-      offset: String(offset),
-      embed: "items",
-    });
+      end_date:   endDate,
+      limit:      String(limit),
+      offset:     String(offset),
+    };
+    if (embedItems) params.embed = "items";
+
+    const qs   = new URLSearchParams(params);
     const data = await cafe24Get(`/api/v2/admin/orders?${qs}`, token);
     const batch: any[] = data.orders ?? [];
     all.push(...batch);
@@ -183,7 +190,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
       hour: `${String(h).padStart(2, "0")}시`,
       orders: filtered.length,
       revenue: Math.round(
-        filtered.reduce((s, o) => s + parseFloat(o.total_amount ?? "0"), 0)
+        filtered.reduce((s, o) => s + parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0"), 0)
       ),
     };
   });
@@ -200,7 +207,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     return {
       day,
       revenue: Math.round(
-        dayOrders.reduce((s, o) => s + parseFloat(o.total_amount ?? "0"), 0)
+        dayOrders.reduce((s, o) => s + parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0"), 0)
       ),
       orders: dayOrders.length,
     };

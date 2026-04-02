@@ -985,11 +985,9 @@ export default function MetaAdsDashboard({ metaData, isConnected, error }: Props
           <div>
             <p className="font-medium">데이터 조회 실패</p>
             <p className="text-xs mt-0.5 opacity-80">{error}</p>
-            {error.includes("token") && (
-              <a href="/api/meta/auth/login" className="text-xs underline mt-1 inline-block">
-                재연결하기 →
-              </a>
-            )}
+            <a href="/api/meta/auth/login" className="text-xs underline mt-1 inline-block">
+              재연결하기 →
+            </a>
           </div>
         </div>
       )}

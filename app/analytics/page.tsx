@@ -7,11 +7,17 @@ export default async function AnalyticsPage() {
   const isAuthenticated = !!(
     cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
   );
+  const hasGaToken   = !!(cookieStore.get("ga_at")?.value || cookieStore.get("ga_rt")?.value);
+  const ga4PropertyId = cookieStore.get("ga4_prop")?.value ?? process.env.GA4_PROPERTY_ID ?? "";
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <AppHeader activePage="analytics" isAuthenticated={isAuthenticated} />
-      <AnalyticsDashboard isAuthenticated={isAuthenticated} />
+      <AnalyticsDashboard
+        isAuthenticated={isAuthenticated}
+        hasGaToken={hasGaToken}
+        ga4PropertyId={ga4PropertyId}
+      />
     </div>
   );
 }

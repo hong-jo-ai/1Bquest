@@ -76,7 +76,7 @@ export async function cafe24Get(path: string, accessToken: string) {
       "Content-Type": "application/json",
       "X-Cafe24-Api-Version": API_VERSION,
     },
-    next: { revalidate: 300 },
+    cache: "no-store",
   });
   if (!res.ok) {
     const body = await res.text();
