@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "paulwise-dashboard",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3000"],
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["/tmp/run-next.sh"],
       "port": 3000
     }
   ]

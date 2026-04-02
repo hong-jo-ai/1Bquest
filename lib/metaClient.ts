@@ -11,11 +11,11 @@ export function getMetaAuthUrl(): string {
   const params = new URLSearchParams({
     client_id:     APP_ID,
     redirect_uri:  REDIRECT_URI,
-    scope:         "ads_read,read_insights",
+    scope:         "ads_read",
     response_type: "code",
     state:         "paulvice_meta",
   });
-  return `https://www.facebook.com/dialog/oauth?${params}`;
+  return `https://www.facebook.com/v22.0/dialog/oauth?${params}`;
 }
 
 export async function exchangeMetaCode(code: string) {
