@@ -155,17 +155,17 @@ export async function syncHiddenSkusFromServer(): Promise<string[] | null> {
 
 export function calcAgingStatus(daysInStock: number, currentStock: number): AgingStatus {
   if (currentStock <= 0) return "normal";
-  if (daysInStock >= 180) return "critical";
-  if (daysInStock >= 90)  return "urgent";
-  if (daysInStock >= 60)  return "caution";
+  if (daysInStock >= 545) return "critical"; // 18개월↑ → 긴급소진
+  if (daysInStock >= 365) return "urgent";   // 12개월(1년)↑ → 소진필요
+  if (daysInStock >= 180) return "caution";  // 6개월↑ → 판매촉진
   return "normal";
 }
 
 export const AGING_CONFIG: Record<AgingStatus, { label: string; color: string; bg: string; description: string }> = {
   normal:   { label: "정상",     color: "text-emerald-600", bg: "bg-emerald-100", description: "재고 상태 양호" },
-  caution:  { label: "판매촉진", color: "text-yellow-600",  bg: "bg-yellow-100",  description: "60일 이상 — 판매 촉진 권장" },
-  urgent:   { label: "소진필요", color: "text-orange-600",  bg: "bg-orange-100",  description: "90일 이상 — 할인 또는 프로모션 필요" },
-  critical: { label: "긴급소진", color: "text-red-600",     bg: "bg-red-100",     description: "180일 이상 — 즉시 처분 필요" },
+  caution:  { label: "판매촉진", color: "text-yellow-600",  bg: "bg-yellow-100",  description: "6개월 이상 — 판매 촉진 권장" },
+  urgent:   { label: "소진필요", color: "text-orange-600",  bg: "bg-orange-100",  description: "1년 이상 — 할인 또는 프로모션 필요" },
+  critical: { label: "긴급소진", color: "text-red-600",     bg: "bg-red-100",     description: "18개월 이상 — 즉시 처분 필요" },
 };
 
 // ── 통합 계산 ─────────────────────────────────────────────────────────────
