@@ -817,11 +817,11 @@ export default function ThreadsStudio() {
           </div>
           {metaConnected === false && (
             <a
-              href="/api/meta/auth/login?returnTo=/tools/threads"
+              href="/api/threads/auth/login"
               className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
             >
               <Send size={13} />
-              Meta 연결 (게시용)
+              Threads 계정 연결
             </a>
           )}
           {metaConnected === true && (

@@ -13,11 +13,11 @@ const THREADS_BASE = "https://graph.threads.net/v1.0";
  */
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
-  const token = cookieStore.get("meta_at")?.value;
+  const token = cookieStore.get("threads_at")?.value;
 
   if (!token) {
     return Response.json(
-      { error: "Meta 계정 연결이 필요합니다. 광고 페이지에서 Meta 로그인을 해주세요." },
+      { error: "Threads 계정 연결이 필요합니다." },
       { status: 401 }
     );
   }
