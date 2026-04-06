@@ -13,7 +13,9 @@ const THREADS_BASE = "https://graph.threads.net/v1.0";
  */
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
-  const token = cookieStore.get("threads_at")?.value;
+  const token = cookieStore.get("threads_at")?.value
+    || process.env.THREADS_ACCESS_TOKEN
+    || null;
 
   if (!token) {
     return Response.json(
