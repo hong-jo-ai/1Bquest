@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
-  X, Check, BarChart2, Lightbulb, MessageCircle, Zap,
+  X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
@@ -678,6 +678,29 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
   onCopy: () => void; copied: boolean;
 }) {
   const [showDetail, setShowDetail] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  const handlePublish = async () => {
+    if (!confirm("이 글을 폴바이스 Threads 계정에 게시할까요?")) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const res = await fetch("/api/threads/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: post.text }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "게시 실패");
+      setPublished(true);
+    } catch (e: any) {
+      setPublishError(e.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   return (
     <div className={`bg-white dark:bg-zinc-900 rounded-2xl border overflow-hidden ${
@@ -718,7 +741,27 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
           </div>
         )}
 
-        <p className="text-[10px] text-zinc-300 dark:text-zinc-600 mt-2">{new Date(post.savedAt).toLocaleDateString("ko-KR")}</p>
+        {/* 게시 버튼 + 상태 */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+          <p className="text-[10px] text-zinc-300 dark:text-zinc-600">{new Date(post.savedAt).toLocaleDateString("ko-KR")}</p>
+          {published ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+              <Check size={12} /> 게시 완료
+            </span>
+          ) : (
+            <button
+              onClick={handlePublish}
+              disabled={publishing}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              {publishing ? "게시 중..." : "Threads 게시"}
+            </button>
+          )}
+        </div>
+        {publishError && (
+          <p className="text-xs text-red-500 mt-1.5">{publishError}</p>
+        )}
       </div>
     </div>
   );
