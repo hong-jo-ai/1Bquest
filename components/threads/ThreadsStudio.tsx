@@ -789,10 +789,15 @@ export default function ThreadsStudio() {
   const [tab, setTab]       = useState<Tab>("trend");
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
+  const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     setRefsCount(loadRefs().length);
     setPostsCount(loadPosts().length);
+    // Meta 연결 상태 확인
+    fetch("/api/threads/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "" }) })
+      .then(r => { setMetaConnected(r.status !== 401); })
+      .catch(() => setMetaConnected(false));
   }, []);
 
   return (
@@ -800,14 +805,30 @@ export default function ThreadsStudio() {
       <div className="max-w-3xl mx-auto space-y-6">
 
         {/* 헤더 */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-zinc-900 dark:bg-zinc-100 rounded-xl flex items-center justify-center text-white dark:text-zinc-900">
-            <ThreadsLogo size={22} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-zinc-900 dark:bg-zinc-100 rounded-xl flex items-center justify-center text-white dark:text-zinc-900">
+              <ThreadsLogo size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 콘텐츠 스튜디오</h1>
+              <p className="text-xs text-zinc-400 mt-0.5">바이럴 트렌드 분석 · 레퍼런스 수집 · 폴바이스 글 생성</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 콘텐츠 스튜디오</h1>
-            <p className="text-xs text-zinc-400 mt-0.5">바이럴 트렌드 분석 · 레퍼런스 수집 · 폴바이스 글 생성</p>
-          </div>
+          {metaConnected === false && (
+            <a
+              href="/api/meta/auth/login?returnTo=/tools/threads"
+              className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
+            >
+              <Send size={13} />
+              Meta 연결 (게시용)
+            </a>
+          )}
+          {metaConnected === true && (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-xl">
+              <Check size={12} /> Threads 게시 가능
+            </span>
+          )}
         </div>
 
         {/* 탭 */}
