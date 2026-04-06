@@ -4,8 +4,8 @@
  * Base: https://graph.threads.net
  */
 
-const APP_ID       = (process.env.META_APP_ID         ?? "").trim();
-const APP_SECRET   = (process.env.META_APP_SECRET     ?? "").trim();
+const APP_ID       = (process.env.THREADS_APP_ID     ?? "").trim();
+const APP_SECRET   = (process.env.THREADS_APP_SECRET ?? "").trim();
 const THREADS_REDIRECT = (process.env.THREADS_REDIRECT_URI ?? "").trim();
 
 const THREADS_BASE = "https://graph.threads.net";
