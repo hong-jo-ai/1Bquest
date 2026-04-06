@@ -11,13 +11,13 @@ export default async function AnalyticsPage() {
   const ga4PropertyId = cookieStore.get("ga4_prop")?.value ?? process.env.GA4_PROPERTY_ID ?? "";
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <AppHeader activePage="analytics" isAuthenticated={isAuthenticated} />
+    <>
+      <AppHeader isAuthenticated={isAuthenticated} refreshHref="/analytics" />
       <AnalyticsDashboard
         isAuthenticated={isAuthenticated}
         hasGaToken={hasGaToken}
         ga4PropertyId={ga4PropertyId}
       />
-    </div>
+    </>
   );
 }

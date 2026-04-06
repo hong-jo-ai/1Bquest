@@ -9,9 +9,9 @@ export default async function InventoryPage() {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <AppHeader activePage="inventory" isAuthenticated={isAuthenticated} />
+    <>
+      <AppHeader isAuthenticated={isAuthenticated} refreshHref="/inventory" />
       <InventoryManager />
-    </div>
+    </>
   );
 }

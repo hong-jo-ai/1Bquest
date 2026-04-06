@@ -35,14 +35,14 @@ export default async function Dashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <AppHeader activePage="dashboard" isAuthenticated={isAuthenticated} />
+    <>
+      <AppHeader isAuthenticated={isAuthenticated} refreshHref="/" />
       <DashboardClient
         cafe24Data={data}
         isAuthenticated={isAuthenticated}
         apiError={apiError}
         now={now}
       />
-    </div>
+    </>
   );
 }

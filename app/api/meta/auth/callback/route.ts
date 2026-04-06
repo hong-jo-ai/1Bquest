@@ -1,4 +1,5 @@
 import { exchangeMetaCode, getLongLivedToken } from "@/lib/metaClient";
+import { saveMetaToken } from "@/lib/metaTokenStore";
 import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 
@@ -44,5 +45,14 @@ export async function GET(req: NextRequest) {
     sameSite: "lax",
   });
 
-  return Response.redirect(new URL("/ads", req.url));
+  // ── 4. Supabase에 토큰 저장 (Cron용) ─────────────────────────────
+  await saveMetaToken(finalToken).catch((e) =>
+    console.error("[Meta callback] token store failed:", e)
+  );
+
+  // state에서 returnTo 경로 추출
+  const state = req.nextUrl.searchParams.get("state") ?? "";
+  const returnTo = state.includes("|") ? state.split("|")[1] : "/ads";
+  const safePath = returnTo.startsWith("/") ? returnTo : "/ads";
+  return Response.redirect(new URL(safePath, req.url));
 }

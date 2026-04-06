@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/jewelry-clearance",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}

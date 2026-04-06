@@ -7,13 +7,15 @@ export const META_BASE = `https://graph.facebook.com/${API_VERSION}`;
 
 // ── OAuth ──────────────────────────────────────────────────────────────────
 
-export function getMetaAuthUrl(): string {
+export function getMetaAuthUrl(returnTo?: string): string {
+  const state = returnTo ? `paulvice_meta|${returnTo}` : "paulvice_meta";
   const params = new URLSearchParams({
     client_id:     APP_ID,
     redirect_uri:  REDIRECT_URI,
-    scope:         "ads_read",
+    scope:         "ads_management,ads_read,pages_read_engagement,pages_show_list",
     response_type: "code",
-    state:         "paulvice_meta",
+    state,
+    auth_type:     "rerequest",
   });
   return `https://www.facebook.com/v22.0/dialog/oauth?${params}`;
 }
@@ -55,6 +57,35 @@ export async function metaGet(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Meta API [${res.status}]: ${body}`);
+  }
+  return res.json();
+}
+
+export async function metaPost(
+  path: string,
+  token: string,
+  params: Record<string, string> = {}
+) {
+  const body = new URLSearchParams({ access_token: token, ...params });
+  const res = await fetch(`${META_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Meta POST [${res.status}]: ${text}`);
+  }
+  return res.json();
+}
+
+export async function metaDelete(path: string, token: string) {
+  const res = await fetch(`${META_BASE}${path}?access_token=${token}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Meta DELETE [${res.status}]: ${text}`);
   }
   return res.json();
 }

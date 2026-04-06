@@ -5,7 +5,7 @@ const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI!;
 
 export const BASE_URL = `https://${MALL_ID}.cafe24api.com`;
 const API_VERSION = "2026-03-01";
-const SCOPES = "mall.read_order mall.read_product mall.read_analytics";
+const SCOPES = "mall.read_order mall.read_product mall.write_product mall.read_analytics";
 
 // ── OAuth ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +81,23 @@ export async function cafe24Get(path: string, accessToken: string) {
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Cafe24 API [${res.status}]: ${body}`);
+  }
+  return res.json();
+}
+
+export async function cafe24Put(path: string, accessToken: string, body: unknown) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Cafe24-Api-Version": API_VERSION,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cafe24 PUT [${res.status}]: ${text}`);
   }
   return res.json();
 }

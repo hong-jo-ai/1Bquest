@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { type NextRequest } from "next/server";
 import AppHeader from "@/components/AppHeader";
 import MetaAdsDashboard from "@/components/MetaAdsDashboard";
 import { getMetaAdsData } from "@/lib/metaData";
@@ -22,13 +21,13 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <AppHeader activePage="ads" isAuthenticated={false} />
+    <>
+      <AppHeader refreshHref="/ads" />
       <MetaAdsDashboard
         metaData={metaData}
         isConnected={isConnected}
         error={metaError ?? urlError}
       />
-    </div>
+    </>
   );
 }

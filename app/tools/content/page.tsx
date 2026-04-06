@@ -8,9 +8,9 @@ export const metadata = {
 
 export default function ContentPage() {
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <AppHeader activePage="content" isAuthenticated={false} />
+    <>
+      <AppHeader refreshHref="/tools/content" />
       <ContentStudio />
-    </div>
+    </>
   );
 }

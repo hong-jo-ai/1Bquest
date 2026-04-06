@@ -1,4 +1,5 @@
 import { exchangeCode } from "@/lib/cafe24Client";
+import { saveCafe24Token } from "@/lib/cafe24TokenStore";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
@@ -29,6 +30,11 @@ export async function GET(req: NextRequest) {
       path: "/",
       sameSite: "lax",
     });
+
+    // Supabase에 refresh token 저장 (Cron 등 쿠키 없는 환경에서 사용)
+    await saveCafe24Token(token.refresh_token).catch((e) =>
+      console.error("[Cafe24 OAuth] token store failed:", e)
+    );
 
     redirect("/");
   } catch (e) {
