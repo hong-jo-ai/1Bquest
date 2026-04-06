@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   const error = req.nextUrl.searchParams.get("error");
 
   if (error || !code) {
-    return Response.redirect(`${APP_URL}/analytics?error=${encodeURIComponent(error ?? "cancelled")}`);
+    const base = APP_URL || req.nextUrl.origin;
+    return Response.redirect(`${base}/analytics?error=${encodeURIComponent(error ?? "cancelled")}`);
   }
 
   try {
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
       secure: true,
       maxAge: json.expires_in,
       path: "/",
+      sameSite: "lax",
     });
     if (json.refresh_token) {
       cookieStore.set("ga_rt", json.refresh_token, {
@@ -47,11 +49,14 @@ export async function GET(req: NextRequest) {
         secure: true,
         maxAge: 60 * 60 * 24 * 60,   // 60일
         path: "/",
+        sameSite: "lax",
       });
     }
 
-    return Response.redirect(`${APP_URL}/analytics`);
+    const base = APP_URL || req.nextUrl.origin;
+    return Response.redirect(`${base}/analytics`);
   } catch (e: any) {
-    return Response.redirect(`${APP_URL}/analytics?error=${encodeURIComponent(e.message)}`);
+    const base2 = APP_URL || req.nextUrl.origin;
+    return Response.redirect(`${base2}/analytics?error=${encodeURIComponent(e.message)}`);
   }
 }

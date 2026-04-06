@@ -42,6 +42,7 @@ export interface AnalyticsData {
   hasCafe24: boolean;
   hasGa4:    boolean;
   ga4PropertyId: string;
+  ga4Error: string | null;
   daily: DailyMetricRow[];
   totals: {
     // GA4
@@ -164,6 +165,7 @@ export async function GET(_req: NextRequest) {
   let metaAccountId = "";
   let topMetaActions: { type: string; value: number }[] = [];
   let ga4Data: Ga4Data | null = null;
+  let ga4Error: string | null = null;
 
   // ── [1] GA4 ─────────────────────────────────────────────────────────────
   if (gaToken && ga4PropId) {
@@ -180,9 +182,16 @@ export async function GET(_req: NextRequest) {
         }
       });
       hasGa4 = ga4Data.daily.length > 0;
-    } catch (e) {
+    } catch (e: any) {
       console.error("[analytics] GA4 error:", e);
+      ga4Error = e.message ?? "GA4 데이터 조회 실패";
     }
+  } else if (!gaToken && gaRt) {
+    ga4Error = "Google 토큰 갱신 실패 — 재로그인 필요";
+  } else if (!gaToken) {
+    ga4Error = "Google 계정 연결 필요";
+  } else if (!ga4PropId) {
+    ga4Error = "GA4 Property ID 미설정";
   }
 
   // ── [2] Meta ─────────────────────────────────────────────────────────────
@@ -280,6 +289,7 @@ export async function GET(_req: NextRequest) {
     period: { start: startDate, end: endDate },
     hasMeta, hasCafe24, hasGa4,
     ga4PropertyId: ga4PropId,
+    ga4Error,
     daily,
     totals: { ...T, ctr, metaCvr, gaCvr, cpo, roas },
     ga4: ga4Data,

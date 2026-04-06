@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     secure: true,
     maxAge: 60 * 60 * 24 * 365,
     path: "/",
+    sameSite: "lax",
   });
 
   return Response.json({ ok: true, propertyId: propertyId.trim() });

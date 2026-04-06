@@ -350,8 +350,22 @@ export default function AnalyticsDashboard({ isAuthenticated, hasGaToken, ga4Pro
         />
       )}
 
-      {/* GA4 연결 안내 (데이터 없을 때) */}
-      {data && !data.hasGa4 && !showGa4Setup && (
+      {/* GA4 에러 표시 */}
+      {data && !data.hasGa4 && (data as any).ga4Error && !showGa4Setup && (
+        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-2xl p-4 flex gap-3 items-center">
+          <AlertCircle size={15} className="text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300 flex-1">
+            GA4 연결 오류: {(data as any).ga4Error}
+          </p>
+          <button onClick={() => setShowGa4Setup(true)}
+            className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg shrink-0">
+            GA4 설정 확인
+          </button>
+        </div>
+      )}
+
+      {/* GA4 연결 안내 (데이터 없고 에러도 없을 때) */}
+      {data && !data.hasGa4 && !(data as any).ga4Error && !showGa4Setup && (
         <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-2xl p-4 flex gap-3 items-center">
           <Info size={15} className="text-blue-500 shrink-0" />
           <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
