@@ -1,5 +1,4 @@
-import { type NextRequest } from "next/server";
-import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
@@ -9,10 +8,10 @@ const APP_URL       = process.env.NEXT_PUBLIC_APP_URL ?? "";
 export async function GET(req: NextRequest) {
   const code  = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
+  const base  = APP_URL || req.nextUrl.origin;
 
   if (error || !code) {
-    const base = APP_URL || req.nextUrl.origin;
-    return Response.redirect(`${base}/analytics?error=${encodeURIComponent(error ?? "cancelled")}`);
+    return NextResponse.redirect(`${base}/analytics?error=${encodeURIComponent(error ?? "cancelled")}`);
   }
 
   try {
@@ -35,8 +34,9 @@ export async function GET(req: NextRequest) {
       expires_in:    number;
     };
 
-    const cookieStore = await cookies();
-    cookieStore.set("ga_at", json.access_token, {
+    const response = NextResponse.redirect(`${base}/analytics`);
+
+    response.cookies.set("ga_at", json.access_token, {
       httpOnly: true,
       secure: true,
       maxAge: json.expires_in,
@@ -44,19 +44,17 @@ export async function GET(req: NextRequest) {
       sameSite: "lax",
     });
     if (json.refresh_token) {
-      cookieStore.set("ga_rt", json.refresh_token, {
+      response.cookies.set("ga_rt", json.refresh_token, {
         httpOnly: true,
         secure: true,
-        maxAge: 60 * 60 * 24 * 60,   // 60일
+        maxAge: 60 * 60 * 24 * 60,
         path: "/",
         sameSite: "lax",
       });
     }
 
-    const base = APP_URL || req.nextUrl.origin;
-    return Response.redirect(`${base}/analytics`);
+    return response;
   } catch (e: any) {
-    const base2 = APP_URL || req.nextUrl.origin;
-    return Response.redirect(`${base2}/analytics?error=${encodeURIComponent(e.message)}`);
+    return NextResponse.redirect(`${base}/analytics?error=${encodeURIComponent(e.message)}`);
   }
 }

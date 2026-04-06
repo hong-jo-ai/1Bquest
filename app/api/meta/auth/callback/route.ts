@@ -1,7 +1,6 @@
 import { exchangeMetaCode, getLongLivedToken } from "@/lib/metaClient";
 import { saveMetaToken } from "@/lib/metaTokenStore";
-import { cookies } from "next/headers";
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   const code     = req.nextUrl.searchParams.get("code");
@@ -10,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code) {
     const msg = encodeURIComponent(errorDesc ?? error ?? "no_code");
-    return Response.redirect(new URL(`/ads?error=${msg}`, req.url));
+    return NextResponse.redirect(new URL(`/ads?error=${msg}`, req.url));
   }
 
   // ── 1. 단기 토큰 교환 ──────────────────────────────────────────────
@@ -21,7 +20,7 @@ export async function GET(req: NextRequest) {
   } catch (e: any) {
     console.error("[Meta callback] 코드 교환 실패:", e.message);
     const msg = encodeURIComponent(`코드 교환 실패: ${e.message}`);
-    return Response.redirect(new URL(`/ads?error=${msg}`, req.url));
+    return NextResponse.redirect(new URL(`/ads?error=${msg}`, req.url));
   }
 
   // ── 2. 장기 토큰 업그레이드 (60일) ────────────────────────────────
@@ -35,9 +34,14 @@ export async function GET(req: NextRequest) {
     finalToken = shortAccessToken!;
   }
 
-  // ── 3. 쿠키 저장 ──────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  cookieStore.set("meta_at", finalToken, {
+  // ── 3. 쿠키 저장 + 리다이렉트 ─────────────────────────────────────
+  const state = req.nextUrl.searchParams.get("state") ?? "";
+  const returnTo = state.includes("|") ? state.split("|")[1] : "/ads";
+  const safePath = returnTo.startsWith("/") ? returnTo : "/ads";
+
+  const response = NextResponse.redirect(new URL(safePath, req.url));
+
+  response.cookies.set("meta_at", finalToken, {
     httpOnly: true,
     secure:   true,
     maxAge:   55 * 24 * 60 * 60,
@@ -50,9 +54,5 @@ export async function GET(req: NextRequest) {
     console.error("[Meta callback] token store failed:", e)
   );
 
-  // state에서 returnTo 경로 추출
-  const state = req.nextUrl.searchParams.get("state") ?? "";
-  const returnTo = state.includes("|") ? state.split("|")[1] : "/ads";
-  const safePath = returnTo.startsWith("/") ? returnTo : "/ads";
-  return Response.redirect(new URL(safePath, req.url));
+  return response;
 }
