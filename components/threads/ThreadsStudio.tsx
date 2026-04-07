@@ -680,6 +680,15 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
   const [queued, setQueued] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetch("/api/threads/queue")
+      .then(r => r.json())
+      .then(d => {
+        if ((d.queue ?? []).some((q: any) => q.id === post.id)) setQueued(true);
+      })
+      .catch(() => {});
+  }, [post.id]);
+
   const handleQueue = async () => {
     setQueueError(null);
     try {
