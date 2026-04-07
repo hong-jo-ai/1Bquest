@@ -58,6 +58,30 @@ function refsKey(brand: BrandId)  { return `threads_refs_${brand}_v1`; }
 function postsKey(brand: BrandId) { return `threads_posts_${brand}_v1`; }
 function trendKey(brand: BrandId) { return `threads_trend_${brand}_v1`; }
 
+// ── 기존 키 → 새 키 마이그레이션 (한 번만 실행) ────────────────────────────
+
+const MIGRATED_KEY = "threads_storage_migrated_v2";
+
+export function migrateOldKeys() {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(MIGRATED_KEY)) return;
+
+  const oldMapping: [string, string][] = [
+    ["paulvice_threads_refs_v1",  refsKey("paulvice")],
+    ["paulvice_threads_posts_v1", postsKey("paulvice")],
+    ["paulvice_threads_trend_v1", trendKey("paulvice")],
+  ];
+
+  for (const [oldKey, newKey] of oldMapping) {
+    const old = localStorage.getItem(oldKey);
+    if (old && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, old);
+    }
+  }
+
+  localStorage.setItem(MIGRATED_KEY, "1");
+}
+
 // ── 레퍼런스 CRUD ─────────────────────────────────────────────────────────
 
 export function loadRefs(brand: BrandId = "paulvice"): ThreadsRef[] {

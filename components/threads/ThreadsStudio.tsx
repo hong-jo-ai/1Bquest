@@ -11,7 +11,7 @@ import {
 import {
   loadRefs, addRef, deleteRef,
   loadPosts, addPosts, toggleLike, deletePost,
-  loadTrend, saveTrend,
+  loadTrend, saveTrend, migrateOldKeys,
   type ThreadsRef, type GeneratedPost, type TrendAnalysis,
   type ThreadsCategory, type PostStyle,
 } from "@/lib/threadsStorage";
@@ -1061,6 +1061,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
   const brandConfig = BRANDS[brand];
 
   useEffect(() => {
+    migrateOldKeys();
     setRefsCount(loadRefs(brand).length);
     setPostsCount(loadPosts(brand).length);
     fetch(`/api/threads/status?brand=${brand}`)
