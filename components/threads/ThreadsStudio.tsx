@@ -794,9 +794,10 @@ export default function ThreadsStudio() {
   useEffect(() => {
     setRefsCount(loadRefs().length);
     setPostsCount(loadPosts().length);
-    // Meta 연결 상태 확인
-    fetch("/api/threads/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "" }) })
-      .then(r => { setMetaConnected(r.status !== 401); })
+    // Threads 연결 상태 확인
+    fetch("/api/threads/status")
+      .then(r => r.json())
+      .then(d => setMetaConnected(d.connected ?? false))
       .catch(() => setMetaConnected(false));
   }, []);
 
