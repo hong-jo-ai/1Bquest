@@ -1,4 +1,4 @@
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
@@ -15,6 +15,10 @@ export async function GET(request: NextRequest) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // 0~30분 랜덤 딜레이 (매번 다른 시간에 게시)
+  const delayMs = Math.floor(Math.random() * 30 * 60 * 1000);
+  await new Promise((r) => setTimeout(r, delayMs));
 
   const token = await getThreadsTokenFromStore();
   if (!token) {
