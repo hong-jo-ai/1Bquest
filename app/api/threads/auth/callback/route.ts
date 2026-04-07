@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { exchangeThreadsCode, getLongLivedThreadsToken } from "@/lib/threadsClient";
+import { saveThreadsToken } from "@/lib/threadsTokenStore";
 
 export async function GET(req: NextRequest) {
   const code  = req.nextUrl.searchParams.get("code");
@@ -25,12 +26,17 @@ export async function GET(req: NextRequest) {
       console.warn("[Threads OAuth] 장기 토큰 교환 실패, 단기 토큰 사용:", e.message);
     }
 
-    // 3. 쿠키 저장
+    // 3. Supabase에 토큰 저장 (쿠키와 무관하게 영속)
+    await saveThreadsToken(finalToken).catch((e) =>
+      console.error("[Threads OAuth] token store failed:", e)
+    );
+
+    // 4. 쿠키에도 저장 시도 (백업)
     const cookieStore = await cookies();
     cookieStore.set("threads_at", finalToken, {
       httpOnly: true,
       secure: true,
-      maxAge: 55 * 24 * 60 * 60, // 55일
+      maxAge: 55 * 24 * 60 * 60,
       path: "/",
       sameSite: "lax",
     });

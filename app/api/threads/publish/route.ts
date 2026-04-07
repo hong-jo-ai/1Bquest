@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
+import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 
@@ -14,6 +15,7 @@ const THREADS_BASE = "https://graph.threads.net/v1.0";
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get("threads_at")?.value
+    || await getThreadsTokenFromStore()
     || process.env.THREADS_ACCESS_TOKEN
     || null;
 
