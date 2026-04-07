@@ -727,7 +727,12 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand, onPublis
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setPublishError(`파일이 너무 큽니다 (${(file.size / 1024 / 1024).toFixed(1)}MB). 4MB 이하만 가능합니다.`);
+      return;
+    }
     setUploading(true);
+    setPublishError(null);
     try {
       const form = new FormData();
       form.append("file", file);

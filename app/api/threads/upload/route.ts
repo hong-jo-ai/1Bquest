@@ -1,7 +1,9 @@
+export const maxDuration = 30;
+
 import { type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const MAX_SIZE = 50 * 1024 * 1024; // 50MB (영상 포함)
+const MAX_SIZE = 4 * 1024 * 1024; // 4MB (Vercel body 제한)
 const BUCKET = "threads-media";
 
 function getSupabase() {
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (file.size > MAX_SIZE) {
-    return Response.json({ error: "파일 크기는 50MB 이하만 가능합니다" }, { status: 413 });
+    return Response.json({ error: `파일 크기는 4MB 이하만 가능합니다 (현재: ${(file.size / 1024 / 1024).toFixed(1)}MB)` }, { status: 413 });
   }
 
   // 미디어 타입 판별
