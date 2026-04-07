@@ -18,11 +18,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const shortToken = await exchangeThreadsCode(code);
+    const shortToken = await exchangeThreadsCode(code, brand);
 
     let finalToken = shortToken.access_token;
     try {
-      const longToken = await getLongLivedThreadsToken(shortToken.access_token);
+      const longToken = await getLongLivedThreadsToken(shortToken.access_token, brand);
       finalToken = longToken.access_token;
       console.log(`[Threads OAuth] ${brand} 장기 토큰 발급 성공`);
     } catch (e: any) {

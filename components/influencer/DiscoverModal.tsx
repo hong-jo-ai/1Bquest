@@ -77,16 +77,17 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 
 // ── 메인 컴포넌트 ───────────────────────────────────────
 export default function DiscoverModal({ onClose, onAdded }: Props) {
-  const agentConnected = useAgentConnected();
+  const { connected: agentConnected, recheck: recheckAgent } = useAgentConnected();
   const [agentStarting, setAgentStarting] = useState(false);
 
   // 에이전트 모드 선택 시 자동 시작
   const startAgentIfNeeded = useCallback(async () => {
     if (agentConnected || agentStarting) return;
     setAgentStarting(true);
-    await agentAutoStart();
+    const ok = await agentAutoStart();
+    if (ok) recheckAgent();
     setAgentStarting(false);
-  }, [agentConnected, agentStarting]);
+  }, [agentConnected, agentStarting, recheckAgent]);
 
   // 탭: "naver" | "agent" | "similar"
   const [discoverMode, setDiscoverMode] = useState<"naver" | "agent" | "similar">("naver");

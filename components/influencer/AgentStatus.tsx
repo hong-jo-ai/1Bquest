@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Wifi, WifiOff, Bot, ExternalLink, RefreshCw } from "lucide-react";
 
-const AGENT_URL = "http://localhost:7777";
+const AGENT_API = "/api/influencer/agent-start";
+const PROXY_API = "/api/influencer/agent-proxy";
 
 interface AgentState {
   connected: boolean;
@@ -24,10 +25,10 @@ export default function AgentStatus({ onDiscoverWithAgent }: Props) {
   const check = useCallback(async () => {
     setState((s) => ({ ...s, checking: true }));
     try {
-      const res = await fetch(`${AGENT_URL}/health`, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(AGENT_API);
       if (res.ok) {
         const data = await res.json();
-        setState({ connected: true, checking: false, browser: data.browser, instagram: data.instagram });
+        setState({ connected: data.connected, checking: false, browser: "idle", instagram: "" });
       } else {
         setState((s) => ({ ...s, connected: false, checking: false }));
       }
@@ -45,7 +46,11 @@ export default function AgentStatus({ onDiscoverWithAgent }: Props) {
 
   const handleOpenBrowser = async () => {
     try {
-      await fetch(`${AGENT_URL}/open-browser`, { method: "POST" });
+      await fetch(PROXY_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "/open-browser" }),
+      });
       setTimeout(check, 2000);
     } catch { /* ignore */ }
   };
@@ -61,14 +66,6 @@ export default function AgentStatus({ onDiscoverWithAgent }: Props) {
         >
           연결 확인
         </button>
-        <a
-          href="http://localhost:7777"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[10px] text-zinc-400 hover:text-zinc-600"
-        >
-          <ExternalLink size={10} />
-        </a>
       </div>
     );
   }
@@ -90,45 +87,39 @@ export default function AgentStatus({ onDiscoverWithAgent }: Props) {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">에이전트 연결됨</span>
         </div>
-        <p className="text-[10px] text-emerald-500">
-          {state.browser === "connected" ? "Chrome 실행 중" : "Chrome 대기"} · @{state.instagram || "미설정"}
-        </p>
       </div>
-      {state.browser !== "connected" && (
-        <button
-          onClick={handleOpenBrowser}
-          className="ml-1 text-[10px] text-emerald-600 hover:text-emerald-800 font-medium border border-emerald-200 px-2 py-0.5 rounded-lg"
-        >
-          Chrome 열기
-        </button>
-      )}
     </div>
   );
 }
 
 // ── 훅: 에이전트 연결 여부 ────────────────────────────────────────────
-export function useAgentConnected(): boolean {
+export function useAgentConnected(): { connected: boolean; recheck: () => void } {
   const [connected, setConnected] = useState(false);
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await fetch(`${AGENT_URL}/health`, { signal: AbortSignal.timeout(2000) });
-        setConnected(res.ok);
-      } catch {
+  const check = useCallback(async () => {
+    try {
+      const res = await fetch(AGENT_API);
+      if (res.ok) {
+        const data = await res.json();
+        setConnected(data.connected);
+      } else {
         setConnected(false);
       }
-    };
+    } catch {
+      setConnected(false);
+    }
+  }, []);
+  useEffect(() => {
     check();
     const id = setInterval(check, 30000);
     return () => clearInterval(id);
-  }, []);
-  return connected;
+  }, [check]);
+  return { connected, recheck: check };
 }
 
 // ── 에이전트 자동 시작 ──────────────────────────────────────────────
 export async function agentAutoStart(): Promise<boolean> {
   try {
-    const res = await fetch("/api/influencer/agent-start", { method: "POST" });
+    const res = await fetch(AGENT_API, { method: "POST" });
     if (!res.ok) return false;
     const data = await res.json();
     return data.status === "started" || data.status === "already_running";
@@ -144,10 +135,10 @@ export async function agentDiscover(opts: {
   followerMin: number;
   followerMax: number;
 }) {
-  const res = await fetch(`${AGENT_URL}/discover`, {
+  const res = await fetch(PROXY_API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts),
+    body: JSON.stringify({ endpoint: "/discover", ...opts }),
   });
   if (!res.ok) throw new Error((await res.json()).error || "에이전트 발굴 실패");
   return res.json();
@@ -159,20 +150,20 @@ export async function agentFindSimilar(opts: {
   followerMin: number;
   followerMax: number;
 }) {
-  const res = await fetch(`${AGENT_URL}/similar`, {
+  const res = await fetch(PROXY_API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts),
+    body: JSON.stringify({ endpoint: "/similar", ...opts }),
   });
   if (!res.ok) throw new Error((await res.json()).error || "유사 계정 발굴 실패");
   return res.json();
 }
 
 export async function agentSendDM(handle: string, message: string) {
-  const res = await fetch(`${AGENT_URL}/dm`, {
+  const res = await fetch(PROXY_API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ handle, message }),
+    body: JSON.stringify({ endpoint: "/dm", handle, message }),
   });
   if (!res.ok) throw new Error((await res.json()).error || "DM 발송 실패");
   return res.json();

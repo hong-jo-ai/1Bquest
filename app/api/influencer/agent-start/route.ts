@@ -5,18 +5,29 @@ import path from "path";
 let agentProcess: ChildProcess | null = null;
 
 const AGENT_SCRIPT = ["agent", "js"].join(".");
+const AGENT_URL = "http://localhost:7777";
 
-export async function POST() {
-  // 이미 실행 중인지 health check
+async function isAgentRunning(): Promise<boolean> {
   try {
-    const res = await fetch("http://localhost:7777/health", {
+    const res = await fetch(`${AGENT_URL}/health`, {
       signal: AbortSignal.timeout(2000),
     });
-    if (res.ok) {
-      return NextResponse.json({ status: "already_running" });
-    }
+    return res.ok;
   } catch {
-    // not running, start it
+    return false;
+  }
+}
+
+// GET: health check 프록시
+export async function GET() {
+  const running = await isAgentRunning();
+  return NextResponse.json({ connected: running });
+}
+
+// POST: 자동 시작 + health check
+export async function POST() {
+  if (await isAgentRunning()) {
+    return NextResponse.json({ status: "already_running" });
   }
 
   // 이전 프로세스가 죽었으면 정리
@@ -52,7 +63,7 @@ export async function POST() {
     const poll = setInterval(async () => {
       attempts++;
       try {
-        const res = await fetch("http://localhost:7777/health", {
+        const res = await fetch(`${AGENT_URL}/health`, {
           signal: AbortSignal.timeout(1000),
         });
         if (res.ok) {
