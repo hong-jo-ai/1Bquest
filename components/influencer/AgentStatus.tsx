@@ -125,6 +125,18 @@ export function useAgentConnected(): boolean {
   return connected;
 }
 
+// ── 에이전트 자동 시작 ──────────────────────────────────────────────
+export async function agentAutoStart(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/influencer/agent-start", { method: "POST" });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.status === "started" || data.status === "already_running";
+  } catch {
+    return false;
+  }
+}
+
 // ── 에이전트 API 헬퍼 ────────────────────────────────────────────────
 export async function agentDiscover(opts: {
   hashtags: string[];

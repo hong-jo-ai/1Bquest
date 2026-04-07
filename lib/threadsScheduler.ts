@@ -2,6 +2,7 @@
  * Threads 자동 게시 & 모니터링 관련 Supabase 스토리지
  */
 import { createClient } from "@supabase/supabase-js";
+import type { BrandId } from "./threadsBrands";
 
 const KV_QUEUE_KEY = "threads_post_queue";       // 자동 게시 대기 큐
 const KV_PUBLISHED_KEY = "threads_published_log"; // 게시 완료 로그 (모니터링용)
@@ -10,6 +11,7 @@ const KV_NOTIFIED_KEY = "threads_notified_ids";   // 이미 알림 보낸 ID
 export interface QueuedPost {
   id: string;
   text: string;
+  brand: BrandId;
   scheduledAt?: string;
 }
 
@@ -18,6 +20,7 @@ export interface PublishedPost {
   text: string;
   publishedAt: string;  // ISO
   postId: string;       // 원본 저장 글 ID
+  brand: BrandId;
 }
 
 function getSupabase() {

@@ -586,7 +586,7 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
         ) : (
           <div className="space-y-3">
             {posts.map((p) => (
-              <SavedPostCard key={p.id} post={p}
+              <SavedPostCard key={p.id} post={p} brand={brand}
                 onLike={() => handleLike(p.id)}
                 onDelete={() => handleDelete(p.id)}
                 onCopy={() => copy(p.text, p.id)}
@@ -667,9 +667,9 @@ function NewPostCard({ post, index, onSave, onCopy, copied }: {
 
 // ── 저장된 글 카드 ────────────────────────────────────────────────────────
 
-function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
+function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
   post: GeneratedPost; onLike: () => void; onDelete: () => void;
-  onCopy: () => void; copied: boolean;
+  onCopy: () => void; copied: boolean; brand: BrandId;
 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -687,7 +687,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
       const res = await fetch("/api/threads/queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, text: post.text }),
+        body: JSON.stringify({ id: post.id, text: post.text, brand }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "큐 추가 실패");
@@ -734,7 +734,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
       const res = await fetch("/api/threads/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: post.text, mediaUrl, mediaType }),
+        body: JSON.stringify({ text: post.text, mediaUrl, mediaType, brand }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "게시 실패");
@@ -1061,11 +1061,11 @@ export default function ThreadsStudio() {
   useEffect(() => {
     setRefsCount(loadRefs().length);
     setPostsCount(loadPosts().length);
-    fetch("/api/threads/status")
+    fetch(`/api/threads/status?brand=${brand}`)
       .then(r => r.json())
       .then(d => setMetaConnected(d.connected ?? false))
       .catch(() => setMetaConnected(false));
-  }, []);
+  }, [brand]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-6">
@@ -1084,11 +1084,11 @@ export default function ThreadsStudio() {
           </div>
           {metaConnected === false && (
             <a
-              href="/api/threads/auth/login"
+              href={`/api/threads/auth/login?brand=${brand}`}
               className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
             >
               <Send size={13} />
-              Threads 계정 연결
+              {brandConfig.name} Threads 연결
             </a>
           )}
           {metaConnected === true && (

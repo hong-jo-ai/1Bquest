@@ -10,13 +10,13 @@ const THREADS_REDIRECT = (process.env.THREADS_REDIRECT_URI ?? "").trim();
 
 const THREADS_BASE = "https://graph.threads.net";
 
-export function getThreadsAuthUrl(): string {
+export function getThreadsAuthUrl(brand: string = "paulvice"): string {
   const params = new URLSearchParams({
     client_id:     APP_ID,
     redirect_uri:  THREADS_REDIRECT,
     scope:         "threads_basic,threads_content_publish",
     response_type: "code",
-    state:         "paulvice_threads",
+    state:         brand,
   });
   return `https://threads.net/oauth/authorize?${params}`;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   X, Sparkles, Users, TrendingUp, Plus, SkipForward,
   RefreshCw, CheckCircle, AlertCircle, ChevronRight,
@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { addInfluencer, loadInfluencers, formatFollowers } from "@/lib/influencerStorage";
 import type { DiscoveredInfluencer } from "@/app/api/influencer/discover/route";
-import { useAgentConnected, agentDiscover, agentFindSimilar } from "./AgentStatus";
+import { useAgentConnected, agentDiscover, agentFindSimilar, agentAutoStart } from "./AgentStatus";
 
 interface Props {
   onClose: () => void;
@@ -78,6 +78,15 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 // ── 메인 컴포넌트 ───────────────────────────────────────
 export default function DiscoverModal({ onClose, onAdded }: Props) {
   const agentConnected = useAgentConnected();
+  const [agentStarting, setAgentStarting] = useState(false);
+
+  // 에이전트 모드 선택 시 자동 시작
+  const startAgentIfNeeded = useCallback(async () => {
+    if (agentConnected || agentStarting) return;
+    setAgentStarting(true);
+    await agentAutoStart();
+    setAgentStarting(false);
+  }, [agentConnected, agentStarting]);
 
   // 탭: "naver" | "agent" | "similar"
   const [discoverMode, setDiscoverMode] = useState<"naver" | "agent" | "similar">("naver");
@@ -305,7 +314,7 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
             네이버 검색 발굴
           </button>
           <button
-            onClick={() => setDiscoverMode("agent")}
+            onClick={() => { setDiscoverMode("agent"); startAgentIfNeeded(); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium border-b-2 transition-colors ${
               discoverMode === "agent"
                 ? "border-emerald-600 text-emerald-600"
@@ -320,7 +329,7 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
             }
           </button>
           <button
-            onClick={() => setDiscoverMode("similar")}
+            onClick={() => { setDiscoverMode("similar"); startAgentIfNeeded(); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium border-b-2 transition-colors ${
               discoverMode === "similar"
                 ? "border-pink-600 text-pink-600"
@@ -341,16 +350,24 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
 
           {/* 에이전트 모드 안내 */}
           {(discoverMode === "agent" || discoverMode === "similar") && (
-            !agentConnected ? (
-              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                <div className="space-y-1">
-                  <p className="font-medium">로컬 에이전트가 실행되지 않고 있습니다</p>
-                  <p>터미널에서 아래 명령어를 실행해주세요:</p>
-                  <code className="block bg-amber-100 dark:bg-amber-900/50 rounded px-2 py-1 font-mono text-[11px]">
-                    cd local-agent && npm install && node agent.js
-                  </code>
+            agentStarting ? (
+              <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+                <RefreshCw size={13} className="animate-spin" />
+                <span>로컬 에이전트 시작 중...</span>
+              </div>
+            ) : !agentConnected ? (
+              <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>에이전트 연결 실패</span>
                 </div>
+                <button
+                  onClick={startAgentIfNeeded}
+                  className="shrink-0 flex items-center gap-1 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg font-medium transition-colors"
+                >
+                  <RefreshCw size={11} />
+                  다시 시도
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">

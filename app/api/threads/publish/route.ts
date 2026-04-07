@@ -1,32 +1,29 @@
 import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
+import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 
 /**
  * POST /api/threads/publish
- * Body: { text: string, mediaUrl?: string, mediaType?: "IMAGE" | "VIDEO" }
- *
- * Threads API 2단계 게시:
- * 1. 컨테이너 생성 (POST /{user_id}/threads)
- * 2. 게시 실행 (POST /{user_id}/threads_publish)
+ * Body: { text: string, mediaUrl?: string, mediaType?: "IMAGE" | "VIDEO", brand?: BrandId }
  */
 export async function POST(req: NextRequest) {
+  const { text, mediaUrl, mediaType, brand = "paulvice" } = await req.json();
+  const b = brand as BrandId;
+
   const cookieStore = await cookies();
-  const token = cookieStore.get("threads_at")?.value
-    || await getThreadsTokenFromStore()
-    || process.env.THREADS_ACCESS_TOKEN
+  const token = cookieStore.get(`threads_at_${b}`)?.value
+    || await getThreadsTokenFromStore(b)
     || null;
 
   if (!token) {
     return Response.json(
-      { error: "Threads 계정 연결이 필요합니다." },
+      { error: `${b} Threads 계정 연결이 필요합니다.` },
       { status: 401 }
     );
   }
-
-  const { text, mediaUrl, mediaType } = await req.json();
   if (!text?.trim() && !mediaUrl) {
     return Response.json({ error: "게시할 텍스트 또는 미디어가 없습니다." }, { status: 400 });
   }
