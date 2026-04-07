@@ -862,6 +862,183 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
   );
 }
 
+// ── 게시 관리 탭 ─────────────────────────────────────────────────────────
+
+interface PublishedPostMetrics {
+  threadId: string;
+  text: string;
+  publishedAt: string;
+  likes: number;
+  replies: number;
+  views: number;
+  permalink: string | null;
+}
+
+function PublishedTab() {
+  const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPosts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/threads/published");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "조회 실패");
+      setPosts(data.posts ?? []);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
+  const totalReplies = posts.reduce((s, p) => s + p.replies, 0);
+  const avgLikes = posts.length > 0 ? (totalLikes / posts.length).toFixed(1) : "0";
+  const bestPost = posts.length > 0 ? posts.reduce((best, p) => p.likes > best.likes ? p : best, posts[0]) : null;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-zinc-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-center py-16">
+        <Send size={40} className="mx-auto mb-3 text-zinc-200 dark:text-zinc-700" />
+        <p className="text-zinc-400 mb-2">{error}</p>
+        <a
+          href="/api/threads/auth/login"
+          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-300"
+        >
+          <Send size={13} />
+          Threads 연결하기
+        </a>
+      </div>
+    );
+  }
+
+  if (posts.length === 0) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-center py-16">
+        <BarChart2 size={40} className="mx-auto mb-3 text-zinc-200 dark:text-zinc-700" />
+        <p className="text-zinc-400 mb-1">게시된 글이 없습니다</p>
+        <p className="text-xs text-zinc-300 dark:text-zinc-600">"글 생성" 탭에서 글을 게시하면 여기에 표시됩니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "게시 글", value: posts.length, suffix: "개", color: "text-blue-500" },
+          { label: "총 좋아요", value: totalLikes, suffix: "", color: "text-rose-500" },
+          { label: "총 댓글", value: totalReplies, suffix: "", color: "text-violet-500" },
+          { label: "평균 좋아요", value: avgLikes, suffix: "", color: "text-emerald-500" },
+        ].map(({ label, value, suffix, color }) => (
+          <div key={label} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
+            <p className="text-xs text-zinc-400 mb-1">{label}</p>
+            <p className={`text-xl font-bold ${color}`}>
+              {typeof value === "number" ? value.toLocaleString("ko-KR") : value}
+              {suffix && <span className="text-sm font-normal text-zinc-400 ml-0.5">{suffix}</span>}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* 베스트 글 */}
+      {bestPost && bestPost.likes > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles size={14} className="text-amber-500" />
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">베스트 게시물</span>
+            <span className="text-xs text-amber-500 ml-auto">❤️ {bestPost.likes} · 💬 {bestPost.replies}</span>
+          </div>
+          <p className="text-sm text-amber-900 dark:text-amber-100 whitespace-pre-line line-clamp-3">{bestPost.text}</p>
+        </div>
+      )}
+
+      {/* 새로고침 */}
+      <div className="flex justify-end">
+        <button
+          onClick={fetchPosts}
+          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        >
+          <RefreshCw size={12} />
+          새로고침
+        </button>
+      </div>
+
+      {/* 게시물 목록 */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                <th className="text-left px-4 py-3 font-medium text-zinc-500">게시물</th>
+                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-20">❤️</th>
+                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-20">💬</th>
+                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-24">게시일</th>
+                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-16">링크</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posts.map((post) => (
+                <tr key={post.threadId} className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30">
+                  <td className="px-4 py-3">
+                    <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-line line-clamp-2 max-w-[360px]">{post.text}</p>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`font-semibold ${post.likes >= 30 ? "text-rose-500" : "text-zinc-500"}`}>
+                      {post.likes}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`font-semibold ${post.replies >= 20 ? "text-violet-500" : "text-zinc-500"}`}>
+                      {post.replies}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-center text-xs text-zinc-400">
+                    {new Date(post.publishedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    {post.permalink ? (
+                      <a
+                        href={post.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                      >
+                        <Link2 size={14} />
+                      </a>
+                    ) : (
+                      <span className="text-zinc-200 dark:text-zinc-700">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 안내 */}
+      <p className="text-[11px] text-zinc-400 text-center">
+        최근 15일 이내 게시물 · 좋아요 30+ 또는 댓글 20+ 시 이메일 알림 발송
+      </p>
+    </div>
+  );
+}
+
 // ── 섹션 래퍼 ─────────────────────────────────────────────────────────────
 
 function Section({ title, icon: Icon, children }: {
@@ -928,16 +1105,18 @@ export default function ThreadsStudio() {
         </div>
 
         {/* 탭 */}
-        <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-2xl">
-          <TabBtn tab="trend"    active={tab === "trend"}    label="트렌드 분석"  icon={TrendingUp}   onClick={() => setTab("trend")} />
-          <TabBtn tab="refs"     active={tab === "refs"}     label="레퍼런스 수집" icon={BookmarkPlus} badge={refsCount}   onClick={() => setTab("refs")} />
-          <TabBtn tab="generate" active={tab === "generate"} label="글 생성"      icon={PenLine}      badge={postsCount}  onClick={() => setTab("generate")} />
+        <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-2xl overflow-x-auto">
+          <TabBtn tab="trend"     active={tab === "trend"}     label="트렌드 분석"  icon={TrendingUp}   onClick={() => setTab("trend")} />
+          <TabBtn tab="refs"      active={tab === "refs"}      label="레퍼런스 수집" icon={BookmarkPlus} badge={refsCount}   onClick={() => setTab("refs")} />
+          <TabBtn tab="generate"  active={tab === "generate"}  label="글 생성"      icon={PenLine}      badge={postsCount}  onClick={() => setTab("generate")} />
+          <TabBtn tab="published" active={tab === "published"} label="게시 관리"    icon={BarChart2}    onClick={() => setTab("published")} />
         </div>
 
         {/* 탭 콘텐츠 */}
-        {tab === "trend"    && <TrendTab />}
-        {tab === "refs"     && <RefsTab  onRefsChange={setRefsCount} />}
-        {tab === "generate" && <GenerateTab onPostsChange={setPostsCount} />}
+        {tab === "trend"     && <TrendTab />}
+        {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} />}
+        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} />}
+        {tab === "published" && <PublishedTab />}
 
       </div>
     </div>
