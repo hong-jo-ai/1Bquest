@@ -71,19 +71,17 @@ export async function POST(req: NextRequest) {
     const container = await containerRes.json();
     const containerId = container.id;
 
-    // 영상인 경우 처리 완료까지 대기 (최대 30초)
-    if (mediaType === "VIDEO") {
-      for (let i = 0; i < 15; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const statusRes = await fetch(
-          `${THREADS_BASE}/${containerId}?fields=status&access_token=${token}`,
-          { cache: "no-store" }
-        );
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          if (statusData.status === "FINISHED") break;
-          if (statusData.status === "ERROR") throw new Error("영상 처리 실패");
-        }
+    // 컨테이너 처리 완료 대기 (텍스트도 포함)
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const statusRes = await fetch(
+        `${THREADS_BASE}/${containerId}?fields=status&access_token=${token}`,
+        { cache: "no-store" }
+      );
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.status === "FINISHED") break;
+        if (statusData.status === "ERROR") throw new Error("미디어 처리 실패");
       }
     }
 
