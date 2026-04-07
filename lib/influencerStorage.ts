@@ -89,6 +89,7 @@ export const PLATFORM_CONFIG: Record<Platform, { label: string; color: string }>
 // ── localStorage ──────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "paulvice_influencers_v1";
+const EXCLUDED_KEY = "paulvice_influencers_excluded_v1";
 
 export function loadInfluencers(): Influencer[] {
   if (typeof window === "undefined") return [];
@@ -125,7 +126,30 @@ export function updateInfluencer(id: string, patch: Partial<Influencer>): void {
 }
 
 export function deleteInfluencer(id: string): void {
-  saveInfluencers(loadInfluencers().filter((inf) => inf.id !== id));
+  const list = loadInfluencers();
+  const target = list.find((inf) => inf.id === id);
+  if (target) {
+    excludeHandle(target.handle);
+  }
+  saveInfluencers(list.filter((inf) => inf.id !== id));
+}
+
+// ── 제외 목록 (삭제된 인플루언서를 다시 추천하지 않기 위함) ──────────
+
+export function loadExcludedHandles(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(EXCLUDED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+export function excludeHandle(handle: string): void {
+  const set = loadExcludedHandles();
+  set.add(handle.toLowerCase());
+  if (typeof window !== "undefined") {
+    saveWithSync(EXCLUDED_KEY, [...set]);
+  }
 }
 
 export function addMessage(id: string, msg: Omit<DmMessage, "id" | "timestamp">): void {

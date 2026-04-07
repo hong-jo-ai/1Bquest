@@ -6,7 +6,7 @@ import {
   RefreshCw, CheckCircle, AlertCircle, ChevronRight,
   ExternalLink, ChevronDown, SlidersHorizontal, Bot, Hash,
 } from "lucide-react";
-import { addInfluencer, loadInfluencers, formatFollowers } from "@/lib/influencerStorage";
+import { addInfluencer, loadInfluencers, loadExcludedHandles, formatFollowers } from "@/lib/influencerStorage";
 import type { DiscoveredInfluencer } from "@/app/api/influencer/discover/route";
 import { useAgentConnected, agentDiscover, agentFindSimilar, agentAutoStart } from "./AgentStatus";
 import {
@@ -235,6 +235,7 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
   };
 
   const existingHandles = new Set(loadInfluencers().map((i) => i.handle.toLowerCase()));
+  const excludedHandles = loadExcludedHandles();
 
   const handleAdd = (inf: DiscoveredInfluencer) => {
     addInfluencer({
@@ -258,12 +259,12 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
 
   const handleAddAll = () => {
     candidates
-      .filter((c) => !added.has(c.handle) && !skipped.has(c.handle) && !existingHandles.has(c.handle))
+      .filter((c) => !added.has(c.handle) && !skipped.has(c.handle) && !existingHandles.has(c.handle) && !excludedHandles.has(c.handle.toLowerCase()))
       .forEach(handleAdd);
   };
 
   const pendingCount = candidates.filter(
-    (c) => !added.has(c.handle) && !skipped.has(c.handle) && !existingHandles.has(c.handle)
+    (c) => !added.has(c.handle) && !skipped.has(c.handle) && !existingHandles.has(c.handle) && !excludedHandles.has(c.handle.toLowerCase())
   ).length;
 
   // 활성화된 상세 조건 개수 (배지용)
@@ -641,7 +642,8 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
                   const isAdded    = added.has(inf.handle);
                   const isSkipped  = skipped.has(inf.handle);
                   const isExisting = existingHandles.has(inf.handle.toLowerCase());
-                  const isDone     = isAdded || isSkipped || isExisting;
+                  const isExcluded = excludedHandles.has(inf.handle.toLowerCase());
+                  const isDone     = isAdded || isSkipped || isExisting || isExcluded;
                   const profileUrl = getProfileUrl(inf.platform, inf.handle);
 
                   return (
@@ -746,7 +748,9 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
 
                         {/* 액션 버튼 */}
                         <div className="flex flex-col gap-1.5 shrink-0">
-                          {isExisting ? (
+                          {isExcluded ? (
+                            <span className="text-xs text-zinc-400 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-center">제외됨</span>
+                          ) : isExisting ? (
                             <span className="text-xs text-zinc-400 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-center">이미 추가됨</span>
                           ) : isAdded ? (
                             <span className="flex items-center gap-1 text-xs text-emerald-600 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 font-medium">

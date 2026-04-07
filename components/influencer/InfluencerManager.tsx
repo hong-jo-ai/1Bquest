@@ -130,7 +130,7 @@ export default function InfluencerManager() {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("인플루언서를 삭제하시겠습니까?")) {
+    if (confirm("인플루언서를 삭제하시겠습니까?\n삭제된 계정은 앞으로 발굴 시 자동 제외됩니다.")) {
       deleteInfluencer(id);
       reload();
     }

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
+import { addPublishedPost } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
@@ -99,6 +100,15 @@ export async function POST(req: NextRequest) {
       throw new Error(`게시 실패: ${err}`);
     }
     const result = await publishRes.json();
+
+    // 게시 로그에 추가 (게시관리 탭에서 조회용)
+    await addPublishedPost({
+      threadId: result.id,
+      text: text?.trim() ?? "",
+      publishedAt: new Date().toISOString(),
+      postId: "",
+      brand: b,
+    });
 
     return Response.json({
       success: true,

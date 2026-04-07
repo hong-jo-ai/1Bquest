@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
+import { type NextRequest } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 import { getRecentPublished } from "@/lib/threadsScheduler";
 import { NextResponse } from "next/server";
+import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 
@@ -13,21 +15,24 @@ export interface PublishedPostWithMetrics {
   replies: number;
   views: number;
   permalink: string | null;
+  brand?: string;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const brand = (req.nextUrl.searchParams.get("brand") ?? "paulvice") as BrandId;
+
   const cookieStore = await cookies();
   const token =
-    cookieStore.get("threads_at")?.value ||
-    (await getThreadsTokenFromStore()) ||
-    process.env.THREADS_ACCESS_TOKEN ||
+    cookieStore.get(`threads_at_${brand}`)?.value ||
+    (await getThreadsTokenFromStore(brand)) ||
     null;
 
   if (!token) {
     return NextResponse.json({ error: "Threads 미연결" }, { status: 401 });
   }
 
-  const published = await getRecentPublished();
+  const allPublished = await getRecentPublished();
+  const published = allPublished.filter((p) => (p.brand ?? "paulvice") === brand);
   if (published.length === 0) {
     return NextResponse.json({ posts: [] });
   }

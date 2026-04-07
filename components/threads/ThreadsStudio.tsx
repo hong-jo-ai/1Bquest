@@ -941,7 +941,7 @@ interface PublishedPostMetrics {
   permalink: string | null;
 }
 
-function PublishedTab() {
+function PublishedTab({ brand }: { brand: BrandId }) {
   const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -950,7 +950,7 @@ function PublishedTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/threads/published");
+      const res = await fetch(`/api/threads/published?brand=${brand}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "조회 실패");
       setPosts(data.posts ?? []);
@@ -1204,7 +1204,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         {tab === "trend"     && <TrendTab brand={brand} />}
         {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} brand={brand} />}
         {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} />}
-        {tab === "published" && <PublishedTab />}
+        {tab === "published" && <PublishedTab brand={brand} />}
 
       </div>
     </div>
