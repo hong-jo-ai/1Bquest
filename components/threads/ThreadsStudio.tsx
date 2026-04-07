@@ -592,6 +592,7 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
                 onDelete={() => handleDelete(p.id)}
                 onCopy={() => copy(p.text, p.id)}
                 copied={copiedId === p.id}
+                onPublished={() => { deletePost(p.id, brand); reload(); }}
               />
             ))}
           </div>
@@ -684,9 +685,9 @@ function NewPostCard({ post, index, onSave, onCopy, copied }: {
 
 // ── 저장된 글 카드 ────────────────────────────────────────────────────────
 
-function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
+function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand, onPublished }: {
   post: GeneratedPost; onLike: () => void; onDelete: () => void;
-  onCopy: () => void; copied: boolean; brand: BrandId;
+  onCopy: () => void; copied: boolean; brand: BrandId; onPublished: () => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -783,6 +784,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "게시 실패");
       setPublished(true);
+      onPublished();
     } catch (e: any) {
       setPublishError(e.message);
     } finally {
