@@ -716,6 +716,14 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "업로드 실패");
       updatePostMedia(post.id, json.url, json.mediaType, brand);
+      // 큐에도 반영
+      if (queued) {
+        fetch("/api/threads/queue", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: post.id, mediaUrl: json.url, mediaType: json.mediaType }),
+        }).catch(() => {});
+      }
       onLike(); // trigger reload
     } catch (e: any) {
       setPublishError(e.message);
@@ -726,6 +734,14 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
 
   const removeMedia = () => {
     removePostMedia(post.id, brand);
+    // 큐에서도 미디어 제거
+    if (queued) {
+      fetch("/api/threads/queue", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: post.id, mediaUrl: undefined, mediaType: undefined }),
+      }).catch(() => {});
+    }
     onLike(); // trigger reload
   };
 

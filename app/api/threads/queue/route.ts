@@ -27,6 +27,20 @@ export async function POST(req: NextRequest) {
   return Response.json({ ok: true, count: queue.length });
 }
 
+export async function PUT(req: NextRequest) {
+  const { id, mediaUrl, mediaType } = await req.json();
+  if (!id) return Response.json({ error: "id 필요" }, { status: 400 });
+
+  const queue = await getPostQueue();
+  const post = queue.find((p) => p.id === id);
+  if (!post) return Response.json({ error: "큐에 없음" }, { status: 404 });
+
+  post.mediaUrl = mediaUrl;
+  post.mediaType = mediaType;
+  await savePostQueue(queue);
+  return Response.json({ ok: true });
+}
+
 export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
   if (!id) return Response.json({ error: "id 필요" }, { status: 400 });
