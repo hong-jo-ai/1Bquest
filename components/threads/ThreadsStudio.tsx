@@ -5,6 +5,7 @@ import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
   X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
+  ImagePlus, Film,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
@@ -681,16 +682,48 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMediaFile(file);
+    setMediaPreview(URL.createObjectURL(file));
+  };
+
+  const removeMedia = () => {
+    setMediaFile(null);
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    setMediaPreview(null);
+  };
 
   const handlePublish = async () => {
     if (!confirm("이 글을 폴바이스 Threads 계정에 게시할까요?")) return;
     setPublishing(true);
     setPublishError(null);
     try {
+      let mediaUrl: string | undefined;
+      let mediaType: string | undefined;
+
+      // 미디어 업로드
+      if (mediaFile) {
+        setUploading(true);
+        const form = new FormData();
+        form.append("file", mediaFile);
+        const uploadRes = await fetch("/api/threads/upload", { method: "POST", body: form });
+        const uploadJson = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadJson.error ?? "업로드 실패");
+        mediaUrl = uploadJson.url;
+        mediaType = uploadJson.mediaType;
+        setUploading(false);
+      }
+
       const res = await fetch("/api/threads/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: post.text }),
+        body: JSON.stringify({ text: post.text, mediaUrl, mediaType }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "게시 실패");
@@ -699,6 +732,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
       setPublishError(e.message);
     } finally {
       setPublishing(false);
+      setUploading(false);
     }
   };
 
@@ -741,23 +775,52 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
           </div>
         )}
 
-        {/* 게시 버튼 + 상태 */}
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-          <p className="text-[10px] text-zinc-300 dark:text-zinc-600">{new Date(post.savedAt).toLocaleDateString("ko-KR")}</p>
-          {published ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
-              <Check size={12} /> 게시 완료
-            </span>
-          ) : (
-            <button
-              onClick={handlePublish}
-              disabled={publishing}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              {publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-              {publishing ? "게시 중..." : "Threads 게시"}
-            </button>
+        {/* 미디어 첨부 + 게시 */}
+        <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+          {/* 미디어 프리뷰 */}
+          {mediaPreview && (
+            <div className="relative inline-block">
+              {mediaFile?.type.startsWith("video/") ? (
+                <video src={mediaPreview} className="h-24 rounded-lg object-cover" />
+              ) : (
+                <img src={mediaPreview} alt="첨부" className="h-24 rounded-lg object-cover" />
+              )}
+              <button onClick={removeMedia}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                <X size={10} />
+              </button>
+              <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">
+                {mediaFile?.type.startsWith("video/") ? "영상" : "이미지"}
+              </span>
+            </div>
           )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-zinc-300 dark:text-zinc-600">{new Date(post.savedAt).toLocaleDateString("ko-KR")}</p>
+              {!published && !mediaFile && (
+                <label className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 cursor-pointer transition-colors">
+                  <ImagePlus size={13} />
+                  <span>미디어 첨부</span>
+                  <input type="file" accept="image/*,video/*" onChange={handleMediaSelect} className="hidden" />
+                </label>
+              )}
+            </div>
+            {published ? (
+              <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+                <Check size={12} /> 게시 완료
+              </span>
+            ) : (
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                {uploading ? "업로드 중..." : publishing ? "게시 중..." : mediaFile ? "미디어와 함께 게시" : "Threads 게시"}
+              </button>
+            )}
+          </div>
         </div>
         {publishError && (
           <p className="text-xs text-red-500 mt-1.5">{publishError}</p>
