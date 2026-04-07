@@ -45,19 +45,18 @@ export async function POST() {
     // 1. 청산 엔진 실행
     const clearanceResult = await runJewelryClearance(token);
 
-    // 2. Meta 광고 자동 생성/업데이트
+    // 2. Meta 광고 예산 ROAS 기반 조정
     let adResult: any = null;
     const cookieStore2 = await cookies();
     const metaToken = cookieStore2.get("meta_at")?.value || process.env.META_SYSTEM_TOKEN;
 
     if (!metaToken) {
       adResult = { skipped: true, reason: "Meta 미연결 — 광고 탭에서 Meta를 연결하세요" };
-    } else if (clearanceResult.products.length === 0) {
-      adResult = { skipped: true, reason: "주얼리 상품이 없어서 광고를 생성하지 않았습니다" };
     } else {
       try {
-        adResult = await runClearanceAds(metaToken, clearanceResult);
-        console.log(`[JewelryClearance] 광고 생성 ${adResult.adsCreated}건`);
+        adResult = await runClearanceAds(metaToken);
+        const adjusted = adResult.adjustments?.length ?? 0;
+        console.log(`[JewelryClearance] 광고 예산 조정 ${adjusted}건`);
       } catch (e: any) {
         console.error("[JewelryClearance] 광고 엔진 오류:", e);
         adResult = { error: e.message };

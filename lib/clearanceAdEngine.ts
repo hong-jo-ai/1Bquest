@@ -1,77 +1,38 @@
 /**
  * 주얼리 청산 광고 엔진
  *
- * 청산 엔진 실행 결과를 받아서 Meta 광고를 자동 생성/업데이트.
- * - 캠페인 1개 (주얼리 클리어런스)
- * - 광고 세트 2개 (신규 트래픽 + 리타겟팅)
- * - 할인 상품별 광고 소재 자동 생성
+ * 기존 "주얼리" 캠페인의 예산을 ROAS 기반으로 자동 조정.
+ * - ROAS > 3 → 예산 25% 증가
+ * - ROAS ≤ 3 → 예산 20% 감소
+ * - 캠페인 이름에 "주얼리"가 포함된 캠페인만 대상
  */
 import { metaGet, metaPost } from "./metaClient";
-import type { ClearanceProduct, ClearanceResult } from "./jewelryClearance";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────
 
-export interface SuggestedAdCopy {
-  productName: string;
-  title: string;
-  body: string;
-  linkUrl: string;
-  discountPct: number;
+export interface BudgetAdjustment {
+  adSetId: string;
+  adSetName: string;
+  previousBudget: number;
+  newBudget: number;
+  roas: number;
+  changePct: number;
 }
 
 export interface AdEngineResult {
   campaignId: string | null;
-  adSetIds: string[];
-  adsCreated: number;
-  adsUpdated: number;
-  adsPaused: number;
-  suggestedCopies: SuggestedAdCopy[];
+  campaignName: string | null;
+  adjustments: BudgetAdjustment[];
+  skipped: boolean;
+  reason?: string;
   errors: string[];
-}
-
-interface ExistingCampaign {
-  id: string;
-  name: string;
-  status: string;
 }
 
 // ── 상수 ──────────────────────────────────────────────────────────────────
 
-const CAMPAIGN_NAME = "[자동] 주얼리 클리어런스";
-const ADSET_PROSPECTING = "[자동] 주얼리 청산 - 신규고객";
-const ADSET_RETARGETING = "[자동] 주얼리 청산 - 리타겟팅";
-const SHOP_URL = "https://icaruse2000.cafe24.com/product/list.html?cate_no=44";
-
-// ── Facebook 페이지 ID 조회 ───────────────────────────────────────────────
-
-async function getPageId(token: string, accountId?: string): Promise<string> {
-  // 1순위: 환경변수
-  if (process.env.META_PAGE_ID) return process.env.META_PAGE_ID;
-
-  // 2순위: /me/accounts (사용자 토큰인 경우)
-  try {
-    const data = await metaGet("/me/accounts", token, {
-      fields: "id,name",
-      limit: "10",
-    });
-    const pages: any[] = data.data ?? [];
-    if (pages.length > 0) return pages[0].id;
-  } catch { /* 권한 없으면 다음 방법 시도 */ }
-
-  // 3순위: 광고 계정의 promote_pages
-  if (accountId) {
-    try {
-      const data = await metaGet(`/${accountId}/promote_pages`, token, {
-        fields: "id,name",
-        limit: "10",
-      });
-      const pages: any[] = data.data ?? [];
-      if (pages.length > 0) return pages[0].id;
-    } catch { /* 실패 시 다음 */ }
-  }
-
-  throw new Error("Facebook 페이지를 찾을 수 없습니다. META_PAGE_ID 환경변수를 설정하거나, Meta 비즈니스 설정에서 페이지를 광고 계정에 연결하세요.");
-}
+const ROAS_THRESHOLD = 3;
+const BUDGET_INCREASE_PCT = 0.25;
+const BUDGET_DECREASE_PCT = 0.20;
 
 // ── 광고 계정 ID 조회 ────────────────────────────────────────────────────
 
@@ -91,204 +52,138 @@ async function getAdAccountId(token: string): Promise<string> {
   return account.id;
 }
 
-// ── 기존 청산 캠페인 찾기 ─────────────────────────────────────────────────
+// ── "주얼리" 캠페인 찾기 ─────────────────────────────────────────────────
 
-async function findExistingCampaign(
+async function findJewelryCampaign(
   token: string,
   accountId: string
-): Promise<ExistingCampaign | null> {
+): Promise<{ id: string; name: string } | null> {
   const data = await metaGet(`/${accountId}/campaigns`, token, {
     fields: "id,name,status",
     effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
     limit: "50",
   });
-  const found = (data.data ?? []).find((c: any) => c.name === CAMPAIGN_NAME);
-  return found ? { id: found.id, name: found.name, status: found.status } : null;
+  const found = (data.data ?? []).find((c: any) =>
+    c.name.includes("주얼리")
+  );
+  return found ? { id: found.id, name: found.name } : null;
 }
 
-// ── 기존 광고 세트 찾기 ───────────────────────────────────────────────────
+// ── 광고 세트별 ROAS 조회 + 예산 조정 ────────────────────────────────────
 
-async function findAdSets(
+async function getAdSetsWithInsights(
   token: string,
   campaignId: string
-): Promise<Record<string, string>> {
+): Promise<{ id: string; name: string; dailyBudget: number; roas: number }[]> {
   const data = await metaGet(`/${campaignId}/adsets`, token, {
-    fields: "id,name",
-    limit: "10",
-  });
-  const map: Record<string, string> = {};
-  for (const adset of (data.data ?? [])) {
-    map[adset.name] = adset.id;
-  }
-  return map;
-}
-
-// ── 기존 광고 목록 ───────────────────────────────────────────────────────
-
-async function findExistingAds(
-  token: string,
-  adSetId: string
-): Promise<Map<string, { id: string; status: string }>> {
-  const data = await metaGet(`/${adSetId}/ads`, token, {
-    fields: "id,name,status",
-    effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+    fields: "id,name,daily_budget",
+    effective_status: JSON.stringify(["ACTIVE"]),
     limit: "50",
   });
-  const map = new Map<string, { id: string; status: string }>();
-  for (const ad of (data.data ?? [])) {
-    map.set(ad.name, { id: ad.id, status: ad.status });
+
+  const adSets: { id: string; name: string; dailyBudget: number; roas: number }[] = [];
+
+  for (const adSet of data.data ?? []) {
+    let roas = 0;
+    try {
+      const insights = await metaGet(`/${adSet.id}/insights`, token, {
+        fields: "spend,action_values",
+        date_preset: "last_7d",
+      });
+      const row = insights.data?.[0];
+      if (row) {
+        const spend = parseFloat(row.spend ?? "0");
+        const purchaseValue = (row.action_values ?? []).find(
+          (a: any) => a.action_type === "offsite_conversion.fb_pixel_purchase"
+              || a.action_type === "purchase"
+        );
+        const revenue = parseFloat(purchaseValue?.value ?? "0");
+        roas = spend > 0 ? revenue / spend : 0;
+      }
+    } catch { /* 인사이트 없으면 roas = 0 */ }
+
+    adSets.push({
+      id: adSet.id,
+      name: adSet.name,
+      dailyBudget: parseInt(adSet.daily_budget ?? "0", 10),
+      roas,
+    });
   }
-  return map;
-}
 
-// ── 광고 카피 생성 ───────────────────────────────────────────────────────
-
-function generateAdCopy(product: ClearanceProduct): {
-  title: string;
-  body: string;
-  description: string;
-  linkUrl: string;
-} {
-  const discountPct = product.originalPrice > 0
-    ? Math.round((1 - product.newPrice / product.originalPrice) * 100)
-    : 0;
-
-  const priceFormatted = product.newPrice.toLocaleString("ko-KR");
-  const originalFormatted = product.originalPrice.toLocaleString("ko-KR");
-
-  return {
-    title: discountPct > 0
-      ? `${product.name} ${discountPct}% OFF`
-      : product.name,
-    body: discountPct > 0
-      ? `✨ ${product.name}\n${originalFormatted}원 → ${priceFormatted}원\n한정 수량 특가 · 매일 가격이 바뀝니다`
-      : `✨ ${product.name}\n${priceFormatted}원\nPAULVICE 주얼리 컬렉션`,
-    description: "PAULVICE 주얼리 클리어런스",
-    linkUrl: SHOP_URL,
-  };
+  return adSets;
 }
 
 // ── 메인 실행 함수 ────────────────────────────────────────────────────────
 
 export async function runClearanceAds(
   token: string,
-  clearanceResult: ClearanceResult
 ): Promise<AdEngineResult> {
   const result: AdEngineResult = {
     campaignId: null,
-    adSetIds: [],
-    adsCreated: 0,
-    adsUpdated: 0,
-    adsPaused: 0,
-    suggestedCopies: [],
+    campaignName: null,
+    adjustments: [],
+    skipped: false,
     errors: [],
   };
 
-  // 가격 변경된 상품만 광고 대상
-  const adProducts = clearanceResult.products.filter(
-    (p) => p.adjustmentPct > 0 && p.newPrice < p.currentPrice
-  );
-
-  if (adProducts.length === 0 && clearanceResult.products.length > 0) {
-    // 가격 변경 없어도 기존 상품 중 할인율 높은 순으로 광고
-    const sorted = [...clearanceResult.products]
-      .filter(p => p.originalPrice > 0 && p.newPrice < p.originalPrice)
-      .sort((a, b) => {
-        const aDiscount = 1 - a.newPrice / a.originalPrice;
-        const bDiscount = 1 - b.newPrice / b.originalPrice;
-        return bDiscount - aDiscount;
-      });
-    adProducts.push(...sorted.slice(0, 5));
-  }
-
-  if (adProducts.length === 0) {
-    result.errors.push("광고할 상품이 없습니다 (할인 적용된 상품 없음)");
-    return result;
-  }
-
   try {
     const accountId = await getAdAccountId(token);
-    const pageId = await getPageId(token, accountId);
-
-    // ── 1. 캠페인 생성 또는 찾기 ──────────────────────────────────────
-    let campaign = await findExistingCampaign(token, accountId);
+    const campaign = await findJewelryCampaign(token, accountId);
 
     if (!campaign) {
-      const res = await metaPost(`/${accountId}/campaigns`, token, {
-        name: CAMPAIGN_NAME,
-        objective: "OUTCOME_TRAFFIC",
-        status: "PAUSED",
-        special_ad_categories: "[]",
-        is_adset_budget_sharing_enabled: "false",
-      });
-      campaign = { id: res.id, name: CAMPAIGN_NAME, status: "PAUSED" };
+      result.skipped = true;
+      result.reason = "이름에 '주얼리'가 포함된 캠페인을 찾지 못했습니다";
+      return result;
     }
+
     result.campaignId = campaign.id;
+    result.campaignName = campaign.name;
 
-    // ── 2. 광고 세트 생성 또는 찾기 ───────────────────────────────────
-    const existingAdSets = await findAdSets(token, campaign.id);
+    const adSets = await getAdSetsWithInsights(token, campaign.id);
 
-    // 신규고객 광고 세트
-    let prospectingAdSetId = existingAdSets[ADSET_PROSPECTING];
-    if (!prospectingAdSetId) {
-      const res = await metaPost(`/${accountId}/adsets`, token, {
-        campaign_id: campaign.id,
-        name: ADSET_PROSPECTING,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        daily_budget: "10000",
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        status: "PAUSED",
-        targeting: JSON.stringify({
-          age_min: 20,
-          age_max: 39,
-          genders: [2],
-          geo_locations: { countries: ["KR"] },
-          targeting_automation: { advantage_audience: 0 },
-        }),
-      });
-      prospectingAdSetId = res.id;
-    }
-    result.adSetIds.push(prospectingAdSetId);
-
-    // 리타겟팅 광고 세트
-    let retargetingAdSetId = existingAdSets[ADSET_RETARGETING];
-    if (!retargetingAdSetId) {
-      const res = await metaPost(`/${accountId}/adsets`, token, {
-        campaign_id: campaign.id,
-        name: ADSET_RETARGETING,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        daily_budget: "10000",
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        status: "PAUSED",
-        targeting: JSON.stringify({
-          age_min: 20,
-          age_max: 39,
-          genders: [2],
-          targeting_automation: { advantage_audience: 0 },
-          geo_locations: { countries: ["KR"] },
-        }),
-      });
-      retargetingAdSetId = res.id;
-    }
-    result.adSetIds.push(retargetingAdSetId);
-
-    // ── 3. 추천 광고 카피 생성 (소재는 Meta 광고 관리자에서 직접 추가) ──
-    for (const product of adProducts.slice(0, 10)) {
-      const copy = generateAdCopy(product);
-      const discountPct = product.originalPrice > 0
-        ? Math.round((1 - product.newPrice / product.originalPrice) * 100)
-        : 0;
-      result.suggestedCopies.push({
-        productName: product.name,
-        title: copy.title,
-        body: copy.body,
-        linkUrl: copy.linkUrl,
-        discountPct,
-      });
+    if (adSets.length === 0) {
+      result.skipped = true;
+      result.reason = `캠페인 "${campaign.name}"에 활성 광고 세트가 없습니다`;
+      return result;
     }
 
+    for (const adSet of adSets) {
+      const isAboveThreshold = adSet.roas > ROAS_THRESHOLD;
+      const changePct = isAboveThreshold ? BUDGET_INCREASE_PCT : -BUDGET_DECREASE_PCT;
+      const newBudget = Math.round(adSet.dailyBudget * (1 + changePct));
+
+      // Meta 최소 일예산 1,000원(100 in cents 단위가 아닌 원 단위)
+      const finalBudget = Math.max(newBudget, 1000);
+
+      if (finalBudget === adSet.dailyBudget) {
+        result.adjustments.push({
+          adSetId: adSet.id,
+          adSetName: adSet.name,
+          previousBudget: adSet.dailyBudget,
+          newBudget: finalBudget,
+          roas: adSet.roas,
+          changePct: 0,
+        });
+        continue;
+      }
+
+      try {
+        await metaPost(`/${adSet.id}`, token, {
+          daily_budget: finalBudget.toString(),
+        });
+
+        result.adjustments.push({
+          adSetId: adSet.id,
+          adSetName: adSet.name,
+          previousBudget: adSet.dailyBudget,
+          newBudget: finalBudget,
+          roas: adSet.roas,
+          changePct: Math.round(changePct * 100),
+        });
+      } catch (e: any) {
+        result.errors.push(`[${adSet.name}] 예산 변경 실패: ${e.message}`);
+      }
+    }
   } catch (e: any) {
     result.errors.push(`광고 엔진 오류: ${e.message}`);
   }
@@ -301,10 +196,13 @@ export async function runClearanceAds(
 export interface ClearanceAdStatus {
   hasCampaign: boolean;
   campaignId: string | null;
+  campaignName: string | null;
   campaignStatus: string | null;
   adSetsCount: number;
   activeAdsCount: number;
   totalSpend: number;
+  totalRevenue: number;
+  roas: number;
   totalImpressions: number;
   totalClicks: number;
   ctr: number;
@@ -314,10 +212,13 @@ export async function getClearanceAdStatus(token: string): Promise<ClearanceAdSt
   const empty: ClearanceAdStatus = {
     hasCampaign: false,
     campaignId: null,
+    campaignName: null,
     campaignStatus: null,
     adSetsCount: 0,
     activeAdsCount: 0,
     totalSpend: 0,
+    totalRevenue: 0,
+    roas: 0,
     totalImpressions: 0,
     totalClicks: 0,
     ctr: 0,
@@ -325,14 +226,21 @@ export async function getClearanceAdStatus(token: string): Promise<ClearanceAdSt
 
   try {
     const accountId = await getAdAccountId(token);
-    const campaign = await findExistingCampaign(token, accountId);
+    const data = await metaGet(`/${accountId}/campaigns`, token, {
+      fields: "id,name,status",
+      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+      limit: "50",
+    });
+    const campaign = (data.data ?? []).find((c: any) =>
+      c.name.includes("주얼리")
+    );
     if (!campaign) return empty;
 
     // 캠페인 인사이트
-    let spend = 0, impressions = 0, clicks = 0;
+    let spend = 0, impressions = 0, clicks = 0, revenue = 0;
     try {
       const insights = await metaGet(`/${campaign.id}/insights`, token, {
-        fields: "spend,impressions,clicks,ctr",
+        fields: "spend,impressions,clicks,ctr,action_values",
         date_preset: "last_7d",
       });
       const d = insights.data?.[0];
@@ -340,6 +248,11 @@ export async function getClearanceAdStatus(token: string): Promise<ClearanceAdSt
         spend = parseFloat(d.spend ?? "0");
         impressions = parseInt(d.impressions ?? "0", 10);
         clicks = parseInt(d.clicks ?? "0", 10);
+        const purchaseValue = (d.action_values ?? []).find(
+          (a: any) => a.action_type === "offsite_conversion.fb_pixel_purchase"
+              || a.action_type === "purchase"
+        );
+        revenue = parseFloat(purchaseValue?.value ?? "0");
       }
     } catch { /* no insights yet */ }
 
@@ -359,10 +272,13 @@ export async function getClearanceAdStatus(token: string): Promise<ClearanceAdSt
     return {
       hasCampaign: true,
       campaignId: campaign.id,
+      campaignName: campaign.name,
       campaignStatus: campaign.status,
       adSetsCount: (adSets.data ?? []).length,
       activeAdsCount: (ads.data ?? []).length,
       totalSpend: spend,
+      totalRevenue: revenue,
+      roas: spend > 0 ? revenue / spend : 0,
       totalImpressions: impressions,
       totalClicks: clicks,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,

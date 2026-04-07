@@ -5,7 +5,7 @@ import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
   X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
-  ImagePlus, Film,
+  ImagePlus, Film, Clock, CalendarClock,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
@@ -685,6 +685,24 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [queued, setQueued] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+
+  const handleQueue = async () => {
+    setQueueError(null);
+    try {
+      const res = await fetch("/api/threads/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: post.id, text: post.text }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "큐 추가 실패");
+      setQueued(true);
+    } catch (e: any) {
+      setQueueError(e.message);
+    }
+  };
 
   const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -811,19 +829,33 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied }: {
                 <Check size={12} /> 게시 완료
               </span>
             ) : (
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                {uploading ? <Loader2 size={12} className="animate-spin" /> : publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                {uploading ? "업로드 중..." : publishing ? "게시 중..." : mediaFile ? "미디어와 함께 게시" : "Threads 게시"}
-              </button>
+              <div className="flex items-center gap-2">
+                {!queued ? (
+                  <button
+                    onClick={handleQueue}
+                    className="flex items-center gap-1 text-[11px] font-medium text-violet-600 hover:text-violet-700 border border-violet-200 dark:border-violet-800 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <CalendarClock size={11} /> 자동 게시
+                  </button>
+                ) : (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-violet-500">
+                    <Clock size={11} /> 큐 등록됨
+                  </span>
+                )}
+                <button
+                  onClick={handlePublish}
+                  disabled={publishing}
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {uploading ? <Loader2 size={12} className="animate-spin" /> : publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  {uploading ? "업로드 중..." : publishing ? "게시 중..." : mediaFile ? "미디어와 함께 게시" : "즉시 게시"}
+                </button>
+              </div>
             )}
           </div>
         </div>
-        {publishError && (
-          <p className="text-xs text-red-500 mt-1.5">{publishError}</p>
+        {(publishError || queueError) && (
+          <p className="text-xs text-red-500 mt-1.5">{publishError || queueError}</p>
         )}
       </div>
     </div>

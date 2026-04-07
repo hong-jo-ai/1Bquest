@@ -42,20 +42,31 @@ interface ClearanceHistoryEntry {
 interface AdStatus {
   hasCampaign: boolean;
   campaignId: string | null;
+  campaignName: string | null;
   campaignStatus: string | null;
   adSetsCount: number;
   activeAdsCount: number;
   totalSpend: number;
+  totalRevenue: number;
+  roas: number;
   totalImpressions: number;
   totalClicks: number;
   ctr: number;
 }
 
+interface BudgetAdjustment {
+  adSetId: string;
+  adSetName: string;
+  previousBudget: number;
+  newBudget: number;
+  roas: number;
+  changePct: number;
+}
+
 interface AdResult {
   campaignId?: string | null;
-  adsCreated?: number;
-  adsPaused?: number;
-  suggestedCopies?: { productName: string; title: string; body: string; linkUrl: string; discountPct: number }[];
+  campaignName?: string | null;
+  adjustments?: BudgetAdjustment[];
   errors?: string[];
   error?: string;
   skipped?: boolean;
@@ -300,10 +311,10 @@ export default function JewelryClearance() {
       )}
 
       {/* 실행 후 광고 결과 배너 */}
-      {lastResult?.adResult && !lastResult.adResult.error && !lastResult.adResult.skipped && lastResult.adResult.campaignId && (
+      {lastResult?.adResult && !lastResult.adResult.error && !lastResult.adResult.skipped && lastResult.adResult.adjustments && lastResult.adResult.adjustments.length > 0 && (
         <div className="flex items-center bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           <Zap size={15} className="mr-2" />
-          캠페인 + 광고 세트 자동 생성 완료 · 추천 카피 {lastResult.adResult.suggestedCopies?.length ?? 0}개
+          광고 예산 ROAS 기반 조정 완료 · {lastResult.adResult.adjustments.length}개 광고 세트
           <span className="ml-1">— "광고 현황" 탭에서 확인하세요</span>
         </div>
       )}
@@ -311,7 +322,7 @@ export default function JewelryClearance() {
       {lastResult?.adResult?.error && (
         <div className="flex items-center bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           <Megaphone size={15} className="mr-2" />
-          광고 생성 실패: {lastResult.adResult.error}
+          광고 예산 조정 실패: {lastResult.adResult.error}
         </div>
       )}
 
@@ -432,13 +443,21 @@ export default function JewelryClearance() {
         <div className="space-y-4">
           {status?.adStatus?.hasCampaign ? (
             <>
+              {/* 캠페인 이름 */}
+              {status.adStatus.campaignName && (
+                <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  캠페인: <span className="font-medium text-zinc-700 dark:text-zinc-300">{status.adStatus.campaignName}</span>
+                </div>
+              )}
+
               {/* 광고 지표 카드 */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 {[
-                  { icon: Megaphone,        label: "활성 광고",  value: status.adStatus.activeAdsCount, suffix: "개", color: "text-blue-500",    bg: "bg-blue-50" },
-                  { icon: Eye,              label: "노출수 (7일)", value: status.adStatus.totalImpressions, suffix: "회", color: "text-violet-500", bg: "bg-violet-50", isNum: true },
-                  { icon: MousePointerClick,label: "클릭수 (7일)", value: status.adStatus.totalClicks, suffix: "회", color: "text-emerald-500", bg: "bg-emerald-50", isNum: true },
-                  { icon: DollarSign,       label: "광고비 (7일)", value: status.adStatus.totalSpend, suffix: "원", color: "text-rose-500",    bg: "bg-rose-50", isNum: true },
+                  { icon: BarChart3,         label: "ROAS (7일)",   value: status.adStatus.roas.toFixed(2), suffix: "",   color: status.adStatus.roas > 3 ? "text-emerald-500" : "text-rose-500", bg: status.adStatus.roas > 3 ? "bg-emerald-50" : "bg-rose-50" },
+                  { icon: DollarSign,        label: "매출 (7일)",   value: status.adStatus.totalRevenue, suffix: "원", color: "text-blue-500",    bg: "bg-blue-50", isNum: true },
+                  { icon: DollarSign,        label: "광고비 (7일)", value: status.adStatus.totalSpend,   suffix: "원", color: "text-rose-500",    bg: "bg-rose-50", isNum: true },
+                  { icon: Eye,               label: "노출수 (7일)", value: status.adStatus.totalImpressions, suffix: "회", color: "text-violet-500", bg: "bg-violet-50", isNum: true },
+                  { icon: MousePointerClick, label: "클릭수 (7일)", value: status.adStatus.totalClicks,  suffix: "회", color: "text-emerald-500", bg: "bg-emerald-50", isNum: true },
                 ].map(({ icon: Icon, label, value, suffix, color, bg, isNum }) => (
                   <div key={label} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -446,53 +465,69 @@ export default function JewelryClearance() {
                       <span className="text-xs text-zinc-400">{label}</span>
                     </div>
                     <p className="text-xl font-bold text-zinc-800 dark:text-zinc-100">
-                      {isNum ? value.toLocaleString("ko-KR") : value}
-                      <span className="text-sm font-normal text-zinc-400 ml-1">{suffix}</span>
+                      {isNum ? (value as number).toLocaleString("ko-KR") : value}
+                      {suffix && <span className="text-sm font-normal text-zinc-400 ml-1">{suffix}</span>}
                     </p>
                   </div>
                 ))}
               </div>
 
-              {/* 추천 광고 카피 */}
-              {lastResult?.adResult?.suggestedCopies && lastResult.adResult.suggestedCopies.length > 0 && (
+              {/* 예산 조정 내역 */}
+              {lastResult?.adResult?.adjustments && lastResult.adResult.adjustments.length > 0 && (
                 <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
                   <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800">
-                    <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">추천 광고 카피 (복사해서 Meta 광고 관리자에 사용)</h3>
+                    <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">예산 조정 내역</h3>
                   </div>
-                  <div className="divide-y divide-zinc-50 dark:divide-zinc-800/50">
-                    {lastResult.adResult.suggestedCopies.map((copy: any, idx: number) => (
-                      <div key={idx} className="px-4 py-3">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-xs font-medium bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{copy.discountPct}% OFF</span>
-                          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{copy.productName}</span>
-                        </div>
-                        <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">{copy.title}</p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-pre-line">{copy.body}</p>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                          <th className="text-left px-4 py-3 font-medium text-zinc-500">광고 세트</th>
+                          <th className="text-right px-4 py-3 font-medium text-zinc-500">ROAS</th>
+                          <th className="text-right px-4 py-3 font-medium text-zinc-500">이전 예산</th>
+                          <th className="text-right px-4 py-3 font-medium text-zinc-500">변경 예산</th>
+                          <th className="text-right px-4 py-3 font-medium text-zinc-500">변동</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lastResult.adResult.adjustments.map((adj) => (
+                          <tr key={adj.adSetId} className="border-b border-zinc-50 dark:border-zinc-800/50">
+                            <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{adj.adSetName}</td>
+                            <td className={`px-4 py-3 text-right font-semibold ${adj.roas > 3 ? "text-emerald-600" : "text-rose-500"}`}>
+                              {adj.roas.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-zinc-500">{formatPrice(adj.previousBudget)}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-zinc-800 dark:text-zinc-200">{formatPrice(adj.newBudget)}</td>
+                            <td className={`px-4 py-3 text-right font-medium ${adj.changePct > 0 ? "text-emerald-600" : adj.changePct < 0 ? "text-rose-500" : "text-zinc-400"}`}>
+                              {adj.changePct > 0 ? `+${adj.changePct}%` : adj.changePct < 0 ? `${adj.changePct}%` : "유지"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
 
               {/* 안내 */}
               <div className="bg-zinc-50 dark:bg-zinc-800/30 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5">
-                <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">사용 방법</h3>
+                <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">예산 자동 조정 규칙</h3>
                 <div className="space-y-3 text-xs text-zinc-500 dark:text-zinc-400">
                   <div className="flex items-start gap-2">
-                    <Zap size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                    <span>"지금 실행" 시 <b className="text-zinc-600 dark:text-zinc-300">캠페인 + 광고 세트</b>가 자동 생성됩니다</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Users size={14} className="text-violet-500 mt-0.5 shrink-0" />
-                    <span><b className="text-zinc-600 dark:text-zinc-300">신규고객 세트</b>: 20~39세 여성, 한국</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <MousePointerClick size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-                    <span><b className="text-zinc-600 dark:text-zinc-300">광고 소재</b>는 위 추천 카피를 복사해서 Meta 광고 관리자에서 직접 추가</span>
+                    <TrendingUp size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                    <span>ROAS &gt; 3 → 일예산 <b className="text-emerald-600">25% 증가</b></span>
                   </div>
                   <div className="flex items-start gap-2">
                     <TrendingDown size={14} className="text-rose-500 mt-0.5 shrink-0" />
-                    <span>매일 가격이 바뀌면 <b className="text-zinc-600 dark:text-zinc-300">카피도 자동 갱신</b>됩니다</span>
+                    <span>ROAS ≤ 3 → 일예산 <b className="text-rose-500">20% 감소</b></span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Zap size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                    <span>이름에 "주얼리"가 포함된 캠페인의 활성 광고 세트만 대상</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Clock size={14} className="text-zinc-400 mt-0.5 shrink-0" />
+                    <span>매일 오전 7시 청산 엔진과 함께 자동 실행</span>
                   </div>
                 </div>
               </div>
@@ -500,7 +535,7 @@ export default function JewelryClearance() {
           ) : (
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-center py-16">
               <Megaphone size={40} className="mx-auto mb-3 text-zinc-200 dark:text-zinc-700" />
-              <p className="text-zinc-400 mb-2">Meta 광고 계정을 연결하면 자동 광고가 생성됩니다</p>
+              <p className="text-zinc-400 mb-2">Meta 광고 계정을 연결하면 예산 자동 조정이 활성화됩니다</p>
               <a
                 href="/api/meta/auth/login?returnTo=/jewelry-clearance"
                 className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-5 py-2.5 transition-colors text-sm"
