@@ -14,6 +14,7 @@ import {
   type ThreadsRef, type GeneratedPost, type TrendAnalysis,
   type ThreadsCategory, type PostStyle,
 } from "@/lib/threadsStorage";
+import { BRANDS, BRAND_LIST, type BrandId } from "@/lib/threadsBrands";
 
 type Tab = "trend" | "refs" | "generate" | "published";
 
@@ -27,17 +28,6 @@ const STYLE_DESC: Record<PostStyle, string> = {
   선언형: '강한 의견·주장으로 대화 유발',
   감성형: '분위기와 무드를 파는',
 };
-
-const TOPIC_PRESETS = [
-  "시계 하나로 코디 완성하는 법",
-  "출근룩에 시계가 필요한 이유",
-  "각인 선물의 특별함",
-  "미니멀 액세서리 철학",
-  "시계 고르는 기준",
-  "직장 여성의 손목 스타일링",
-  "폴바이스 제품 일상 착용 이야기",
-  "기념일 선물로 시계를 고르는 이유",
-];
 
 // ── 공통 유틸 ─────────────────────────────────────────────────────────────
 
@@ -90,14 +80,16 @@ function TabBtn({ tab, active, label, icon: Icon, badge, onClick }: {
 
 // ── 트렌드 분석 탭 ────────────────────────────────────────────────────────
 
-function TrendTab() {
+function TrendTab({ brand }: { brand: BrandId }) {
+  const brandConfig = BRANDS[brand];
   const [trend, setTrend]       = useState<TrendAnalysis | null>(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
-  const [keywords, setKeywords] = useState<string[]>(["패션", "시계", "주얼리", "브랜드"]);
+  const [keywords, setKeywords] = useState<string[]>(brandConfig.defaultKeywords);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => { setTrend(loadTrend()); }, []);
+  useEffect(() => { setKeywords(brandConfig.defaultKeywords); }, [brand, brandConfig.defaultKeywords]);
 
   const analyze = async () => {
     setLoading(true); setError(null);
@@ -105,7 +97,7 @@ function TrendTab() {
       const res  = await fetch("/api/threads/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords }),
+        body: JSON.stringify({ keywords, brand }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -230,7 +222,7 @@ function TrendTab() {
 
 // ── 레퍼런스 수집 탭 ──────────────────────────────────────────────────────
 
-function RefsTab({ onRefsChange }: { onRefsChange: (n: number) => void }) {
+function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; brand: BrandId }) {
   const [refs, setRefs]         = useState<ThreadsRef[]>([]);
   const [input, setInput]       = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -255,7 +247,7 @@ function RefsTab({ onRefsChange }: { onRefsChange: (n: number) => void }) {
       const res  = await fetch("/api/threads/analyze-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, url }),
+        body: JSON.stringify({ text, url, brand }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -414,7 +406,8 @@ function RefsTab({ onRefsChange }: { onRefsChange: (n: number) => void }) {
 
 // ── 글 생성 탭 ────────────────────────────────────────────────────────────
 
-function GenerateTab({ onPostsChange }: { onPostsChange: (n: number) => void }) {
+function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => void; brand: BrandId }) {
+  const brandConfig = BRANDS[brand];
   const [posts, setPosts]       = useState<GeneratedPost[]>([]);
   const [topic, setTopic]       = useState("");
   const [style, setStyle]       = useState<PostStyle>("공감형");
@@ -446,7 +439,7 @@ function GenerateTab({ onPostsChange }: { onPostsChange: (n: number) => void }) 
       const res  = await fetch("/api/threads/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, style, count: 5, references, customContext: customCtx }),
+        body: JSON.stringify({ topic, style, count: 5, references, customContext: customCtx, brand }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -481,7 +474,7 @@ function GenerateTab({ onPostsChange }: { onPostsChange: (n: number) => void }) 
         <div>
           <label className="text-xs text-zinc-500 mb-2 block">주제</label>
           <div className="flex flex-wrap gap-1.5 mb-2">
-            {TOPIC_PRESETS.map((t) => (
+            {brandConfig.topicPresets.map((t) => (
               <button key={t} onClick={() => setTopic(t)}
                 className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
                   topic === t
@@ -1062,11 +1055,12 @@ export default function ThreadsStudio() {
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
+  const [brand, setBrand] = useState<BrandId>("paulvice");
+  const brandConfig = BRANDS[brand];
 
   useEffect(() => {
     setRefsCount(loadRefs().length);
     setPostsCount(loadPosts().length);
-    // Threads 연결 상태 확인
     fetch("/api/threads/status")
       .then(r => r.json())
       .then(d => setMetaConnected(d.connected ?? false))
@@ -1085,7 +1079,7 @@ export default function ThreadsStudio() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 콘텐츠 스튜디오</h1>
-              <p className="text-xs text-zinc-400 mt-0.5">바이럴 트렌드 분석 · 레퍼런스 수집 · 폴바이스 글 생성</p>
+              <p className="text-xs text-zinc-400 mt-0.5">바이럴 트렌드 분석 · 레퍼런스 수집 · 글 생성</p>
             </div>
           </div>
           {metaConnected === false && (
@@ -1104,6 +1098,24 @@ export default function ThreadsStudio() {
           )}
         </div>
 
+        {/* 브랜드 선택 */}
+        <div className="flex gap-2">
+          {BRAND_LIST.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => setBrand(b.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                brand === b.id
+                  ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
+                  : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
+              }`}
+            >
+              <span>{b.emoji}</span>
+              <span>{b.name}</span>
+            </button>
+          ))}
+        </div>
+
         {/* 탭 */}
         <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-2xl overflow-x-auto">
           <TabBtn tab="trend"     active={tab === "trend"}     label="트렌드 분석"  icon={TrendingUp}   onClick={() => setTab("trend")} />
@@ -1113,9 +1125,9 @@ export default function ThreadsStudio() {
         </div>
 
         {/* 탭 콘텐츠 */}
-        {tab === "trend"     && <TrendTab />}
-        {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} />}
-        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} />}
+        {tab === "trend"     && <TrendTab brand={brand} />}
+        {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} brand={brand} />}
+        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} />}
         {tab === "published" && <PublishedTab />}
 
       </div>

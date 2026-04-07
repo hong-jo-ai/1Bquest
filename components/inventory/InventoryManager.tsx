@@ -312,25 +312,6 @@ export default function InventoryManager() {
         ))}
       </div>
 
-      {/* 에이징 AI 조치 배너 */}
-      {(stats.aging > 0) && (
-        <div className="flex items-center justify-between bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 mb-6">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-violet-600" />
-            <span className="text-sm text-violet-700 dark:text-violet-300">
-              에이징 경고 상품 <b>{stats.aging}개</b> — AI 에이전트가 소진 전략을 수립할 수 있습니다
-            </span>
-          </div>
-          <a
-            href="/agents"
-            className="shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-            AI 긴급 조치
-          </a>
-        </div>
-      )}
-
       {/* 카테고리 탭 */}
       {categories.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 mb-4 scrollbar-none">

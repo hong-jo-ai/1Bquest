@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest } from "next/server";
+import { BRANDS, type BrandId } from "@/lib/threadsBrands";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -7,15 +8,7 @@ function getClient() {
   return new Anthropic({ apiKey });
 }
 
-const SYSTEM = `당신은 폴바이스(PAULVICE) 공식 쓰레드(Threads) 계정 담당자입니다.
-
-브랜드 정보:
-- 브랜드명: 폴바이스 (PAULVICE) / 인스타그램: @plve_seoul
-- 제품: 여성 시계 (미니엘 쁘띠 사각, 에골라 오벌, 오드리 워치)
-- 각인 서비스: 이름, 날짜, 문구 각인 가능 (선물 포지셔닝)
-- 타겟: 20~30대 한국 직장 여성, 미니멀·감각적 코디를 좋아하는 분
-- 브랜드 보이스: 친근하고 세련됨, 과하지 않게 감성적, 공감 언어
-
+const WRITING_RULES = `
 Threads 글쓰기 규칙:
 - 첫 문장이 핵심 (스크롤 멈추는 hook)
 - 2-5문장이 최적 (너무 길면 안 읽음)
@@ -33,9 +26,13 @@ export async function POST(req: NextRequest) {
     count = 5,
     references = [],
     customContext = "",
+    brand = "paulvice",
   } = await req.json();
 
+  const brandConfig = BRANDS[brand as BrandId] ?? BRANDS.paulvice;
   const client = getClient();
+
+  const system = `${brandConfig.systemPrompt}\n${WRITING_RULES}`;
 
   const refContext = references.length > 0
     ? `\n참고할 레퍼런스 글들:\n${references.map((r: string, i: number) => `[${i + 1}] ${r}`).join("\n")}`
@@ -43,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const customCtx = customContext ? `\n추가 맥락: ${customContext}` : "";
 
-  const prompt = `폴바이스 쓰레드 글을 ${count}개 작성해주세요.
+  const prompt = `${brandConfig.name} 쓰레드 글을 ${count}개 작성해주세요.
 
 주제: ${topic}
 스타일: ${style}${refContext}${customCtx}
@@ -66,7 +63,7 @@ export async function POST(req: NextRequest) {
     const res = await client.messages.create({
       model:      "claude-opus-4-5",
       max_tokens: 3000,
-      system:     SYSTEM,
+      system,
       messages:   [{ role: "user", content: prompt }],
     });
 
