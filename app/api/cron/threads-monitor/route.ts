@@ -1,8 +1,8 @@
 export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
+import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 import { getRecentPublished, getNotifiedIds, markNotified } from "@/lib/threadsScheduler";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
@@ -10,10 +10,43 @@ const NOTIFY_EMAIL = "shong@harriotwatches.com";
 const LIKE_THRESHOLD = 30;
 const REPLY_THRESHOLD = 20;
 
+async function sendGmail(accessToken: string, to: string, subject: string, htmlBody: string) {
+  // RFC 2822 형식 이메일 생성
+  const raw = [
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/html; charset=UTF-8",
+    "",
+    htmlBody,
+  ].join("\r\n");
+
+  const encoded = Buffer.from(raw)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gmail 발송 실패: ${err}`);
+  }
+  return res.json();
+}
+
 /**
  * 매일 1회 실행
  * 최근 15일 이내 게시물의 좋아요/댓글 수를 확인
- * 기준 초과 시 이메일 알림
+ * 기준 초과 시 Gmail로 이메일 알림
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -21,14 +54,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const token = await getThreadsTokenFromStore();
-  if (!token) {
+  const threadsToken = await getThreadsTokenFromStore();
+  if (!threadsToken) {
     return NextResponse.json({ error: "Threads 토큰 없음" }, { status: 401 });
-  }
-
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) {
-    return NextResponse.json({ error: "RESEND_API_KEY 미설정" }, { status: 500 });
   }
 
   const published = await getRecentPublished();
@@ -44,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     try {
       const res = await fetch(
-        `${THREADS_BASE}/${post.threadId}?fields=id,text,like_count,reply_count&access_token=${token}`,
+        `${THREADS_BASE}/${post.threadId}?fields=id,text,like_count,reply_count&access_token=${threadsToken}`,
         { cache: "no-store" }
       );
       if (!res.ok) continue;
@@ -71,49 +99,49 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, message: "기준 초과 게시물 없음", checked: published.length });
   }
 
-  // 이메일 발송
-  const resend = new Resend(resendKey);
+  // Gmail로 이메일 발송
+  const gmailToken = await getGoogleAccessTokenFromStore();
+  if (!gmailToken) {
+    return NextResponse.json({ error: "Google 토큰 없음 — 방문자 페이지에서 Google 재로그인 필요", hits }, { status: 401 });
+  }
+
   const postRows = hits.map((h) => {
     const date = new Date(h.publishedAt).toLocaleDateString("ko-KR");
-    const preview = h.text.length > 80 ? h.text.slice(0, 80) + "…" : h.text;
+    const preview = h.text.length > 80 ? h.text.slice(0, 80) + "..." : h.text;
     return `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;">${preview}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;color:${h.likes >= LIKE_THRESHOLD ? '#e11d48' : '#71717a'}">❤️ ${h.likes}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;color:${h.replies >= REPLY_THRESHOLD ? '#7c3aed' : '#71717a'}">💬 ${h.replies}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;color:${h.likes >= LIKE_THRESHOLD ? '#e11d48' : '#71717a'}">&#10084; ${h.likes}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;color:${h.replies >= REPLY_THRESHOLD ? '#7c3aed' : '#71717a'}">&#128172; ${h.replies}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#a1a1aa">${date}</td>
     </tr>`;
   }).join("");
 
+  const html = `
+    <div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#18181b;margin-bottom:4px">Threads 성과 알림</h2>
+      <p style="color:#71717a;font-size:14px;margin-top:0">좋아요 ${LIKE_THRESHOLD}+ 또는 댓글 ${REPLY_THRESHOLD}+ 기준 초과 게시물</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0">
+        <thead>
+          <tr style="background:#f4f4f5">
+            <th style="padding:8px 12px;text-align:left;font-size:12px;color:#71717a">게시물</th>
+            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">좋아요</th>
+            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">댓글</th>
+            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">게시일</th>
+          </tr>
+        </thead>
+        <tbody>${postRows}</tbody>
+      </table>
+      <p style="font-size:12px;color:#a1a1aa;margin-top:24px">
+        PAULVICE Dashboard 자동 알림
+      </p>
+    </div>
+  `;
+
   try {
-    await resend.emails.send({
-      from: "PAULVICE Dashboard <onboarding@resend.dev>",
-      to: NOTIFY_EMAIL,
-      subject: `[PAULVICE] Threads 인기 게시물 ${hits.length}건 발견!`,
-      html: `
-        <div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#18181b;margin-bottom:4px">Threads 성과 알림</h2>
-          <p style="color:#71717a;font-size:14px;margin-top:0">좋아요 ${LIKE_THRESHOLD}+ 또는 댓글 ${REPLY_THRESHOLD}+ 기준 초과 게시물</p>
-          <table style="width:100%;border-collapse:collapse;margin:16px 0">
-            <thead>
-              <tr style="background:#f4f4f5">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:#71717a">게시물</th>
-                <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">좋아요</th>
-                <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">댓글</th>
-                <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">게시일</th>
-              </tr>
-            </thead>
-            <tbody>${postRows}</tbody>
-          </table>
-          <p style="font-size:12px;color:#a1a1aa;margin-top:24px">
-            PAULVICE Dashboard 자동 알림 ·
-            <a href="https://paulvice-dashboard.vercel.app/tools/threads" style="color:#7c3aed">대시보드 바로가기</a>
-          </p>
-        </div>
-      `,
-    });
-    console.log(`[Cron:threads-monitor] 알림 이메일 발송 — ${hits.length}건`);
+    await sendGmail(gmailToken, NOTIFY_EMAIL, `[PAULVICE] Threads 인기 게시물 ${hits.length}건 발견!`, html);
+    console.log(`[Cron:threads-monitor] Gmail 알림 발송 — ${hits.length}건`);
   } catch (e: any) {
-    console.error("[Cron:threads-monitor] 이메일 발송 실패:", e);
+    console.error("[Cron:threads-monitor] Gmail 발송 실패:", e);
     return NextResponse.json({ error: `이메일 실패: ${e.message}`, hits }, { status: 500 });
   }
 

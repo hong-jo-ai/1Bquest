@@ -15,7 +15,7 @@ import {
   type ThreadsCategory, type PostStyle,
 } from "@/lib/threadsStorage";
 
-type Tab = "trend" | "refs" | "generate";
+type Tab = "trend" | "refs" | "generate" | "published";
 
 const CATEGORIES: ThreadsCategory[] = ["패션", "시계", "주얼리", "패션잡화", "브랜드", "라이프스타일", "기타"];
 const STYLES: PostStyle[] = ["공감형", "정보형", "질문형", "스토리형", "선언형", "감성형"];

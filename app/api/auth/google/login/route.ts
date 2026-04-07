@@ -10,6 +10,7 @@ export async function GET(_req: NextRequest) {
     response_type: "code",
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",
+      "https://www.googleapis.com/auth/gmail.send",
       "openid",
       "email",
     ].join(" "),

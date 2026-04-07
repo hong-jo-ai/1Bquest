@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { saveGoogleRefreshToken } from "@/lib/googleTokenStore";
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
@@ -50,6 +51,10 @@ export async function GET(req: NextRequest) {
         path: "/",
         sameSite: "lax",
       });
+      // Supabase에 저장 (Cron에서 Gmail 발송용)
+      await saveGoogleRefreshToken(json.refresh_token).catch((e) =>
+        console.error("[Google OAuth] token store failed:", e)
+      );
     }
 
     redirect("/analytics");
