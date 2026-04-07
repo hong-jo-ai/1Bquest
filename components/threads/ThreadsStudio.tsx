@@ -6,11 +6,11 @@ import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
   X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
-  ImagePlus, Film, Clock, CalendarClock,
+  ImagePlus, Film, Clock, CalendarClock, Pencil,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
-  loadPosts, addPosts, toggleLike, deletePost, updatePostMedia, removePostMedia,
+  loadPosts, addPosts, toggleLike, deletePost, updatePostText, updatePostMedia, removePostMedia,
   loadTrend, saveTrend, migrateOldKeys,
   type ThreadsRef, type GeneratedPost, type TrendAnalysis,
   type ThreadsCategory, type PostStyle,
@@ -452,8 +452,8 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
     }
   };
 
-  const savePost = (p: typeof newPosts[number]) => {
-    addPosts([p], brand);
+  const savePost = (p: typeof newPosts[number], editedText?: string) => {
+    addPosts([editedText ? { ...p, text: editedText } : p], brand);
     reload();
   };
 
@@ -563,7 +563,7 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
           <div className="space-y-4">
             {newPosts.map((p, i) => (
               <NewPostCard key={i} post={p} index={i}
-                onSave={() => savePost(p)}
+                onSave={(editedText?: string) => savePost(p, editedText)}
                 onCopy={() => copy(p.text, `new_${i}`)}
                 copied={copiedId === `new_${i}`}
               />
@@ -605,12 +605,14 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
 
 function NewPostCard({ post, index, onSave, onCopy, copied }: {
   post: Omit<GeneratedPost, "id" | "savedAt" | "liked">;
-  index: number; onSave: () => void; onCopy: () => void; copied: boolean;
+  index: number; onSave: (editedText?: string) => void; onCopy: () => void; copied: boolean;
 }) {
   const [saved, setSaved] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(post.text);
 
-  const handleSave = () => { onSave(); setSaved(true); };
+  const handleSave = () => { onSave(editText !== post.text ? editText : undefined); setSaved(true); setEditing(false); };
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
@@ -621,10 +623,15 @@ function NewPostCard({ post, index, onSave, onCopy, copied }: {
             <span className="text-[11px] font-semibold text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">{post.style}</span>
           </div>
           <div className="flex items-center gap-1">
+            {!saved && (
+              <button onClick={() => setEditing(!editing)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                <Pencil size={14} />
+              </button>
+            )}
             <button onClick={() => setShowDetail(!showDetail)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
               <Lightbulb size={14} />
             </button>
-            <button onClick={onCopy} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+            <button onClick={() => { onCopy(); }} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
               {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
             </button>
             <button onClick={handleSave} disabled={saved}
@@ -638,9 +645,18 @@ function NewPostCard({ post, index, onSave, onCopy, copied }: {
         </div>
 
         {/* 글 본문 */}
-        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed border border-zinc-100 dark:border-zinc-700/50">
-          {post.text}
-        </div>
+        {editing ? (
+          <textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={5}
+            className="w-full bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed border border-violet-300 dark:border-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+          />
+        ) : (
+          <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed border border-zinc-100 dark:border-zinc-700/50">
+            {editText}
+          </div>
+        )}
 
         {/* 분석 토글 */}
         {showDetail && (
@@ -679,6 +695,8 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
   const [uploading, setUploading] = useState(false);
   const [queued, setQueued] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(post.text);
 
   useEffect(() => {
     fetch("/api/threads/queue")
@@ -745,6 +763,12 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
     onLike(); // trigger reload
   };
 
+  const handleSaveEdit = () => {
+    updatePostText(post.id, editText, brand);
+    setEditing(false);
+    onLike(); // trigger reload
+  };
+
   const handlePublish = async () => {
     const brandName = BRANDS[brand].name;
     if (!confirm(`이 글을 ${brandName} Threads 계정에 게시할까요?`)) return;
@@ -777,6 +801,11 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
             <span className="text-[11px] text-zinc-400 truncate max-w-[160px]">{post.topic}</span>
           </div>
           <div className="flex items-center gap-1">
+            {!published && (
+              <button onClick={() => { setEditing(!editing); setEditText(post.text); }} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <Pencil size={13} />
+              </button>
+            )}
             <button onClick={() => setShowDetail(!showDetail)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
               <Lightbulb size={13} />
             </button>
@@ -792,7 +821,24 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
           </div>
         </div>
 
-        <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">{post.text}</p>
+        {editing ? (
+          <div className="space-y-2">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={5}
+              className="w-full bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed border border-violet-300 dark:border-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditing(false)} className="text-xs text-zinc-400 hover:text-zinc-600 px-3 py-1.5">취소</button>
+              <button onClick={handleSaveEdit} className="flex items-center gap-1 text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg">
+                <Check size={12} /> 수정 저장
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">{post.text}</p>
+        )}
 
         {showDetail && (
           <div className="mt-3 space-y-2">

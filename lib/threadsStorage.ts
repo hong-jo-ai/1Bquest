@@ -132,6 +132,9 @@ export function toggleLike(id: string, brand: BrandId = "paulvice") {
 export function deletePost(id: string, brand: BrandId = "paulvice") {
   savePosts(loadPosts(brand).filter((p) => p.id !== id), brand);
 }
+export function updatePostText(id: string, text: string, brand: BrandId = "paulvice") {
+  savePosts(loadPosts(brand).map((p) => p.id === id ? { ...p, text } : p), brand);
+}
 export function updatePostMedia(id: string, mediaUrl: string, mediaType: "IMAGE" | "VIDEO", brand: BrandId = "paulvice") {
   savePosts(loadPosts(brand).map((p) => p.id === id ? { ...p, mediaUrl, mediaType } : p), brand);
 }
