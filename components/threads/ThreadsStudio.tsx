@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
@@ -88,7 +89,7 @@ function TrendTab({ brand }: { brand: BrandId }) {
   const [keywords, setKeywords] = useState<string[]>(brandConfig.defaultKeywords);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => { setTrend(loadTrend()); }, []);
+  useEffect(() => { setTrend(loadTrend(brand)); }, [brand]);
   useEffect(() => { setKeywords(brandConfig.defaultKeywords); }, [brand, brandConfig.defaultKeywords]);
 
   const analyze = async () => {
@@ -101,7 +102,7 @@ function TrendTab({ brand }: { brand: BrandId }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      saveTrend(data);
+      saveTrend(data, brand);
       setTrend(data);
     } catch (e: any) {
       setError(e.message ?? "분석 실패");
@@ -232,7 +233,7 @@ function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; b
   const { copiedId, copy }      = useCopy();
 
   const reload = useCallback(() => {
-    const r = loadRefs(); setRefs(r); onRefsChange(r.length);
+    const r = loadRefs(brand); setRefs(r); onRefsChange(r.length);
   }, [onRefsChange]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -263,7 +264,7 @@ function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; b
           drivers: data.drivers,
           lesson:  data.lesson,
         },
-      });
+      }, brand);
       setInput(""); setUrlInput("");
       reload();
     } catch (e: any) {
@@ -274,7 +275,7 @@ function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; b
   };
 
   const handleDelete = (id: string) => {
-    deleteRef(id); reload();
+    deleteRef(id, brand); reload();
   };
 
   const CATEGORY_COLORS: Record<string, string> = {
@@ -420,8 +421,8 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
   const { copiedId, copy }      = useCopy();
 
   const reload = useCallback(() => {
-    const p = loadPosts(); setPosts(p); onPostsChange(p.length);
-  }, [onPostsChange]);
+    const p = loadPosts(brand); setPosts(p); onPostsChange(p.length);
+  }, [onPostsChange, brand]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -431,7 +432,7 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
 
     let references: string[] = [];
     if (useRefs) {
-      const refs = loadRefs();
+      const refs = loadRefs(brand);
       references = refs.slice(0, 5).map((r) => r.text);
     }
 
@@ -452,16 +453,16 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
   };
 
   const savePost = (p: typeof newPosts[number]) => {
-    addPosts([p]);
+    addPosts([p], brand);
     reload();
   };
 
   const handleLike = (id: string) => {
-    toggleLike(id); reload();
+    toggleLike(id, brand); reload();
   };
 
   const handleDelete = (id: string) => {
-    deletePost(id); reload();
+    deletePost(id, brand); reload();
   };
 
   return (
@@ -1050,17 +1051,18 @@ function Section({ title, icon: Icon, children }: {
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
-export default function ThreadsStudio() {
+export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBrand?: BrandId }) {
+  const router = useRouter();
   const [tab, setTab]       = useState<Tab>("trend");
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
-  const [brand, setBrand] = useState<BrandId>("paulvice");
+  const brand = initialBrand;
   const brandConfig = BRANDS[brand];
 
   useEffect(() => {
-    setRefsCount(loadRefs().length);
-    setPostsCount(loadPosts().length);
+    setRefsCount(loadRefs(brand).length);
+    setPostsCount(loadPosts(brand).length);
     fetch(`/api/threads/status?brand=${brand}`)
       .then(r => r.json())
       .then(d => setMetaConnected(d.connected ?? false))
@@ -1103,7 +1105,7 @@ export default function ThreadsStudio() {
           {BRAND_LIST.map((b) => (
             <button
               key={b.id}
-              onClick={() => setBrand(b.id)}
+              onClick={() => router.push(`/tools/threads?brand=${b.id}`)}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 brand === b.id
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"

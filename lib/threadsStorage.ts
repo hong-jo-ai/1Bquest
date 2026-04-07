@@ -1,4 +1,5 @@
 import { saveWithSync, loadFromServer } from "./syncStorage";
+import type { BrandId } from "./threadsBrands";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -15,18 +16,18 @@ export type PostStyle =
 
 export interface ThreadsRef {
   id:         string;
-  text:       string;          // 원문 또는 요약
-  url?:       string;          // 쓰레드 URL
-  author?:    string;          // 작성자
+  text:       string;
+  url?:       string;
+  author?:    string;
   likes?:     number;
   reposts?:   number;
   category:   ThreadsCategory;
   analysis: {
-    hook:            string;   // 첫 문장 후킹 방식
-    format:          string;   // 형식 (질문형, 리스트형 등)
-    tone:            string;   // 톤
-    drivers:         string[]; // 반응 유발 요소
-    lesson:          string;   // 폴바이스에게 배울 점
+    hook:            string;
+    format:          string;
+    tone:            string;
+    drivers:         string[];
+    lesson:          string;
   };
   savedAt:    string;
 }
@@ -36,8 +37,8 @@ export interface GeneratedPost {
   text:        string;
   style:       PostStyle;
   topic:       string;
-  hook:        string;         // 이 글의 후킹 포인트 설명
-  whyItWorks:  string;        // 왜 반응이 좋을지 설명
+  hook:        string;
+  whyItWorks:  string;
   savedAt:     string;
   liked:       boolean;
 }
@@ -47,71 +48,71 @@ export interface TrendAnalysis {
   generatedAt:  string;
   formats:      { name: string; description: string; example: string }[];
   hooks:        { hook: string; example: string }[];
-  themes:       { theme: string; reason: string; paulviceAngle: string }[];
+  themes:       { theme: string; reason: string; brandAngle?: string; paulviceAngle?: string }[];
   insights:     string[];
 }
 
-// ── 스토리지 키 ────────────────────────────────────────────────────────────
+// ── 브랜드별 스토리지 키 ──────────────────────────────────────────────────
 
-const REFS_KEY   = "paulvice_threads_refs_v1";
-const POSTS_KEY  = "paulvice_threads_posts_v1";
-const TREND_KEY  = "paulvice_threads_trend_v1";
+function refsKey(brand: BrandId)  { return `threads_refs_${brand}_v1`; }
+function postsKey(brand: BrandId) { return `threads_posts_${brand}_v1`; }
+function trendKey(brand: BrandId) { return `threads_trend_${brand}_v1`; }
 
 // ── 레퍼런스 CRUD ─────────────────────────────────────────────────────────
 
-export function loadRefs(): ThreadsRef[] {
+export function loadRefs(brand: BrandId = "paulvice"): ThreadsRef[] {
   if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(REFS_KEY) ?? "[]"); } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(refsKey(brand)) ?? "[]"); } catch { return []; }
 }
-export function saveRefs(list: ThreadsRef[]) {
-  saveWithSync(REFS_KEY, list);
+export function saveRefs(list: ThreadsRef[], brand: BrandId = "paulvice") {
+  saveWithSync(refsKey(brand), list);
 }
-export async function syncRefsFromServer(): Promise<ThreadsRef[] | null> {
-  return loadFromServer<ThreadsRef[]>(REFS_KEY);
+export async function syncRefsFromServer(brand: BrandId = "paulvice"): Promise<ThreadsRef[] | null> {
+  return loadFromServer<ThreadsRef[]>(refsKey(brand));
 }
-export function addRef(ref: Omit<ThreadsRef, "id" | "savedAt">): ThreadsRef {
-  const list = loadRefs();
+export function addRef(ref: Omit<ThreadsRef, "id" | "savedAt">, brand: BrandId = "paulvice"): ThreadsRef {
+  const list = loadRefs(brand);
   const newRef: ThreadsRef = { ...ref, id: crypto.randomUUID(), savedAt: new Date().toISOString() };
-  saveRefs([newRef, ...list]);
+  saveRefs([newRef, ...list], brand);
   return newRef;
 }
-export function deleteRef(id: string) {
-  saveRefs(loadRefs().filter((r) => r.id !== id));
+export function deleteRef(id: string, brand: BrandId = "paulvice") {
+  saveRefs(loadRefs(brand).filter((r) => r.id !== id), brand);
 }
 
 // ── 생성 글 CRUD ──────────────────────────────────────────────────────────
 
-export function loadPosts(): GeneratedPost[] {
+export function loadPosts(brand: BrandId = "paulvice"): GeneratedPost[] {
   if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(POSTS_KEY) ?? "[]"); } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(postsKey(brand)) ?? "[]"); } catch { return []; }
 }
-export function savePosts(list: GeneratedPost[]) {
-  saveWithSync(POSTS_KEY, list);
+export function savePosts(list: GeneratedPost[], brand: BrandId = "paulvice") {
+  saveWithSync(postsKey(brand), list);
 }
-export async function syncPostsFromServer(): Promise<GeneratedPost[] | null> {
-  return loadFromServer<GeneratedPost[]>(POSTS_KEY);
+export async function syncPostsFromServer(brand: BrandId = "paulvice"): Promise<GeneratedPost[] | null> {
+  return loadFromServer<GeneratedPost[]>(postsKey(brand));
 }
-export function addPosts(posts: Omit<GeneratedPost, "id" | "savedAt" | "liked">[]): GeneratedPost[] {
-  const list = loadPosts();
+export function addPosts(posts: Omit<GeneratedPost, "id" | "savedAt" | "liked">[], brand: BrandId = "paulvice"): GeneratedPost[] {
+  const list = loadPosts(brand);
   const newPosts: GeneratedPost[] = posts.map((p) => ({
     ...p, id: crypto.randomUUID(), savedAt: new Date().toISOString(), liked: false,
   }));
-  savePosts([...newPosts, ...list]);
+  savePosts([...newPosts, ...list], brand);
   return newPosts;
 }
-export function toggleLike(id: string) {
-  savePosts(loadPosts().map((p) => p.id === id ? { ...p, liked: !p.liked } : p));
+export function toggleLike(id: string, brand: BrandId = "paulvice") {
+  savePosts(loadPosts(brand).map((p) => p.id === id ? { ...p, liked: !p.liked } : p), brand);
 }
-export function deletePost(id: string) {
-  savePosts(loadPosts().filter((p) => p.id !== id));
+export function deletePost(id: string, brand: BrandId = "paulvice") {
+  savePosts(loadPosts(brand).filter((p) => p.id !== id), brand);
 }
 
 // ── 트렌드 분석 캐시 ──────────────────────────────────────────────────────
 
-export function loadTrend(): TrendAnalysis | null {
+export function loadTrend(brand: BrandId = "paulvice"): TrendAnalysis | null {
   if (typeof window === "undefined") return null;
-  try { return JSON.parse(localStorage.getItem(TREND_KEY) ?? "null"); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(trendKey(brand)) ?? "null"); } catch { return null; }
 }
-export function saveTrend(trend: TrendAnalysis) {
-  localStorage.setItem(TREND_KEY, JSON.stringify(trend));
+export function saveTrend(trend: TrendAnalysis, brand: BrandId = "paulvice") {
+  localStorage.setItem(trendKey(brand), JSON.stringify(trend));
 }
