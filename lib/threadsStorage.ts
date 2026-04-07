@@ -41,6 +41,8 @@ export interface GeneratedPost {
   whyItWorks:  string;
   savedAt:     string;
   liked:       boolean;
+  mediaUrl?:   string;
+  mediaType?:  "IMAGE" | "VIDEO";
 }
 
 export interface TrendAnalysis {
@@ -129,6 +131,12 @@ export function toggleLike(id: string, brand: BrandId = "paulvice") {
 }
 export function deletePost(id: string, brand: BrandId = "paulvice") {
   savePosts(loadPosts(brand).filter((p) => p.id !== id), brand);
+}
+export function updatePostMedia(id: string, mediaUrl: string, mediaType: "IMAGE" | "VIDEO", brand: BrandId = "paulvice") {
+  savePosts(loadPosts(brand).map((p) => p.id === id ? { ...p, mediaUrl, mediaType } : p), brand);
+}
+export function removePostMedia(id: string, brand: BrandId = "paulvice") {
+  savePosts(loadPosts(brand).map((p) => p.id === id ? { ...p, mediaUrl: undefined, mediaType: undefined } : p), brand);
 }
 
 // ── 트렌드 분석 캐시 ──────────────────────────────────────────────────────

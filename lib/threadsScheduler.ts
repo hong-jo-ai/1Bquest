@@ -12,6 +12,8 @@ export interface QueuedPost {
   id: string;
   text: string;
   brand: BrandId;
+  mediaUrl?: string;
+  mediaType?: "IMAGE" | "VIDEO";
   scheduledAt?: string;
 }
 

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
-  loadPosts, addPosts, toggleLike, deletePost,
+  loadPosts, addPosts, toggleLike, deletePost, updatePostMedia, removePostMedia,
   loadTrend, saveTrend, migrateOldKeys,
   type ThreadsRef, type GeneratedPost, type TrendAnalysis,
   type ThreadsCategory, type PostStyle,
@@ -676,8 +676,6 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [queued, setQueued] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -688,7 +686,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
       const res = await fetch("/api/threads/queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, text: post.text, brand }),
+        body: JSON.stringify({ id: post.id, text: post.text, brand, mediaUrl: post.mediaUrl, mediaType: post.mediaType }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "큐 추가 실패");
@@ -698,44 +696,40 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
     }
   };
 
-  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setMediaFile(file);
-    setMediaPreview(URL.createObjectURL(file));
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/threads/upload", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "업로드 실패");
+      updatePostMedia(post.id, json.url, json.mediaType, brand);
+      onLike(); // trigger reload
+    } catch (e: any) {
+      setPublishError(e.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const removeMedia = () => {
-    setMediaFile(null);
-    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
-    setMediaPreview(null);
+    removePostMedia(post.id, brand);
+    onLike(); // trigger reload
   };
 
   const handlePublish = async () => {
-    if (!confirm("이 글을 폴바이스 Threads 계정에 게시할까요?")) return;
+    const brandName = BRANDS[brand].name;
+    if (!confirm(`이 글을 ${brandName} Threads 계정에 게시할까요?`)) return;
     setPublishing(true);
     setPublishError(null);
     try {
-      let mediaUrl: string | undefined;
-      let mediaType: string | undefined;
-
-      // 미디어 업로드
-      if (mediaFile) {
-        setUploading(true);
-        const form = new FormData();
-        form.append("file", mediaFile);
-        const uploadRes = await fetch("/api/threads/upload", { method: "POST", body: form });
-        const uploadJson = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadJson.error ?? "업로드 실패");
-        mediaUrl = uploadJson.url;
-        mediaType = uploadJson.mediaType;
-        setUploading(false);
-      }
-
       const res = await fetch("/api/threads/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: post.text, mediaUrl, mediaType, brand }),
+        body: JSON.stringify({ text: post.text, mediaUrl: post.mediaUrl, mediaType: post.mediaType, brand }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "게시 실패");
@@ -744,7 +738,6 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
       setPublishError(e.message);
     } finally {
       setPublishing(false);
-      setUploading(false);
     }
   };
 
@@ -790,27 +783,34 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
         {/* 미디어 첨부 + 게시 */}
         <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
           {/* 미디어 프리뷰 */}
-          {mediaPreview && (
+          {post.mediaUrl && (
             <div className="relative inline-block">
-              {mediaFile?.type.startsWith("video/") ? (
-                <video src={mediaPreview} className="h-24 rounded-lg object-cover" />
+              {post.mediaType === "VIDEO" ? (
+                <video src={post.mediaUrl} className="h-24 rounded-lg object-cover" />
               ) : (
-                <img src={mediaPreview} alt="첨부" className="h-24 rounded-lg object-cover" />
+                <img src={post.mediaUrl} alt="첨부" className="h-24 rounded-lg object-cover" />
               )}
-              <button onClick={removeMedia}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
-                <X size={10} />
-              </button>
+              {!published && (
+                <button onClick={removeMedia}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                  <X size={10} />
+                </button>
+              )}
               <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">
-                {mediaFile?.type.startsWith("video/") ? "영상" : "이미지"}
+                {post.mediaType === "VIDEO" ? "영상" : "이미지"}
               </span>
+            </div>
+          )}
+          {uploading && (
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <Loader2 size={12} className="animate-spin" /> 업로드 중...
             </div>
           )}
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-zinc-300 dark:text-zinc-600">{new Date(post.savedAt).toLocaleDateString("ko-KR")}</p>
-              {!published && !mediaFile && (
+              {!published && !post.mediaUrl && !uploading && (
                 <label className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 cursor-pointer transition-colors">
                   <ImagePlus size={13} />
                   <span>미디어 첨부</span>
@@ -841,8 +841,8 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand }: {
                   disabled={publishing}
                   className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
                 >
-                  {uploading ? <Loader2 size={12} className="animate-spin" /> : publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                  {uploading ? "업로드 중..." : publishing ? "게시 중..." : mediaFile ? "미디어와 함께 게시" : "즉시 게시"}
+                  {publishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  {publishing ? "게시 중..." : post.mediaUrl ? "미디어와 함께 게시" : "즉시 게시"}
                 </button>
               </div>
             )}

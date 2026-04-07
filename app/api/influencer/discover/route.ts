@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { BRAND, SEARCH_QUERIES, AI_EVALUATION_GUIDE, BLACKLIST_HANDLES } from "@/config/influencer-criteria";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -25,9 +26,9 @@ export interface DiscoveredInfluencer {
 
 // ── 블랙리스트 ──────────────────────────────────────────────────────
 const BLACKLIST = new Set([
-  "instagram","reels","reel","explore","stories","p","tv","accounts",
-  "about","legal","privacy","help","download","business","creators",
-  "press","api","blog","jobs","developer","graphql","static","cdninstagram",
+  ...BLACKLIST_HANDLES,
+  "reel","accounts","p","tv",
+  "graphql","static","cdninstagram",
   "naver","kakao","youtube","tiktok","facebook","twitter","line",
   "search","tags","location","ar","shop","lite","threadscx",
 ]);
@@ -212,8 +213,8 @@ async function enrichHandles(
 아래는 한국 패션/라이프스타일 블로그에서 언급된 실제 Instagram 계정 핸들 목록입니다:
 ${handleList}
 
-PAULVICE 브랜드 조건:
-- 프리미엄 시계/럭셔리 액세서리 브랜드 (한국)
+${BRAND.name} 브랜드 조건:
+- ${BRAND.description}
 - 카테고리: ${params.categories}${params.gender ? `\n- 성별 선호: ${params.gender}` : ""}${params.ageGroup ? `\n- 연령대: ${params.ageGroup}` : ""}${params.contentGuide ? `\n- 콘텐츠 유형: ${params.contentGuide}` : ""}${params.extraGuide ? `\n- 추가 조건: ${params.extraGuide}` : ""}
 
 위 핸들 목록에서 인플루언서로 보이는 계정(개인 이름/닉네임 스타일, 패션/라이프스타일 관련)을 골라 최대 15개의 프로필을 작성해주세요.
@@ -278,16 +279,9 @@ function buildQueries(params: {
   contentGuide: string; extraGuide: string; batch: number;
 }): string[] {
   const cats = params.categories.split(",").filter(Boolean);
-  const queries = [
-    `인스타그램 ${cats[0] || "패션"} 인플루언서 추천`,
-    `${cats[0] || "패션"} 인스타그램 협찬 인플루언서`,
-    `한국 인스타그램 ${cats.join(" ")} 인플루언서`,
-    `인스타그램 시계 패션 인플루언서 추천`,
-    `럭셔리 라이프스타일 인스타그램 계정 추천`,
-    `패션 인플루언서 인스타 팔로우 추천`,
-    `남성 패션 인스타그램 인플루언서`,
-    `여성 패션 인스타그램 인플루언서 추천`,
-  ];
+  const queries = SEARCH_QUERIES.map((q) =>
+    q.replace(/\{category\}/g, cats[0] || "패션")
+  );
 
   if (params.gender) queries.unshift(`${params.gender} 인스타그램 인플루언서 추천`);
   if (params.contentGuide) queries.unshift(`${params.contentGuide} 인스타그램`);

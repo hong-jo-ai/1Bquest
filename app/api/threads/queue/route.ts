@@ -12,7 +12,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { id, text, brand = "paulvice" } = await req.json();
+  const { id, text, brand = "paulvice", mediaUrl, mediaType } = await req.json();
   if (!id || !text?.trim()) {
     return Response.json({ error: "id와 text 필요" }, { status: 400 });
   }
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "이미 큐에 있습니다" }, { status: 409 });
   }
 
-  queue.push({ id, text: text.trim(), brand });
+  queue.push({ id, text: text.trim(), brand, mediaUrl, mediaType });
   await savePostQueue(queue);
   return Response.json({ ok: true, count: queue.length });
 }

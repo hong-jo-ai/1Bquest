@@ -9,28 +9,19 @@ import {
 import { addInfluencer, loadInfluencers, formatFollowers } from "@/lib/influencerStorage";
 import type { DiscoveredInfluencer } from "@/app/api/influencer/discover/route";
 import { useAgentConnected, agentDiscover, agentFindSimilar, agentAutoStart } from "./AgentStatus";
+import {
+  CATEGORY_OPTIONS,
+  PLATFORM_OPTIONS,
+  FOLLOWER_PRESETS,
+  DEFAULT_CATEGORIES,
+  DEFAULT_FOLLOWER_PRESET,
+  DEFAULT_HASHTAGS,
+} from "@/config/influencer-criteria";
 
 interface Props {
   onClose: () => void;
   onAdded: () => void;
 }
-
-// ── 옵션 상수 ──────────────────────────────────────────
-const CATEGORY_OPTIONS = ["패션", "럭셔리", "라이프스타일", "여행", "뷰티", "운동/헬스", "비즈니스", "음식"];
-
-const PLATFORM_OPTIONS = [
-  { value: "instagram", label: "Instagram" },
-  { value: "youtube",   label: "YouTube"   },
-  { value: "tiktok",    label: "TikTok"    },
-] as const;
-
-const FOLLOWER_PRESETS = [
-  { label: "1만 이하", min: 1000,    max: 10000   },
-  { label: "1만~5만",  min: 10000,   max: 50000   },
-  { label: "5만~20만", min: 50000,   max: 200000  },
-  { label: "20만~50만",min: 200000,  max: 500000  },
-  { label: "50만+",    min: 500000,  max: 10000000},
-] as const;
 
 // ── 플랫폼 아이콘 ───────────────────────────────────────
 const PlatformIcon = ({ platform }: { platform: string }) => {
@@ -93,21 +84,21 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
   const [discoverMode, setDiscoverMode] = useState<"naver" | "agent" | "similar">("naver");
 
   // 에이전트 해시태그
-  const [hashtagInput, setHashtagInput]       = useState("시계패션 럭셔리라이프 명품시계 패션인플루언서 dailylook");
+  const [hashtagInput, setHashtagInput]       = useState(DEFAULT_HASHTAGS);
 
   // 유사 계정 발굴 - 시드 계정 입력
   const [seedInput, setSeedInput]             = useState("");
 
   // 기본 조건
   const [platform, setPlatform]               = useState<"instagram" | "youtube" | "tiktok">("instagram");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(["패션", "럭셔리", "라이프스타일"]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(DEFAULT_CATEGORIES);
 
   // 상세 조건
   const [showDetail, setShowDetail]           = useState(false);
   const [gender, setGender]                   = useState("");           // "" | "남성" | "여성"
   const [ageGroup, setAgeGroup]               = useState("");           // "" | "10-20대" | "20-30대" | "30-40대"
   const [nationality, setNationality]         = useState("");           // "" | "한국인" | "외국인"
-  const [followerPreset, setFollowerPreset]   = useState(1);           // index into FOLLOWER_PRESETS
+  const [followerPreset, setFollowerPreset]   = useState(DEFAULT_FOLLOWER_PRESET);
   const [contentGuide, setContentGuide]       = useState("");          // 자유 텍스트
   const [extraGuide, setExtraGuide]           = useState("");          // 추가 요구사항
 

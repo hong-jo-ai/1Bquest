@@ -42,17 +42,40 @@ export async function GET(request: NextRequest) {
     if (!meRes.ok) throw new Error(`계정 조회 실패: ${await meRes.text()}`);
     const me = await meRes.json();
 
+    const containerParams: Record<string, string> = { access_token: token };
+    if (post.mediaUrl && post.mediaType === "IMAGE") {
+      containerParams.media_type = "IMAGE";
+      containerParams.image_url = post.mediaUrl;
+      if (post.text) containerParams.text = post.text;
+    } else if (post.mediaUrl && post.mediaType === "VIDEO") {
+      containerParams.media_type = "VIDEO";
+      containerParams.video_url = post.mediaUrl;
+      if (post.text) containerParams.text = post.text;
+    } else {
+      containerParams.media_type = "TEXT";
+      containerParams.text = post.text;
+    }
+
     const containerRes = await fetch(`${THREADS_BASE}/${me.id}/threads`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        access_token: token,
-        media_type: "TEXT",
-        text: post.text,
-      }),
+      body: new URLSearchParams(containerParams),
     });
     if (!containerRes.ok) throw new Error(`컨테이너 실패: ${await containerRes.text()}`);
     const container = await containerRes.json();
+
+    // 영상 처리 대기
+    if (post.mediaType === "VIDEO") {
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const sRes = await fetch(`${THREADS_BASE}/${container.id}?fields=status&access_token=${token}`, { cache: "no-store" });
+        if (sRes.ok) {
+          const s = await sRes.json();
+          if (s.status === "FINISHED") break;
+          if (s.status === "ERROR") throw new Error("영상 처리 실패");
+        }
+      }
+    }
 
     const publishRes = await fetch(`${THREADS_BASE}/${me.id}/threads_publish`, {
       method: "POST",
