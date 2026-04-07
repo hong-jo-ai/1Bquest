@@ -49,10 +49,13 @@ export async function POST(req: NextRequest) {
   const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
   try {
-    // 버킷 존재 확인 및 생성
+    // 버킷 존재 확인 및 생성 (public 보장)
     const { data: buckets } = await supabase.storage.listBuckets();
-    if (!buckets?.find((b) => b.name === BUCKET)) {
+    const existing = buckets?.find((b) => b.name === BUCKET);
+    if (!existing) {
       await supabase.storage.createBucket(BUCKET, { public: true });
+    } else if (!existing.public) {
+      await supabase.storage.updateBucket(BUCKET, { public: true });
     }
 
     const buffer = await file.arrayBuffer();
