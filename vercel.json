@@ -10,19 +10,19 @@
     },
     {
       "path": "/api/cron/threads-autopost",
-      "schedule": "20 0 * * *"
+      "schedule": "23 0 * * *"
     },
     {
       "path": "/api/cron/threads-autopost",
-      "schedule": "40 3 * * *"
+      "schedule": "47 3 * * *"
     },
     {
       "path": "/api/cron/threads-autopost",
-      "schedule": "10 7 * * *"
+      "schedule": "12 7 * * *"
     },
     {
       "path": "/api/cron/threads-autopost",
-      "schedule": "50 11 * * *"
+      "schedule": "38 11 * * *"
     },
     {
       "path": "/api/cron/threads-monitor",
