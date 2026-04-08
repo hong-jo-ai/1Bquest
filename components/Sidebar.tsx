@@ -12,7 +12,7 @@ import {
   AtSign,
   Film,
   BarChart2,
-
+  ImagePlus,
   Gem,
   PanelLeftClose,
   PanelLeft,
@@ -26,7 +26,8 @@ type AppPage =
   | "influencer"
   | "ads"
   | "threads"
-  | "content";
+  | "content"
+  | "imagemaker";
 
 const NAV_ITEMS: {
   href: string;
@@ -42,6 +43,7 @@ const NAV_ITEMS: {
   { href: "/ads", label: "광고", icon: Megaphone, page: "ads" },
   { href: "/tools/threads", label: "쓰레드", icon: AtSign, page: "threads" },
   { href: "/tools/content", label: "콘텐츠", icon: Film, page: "content" },
+  { href: "/imagemaker", label: "화보 메이커", icon: ImagePlus, page: "imagemaker" },
 ];
 
 const HREF_TO_PAGE: Record<string, AppPage> = {
@@ -53,6 +55,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/ads": "ads",
   "/tools/threads": "threads",
   "/tools/content": "content",
+  "/imagemaker": "imagemaker",
 };
 
 const PROGRESS_STEPS = [0, 20, 40, 60, 80, 100];
@@ -91,6 +94,7 @@ export default function Sidebar() {
       ads: 0,
       threads: 0,
       content: 0,
+      imagemaker: 0,
     };
     return defaults;
   });

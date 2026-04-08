@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@google/genai": "^1.48.0",
     "@supabase/supabase-js": "^2.101.1",
     "@vercel/kv": "^3.0.0",
     "@vercel/postgres": "^0.10.0",
