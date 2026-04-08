@@ -33,6 +33,37 @@ interface GeneratedImage {
 
 type Step = "reference" | "style" | "product" | "result";
 
+const MAX_SIZE = 1200;
+const QUALITY = 0.8;
+
+function resizeImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width <= MAX_SIZE && height <= MAX_SIZE) {
+        resolve(file);
+        return;
+      }
+      const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          resolve(new File([blob!], file.name, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        QUALITY
+      );
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export default function ImageMakerPage() {
   const [step, setStep] = useState<Step>("reference");
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
@@ -46,10 +77,11 @@ export default function ImageMakerPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handleReferenceUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      setReferenceFiles((prev) => [...prev, ...files]);
-      files.forEach((file) => {
+      const resized = await Promise.all(files.map(resizeImage));
+      setReferenceFiles((prev) => [...prev, ...resized]);
+      resized.forEach((file) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
           setReferencePreviews((prev) => [
@@ -82,7 +114,13 @@ export default function ImageMakerPage() {
         body: formData,
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`서버 오류: ${text.slice(0, 100)}`);
+      }
       if (!res.ok) throw new Error(data.error);
 
       setStyleGuide(data.styleGuide);
@@ -96,13 +134,14 @@ export default function ImageMakerPage() {
     }
   };
 
-  const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setProductFile(file);
+    const resized = await resizeImage(file);
+    setProductFile(resized);
     const reader = new FileReader();
     reader.onload = (ev) => setProductPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(resized);
   };
 
   const generateImages = async () => {
@@ -121,7 +160,13 @@ export default function ImageMakerPage() {
         body: formData,
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`서버 오류: ${text.slice(0, 100)}`);
+      }
       if (!res.ok) throw new Error(data.error);
 
       setGeneratedImages(data.images);
