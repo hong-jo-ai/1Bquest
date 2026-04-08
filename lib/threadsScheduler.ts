@@ -67,9 +67,33 @@ export async function savePostQueue(queue: QueuedPost[]): Promise<void> {
 export async function dequeuePost(): Promise<QueuedPost | null> {
   const queue = await getPostQueue();
   if (queue.length === 0) return null;
-  const idx = Math.floor(Math.random() * queue.length);
-  const [post] = queue.splice(idx, 1);
+
+  // brand 없는 기존 글은 paulvice로 할당
+  for (const p of queue) {
+    if (!p.brand) p.brand = "paulvice";
+  }
+
+  // 브랜드별 그룹화 → 가장 많은 브랜드에서 꺼냄 (라운드로빈 효과)
+  const byBrand: Record<string, number[]> = {};
+  queue.forEach((p, i) => {
+    const b = p.brand;
+    if (!byBrand[b]) byBrand[b] = [];
+    byBrand[b].push(i);
+  });
+
+  // 마지막 게시 브랜드를 추적하여 다른 브랜드 우선
+  const lastBrandKey = "threads_last_autopost_brand";
+  const lastBrand = (await kvGet<string>(lastBrandKey)) ?? "";
+  const brands = Object.keys(byBrand);
+
+  // 마지막에 게시한 브랜드가 아닌 브랜드 우선 선택
+  const nextBrand = brands.find((b) => b !== lastBrand) ?? brands[0];
+  const candidates = byBrand[nextBrand];
+  const pickIdx = candidates[Math.floor(Math.random() * candidates.length)];
+
+  const [post] = queue.splice(pickIdx, 1);
   await savePostQueue(queue);
+  await kvSet(lastBrandKey, nextBrand);
   return post;
 }
 
