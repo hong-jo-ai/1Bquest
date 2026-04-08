@@ -10,35 +10,99 @@
     },
     {
       "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "23 0 * * *"
+      "schedule": "15 0 * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "47 3 * * *"
+      "schedule": "42 2 * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "12 7 * * *"
+      "schedule": "8 4 * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "38 11 * * *"
+      "schedule": "33 6 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=paulvice",
+      "schedule": "51 7 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=paulvice",
+      "schedule": "19 9 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=paulvice",
+      "schedule": "44 11 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=paulvice",
+      "schedule": "7 13 * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "27 0 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "53 2 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "21 4 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "46 6 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "3 8 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "38 9 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "14 12 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=harriot",
+      "schedule": "29 13 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
       "schedule": "5 1 * * *"
     },
     {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "31 4 * * *"
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "31 3 * * *"
     },
     {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "53 7 * * *"
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "48 4 * * *"
     },
     {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "17 10 * * *"
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "11 7 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "37 8 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "56 10 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "22 12 * * *"
+    },
+    {
+      "path": "/api/cron/threads-autopost?brand=hongsungjo",
+      "schedule": "49 13 * * *"
     },
     {
       "path": "/api/cron/threads-monitor",
