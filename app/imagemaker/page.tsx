@@ -33,32 +33,23 @@ interface GeneratedImage {
 
 type Step = "reference" | "style" | "product" | "result";
 
-const MAX_SIZE = 1200;
-const QUALITY = 0.8;
+const MAX_SIZE = 768;
+const QUALITY = 0.6;
 
-function resizeImage(file: File): Promise<File> {
+function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
-      if (width <= MAX_SIZE && height <= MAX_SIZE) {
-        resolve(file);
-        return;
-      }
-      const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+      const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height, 1);
       width = Math.round(width * ratio);
       height = Math.round(height * ratio);
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
       canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => {
-          resolve(new File([blob!], file.name, { type: "image/jpeg" }));
-        },
-        "image/jpeg",
-        QUALITY
-      );
+      const dataUrl = canvas.toDataURL("image/jpeg", QUALITY);
+      resolve(dataUrl.split(",")[1]);
     };
     img.src = URL.createObjectURL(file);
   });
@@ -66,10 +57,10 @@ function resizeImage(file: File): Promise<File> {
 
 export default function ImageMakerPage() {
   const [step, setStep] = useState<Step>("reference");
-  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [referencePreviews, setReferencePreviews] = useState<string[]>([]);
   const [styleGuide, setStyleGuide] = useState<StyleGuide | null>(null);
-  const [productFile, setProductFile] = useState<File | null>(null);
+  const [productBase64, setProductBase64] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [productDescription, setProductDescription] = useState("");
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
@@ -79,39 +70,31 @@ export default function ImageMakerPage() {
   const handleReferenceUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      const resized = await Promise.all(files.map(resizeImage));
-      setReferenceFiles((prev) => [...prev, ...resized]);
-      resized.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setReferencePreviews((prev) => [
-            ...prev,
-            ev.target?.result as string,
-          ]);
-        };
-        reader.readAsDataURL(file);
-      });
+      const base64s = await Promise.all(files.map(fileToBase64));
+      setReferenceImages((prev) => [...prev, ...base64s]);
+      setReferencePreviews((prev) => [
+        ...prev,
+        ...base64s.map((b) => `data:image/jpeg;base64,${b}`),
+      ]);
     },
     []
   );
 
   const removeReference = (index: number) => {
-    setReferenceFiles((prev) => prev.filter((_, i) => i !== index));
+    setReferenceImages((prev) => prev.filter((_, i) => i !== index));
     setReferencePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const analyzeStyle = async () => {
-    if (referenceFiles.length === 0) return;
+    if (referenceImages.length === 0) return;
     setLoading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      referenceFiles.forEach((f) => formData.append("images", f));
-
       const res = await fetch("/api/imagemaker/analyze-style", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: referenceImages }),
       });
 
       const text = await res.text();
@@ -137,27 +120,25 @@ export default function ImageMakerPage() {
   const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const resized = await resizeImage(file);
-    setProductFile(resized);
-    const reader = new FileReader();
-    reader.onload = (ev) => setProductPreview(ev.target?.result as string);
-    reader.readAsDataURL(resized);
+    const b64 = await fileToBase64(file);
+    setProductBase64(b64);
+    setProductPreview(`data:image/jpeg;base64,${b64}`);
   };
 
   const generateImages = async () => {
-    if (!productFile || !styleGuide) return;
+    if (!productBase64 || !styleGuide) return;
     setLoading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("productImage", productFile);
-      formData.append("styleGuide", JSON.stringify(styleGuide));
-      formData.append("productDescription", productDescription);
-
       const res = await fetch("/api/imagemaker/generate", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productImage: productBase64,
+          styleGuide,
+          productDescription,
+        }),
       });
 
       const text = await res.text();
@@ -189,10 +170,10 @@ export default function ImageMakerPage() {
 
   const reset = () => {
     setStep("reference");
-    setReferenceFiles([]);
+    setReferenceImages([]);
     setReferencePreviews([]);
     setStyleGuide(null);
-    setProductFile(null);
+    setProductBase64(null);
     setProductPreview(null);
     setProductDescription("");
     setGeneratedImages([]);
@@ -326,7 +307,7 @@ export default function ImageMakerPage() {
 
             <button
               onClick={analyzeStyle}
-              disabled={referenceFiles.length === 0 || loading}
+              disabled={referenceImages.length === 0 || loading}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white rounded-xl font-medium transition-colors disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -432,7 +413,7 @@ export default function ImageMakerPage() {
                     />
                     <button
                       onClick={() => {
-                        setProductFile(null);
+                        setProductBase64(null);
                         setProductPreview(null);
                       }}
                       className="absolute top-2 right-2 p-1.5 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
@@ -462,7 +443,7 @@ export default function ImageMakerPage() {
 
             <button
               onClick={generateImages}
-              disabled={!productFile || loading}
+              disabled={!productBase64 || loading}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white rounded-xl font-medium transition-colors disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -528,7 +509,7 @@ export default function ImageMakerPage() {
               <button
                 onClick={() => {
                   setStep("product");
-                  setProductFile(null);
+                  setProductBase64(null);
                   setProductPreview(null);
                   setProductDescription("");
                   setGeneratedImages([]);

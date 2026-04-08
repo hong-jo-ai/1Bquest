@@ -4,13 +4,16 @@ export const maxDuration = 120;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
+interface GenerateBody {
+  productImage: string;
+  styleGuide: Record<string, string>;
+  productDescription: string;
+}
+
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const productImage = formData.get("productImage") as File | null;
-    const styleGuide = formData.get("styleGuide") as string | null;
-    const productDescription =
-      (formData.get("productDescription") as string) || "";
+    const { productImage, styleGuide, productDescription } =
+      (await request.json()) as GenerateBody;
 
     if (!productImage || !styleGuide) {
       return Response.json(
@@ -19,18 +22,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsedStyle = JSON.parse(styleGuide);
-    const bytes = await productImage.arrayBuffer();
-    const productBase64 = Buffer.from(bytes).toString("base64");
-
-    // Step 1: Gemini 2.5 Pro analyzes the product image and creates detailed prompts
+    // Step 1: Gemini 2.5 Pro analyzes the product image
     const detailedDescription = await describeProduct(
-      productBase64,
-      productImage.type,
+      productImage,
       productDescription
     );
 
-    // Step 2: Build 3 variation prompts using style guide + product description
+    // Step 2: Generate 3 images with Imagen 4
     const variations = [
       {
         shot: "upper body close-up editorial shot, product clearly visible, confident gaze toward camera",
@@ -46,12 +44,11 @@ export async function POST(request: Request) {
       },
     ];
 
-    // Step 3: Generate 3 images with Imagen 4
     const results: { image: string; description: string }[] = [];
 
     for (const variation of variations) {
       const prompt = buildImagenPrompt(
-        parsedStyle,
+        styleGuide,
         detailedDescription,
         variation.shot
       );
@@ -67,14 +64,21 @@ export async function POST(request: Request) {
         });
 
         const generated = response.generatedImages;
-        if (generated && generated.length > 0 && generated[0].image?.imageBytes) {
+        if (
+          generated &&
+          generated.length > 0 &&
+          generated[0].image?.imageBytes
+        ) {
           results.push({
             image: generated[0].image.imageBytes,
             description: variation.label,
           });
         }
       } catch (imgErr) {
-        console.error(`Imagen generation failed for ${variation.label}:`, imgErr);
+        console.error(
+          `Imagen generation failed for ${variation.label}:`,
+          imgErr
+        );
       }
     }
 
@@ -98,7 +102,6 @@ export async function POST(request: Request) {
 
 async function describeProduct(
   base64: string,
-  mimeType: string,
   userDescription: string
 ): Promise<string> {
   const response = await ai.models.generateContent({
@@ -109,7 +112,7 @@ async function describeProduct(
         parts: [
           {
             inlineData: {
-              mimeType: mimeType as "image/png" | "image/jpeg" | "image/webp",
+              mimeType: "image/jpeg" as const,
               data: base64,
             },
           },

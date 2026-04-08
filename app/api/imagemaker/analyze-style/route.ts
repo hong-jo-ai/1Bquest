@@ -6,31 +6,21 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const files = formData.getAll("images") as File[];
+    const { images } = (await request.json()) as { images: string[] };
 
-    if (files.length === 0) {
+    if (!images || images.length === 0) {
       return Response.json(
         { error: "레퍼런스 이미지를 하나 이상 업로드해주세요." },
         { status: 400 }
       );
     }
 
-    const imageParts = await Promise.all(
-      files.map(async (file) => {
-        const bytes = await file.arrayBuffer();
-        const base64 = Buffer.from(bytes).toString("base64");
-        return {
-          inlineData: {
-            mimeType: file.type as
-              | "image/png"
-              | "image/jpeg"
-              | "image/webp",
-            data: base64,
-          },
-        };
-      })
-    );
+    const imageParts = images.map((base64) => ({
+      inlineData: {
+        mimeType: "image/jpeg" as const,
+        data: base64,
+      },
+    }));
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro-preview-05-06",
