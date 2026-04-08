@@ -2,7 +2,8 @@ export const maxDuration = 45;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
-import { dequeuePost, addPublishedPost, getPostQueue } from "@/lib/threadsScheduler";
+import { dequeuePost, dequeuePostByBrand, addPublishedPost, getPostQueue } from "@/lib/threadsScheduler";
+import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 
@@ -16,9 +17,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const post = await dequeuePost();
+  const targetBrand = (request.nextUrl.searchParams.get("brand") ?? "") as BrandId;
+  const post = targetBrand
+    ? await dequeuePostByBrand(targetBrand)
+    : await dequeuePost();
   if (!post) {
-    return NextResponse.json({ success: true, message: "큐에 게시할 글 없음", queueSize: 0 });
+    return NextResponse.json({ success: true, message: `큐에 게시할 글 없음 (${targetBrand || "전체"})`, queueSize: 0 });
   }
 
   const brand = post.brand ?? "paulvice";

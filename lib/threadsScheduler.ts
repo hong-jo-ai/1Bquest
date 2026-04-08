@@ -97,6 +97,21 @@ export async function dequeuePost(): Promise<QueuedPost | null> {
   return post;
 }
 
+export async function dequeuePostByBrand(brand: BrandId): Promise<QueuedPost | null> {
+  const queue = await getPostQueue();
+  // brand 없는 기존 글은 paulvice로 할당
+  for (const p of queue) {
+    if (!p.brand) p.brand = "paulvice";
+  }
+  const candidates = queue.filter((p) => p.brand === brand);
+  if (candidates.length === 0) return null;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  const idx = queue.indexOf(pick);
+  queue.splice(idx, 1);
+  await savePostQueue(queue);
+  return pick;
+}
+
 // ── 게시 로그 ──────────────────────────────────────────────────────────────
 
 export async function getPublishedLog(): Promise<PublishedPost[]> {
