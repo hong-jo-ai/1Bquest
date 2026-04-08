@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+
 import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
@@ -1130,7 +1130,6 @@ function Section({ title, icon: Icon, children }: {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBrand?: BrandId }) {
-  const router = useRouter();
   const [tab, setTab]       = useState<Tab>("trend");
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
@@ -1184,7 +1183,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           {BRAND_LIST.map((b) => (
             <button
               key={b.id}
-              onClick={() => router.push(`/tools/threads?brand=${b.id}`)}
+              onClick={() => { window.location.href = `/tools/threads?brand=${b.id}`; }}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 brand === b.id
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
