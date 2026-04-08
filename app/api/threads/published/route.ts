@@ -54,26 +54,36 @@ export async function GET(req: NextRequest) {
   const posts: PublishedPostWithMetrics[] = [];
 
   for (const post of published) {
+    let likes = 0, replies = 0, permalink: string | null = null, text = post.text;
+
     try {
+      // 기본 필드로 먼저 시도
       const res = await fetch(
-        `${THREADS_BASE}/${post.threadId}?fields=id,text,like_count,reply_count,permalink&access_token=${token}`,
+        `${THREADS_BASE}/${post.threadId}?fields=id,text,permalink&access_token=${token}`,
         { cache: "no-store" }
       );
       if (!res.ok) continue; // 다른 계정 글이거나 삭제된 글 → 제외
       const data = await res.json();
-      posts.push({
-        threadId: post.threadId,
-        text: data.text ?? post.text,
-        publishedAt: post.publishedAt,
-        likes: data.like_count ?? 0,
-        replies: data.reply_count ?? 0,
-        views: 0,
-        permalink: data.permalink ?? null,
-        brand,
-      });
+      text = data.text ?? post.text;
+      permalink = data.permalink ?? null;
+
+      // 인사이트 필드 별도 시도 (권한 없으면 무시)
+      try {
+        const insRes = await fetch(
+          `${THREADS_BASE}/${post.threadId}?fields=like_count,reply_count&access_token=${token}`,
+          { cache: "no-store" }
+        );
+        if (insRes.ok) {
+          const ins = await insRes.json();
+          likes = ins.like_count ?? 0;
+          replies = ins.reply_count ?? 0;
+        }
+      } catch {}
     } catch {
-      // 조회 실패 → 제외
+      continue;
     }
+
+    posts.push({ threadId: post.threadId, text, publishedAt: post.publishedAt, likes, replies, views: 0, permalink, brand });
   }
 
   // 최신순 정렬
