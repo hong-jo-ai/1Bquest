@@ -31,8 +31,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Threads 미연결" }, { status: 401 });
   }
 
+  // 현재 토큰의 username 조회
+  let myUsername = "";
+  try {
+    const meRes = await fetch(`${THREADS_BASE}/me?fields=id,username&access_token=${token}`, { cache: "no-store" });
+    if (meRes.ok) {
+      const me = await meRes.json();
+      myUsername = me.username ?? "";
+    }
+  } catch {}
+
   const allPublished = await getRecentPublished();
-  const published = allPublished.filter((p) => (p.brand ?? "paulvice") === brand);
+  // brand 필드가 있으면 그걸로, 없으면 API로 소유권 확인
+  const published = allPublished.filter((p) => {
+    if (p.brand) return p.brand === brand;
+    return true; // brand 없는 기존 글은 API 조회로 필터링
+  });
   if (published.length === 0) {
     return NextResponse.json({ posts: [] });
   }
@@ -45,18 +59,7 @@ export async function GET(req: NextRequest) {
         `${THREADS_BASE}/${post.threadId}?fields=id,text,like_count,reply_count,permalink&access_token=${token}`,
         { cache: "no-store" }
       );
-      if (!res.ok) {
-        posts.push({
-          threadId: post.threadId,
-          text: post.text,
-          publishedAt: post.publishedAt,
-          likes: 0,
-          replies: 0,
-          views: 0,
-          permalink: null,
-        });
-        continue;
-      }
+      if (!res.ok) continue; // 다른 계정 글이거나 삭제된 글 → 제외
       const data = await res.json();
       posts.push({
         threadId: post.threadId,
@@ -66,17 +69,10 @@ export async function GET(req: NextRequest) {
         replies: data.reply_count ?? 0,
         views: 0,
         permalink: data.permalink ?? null,
+        brand,
       });
     } catch {
-      posts.push({
-        threadId: post.threadId,
-        text: post.text,
-        publishedAt: post.publishedAt,
-        likes: 0,
-        replies: 0,
-        views: 0,
-        permalink: null,
-      });
+      // 조회 실패 → 제외
     }
   }
 
