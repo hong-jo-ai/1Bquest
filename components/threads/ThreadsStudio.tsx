@@ -1134,6 +1134,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
+  const [queueCount, setQueueCount] = useState<number | null>(null);
   const brand = initialBrand;
   const brandConfig = BRANDS[brand];
 
@@ -1145,6 +1146,13 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
       .then(r => r.json())
       .then(d => setMetaConnected(d.connected ?? false))
       .catch(() => setMetaConnected(false));
+    fetch("/api/threads/queue")
+      .then(r => r.json())
+      .then(d => {
+        const brandQueue = (d.queue ?? []).filter((q: any) => (q.brand ?? "paulvice") === brand);
+        setQueueCount(brandQueue.length);
+      })
+      .catch(() => setQueueCount(0));
   }, [brand]);
 
   return (
@@ -1177,6 +1185,26 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
             </span>
           )}
         </div>
+
+        {/* 큐 상태 */}
+        {queueCount !== null && (
+          <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
+            queueCount < 8
+              ? "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+              : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
+          }`}>
+            <div className="flex items-center gap-2">
+              <CalendarClock size={14} className={queueCount < 8 ? "text-amber-500" : "text-emerald-500"} />
+              <span className={queueCount < 8 ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"}>
+                자동 게시 대기: <b>{queueCount}개</b>
+                {queueCount < 8 && " — 하루 8회 게시에 글이 부족합니다. 글을 더 등록해주세요."}
+              </span>
+            </div>
+            <span className={`text-xs font-medium ${queueCount < 8 ? "text-amber-500" : "text-emerald-500"}`}>
+              {queueCount >= 8 ? `${Math.floor(queueCount / 8)}일분` : "부족"}
+            </span>
+          </div>
+        )}
 
         {/* 브랜드 선택 */}
         <div className="flex gap-2">

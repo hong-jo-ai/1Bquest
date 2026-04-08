@@ -3,7 +3,7 @@ export const maxDuration = 30;
 import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
-import { getRecentPublished, getNotifiedIds, markNotified } from "@/lib/threadsScheduler";
+import { getRecentPublished, getNotifiedIds, markNotified, getPostQueue } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
@@ -98,8 +98,21 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (hits.length === 0) {
-    return NextResponse.json({ success: true, message: "기준 초과 게시물 없음", checked: published.length });
+  // ── 큐 부족 체크 ────────────────────────────────────────────────────────
+  const queue = await getPostQueue();
+  const DAILY_POSTS = 8;
+  const brandNames: Record<string, string> = { paulvice: "폴바이스", harriot: "해리엇", hongsungjo: "홍성조" };
+  const lowBrands: { brand: string; name: string; count: number }[] = [];
+
+  for (const b of ["paulvice", "harriot", "hongsungjo"]) {
+    const count = queue.filter((p) => (p.brand ?? "paulvice") === b).length;
+    if (count < DAILY_POSTS) {
+      lowBrands.push({ brand: b, name: brandNames[b], count });
+    }
+  }
+
+  if (hits.length === 0 && lowBrands.length === 0) {
+    return NextResponse.json({ success: true, message: "기준 초과 게시물 없음, 큐 충분", checked: published.length });
   }
 
   // Gmail로 이메일 발송
@@ -107,6 +120,23 @@ export async function GET(request: NextRequest) {
   if (!gmailToken) {
     return NextResponse.json({ error: "Google 토큰 없음 — 방문자 페이지에서 Google 재로그인 필요", hits }, { status: 401 });
   }
+
+  // 큐 부족 알림 HTML
+  const queueWarningHtml = lowBrands.length > 0 ? `
+    <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:16px;margin-bottom:20px">
+      <h3 style="color:#92400e;margin:0 0 8px 0;font-size:15px">자동 게시 큐 부족 경고</h3>
+      <p style="color:#a16207;font-size:13px;margin:0 0 12px 0">하루 ${DAILY_POSTS}회 게시 기준, 아래 브랜드의 큐가 부족합니다.</p>
+      ${lowBrands.map((b) => `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #fde68a">
+          <span style="font-weight:600;color:#92400e">${b.name}</span>
+          <span style="color:${b.count === 0 ? '#dc2626' : '#d97706'};font-weight:bold">${b.count}개 남음 ${b.count === 0 ? '(오늘 게시 불가!)' : ''}</span>
+        </div>
+      `).join("")}
+      <p style="color:#a16207;font-size:12px;margin:12px 0 0 0">
+        <a href="https://paulvice-dashboard.vercel.app/tools/threads" style="color:#7c3aed;font-weight:600">대시보드에서 글 추가하기 →</a>
+      </p>
+    </div>
+  ` : "";
 
   const postRows = hits.map((h) => {
     const date = new Date(h.publishedAt).toLocaleDateString("ko-KR");
@@ -119,21 +149,26 @@ export async function GET(request: NextRequest) {
     </tr>`;
   }).join("");
 
+  const hitsSection = hits.length > 0 ? `
+    <h2 style="color:#18181b;margin-bottom:4px">Threads 인기 게시물</h2>
+    <p style="color:#71717a;font-size:14px;margin-top:0">좋아요 ${LIKE_THRESHOLD}+ 또는 댓글 ${REPLY_THRESHOLD}+ 기준 초과</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0">
+      <thead>
+        <tr style="background:#f4f4f5">
+          <th style="padding:8px 12px;text-align:left;font-size:12px;color:#71717a">게시물</th>
+          <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">좋아요</th>
+          <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">댓글</th>
+          <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">게시일</th>
+        </tr>
+      </thead>
+      <tbody>${postRows}</tbody>
+    </table>
+  ` : "";
+
   const html = `
     <div style="font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#18181b;margin-bottom:4px">Threads 성과 알림</h2>
-      <p style="color:#71717a;font-size:14px;margin-top:0">좋아요 ${LIKE_THRESHOLD}+ 또는 댓글 ${REPLY_THRESHOLD}+ 기준 초과 게시물</p>
-      <table style="width:100%;border-collapse:collapse;margin:16px 0">
-        <thead>
-          <tr style="background:#f4f4f5">
-            <th style="padding:8px 12px;text-align:left;font-size:12px;color:#71717a">게시물</th>
-            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">좋아요</th>
-            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">댓글</th>
-            <th style="padding:8px 12px;text-align:center;font-size:12px;color:#71717a">게시일</th>
-          </tr>
-        </thead>
-        <tbody>${postRows}</tbody>
-      </table>
+      ${queueWarningHtml}
+      ${hitsSection}
       <p style="font-size:12px;color:#a1a1aa;margin-top:24px">
         PAULVICE Dashboard 자동 알림
       </p>
@@ -141,7 +176,12 @@ export async function GET(request: NextRequest) {
   `;
 
   try {
-    await sendGmail(gmailToken, NOTIFY_EMAIL, `[PAULVICE] Threads 인기 게시물 ${hits.length}건 발견!`, html);
+    const subject = hits.length > 0 && lowBrands.length > 0
+      ? `[PAULVICE] 인기 게시물 ${hits.length}건 + 큐 부족 ${lowBrands.length}개 브랜드`
+      : hits.length > 0
+      ? `[PAULVICE] Threads 인기 게시물 ${hits.length}건 발견!`
+      : `[PAULVICE] Threads 자동 게시 큐 부족 — ${lowBrands.map(b => b.name).join(", ")}`;
+    await sendGmail(gmailToken, NOTIFY_EMAIL, subject, html);
     console.log(`[Cron:threads-monitor] Gmail 알림 발송 — ${hits.length}건`);
   } catch (e: any) {
     console.error("[Cron:threads-monitor] Gmail 발송 실패:", e);
