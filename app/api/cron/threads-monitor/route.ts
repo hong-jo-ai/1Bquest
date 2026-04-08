@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 import { getRecentPublished, getNotifiedIds, markNotified } from "@/lib/threadsScheduler";
+import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 const NOTIFY_EMAIL = "shong@harriotwatches.com";
@@ -54,11 +55,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const threadsToken = await getThreadsTokenFromStore();
-  if (!threadsToken) {
-    return NextResponse.json({ error: "Threads 토큰 없음" }, { status: 401 });
-  }
-
   const published = await getRecentPublished();
   if (published.length === 0) {
     return NextResponse.json({ success: true, message: "모니터링할 게시물 없음" });
@@ -70,15 +66,22 @@ export async function GET(request: NextRequest) {
   for (const post of published) {
     if (notified.has(post.threadId)) continue;
 
+    const brand = (post.brand ?? "paulvice") as BrandId;
+    const threadsToken = await getThreadsTokenFromStore(brand);
+    if (!threadsToken) continue;
+
     try {
-      const res = await fetch(
-        `${THREADS_BASE}/${post.threadId}?fields=id,text,like_count,reply_count&access_token=${threadsToken}`,
+      const insRes = await fetch(
+        `${THREADS_BASE}/${post.threadId}/insights?metric=likes,replies&access_token=${threadsToken}`,
         { cache: "no-store" }
       );
-      if (!res.ok) continue;
-      const data = await res.json();
-      const likes = data.like_count ?? 0;
-      const replies = data.reply_count ?? 0;
+      if (!insRes.ok) continue;
+      const ins = await insRes.json();
+      let likes = 0, replies = 0;
+      for (const m of ins.data ?? []) {
+        if (m.name === "likes") likes = m.values?.[0]?.value ?? 0;
+        if (m.name === "replies") replies = m.values?.[0]?.value ?? 0;
+      }
 
       if (likes >= LIKE_THRESHOLD || replies >= REPLY_THRESHOLD) {
         hits.push({

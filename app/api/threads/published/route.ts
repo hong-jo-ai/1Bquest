@@ -67,16 +67,18 @@ export async function GET(req: NextRequest) {
       text = data.text ?? post.text;
       permalink = data.permalink ?? null;
 
-      // 인사이트 필드 별도 시도 (권한 없으면 무시)
+      // Insights API로 좋아요/댓글 조회
       try {
         const insRes = await fetch(
-          `${THREADS_BASE}/${post.threadId}?fields=like_count,reply_count&access_token=${token}`,
+          `${THREADS_BASE}/${post.threadId}/insights?metric=likes,replies&access_token=${token}`,
           { cache: "no-store" }
         );
         if (insRes.ok) {
           const ins = await insRes.json();
-          likes = ins.like_count ?? 0;
-          replies = ins.reply_count ?? 0;
+          for (const m of ins.data ?? []) {
+            if (m.name === "likes") likes = m.values?.[0]?.value ?? 0;
+            if (m.name === "replies") replies = m.values?.[0]?.value ?? 0;
+          }
         }
       } catch {}
     } catch {
