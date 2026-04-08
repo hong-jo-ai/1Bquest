@@ -1187,24 +1187,28 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         </div>
 
         {/* 큐 상태 */}
-        {queueCount !== null && (
-          <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
-            queueCount < 8
-              ? "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
-              : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
-          }`}>
-            <div className="flex items-center gap-2">
-              <CalendarClock size={14} className={queueCount < 8 ? "text-amber-500" : "text-emerald-500"} />
-              <span className={queueCount < 8 ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"}>
-                자동 게시 대기: <b>{queueCount}개</b>
-                {queueCount < 8 && " — 하루 8회 게시에 글이 부족합니다. 글을 더 등록해주세요."}
+        {queueCount !== null && (() => {
+          const dailyTarget = brand === "hongsungjo" ? 2 : 8;
+          const isLow = queueCount < dailyTarget;
+          return (
+            <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
+              isLow
+                ? "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+                : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
+            }`}>
+              <div className="flex items-center gap-2">
+                <CalendarClock size={14} className={isLow ? "text-amber-500" : "text-emerald-500"} />
+                <span className={isLow ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"}>
+                  자동 게시 대기: <b>{queueCount}개</b>
+                  {isLow && ` — 하루 ${dailyTarget}회 게시에 글이 부족합니다. 글을 더 등록해주세요.`}
+                </span>
+              </div>
+              <span className={`text-xs font-medium ${isLow ? "text-amber-500" : "text-emerald-500"}`}>
+                {queueCount >= dailyTarget ? `${Math.floor(queueCount / dailyTarget)}일분` : "부족"}
               </span>
             </div>
-            <span className={`text-xs font-medium ${queueCount < 8 ? "text-amber-500" : "text-emerald-500"}`}>
-              {queueCount >= 8 ? `${Math.floor(queueCount / 8)}일분` : "부족"}
-            </span>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 브랜드 선택 */}
         <div className="flex gap-2">

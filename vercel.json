@@ -74,35 +74,11 @@
     },
     {
       "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "5 1 * * *"
+      "schedule": "23 3 * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "31 3 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "48 4 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "11 7 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "37 8 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "56 10 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "22 12 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "49 13 * * *"
+      "schedule": "41 9 * * *"
     },
     {
       "path": "/api/cron/threads-monitor",

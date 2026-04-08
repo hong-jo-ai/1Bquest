@@ -100,14 +100,14 @@ export async function GET(request: NextRequest) {
 
   // ── 큐 부족 체크 ────────────────────────────────────────────────────────
   const queue = await getPostQueue();
-  const DAILY_POSTS = 8;
+  const dailyPosts: Record<string, number> = { paulvice: 8, harriot: 8, hongsungjo: 2 };
   const brandNames: Record<string, string> = { paulvice: "폴바이스", harriot: "해리엇", hongsungjo: "홍성조" };
-  const lowBrands: { brand: string; name: string; count: number }[] = [];
+  const lowBrands: { brand: string; name: string; count: number; daily: number }[] = [];
 
   for (const b of ["paulvice", "harriot", "hongsungjo"]) {
     const count = queue.filter((p) => (p.brand ?? "paulvice") === b).length;
-    if (count < DAILY_POSTS) {
-      lowBrands.push({ brand: b, name: brandNames[b], count });
+    if (count < dailyPosts[b]) {
+      lowBrands.push({ brand: b, name: brandNames[b], count, daily: dailyPosts[b] });
     }
   }
 
@@ -125,11 +125,11 @@ export async function GET(request: NextRequest) {
   const queueWarningHtml = lowBrands.length > 0 ? `
     <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:16px;margin-bottom:20px">
       <h3 style="color:#92400e;margin:0 0 8px 0;font-size:15px">자동 게시 큐 부족 경고</h3>
-      <p style="color:#a16207;font-size:13px;margin:0 0 12px 0">하루 ${DAILY_POSTS}회 게시 기준, 아래 브랜드의 큐가 부족합니다.</p>
+      <p style="color:#a16207;font-size:13px;margin:0 0 12px 0">아래 브랜드의 자동 게시 큐가 부족합니다.</p>
       ${lowBrands.map((b) => `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #fde68a">
           <span style="font-weight:600;color:#92400e">${b.name}</span>
-          <span style="color:${b.count === 0 ? '#dc2626' : '#d97706'};font-weight:bold">${b.count}개 남음 ${b.count === 0 ? '(오늘 게시 불가!)' : ''}</span>
+          <span style="color:${b.count === 0 ? '#dc2626' : '#d97706'};font-weight:bold">${b.count}개 남음 (하루 ${b.daily}회)${b.count === 0 ? ' — 게시 불가!' : ''}</span>
         </div>
       `).join("")}
       <p style="color:#a16207;font-size:12px;margin:12px 0 0 0">
