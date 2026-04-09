@@ -2,10 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 
 export const maxDuration = 60;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
 export async function POST(request: Request) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        { error: "GEMINI_API_KEY가 설정되지 않았습니다." },
+        { status: 500 }
+      );
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     const { images } = (await request.json()) as { images: string[] };
 
     if (!images || images.length === 0) {

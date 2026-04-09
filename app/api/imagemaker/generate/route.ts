@@ -2,8 +2,6 @@ import { GoogleGenAI } from "@google/genai";
 
 export const maxDuration = 120;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
 interface GenerateBody {
   productImage: string;
   styleGuide: Record<string, string>;
@@ -12,6 +10,15 @@ interface GenerateBody {
 
 export async function POST(request: Request) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        { error: "GEMINI_API_KEY가 설정되지 않았습니다." },
+        { status: 500 }
+      );
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     const { productImage, styleGuide, productDescription } =
       (await request.json()) as GenerateBody;
 
@@ -24,6 +31,7 @@ export async function POST(request: Request) {
 
     // Step 1: Gemini 2.5 Pro analyzes the product image
     const detailedDescription = await describeProduct(
+      ai,
       productImage,
       productDescription
     );
@@ -101,6 +109,7 @@ export async function POST(request: Request) {
 }
 
 async function describeProduct(
+  ai: GoogleGenAI,
   base64: string,
   userDescription: string
 ): Promise<string> {
