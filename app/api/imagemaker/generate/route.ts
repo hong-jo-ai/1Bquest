@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
       try {
         const response = await ai.models.generateImages({
-          model: "imagen-4.0-generate-001",
+          model: "imagen-4.0-ultra-generate-001",
           prompt,
           config: {
             numberOfImages: 1,
@@ -114,7 +114,7 @@ async function describeProduct(
   userDescription: string
 ): Promise<string> {
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-pro-preview-05-06",
+    model: "gemini-2.5-pro",
     contents: [
       {
         role: "user",
