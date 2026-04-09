@@ -73,8 +73,9 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
     return Response.json({ styleGuide });
   } catch (error) {
     console.error("Style analysis error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
     return Response.json(
-      { error: "스타일 분석 중 오류가 발생했습니다." },
+      { error: `스타일 분석 오류: ${msg}` },
       { status: 500 }
     );
   }
