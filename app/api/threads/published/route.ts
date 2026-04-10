@@ -55,12 +55,12 @@ export async function GET(req: NextRequest) {
   for (const thread of threads) {
     if (!thread.text) continue; // 미디어 전용 글 등 텍스트 없으면 스킵
 
-    let likes = 0, replies = 0;
+    let likes = 0, replies = 0, views = 0;
 
-    // Insights API로 좋아요/댓글 조회
+    // Insights API로 좋아요/댓글/조회수 조회
     try {
       const insRes = await fetch(
-        `${THREADS_BASE}/${thread.id}/insights?metric=likes,replies&access_token=${token}`,
+        `${THREADS_BASE}/${thread.id}/insights?metric=likes,replies,views&access_token=${token}`,
         { cache: "no-store" }
       );
       if (insRes.ok) {
@@ -68,9 +68,15 @@ export async function GET(req: NextRequest) {
         for (const m of ins.data ?? []) {
           if (m.name === "likes") likes = m.values?.[0]?.value ?? 0;
           if (m.name === "replies") replies = m.values?.[0]?.value ?? 0;
+          if (m.name === "views") views = m.values?.[0]?.value ?? 0;
         }
+      } else {
+        const errText = await insRes.text();
+        console.error(`[Threads published] Insights 실패 (${thread.id}, ${brand}):`, insRes.status, errText);
       }
-    } catch {}
+    } catch (insErr) {
+      console.error(`[Threads published] Insights 예외 (${thread.id}, ${brand}):`, insErr);
+    }
 
     posts.push({
       threadId: thread.id,
@@ -78,7 +84,7 @@ export async function GET(req: NextRequest) {
       publishedAt: thread.timestamp ?? new Date().toISOString(),
       likes,
       replies,
-      views: 0,
+      views,
       permalink: thread.permalink ?? null,
       brand,
     });
