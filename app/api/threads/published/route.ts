@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
   }
 
   const posts: PublishedPostWithMetrics[] = [];
+  const debugErrors: string[] = [];
 
   for (const thread of threads) {
     if (!thread.text) continue; // 미디어 전용 글 등 텍스트 없으면 스킵
@@ -72,10 +73,14 @@ export async function GET(req: NextRequest) {
         }
       } else {
         const errText = await insRes.text();
-        console.error(`[Threads published] Insights 실패 (${thread.id}, ${brand}):`, insRes.status, errText);
+        const msg = `Insights ${insRes.status}: ${errText}`;
+        console.error(`[Threads published] ${msg}`);
+        debugErrors.push(msg);
       }
-    } catch (insErr) {
-      console.error(`[Threads published] Insights 예외 (${thread.id}, ${brand}):`, insErr);
+    } catch (insErr: any) {
+      const msg = `Insights 예외: ${insErr.message}`;
+      console.error(`[Threads published] ${msg}`);
+      debugErrors.push(msg);
     }
 
     posts.push({
@@ -96,5 +101,5 @@ export async function GET(req: NextRequest) {
       new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
 
-  return NextResponse.json({ posts });
+  return NextResponse.json({ posts, _debug: debugErrors.length > 0 ? debugErrors.slice(0, 3) : undefined });
 }
