@@ -966,6 +966,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string[] | null>(null);
 
   // 댓글 관리 상태
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
@@ -985,6 +986,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "조회 실패");
       setPosts(data.posts ?? []);
+      setDebugInfo(data._debug ?? null);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1317,6 +1319,16 @@ function PublishedTab({ brand }: { brand: BrandId }) {
           );
         })}
       </div>
+
+      {/* 디버그 정보 */}
+      {debugInfo && debugInfo.length > 0 && (
+        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+          <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1">Insights API 오류</p>
+          {debugInfo.map((msg, i) => (
+            <p key={i} className="text-[11px] text-red-500 dark:text-red-400 break-all">{msg}</p>
+          ))}
+        </div>
+      )}
 
       {/* 안내 */}
       <p className="text-[11px] text-zinc-400 text-center">
