@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
-import { getRecentPublished } from "@/lib/threadsScheduler";
 import { NextResponse } from "next/server";
 import type { BrandId } from "@/lib/threadsBrands";
 
@@ -31,61 +30,58 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Threads 미연결" }, { status: 401 });
   }
 
-  // 현재 토큰의 username 조회
-  let myUsername = "";
-  try {
-    const meRes = await fetch(`${THREADS_BASE}/me?fields=id,username&access_token=${token}`, { cache: "no-store" });
-    if (meRes.ok) {
-      const me = await meRes.json();
-      myUsername = me.username ?? "";
-    }
-  } catch {}
+  // Threads API에서 실제 게시물 목록 가져오기
+  const threadsRes = await fetch(
+    `${THREADS_BASE}/me/threads?fields=id,text,timestamp,permalink&limit=50&access_token=${token}`,
+    { cache: "no-store" }
+  );
 
-  const allPublished = await getRecentPublished();
-  // brand 필드가 있으면 그걸로, 없으면 API로 소유권 확인
-  const published = allPublished.filter((p) => {
-    if (p.brand) return p.brand === brand;
-    return true; // brand 없는 기존 글은 API 조회로 필터링
-  });
-  if (published.length === 0) {
+  if (!threadsRes.ok) {
+    const err = await threadsRes.text();
+    console.error("[Threads published] API 조회 실패:", err);
+    return NextResponse.json({ error: "게시물 조회 실패" }, { status: threadsRes.status });
+  }
+
+  const threadsData = await threadsRes.json();
+  const threads: Array<{ id: string; text?: string; timestamp?: string; permalink?: string }> =
+    threadsData.data ?? [];
+
+  if (threads.length === 0) {
     return NextResponse.json({ posts: [] });
   }
 
   const posts: PublishedPostWithMetrics[] = [];
 
-  for (const post of published) {
-    let likes = 0, replies = 0, permalink: string | null = null, text = post.text;
+  for (const thread of threads) {
+    if (!thread.text) continue; // 미디어 전용 글 등 텍스트 없으면 스킵
 
+    let likes = 0, replies = 0;
+
+    // Insights API로 좋아요/댓글 조회
     try {
-      // 기본 필드로 먼저 시도
-      const res = await fetch(
-        `${THREADS_BASE}/${post.threadId}?fields=id,text,permalink&access_token=${token}`,
+      const insRes = await fetch(
+        `${THREADS_BASE}/${thread.id}/insights?metric=likes,replies&access_token=${token}`,
         { cache: "no-store" }
       );
-      if (!res.ok) continue; // 다른 계정 글이거나 삭제된 글 → 제외
-      const data = await res.json();
-      text = data.text ?? post.text;
-      permalink = data.permalink ?? null;
-
-      // Insights API로 좋아요/댓글 조회
-      try {
-        const insRes = await fetch(
-          `${THREADS_BASE}/${post.threadId}/insights?metric=likes,replies&access_token=${token}`,
-          { cache: "no-store" }
-        );
-        if (insRes.ok) {
-          const ins = await insRes.json();
-          for (const m of ins.data ?? []) {
-            if (m.name === "likes") likes = m.values?.[0]?.value ?? 0;
-            if (m.name === "replies") replies = m.values?.[0]?.value ?? 0;
-          }
+      if (insRes.ok) {
+        const ins = await insRes.json();
+        for (const m of ins.data ?? []) {
+          if (m.name === "likes") likes = m.values?.[0]?.value ?? 0;
+          if (m.name === "replies") replies = m.values?.[0]?.value ?? 0;
         }
-      } catch {}
-    } catch {
-      continue;
-    }
+      }
+    } catch {}
 
-    posts.push({ threadId: post.threadId, text, publishedAt: post.publishedAt, likes, replies, views: 0, permalink, brand });
+    posts.push({
+      threadId: thread.id,
+      text: thread.text,
+      publishedAt: thread.timestamp ?? new Date().toISOString(),
+      likes,
+      replies,
+      views: 0,
+      permalink: thread.permalink ?? null,
+      brand,
+    });
   }
 
   // 최신순 정렬

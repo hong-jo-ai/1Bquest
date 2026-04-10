@@ -2,14 +2,14 @@ export const maxDuration = 45;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
-import { dequeuePost, dequeuePostByBrand, addPublishedPost, getPostQueue } from "@/lib/threadsScheduler";
+import { dequeuePost, dequeuePostByBrand, addPublishedPost, getPostQueue, shouldPostNow } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 
 /**
- * 하루 4회 호출 + 랜덤 딜레이
- * 큐에서 랜덤 1개를 꺼내 해당 브랜드의 Threads 계정에 게시
+ * 매시간 호출 — 설정된 하루 게시 횟수에 따라 게시 여부를 자동 판단
+ * 큐에서 1개를 꺼내 해당 브랜드의 Threads 계정에 게시
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -18,6 +18,20 @@ export async function GET(request: NextRequest) {
   }
 
   const targetBrand = (request.nextUrl.searchParams.get("brand") ?? "") as BrandId;
+
+  // 설정에 따라 지금 게시할 시간인지 확인
+  if (targetBrand) {
+    const currentHourUTC = new Date().getUTCHours();
+    const should = await shouldPostNow(targetBrand, currentHourUTC);
+    if (!should) {
+      return NextResponse.json({
+        success: true,
+        message: `${targetBrand}: 이 시간대에는 게시 안 함 (설정 기반)`,
+        skipped: true,
+      });
+    }
+  }
+
   const post = targetBrand
     ? await dequeuePostByBrand(targetBrand)
     : await dequeuePost();

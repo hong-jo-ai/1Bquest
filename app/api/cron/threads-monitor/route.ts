@@ -100,7 +100,12 @@ export async function GET(request: NextRequest) {
 
   // ── 큐 부족 체크 ────────────────────────────────────────────────────────
   const queue = await getPostQueue();
-  const dailyPosts: Record<string, number> = { paulvice: 8, harriot: 8, hongsungjo: 2 };
+  const autopostSettings = await (await import("@/lib/threadsScheduler")).getAutopostSettings();
+  const dailyPosts: Record<string, number> = {
+    paulvice: autopostSettings.paulvice?.postsPerDay ?? 8,
+    harriot: autopostSettings.harriot?.postsPerDay ?? 8,
+    hongsungjo: autopostSettings.hongsungjo?.postsPerDay ?? 2,
+  };
   const brandNames: Record<string, string> = { paulvice: "폴바이스", harriot: "해리엇", hongsungjo: "홍성조" };
   const lowBrands: { brand: string; name: string; count: number; daily: number }[] = [];
 

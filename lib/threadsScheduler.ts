@@ -7,6 +7,7 @@ import type { BrandId } from "./threadsBrands";
 const KV_QUEUE_KEY = "threads_post_queue";       // 자동 게시 대기 큐
 const KV_PUBLISHED_KEY = "threads_published_log"; // 게시 완료 로그 (모니터링용)
 const KV_NOTIFIED_KEY = "threads_notified_ids";   // 이미 알림 보낸 ID
+const KV_AUTOPOST_SETTINGS_KEY = "threads_autopost_settings"; // 브랜드별 하루 게시 횟수
 
 export interface QueuedPost {
   id: string;
@@ -142,4 +143,52 @@ export async function markNotified(threadId: string): Promise<void> {
   const set = await getNotifiedIds();
   set.add(threadId);
   await kvSet(KV_NOTIFIED_KEY, [...set]);
+}
+
+// ── 자동 게시 설정 (하루 게시 횟수) ──────────────────────────────────────
+
+export interface AutopostSettings {
+  [brand: string]: { postsPerDay: number };
+}
+
+const DEFAULT_AUTOPOST_SETTINGS: AutopostSettings = {
+  paulvice: { postsPerDay: 8 },
+  harriot: { postsPerDay: 8 },
+  hongsungjo: { postsPerDay: 2 },
+};
+
+export async function getAutopostSettings(): Promise<AutopostSettings> {
+  const saved = await kvGet<AutopostSettings>(KV_AUTOPOST_SETTINGS_KEY);
+  return { ...DEFAULT_AUTOPOST_SETTINGS, ...saved };
+}
+
+export async function saveAutopostSettings(settings: AutopostSettings): Promise<void> {
+  await kvSet(KV_AUTOPOST_SETTINGS_KEY, settings);
+}
+
+export function getPostsPerDay(settings: AutopostSettings, brand: BrandId): number {
+  return settings[brand]?.postsPerDay ?? DEFAULT_AUTOPOST_SETTINGS[brand]?.postsPerDay ?? 2;
+}
+
+/**
+ * 오늘 해당 브랜드의 게시 횟수를 세서 아직 게시해야 하는지 판단
+ */
+export async function shouldPostNow(brand: BrandId, currentHourUTC: number): Promise<boolean> {
+  const settings = await getAutopostSettings();
+  const target = getPostsPerDay(settings, brand);
+  if (target <= 0) return false;
+
+  // 오늘 이 브랜드의 게시 횟수 확인
+  const log = await getPublishedLog();
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayPosts = log.filter(
+    (p) => p.brand === brand && new Date(p.publishedAt).getTime() >= todayStart.getTime()
+  );
+  if (todayPosts.length >= target) return false;
+
+  // 게시 시간대 계산: 0~23시를 target개로 균등 분배
+  const interval = 24 / target;
+  const postingHours = Array.from({ length: target }, (_, i) => Math.floor(interval * i + interval / 2));
+  return postingHours.includes(currentHourUTC);
 }

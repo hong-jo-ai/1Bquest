@@ -6,7 +6,8 @@ import {
   TrendingUp, BookmarkPlus, PenLine, RefreshCw, Copy, Trash2,
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
   X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
-  ImagePlus, Film, Clock, CalendarClock, Pencil,
+  ImagePlus, Film, Clock, CalendarClock, Pencil, Settings, Minus, Plus,
+  CornerDownRight, CheckCircle2,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
@@ -946,10 +947,35 @@ interface PublishedPostMetrics {
   permalink: string | null;
 }
 
+interface CommentData {
+  id: string;
+  text: string;
+  username: string;
+  timestamp: string;
+  hasReplied: boolean;
+}
+
+interface GeneratedReply {
+  commentIndex: number;
+  username: string;
+  originalComment: string;
+  reply: string;
+}
+
 function PublishedTab({ brand }: { brand: BrandId }) {
   const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 댓글 관리 상태
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [comments, setComments] = useState<CommentData[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [generatedReplies, setGeneratedReplies] = useState<GeneratedReply[]>([]);
+  const [editedReplies, setEditedReplies] = useState<Record<number, string>>({});
+  const [generatingReplies, setGeneratingReplies] = useState(false);
+  const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
+  const [postedCommentIds, setPostedCommentIds] = useState<Set<string>>(new Set());
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -967,6 +993,96 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   }, []);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  // 댓글 조회
+  const fetchComments = async (threadId: string) => {
+    if (expandedPostId === threadId) {
+      setExpandedPostId(null);
+      return;
+    }
+    setExpandedPostId(threadId);
+    setComments([]);
+    setGeneratedReplies([]);
+    setEditedReplies({});
+    setCommentsLoading(true);
+    try {
+      const res = await fetch(`/api/threads/comments?threadId=${threadId}&brand=${brand}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "댓글 조회 실패");
+      setComments(data.comments ?? []);
+    } catch (e: any) {
+      console.error("댓글 조회 실패:", e);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // AI 대댓글 생성
+  const generateReplies = async (postText: string) => {
+    const unrepliedComments = comments.filter(c => !c.hasReplied && !postedCommentIds.has(c.id));
+    if (unrepliedComments.length === 0) return;
+
+    setGeneratingReplies(true);
+    try {
+      const res = await fetch("/api/threads/comments/generate-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comments: unrepliedComments.map(c => ({ username: c.username, text: c.text })),
+          postText,
+          brand,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "생성 실패");
+      setGeneratedReplies(data.replies ?? []);
+      // 편집용 초기값 세팅
+      const edits: Record<number, string> = {};
+      for (const r of data.replies ?? []) {
+        edits[r.commentIndex] = r.reply;
+      }
+      setEditedReplies(edits);
+    } catch (e: any) {
+      console.error("대댓글 생성 실패:", e);
+    } finally {
+      setGeneratingReplies(false);
+    }
+  };
+
+  // 대댓글 게시
+  const postReply = async (commentId: string, commentIndex: number) => {
+    const text = editedReplies[commentIndex];
+    if (!text?.trim()) return;
+
+    setPostingReplyId(commentId);
+    try {
+      const res = await fetch("/api/threads/comments/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId, text: text.trim(), brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "게시 실패");
+      setPostedCommentIds(prev => new Set([...prev, commentId]));
+    } catch (e: any) {
+      console.error("대댓글 게시 실패:", e);
+      alert(`게시 실패: ${e.message}`);
+    } finally {
+      setPostingReplyId(null);
+    }
+  };
+
+  // 전체 게시
+  const postAllReplies = async () => {
+    const unrepliedComments = comments.filter(c => !c.hasReplied && !postedCommentIds.has(c.id));
+    for (const comment of unrepliedComments) {
+      const reply = generatedReplies.find(r => r.username === comment.username);
+      if (!reply) continue;
+      const text = editedReplies[reply.commentIndex];
+      if (!text?.trim()) continue;
+      await postReply(comment.id, reply.commentIndex);
+    }
+  };
 
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalReplies = posts.reduce((s, p) => s + p.replies, 0);
@@ -1002,7 +1118,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-center py-16">
         <BarChart2 size={40} className="mx-auto mb-3 text-zinc-200 dark:text-zinc-700" />
         <p className="text-zinc-400 mb-1">게시된 글이 없습니다</p>
-        <p className="text-xs text-zinc-300 dark:text-zinc-600">"글 생성" 탭에서 글을 게시하면 여기에 표시됩니다</p>
+        <p className="text-xs text-zinc-300 dark:text-zinc-600">&quot;글 생성&quot; 탭에서 글을 게시하면 여기에 표시됩니다</p>
       </div>
     );
   }
@@ -1051,56 +1167,155 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       </div>
 
       {/* 게시물 목록 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                <th className="text-left px-4 py-3 font-medium text-zinc-500">게시물</th>
-                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-20">❤️</th>
-                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-20">💬</th>
-                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-24">게시일</th>
-                <th className="text-center px-3 py-3 font-medium text-zinc-500 w-16">링크</th>
-              </tr>
-            </thead>
-            <tbody>
-              {posts.map((post) => (
-                <tr key={post.threadId} className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30">
-                  <td className="px-4 py-3">
-                    <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-line line-clamp-2 max-w-[360px]">{post.text}</p>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`font-semibold ${post.likes >= 30 ? "text-rose-500" : "text-zinc-500"}`}>
-                      {post.likes}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`font-semibold ${post.replies >= 20 ? "text-violet-500" : "text-zinc-500"}`}>
-                      {post.replies}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-center text-xs text-zinc-400">
-                    {new Date(post.publishedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    {post.permalink ? (
-                      <a
-                        href={post.permalink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                      >
-                        <Link2 size={14} />
+      <div className="space-y-3">
+        {posts.map((post) => {
+          const isExpanded = expandedPostId === post.threadId;
+          const unrepliedComments = comments.filter(c => !c.hasReplied && !postedCommentIds.has(c.id));
+          const pendingReplies = generatedReplies.filter(r => {
+            const comment = unrepliedComments.find(c => c.username === r.username);
+            return comment && !postedCommentIds.has(comment.id);
+          });
+
+          return (
+            <div key={post.threadId} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+              {/* 게시물 행 */}
+              <div className="flex items-start gap-3 p-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line line-clamp-2">{post.text}</p>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
+                    <span>❤️ <span className={`font-semibold ${post.likes >= 30 ? "text-rose-500" : ""}`}>{post.likes}</span></span>
+                    <span>💬 <span className={`font-semibold ${post.replies >= 20 ? "text-violet-500" : ""}`}>{post.replies}</span></span>
+                    <span>{new Date(post.publishedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}</span>
+                    {post.permalink && (
+                      <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+                        <Link2 size={12} />
                       </a>
-                    ) : (
-                      <span className="text-zinc-200 dark:text-zinc-700">—</span>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+                {post.replies > 0 && (
+                  <button
+                    onClick={() => fetchComments(post.threadId)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      isExpanded
+                        ? "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    <MessageCircle size={12} />
+                    댓글 관리
+                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                )}
+              </div>
+
+              {/* 댓글 패널 */}
+              {isExpanded && (
+                <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 p-4 space-y-4">
+                  {commentsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 size={18} className="animate-spin text-zinc-400" />
+                      <span className="ml-2 text-sm text-zinc-400">댓글 불러오는 중...</span>
+                    </div>
+                  ) : comments.length === 0 ? (
+                    <p className="text-sm text-zinc-400 text-center py-4">댓글이 없습니다</p>
+                  ) : (
+                    <>
+                      {/* 댓글 목록 */}
+                      <div className="space-y-2">
+                        {comments.map((comment) => {
+                          const isPosted = comment.hasReplied || postedCommentIds.has(comment.id);
+                          const reply = generatedReplies.find(r => r.username === comment.username);
+                          const isPosting = postingReplyId === comment.id;
+
+                          return (
+                            <div key={comment.id} className="space-y-2">
+                              {/* 원본 댓글 */}
+                              <div className={`rounded-xl p-3 ${isPosted ? "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800" : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700"}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">@{comment.username}</span>
+                                  <span className="text-[10px] text-zinc-400">
+                                    {new Date(comment.timestamp).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                  {isPosted && (
+                                    <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 ml-auto">
+                                      <CheckCircle2 size={10} />
+                                      답글 완료
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-zinc-600 dark:text-zinc-400">{comment.text}</p>
+                              </div>
+
+                              {/* AI 생성 대댓글 (편집 가능) */}
+                              {reply && !isPosted && (
+                                <div className="ml-6 flex items-start gap-2">
+                                  <CornerDownRight size={14} className="text-violet-400 mt-2 flex-shrink-0" />
+                                  <div className="flex-1 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400">AI 대댓글</span>
+                                      <Pencil size={10} className="text-violet-400" />
+                                    </div>
+                                    <textarea
+                                      value={editedReplies[reply.commentIndex] ?? reply.reply}
+                                      onChange={(e) => setEditedReplies(prev => ({ ...prev, [reply.commentIndex]: e.target.value }))}
+                                      className="w-full text-sm bg-transparent border-0 outline-none resize-none text-zinc-700 dark:text-zinc-300 min-h-[40px]"
+                                      rows={2}
+                                    />
+                                    <div className="flex justify-end mt-2">
+                                      <button
+                                        onClick={() => postReply(comment.id, reply.commentIndex)}
+                                        disabled={isPosting}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                      >
+                                        {isPosting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                        게시
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 하단 액션 버튼 */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                        {generatedReplies.length === 0 && unrepliedComments.length > 0 && (
+                          <button
+                            onClick={() => generateReplies(post.text)}
+                            disabled={generatingReplies}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors"
+                          >
+                            {generatingReplies ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                            AI 대댓글 생성 ({unrepliedComments.length}개)
+                          </button>
+                        )}
+                        {pendingReplies.length > 1 && (
+                          <button
+                            onClick={postAllReplies}
+                            disabled={!!postingReplyId}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                          >
+                            {postingReplyId ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                            전체 게시 ({pendingReplies.length}개)
+                          </button>
+                        )}
+                        {unrepliedComments.length === 0 && (
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 size={12} />
+                            모든 댓글에 답글 완료
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* 안내 */}
@@ -1135,6 +1350,9 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
   const [queueCount, setQueueCount] = useState<number | null>(null);
+  const [postsPerDay, setPostsPerDay] = useState<number | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const brand = initialBrand;
   const brandConfig = BRANDS[brand];
 
@@ -1153,7 +1371,29 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         setQueueCount(brandQueue.length);
       })
       .catch(() => setQueueCount(0));
+    fetch("/api/threads/settings")
+      .then(r => r.json())
+      .then(d => {
+        const s = d.settings?.[brand];
+        setPostsPerDay(s?.postsPerDay ?? (brand === "hongsungjo" ? 2 : 8));
+      })
+      .catch(() => setPostsPerDay(brand === "hongsungjo" ? 2 : 8));
   }, [brand]);
+
+  const updatePostsPerDay = async (value: number) => {
+    const clamped = Math.max(0, Math.min(12, value));
+    setPostsPerDay(clamped);
+    setSettingsSaving(true);
+    try {
+      await fetch("/api/threads/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand, postsPerDay: clamped }),
+      });
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-6">
@@ -1186,26 +1426,79 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           )}
         </div>
 
-        {/* 큐 상태 */}
-        {queueCount !== null && (() => {
-          const dailyTarget = brand === "hongsungjo" ? 2 : 8;
-          const isLow = queueCount < dailyTarget;
+        {/* 큐 상태 + 게시 설정 */}
+        {queueCount !== null && postsPerDay !== null && (() => {
+          const dailyTarget = postsPerDay;
+          const isLow = dailyTarget > 0 && queueCount < dailyTarget;
+          const isPaused = dailyTarget === 0;
           return (
-            <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
-              isLow
-                ? "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
-                : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
-            }`}>
-              <div className="flex items-center gap-2">
-                <CalendarClock size={14} className={isLow ? "text-amber-500" : "text-emerald-500"} />
-                <span className={isLow ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"}>
-                  자동 게시 대기: <b>{queueCount}개</b>
-                  {isLow && ` — 하루 ${dailyTarget}회 게시에 글이 부족합니다. 글을 더 등록해주세요.`}
-                </span>
+            <div className="space-y-2">
+              <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
+                isPaused
+                  ? "bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700"
+                  : isLow
+                    ? "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+                    : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
+              }`}>
+                <div className="flex items-center gap-2">
+                  <CalendarClock size={14} className={isPaused ? "text-zinc-400" : isLow ? "text-amber-500" : "text-emerald-500"} />
+                  <span className={isPaused ? "text-zinc-500 dark:text-zinc-400" : isLow ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"}>
+                    {isPaused ? (
+                      <>자동 게시 <b>일시정지</b> 중</>
+                    ) : (
+                      <>
+                        자동 게시 대기: <b>{queueCount}개</b>
+                        {isLow && ` — 하루 ${dailyTarget}회 게시에 글이 부족합니다.`}
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isPaused && (
+                    <span className={`text-xs font-medium ${isLow ? "text-amber-500" : "text-emerald-500"}`}>
+                      {dailyTarget > 0 && queueCount >= dailyTarget ? `${Math.floor(queueCount / dailyTarget)}일분` : "부족"}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    title="게시 설정"
+                  >
+                    <Settings size={14} className="text-zinc-400" />
+                  </button>
+                </div>
               </div>
-              <span className={`text-xs font-medium ${isLow ? "text-amber-500" : "text-emerald-500"}`}>
-                {queueCount >= dailyTarget ? `${Math.floor(queueCount / dailyTarget)}일분` : "부족"}
-              </span>
+
+              {showSettings && (
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">하루 자동 게시 횟수</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">0으로 설정하면 자동 게시가 일시정지됩니다</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updatePostsPerDay(postsPerDay - 1)}
+                        disabled={postsPerDay <= 0 || settingsSaving}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-10 text-center text-lg font-bold text-zinc-800 dark:text-zinc-100">
+                        {settingsSaving ? <Loader2 size={16} className="animate-spin mx-auto text-zinc-400" /> : postsPerDay}
+                      </span>
+                      <button
+                        onClick={() => updatePostsPerDay(postsPerDay + 1)}
+                        disabled={postsPerDay >= 12 || settingsSaving}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <span className="text-xs text-zinc-400 ml-1">회/일</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}

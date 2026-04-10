@@ -10,75 +10,15 @@
     },
     {
       "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "15 0 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "42 2 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "8 4 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "33 6 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "51 7 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "19 9 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "44 11 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
-      "schedule": "7 13 * * *"
+      "schedule": "15 * * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "27 0 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "53 2 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "21 4 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "46 6 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "3 8 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "38 9 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "14 12 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "29 13 * * *"
+      "schedule": "35 * * * *"
     },
     {
       "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "23 3 * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "41 9 * * *"
+      "schedule": "55 * * * *"
     },
     {
       "path": "/api/cron/threads-monitor",
