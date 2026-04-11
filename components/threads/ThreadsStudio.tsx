@@ -7,7 +7,7 @@ import {
   Heart, ChevronDown, ChevronUp, Loader2, Link2, Sparkles,
   X, Check, BarChart2, Lightbulb, MessageCircle, Zap, Send,
   ImagePlus, Film, Clock, CalendarClock, Pencil, Settings, Minus, Plus,
-  CornerDownRight, CheckCircle2, Menu,
+  CornerDownRight, CheckCircle2,
 } from "lucide-react";
 import {
   loadRefs, addRef, deleteRef,
@@ -1646,7 +1646,6 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
   const [postsPerDay, setPostsPerDay] = useState<number | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const brand = initialBrand;
   const brandConfig = BRANDS[brand];
 
@@ -1700,99 +1699,38 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
               <ThreadsLogo size={20} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100 truncate">{brandConfig.emoji} {brandConfig.name}</h1>
-                {metaConnected === true && (
-                  <span className="hidden sm:flex items-center gap-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">
-                    <Check size={10} /> 연결됨
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-zinc-400 mt-0.5 hidden sm:block">
+              <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100 truncate">Threads 스튜디오</h1>
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
                 트렌드 · 레퍼런스 · 글 생성 ·{" "}
                 <a href="/tools/threads-analytics" className="text-violet-500 hover:text-violet-600 transition-colors">대시보드</a>
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {/* 데스크톱 연결 상태 */}
-            <div className="hidden sm:flex items-center gap-2">
-              {metaConnected === false && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {metaConnected === false && (
+              <a
+                href={`/api/threads/auth/login?brand=${brand}`}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-3 sm:px-4 py-2 rounded-xl transition-colors"
+              >
+                <Send size={13} />
+                <span className="hidden sm:inline">{brandConfig.name}</span> 연결
+              </a>
+            )}
+            {metaConnected === true && (
+              <>
+                <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded-lg">
+                  <Check size={10} /> <span className="hidden sm:inline">게시 가능</span>
+                </span>
                 <a
                   href={`/api/threads/auth/login?brand=${brand}`}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
-                >
-                  <Send size={13} /> Threads 연결
-                </a>
-              )}
-              {metaConnected === true && (
-                <a
-                  href={`/api/threads/auth/login?brand=${brand}`}
-                  className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  className="hidden sm:flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
                 >
                   <RefreshCw size={10} /> 재인증
                 </a>
-              )}
-            </div>
-            {/* 모바일 햄버거 */}
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="sm:hidden p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-600 dark:text-zinc-400"
-            >
-              {menuOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
+              </>
+            )}
           </div>
         </div>
-
-        {/* 모바일 메뉴 패널 */}
-        {menuOpen && (
-          <div className="sm:hidden bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-700 p-4 space-y-4 shadow-lg">
-            {/* 브랜드 선택 */}
-            <div>
-              <p className="text-[10px] font-semibold text-zinc-400 uppercase mb-2">브랜드</p>
-              <div className="flex gap-2">
-                {BRAND_LIST.map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => { window.location.href = `/tools/threads?brand=${b.id}`; }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-medium transition-all ${
-                      brand === b.id
-                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-                    }`}
-                  >
-                    <span>{b.emoji}</span>
-                    <span>{b.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 연결 상태 */}
-            <div className="flex items-center justify-between">
-              {metaConnected === true ? (
-                <>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                    <Check size={12} /> Threads 게시 가능
-                  </span>
-                  <a href={`/api/threads/auth/login?brand=${brand}`} className="text-[11px] text-zinc-400 hover:text-zinc-600">재인증</a>
-                </>
-              ) : (
-                <a
-                  href={`/api/threads/auth/login?brand=${brand}`}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 text-white px-4 py-2 rounded-xl w-full justify-center"
-                >
-                  <Send size={13} /> Threads 연결
-                </a>
-              )}
-            </div>
-
-            {/* 링크 */}
-            <div className="flex items-center gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-              <a href="/tools/threads-analytics" className="text-xs text-violet-500 hover:text-violet-600">종합 대시보드</a>
-            </div>
-          </div>
-        )}
 
         {/* 큐 상태 + 게시 설정 */}
         {queueCount !== null && postsPerDay !== null && (() => {
@@ -1871,13 +1809,13 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           );
         })()}
 
-        {/* 브랜드 선택 (데스크톱만) */}
-        <div className="hidden sm:flex gap-2">
+        {/* 브랜드 선택 */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           {BRAND_LIST.map((b) => (
             <button
               key={b.id}
               onClick={() => { window.location.href = `/tools/threads?brand=${b.id}`; }}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
                 brand === b.id
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
                   : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
@@ -1899,7 +1837,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           ]).map(({ tab: t, label, icon: Icon, badge }) => (
             <button
               key={t}
-              onClick={() => { setTab(t); setMenuOpen(false); }}
+              onClick={() => setTab(t)}
               className={`flex-1 flex items-center justify-center gap-1.5 px-1 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
                 tab === t
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"

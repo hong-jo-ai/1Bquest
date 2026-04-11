@@ -16,6 +16,8 @@ import {
   Gem,
   PanelLeftClose,
   PanelLeft,
+  Menu,
+  X,
 } from "lucide-react";
 
 type AppPage =
@@ -131,19 +133,20 @@ export default function Sidebar() {
     Object.values(progress).reduce((a, b) => a + b, 0) / Object.keys(progress).length
   );
 
-  return (
-    <aside
-      className={`${
-        collapsed ? "w-16" : "w-64"
-      } flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 flex flex-col transition-all duration-200 h-screen sticky top-0`}
-    >
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // 페이지 이동 시 모바일 메뉴 닫기
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  const navContent = (isMobile: boolean) => (
+    <>
       {/* 로고 */}
-      <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+      <div className={`p-4 border-b border-zinc-100 dark:border-zinc-800 ${isMobile ? "flex items-center justify-between" : ""}`}>
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl p-2 flex-shrink-0">
             <Watch size={20} className="text-white" />
           </div>
-          {!collapsed && (
+          {(!collapsed || isMobile) && (
             <div>
               <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight leading-none">
                 PAULVICE
@@ -154,18 +157,19 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+        {isMobile && (
+          <button onClick={() => setMobileOpen(false)} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500">
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* 전체 진행률 */}
-      {!collapsed && (
+      {(!collapsed || isMobile) && (
         <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-              전체 진행률
-            </span>
-            <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">
-              {mounted ? `${totalProgress}%` : "—"}
-            </span>
+            <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">전체 진행률</span>
+            <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">{mounted ? `${totalProgress}%` : "—"}</span>
           </div>
           <div className="w-full h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
             <div
@@ -193,22 +197,18 @@ export default function Sidebar() {
                         ? "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300"
                         : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200"
                     }`}
-                    title={collapsed ? label : undefined}
+                    title={collapsed && !isMobile ? label : undefined}
                   >
                     <Icon
                       size={18}
-                      className={
-                        isActive
-                          ? "text-violet-600 dark:text-violet-400"
-                          : "text-zinc-400 dark:text-zinc-500"
-                      }
+                      className={isActive ? "text-violet-600 dark:text-violet-400" : "text-zinc-400 dark:text-zinc-500"}
                     />
-                    {!collapsed && <span>{label}</span>}
+                    {(!collapsed || isMobile) && <span>{label}</span>}
                   </Link>
                 </div>
 
                 {/* 진행도 게이지 */}
-                {!collapsed && (
+                {(!collapsed || isMobile) && (
                   <div className="flex items-center gap-1.5 px-3 pb-1 mt-0.5">
                     <button
                       onClick={() => cycleProgress(page)}
@@ -219,22 +219,12 @@ export default function Sidebar() {
                         <div
                           key={step}
                           className={`w-5 h-1.5 rounded-full transition-all ${
-                            prog >= step
-                              ? getProgressColor(prog)
-                              : "bg-zinc-100 dark:bg-zinc-800"
+                            prog >= step ? getProgressColor(prog) : "bg-zinc-100 dark:bg-zinc-800"
                           } group-hover/gauge:opacity-80`}
                         />
                       ))}
                     </button>
-                    <span
-                      className={`text-[10px] font-medium ml-1 ${
-                        prog === 100
-                          ? "text-emerald-500"
-                          : prog === 0
-                          ? "text-zinc-400"
-                          : "text-zinc-500 dark:text-zinc-400"
-                      }`}
-                    >
+                    <span className={`text-[10px] font-medium ml-1 ${prog === 100 ? "text-emerald-500" : prog === 0 ? "text-zinc-400" : "text-zinc-500 dark:text-zinc-400"}`}>
                       {mounted ? `${prog}%` : "—"}
                     </span>
                   </div>
@@ -245,17 +235,60 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* 접기/펼치기 */}
-      <div className="p-2 border-t border-zinc-100 dark:border-zinc-800">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-          title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
-        >
-          {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          {!collapsed && <span>접기</span>}
-        </button>
+      {/* 접기/펼치기 (데스크톱만) */}
+      {!isMobile && (
+        <div className="p-2 border-t border-zinc-100 dark:border-zinc-800">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            title={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          >
+            {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+            {!collapsed && <span>접기</span>}
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {/* 모바일 상단 바 */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 px-3 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 transition-colors"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg p-1.5">
+              <Watch size={14} className="text-white" />
+            </div>
+            <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100">PAULVICE</span>
+          </div>
+        </div>
       </div>
-    </aside>
+
+      {/* 모바일 오버레이 + 슬라이드 메뉴 */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-white dark:bg-zinc-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-200">
+            {navContent(true)}
+          </aside>
+        </div>
+      )}
+
+      {/* 데스크톱 사이드바 */}
+      <aside
+        className={`hidden md:flex ${
+          collapsed ? "w-16" : "w-64"
+        } flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 flex-col transition-all duration-200 h-screen sticky top-0`}
+      >
+        {navContent(false)}
+      </aside>
+    </>
   );
 }
