@@ -961,31 +961,75 @@ function InlinePostCard({ post, index, brand, onSave, onCopy, copiedId }: {
   onSave: (p: any) => void; onCopy: (text: string, id: string) => void; copiedId: string | null;
 }) {
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(post.text);
   const id = `inline_${index}`;
+
+  const handleSave = () => {
+    onSave({ ...post, text: editText });
+    setSaved(true);
+    setEditing(false);
+  };
+
   return (
     <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3">
       <div className="flex items-center gap-2 mb-2">
         <span className="w-5 h-5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 text-[10px] font-bold flex items-center justify-center">{index + 1}</span>
         <span className="text-[10px] font-semibold text-zinc-400 bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded-full">{post.style}</span>
       </div>
-      <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line mb-2">{post.text}</p>
-      {post.whyItWorks && <p className="text-[11px] text-zinc-400 mb-2">{post.whyItWorks}</p>}
+      {editing ? (
+        <textarea
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          className="w-full text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3 mb-2 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none text-zinc-700 dark:text-zinc-300 min-h-[80px]"
+          rows={4}
+        />
+      ) : (
+        <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line mb-2">{editText}</p>
+      )}
+      {post.whyItWorks && !editing && <p className="text-[11px] text-zinc-400 mb-2">{post.whyItWorks}</p>}
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => { onSave(post); setSaved(true); }}
-          disabled={saved}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
-            saved ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : "bg-violet-600 text-white hover:bg-violet-700"
-          }`}
-        >
-          {saved ? <><CheckCircle2 size={11} /> 저장됨</> : <><Heart size={11} /> 저장</>}
-        </button>
-        <button
-          onClick={() => onCopy(post.text, id)}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 transition-colors"
-        >
-          {copiedId === id ? <><Check size={11} /> 복사됨</> : <><Copy size={11} /> 복사</>}
-        </button>
+        {editing ? (
+          <>
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+            >
+              <Check size={11} /> 수정 완료 & 저장
+            </button>
+            <button
+              onClick={() => { setEditing(false); setEditText(post.text); }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 transition-colors"
+            >
+              취소
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setEditing(true)}
+              disabled={saved}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 transition-colors disabled:opacity-40"
+            >
+              <Pencil size={11} /> 수정
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saved}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                saved ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : "bg-violet-600 text-white hover:bg-violet-700"
+              }`}
+            >
+              {saved ? <><CheckCircle2 size={11} /> 저장됨</> : <><Heart size={11} /> 저장</>}
+            </button>
+            <button
+              onClick={() => onCopy(editText, id)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 transition-colors"
+            >
+              {copiedId === id ? <><Check size={11} /> 복사됨</> : <><Copy size={11} /> 복사</>}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
