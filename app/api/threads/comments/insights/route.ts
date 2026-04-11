@@ -69,20 +69,40 @@ ${postsWithComments}
   ]
 }
 
-themes는 3-5개, contentIdeas는 5-8개로 제안해주세요.`;
+themes는 3-5개, contentIdeas는 5개로 제안해주세요.
+각 항목은 간결하게 작성하세요. 긴 설명 불필요. JSON만 출력.`;
 
   try {
     const res = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 3000,
+      max_tokens: 6000,
       system,
       messages: [{ role: "user", content: prompt }],
     });
 
     const raw = (res.content[0] as { text: string }).text.trim();
-    const json = raw.startsWith("{")
-      ? JSON.parse(raw)
-      : JSON.parse(raw.replace(/^```json\n?/, "").replace(/\n?```$/, ""));
+    let cleaned = raw.startsWith("{") ? raw : raw.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+
+    // 잘린 JSON 복구 시도: 열린 괄호 수만큼 닫기
+    let json: any;
+    try {
+      json = JSON.parse(cleaned);
+    } catch {
+      // 잘린 문자열 정리: 마지막 유효한 위치까지 자르고 닫기
+      const lastBrace = cleaned.lastIndexOf("}");
+      const lastBracket = cleaned.lastIndexOf("]");
+      const cutPos = Math.max(lastBrace, lastBracket);
+      if (cutPos > 0) {
+        cleaned = cleaned.slice(0, cutPos + 1);
+        // 열린 괄호 카운트로 닫기
+        const opens = (cleaned.match(/[{[]/g) || []).length;
+        const closes = (cleaned.match(/[}\]]/g) || []).length;
+        for (let i = 0; i < opens - closes; i++) {
+          cleaned += cleaned.lastIndexOf("[") > cleaned.lastIndexOf("{") ? "]" : "}";
+        }
+      }
+      json = JSON.parse(cleaned);
+    }
 
     return Response.json({ insights: json });
   } catch (e: any) {
