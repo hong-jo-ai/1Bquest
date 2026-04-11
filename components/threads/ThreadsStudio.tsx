@@ -978,6 +978,8 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
   const [postedCommentIds, setPostedCommentIds] = useState<Set<string>>(new Set());
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
+  const [polishingId, setPolishingId] = useState<string | null>(null);
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1065,6 +1067,49 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     const text = editedReplies[commentIndex];
     if (!text?.trim()) return;
 
+    setPostingReplyId(commentId);
+    try {
+      const res = await fetch("/api/threads/comments/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId, text: text.trim(), brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "게시 실패");
+      setPostedCommentIds(prev => new Set([...prev, commentId]));
+    } catch (e: any) {
+      console.error("대댓글 게시 실패:", e);
+      alert(`게시 실패: ${e.message}`);
+    } finally {
+      setPostingReplyId(null);
+    }
+  };
+
+  // AI 다듬기
+  const polishDraft = async (commentId: string, draft: string, originalComment: string, postText: string) => {
+    if (!draft?.trim()) return;
+    setPolishingId(commentId);
+    setReplyError(null);
+    try {
+      const res = await fetch("/api/threads/comments/polish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft, originalComment, postText, brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "다듬기 실패");
+      setManualDrafts(prev => ({ ...prev, [commentId]: data.polished }));
+    } catch (e: any) {
+      setReplyError(`다듬기 실패: ${e.message}`);
+    } finally {
+      setPolishingId(null);
+    }
+  };
+
+  // 수동 대댓글 게시
+  const postManualReply = async (commentId: string) => {
+    const text = manualDrafts[commentId];
+    if (!text?.trim()) return;
     setPostingReplyId(commentId);
     try {
       const res = await fetch("/api/threads/comments/reply", {
@@ -1258,32 +1303,66 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                                 <p className="text-sm text-zinc-600 dark:text-zinc-400">{comment.text}</p>
                               </div>
 
-                              {/* AI 생성 대댓글 (편집 가능) */}
-                              {reply && !isPosted && (
+                              {/* 대댓글 영역 (AI 생성 또는 직접 작성) */}
+                              {!isPosted && (
                                 <div className="ml-6 flex items-start gap-2">
-                                  <CornerDownRight size={14} className="text-violet-400 mt-2 flex-shrink-0" />
-                                  <div className="flex-1 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl p-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400">AI 대댓글</span>
-                                      <Pencil size={10} className="text-violet-400" />
+                                  <CornerDownRight size={14} className={`${reply ? "text-violet-400" : "text-zinc-300 dark:text-zinc-600"} mt-2 flex-shrink-0`} />
+                                  {reply ? (
+                                    /* AI 생성 대댓글 */
+                                    <div className="flex-1 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl p-3">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400">AI 대댓글</span>
+                                        <Pencil size={10} className="text-violet-400" />
+                                      </div>
+                                      <textarea
+                                        value={editedReplies[reply.commentIndex] ?? reply.reply}
+                                        onChange={(e) => setEditedReplies(prev => ({ ...prev, [reply.commentIndex]: e.target.value }))}
+                                        className="w-full text-sm bg-transparent border-0 outline-none resize-none text-zinc-700 dark:text-zinc-300 min-h-[40px]"
+                                        rows={2}
+                                      />
+                                      <div className="flex justify-end mt-2">
+                                        <button
+                                          onClick={() => postReply(comment.id, reply.commentIndex)}
+                                          disabled={isPosting}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                        >
+                                          {isPosting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                          게시
+                                        </button>
+                                      </div>
                                     </div>
-                                    <textarea
-                                      value={editedReplies[reply.commentIndex] ?? reply.reply}
-                                      onChange={(e) => setEditedReplies(prev => ({ ...prev, [reply.commentIndex]: e.target.value }))}
-                                      className="w-full text-sm bg-transparent border-0 outline-none resize-none text-zinc-700 dark:text-zinc-300 min-h-[40px]"
-                                      rows={2}
-                                    />
-                                    <div className="flex justify-end mt-2">
-                                      <button
-                                        onClick={() => postReply(comment.id, reply.commentIndex)}
-                                        disabled={isPosting}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                                      >
-                                        {isPosting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                                        게시
-                                      </button>
+                                  ) : (
+                                    /* 직접 작성 + AI 다듬기 */
+                                    <div className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3">
+                                      <textarea
+                                        value={manualDrafts[comment.id] ?? ""}
+                                        onChange={(e) => setManualDrafts(prev => ({ ...prev, [comment.id]: e.target.value }))}
+                                        placeholder="직접 대댓글을 작성하세요..."
+                                        className="w-full text-sm bg-transparent border-0 outline-none resize-none text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-300 dark:placeholder:text-zinc-600 min-h-[40px]"
+                                        rows={2}
+                                      />
+                                      <div className="flex justify-end gap-2 mt-2">
+                                        {(manualDrafts[comment.id] ?? "").trim() && (
+                                          <button
+                                            onClick={() => polishDraft(comment.id, manualDrafts[comment.id], comment.text, post.text)}
+                                            disabled={polishingId === comment.id}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                                          >
+                                            {polishingId === comment.id ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                            AI 다듬기
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => postManualReply(comment.id)}
+                                          disabled={isPosting || !(manualDrafts[comment.id] ?? "").trim()}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                        >
+                                          {isPosting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                          게시
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
+                                  )}
                                 </div>
                               )}
                             </div>
