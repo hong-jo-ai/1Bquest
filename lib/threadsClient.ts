@@ -32,7 +32,7 @@ export function getThreadsAuthUrl(brand: string = "paulvice"): string {
   const params = new URLSearchParams({
     client_id:     appId,
     redirect_uri:  THREADS_REDIRECT,
-    scope:         "threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies",
+    scope:         "threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_insights",
     response_type: "code",
     state:         brand,
   });
