@@ -1,11 +1,5 @@
-import AppHeader from "@/components/AppHeader";
-import ThreadsAnalyticsDashboard from "@/components/threads/ThreadsAnalyticsDashboard";
+import { redirect } from "next/navigation";
 
-export default function ThreadsAnalyticsPage() {
-  return (
-    <>
-      <AppHeader refreshHref="/tools/threads-analytics" />
-      <ThreadsAnalyticsDashboard />
-    </>
-  );
+export default function ThreadsAnalyticsRedirect() {
+  redirect("/tools/threads?brand=dashboard");
 }

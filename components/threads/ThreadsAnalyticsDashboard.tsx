@@ -348,27 +348,36 @@ export default function ThreadsAnalyticsDashboard() {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 px-3 py-4 sm:p-6">
       <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
 
-        {/* 헤더 */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 종합 대시보드</h1>
-            <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">전체 브랜드 성과 분석 · 성장 추이 · 콘텐츠 전략</p>
+        {/* 브랜드 네비게이션 */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {[
+              { id: "dashboard", name: "대시보드", emoji: "📊" },
+              { id: "paulvice", name: "폴바이스", emoji: "⌚" },
+              { id: "harriot", name: "해리엇", emoji: "💎" },
+              { id: "hongsungjo", name: "홍성조", emoji: "🧑‍💼" },
+            ].map((b) => (
+              <a
+                key={b.id}
+                href={`/tools/threads?brand=${b.id}`}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
+                  b.id === "dashboard"
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
+                    : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
+                }`}
+              >
+                <span>{b.emoji}</span>
+                <span>{b.name}</span>
+              </a>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            <a
-              href="/tools/threads"
-              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-            >
-              스튜디오 &rarr;
-            </a>
-            <button
-              onClick={fetchData}
-              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-            >
-              <RefreshCw size={12} />
-              새로고침
-            </button>
-          </div>
+          <button
+            onClick={fetchData}
+            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors flex-shrink-0"
+          >
+            <RefreshCw size={12} />
+            새로고침
+          </button>
         </div>
 
         {/* 전체 요약 */}

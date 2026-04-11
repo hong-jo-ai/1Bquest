@@ -1699,11 +1699,8 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
               <ThreadsLogo size={20} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100 truncate">Threads 스튜디오</h1>
-              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
-                트렌드 · 레퍼런스 · 글 생성 ·{" "}
-                <a href="/tools/threads-analytics" className="text-violet-500 hover:text-violet-600 transition-colors">대시보드</a>
-              </p>
+              <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100 truncate">{brandConfig.emoji} {brandConfig.name}</h1>
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">트렌드 · 레퍼런스 · 글 생성 · 게시 관리</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1809,12 +1806,15 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           );
         })()}
 
-        {/* 브랜드 선택 */}
+        {/* 브랜드 네비게이션 */}
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          {BRAND_LIST.map((b) => (
-            <button
+          {[
+            { id: "dashboard", name: "대시보드", emoji: "📊" },
+            ...BRAND_LIST.map(b => ({ id: b.id, name: b.name, emoji: b.emoji })),
+          ].map((b) => (
+            <a
               key={b.id}
-              onClick={() => { window.location.href = `/tools/threads?brand=${b.id}`; }}
+              href={`/tools/threads?brand=${b.id}`}
               className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
                 brand === b.id
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
@@ -1823,7 +1823,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
             >
               <span>{b.emoji}</span>
               <span>{b.name}</span>
-            </button>
+            </a>
           ))}
         </div>
 
