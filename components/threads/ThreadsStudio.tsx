@@ -1432,9 +1432,19 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
             </a>
           )}
           {metaConnected === true && (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-xl">
-              <Check size={12} /> Threads 게시 가능
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-xl">
+                <Check size={12} /> Threads 게시 가능
+              </span>
+              <a
+                href={`/api/threads/auth/login?brand=${brand}`}
+                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="권한 업데이트를 위해 재인증"
+              >
+                <RefreshCw size={10} />
+                재인증
+              </a>
+            </div>
           )}
         </div>
 
