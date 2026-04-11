@@ -65,7 +65,7 @@ ${commentList}
 
   try {
     const res = await client.messages.create({
-      model: "claude-sonnet-4-5-20250514",
+      model: "claude-haiku-4-5",
       max_tokens: 2000,
       system,
       messages: [{ role: "user", content: prompt }],
