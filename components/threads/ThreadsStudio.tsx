@@ -18,7 +18,7 @@ import {
 } from "@/lib/threadsStorage";
 import { BRANDS, BRAND_LIST, type BrandId } from "@/lib/threadsBrands";
 
-type Tab = "trend" | "refs" | "generate" | "published";
+type Tab = "generate" | "published";
 
 const CATEGORIES: ThreadsCategory[] = ["패션", "시계", "주얼리", "패션잡화", "브랜드", "라이프스타일", "기타"];
 const STYLES: PostStyle[] = ["공감형", "정보형", "질문형", "스토리형", "선언형", "감성형"];
@@ -417,7 +417,7 @@ function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedC
   const [topic, setTopic]       = useState(initialTopic ?? "");
   const [style, setStyle]       = useState<PostStyle>(initialStyle ?? "공감형");
   const [customCtx, setCustomCtx] = useState("");
-  const [useRefs, setUseRefs]   = useState(false);
+  const [length, setLength]     = useState<"short" | "medium" | "long">("medium");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [view, setView]         = useState<"saved" | "new">("new");
@@ -442,17 +442,11 @@ function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedC
     if (!topic.trim()) return;
     setLoading(true); setError(null); setView("new");
 
-    let references: string[] = [];
-    if (useRefs) {
-      const refs = loadRefs(brand);
-      references = refs.slice(0, 5).map((r) => r.text);
-    }
-
     try {
       const res  = await fetch("/api/threads/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, style, count: 5, references, customContext: customCtx, brand }),
+        body: JSON.stringify({ topic, style, count: 5, customContext: customCtx, brand, length }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -533,12 +527,27 @@ function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedC
           />
         </div>
 
-        {/* 레퍼런스 활용 */}
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input type="checkbox" checked={useRefs} onChange={(e) => setUseRefs(e.target.checked)}
-            className="w-4 h-4 rounded accent-zinc-900" />
-          <span className="text-xs text-zinc-600 dark:text-zinc-400">수집한 레퍼런스 글 참고해서 생성 (최대 5개)</span>
-        </label>
+        {/* 글 길이 */}
+        <div>
+          <label className="text-xs text-zinc-500 mb-2 block">글 길이</label>
+          <div className="flex gap-2">
+            {([
+              { id: "short" as const, label: "짧게", desc: "1-2문장, 임팩트 있게" },
+              { id: "medium" as const, label: "보통", desc: "3-5문장, 핵심 전달" },
+              { id: "long" as const, label: "길게", desc: "6문장+, 스토리/정보 전달" },
+            ]).map((l) => (
+              <button key={l.id} onClick={() => setLength(l.id)}
+                className={`flex-1 text-left px-3 py-2.5 rounded-xl border text-xs transition-all ${
+                  length === l.id
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent"
+                    : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-zinc-400"
+                }`}>
+                <p className="font-semibold">{l.label}</p>
+                <p className="opacity-70 mt-0.5 leading-tight">{l.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="flex items-center gap-3">
           <button
@@ -1637,9 +1646,8 @@ function Section({ title, icon: Icon, children }: {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBrand?: BrandId }) {
-  const [tab, setTab]       = useState<Tab>("trend");
+  const [tab, setTab]       = useState<Tab>("generate");
   const [generateSeed, setGenerateSeed] = useState<{ topic: string; style: PostStyle } | null>(null);
-  const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
   const [queueCount, setQueueCount] = useState<number | null>(null);
@@ -1651,7 +1659,6 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
 
   useEffect(() => {
     migrateOldKeys();
-    setRefsCount(loadRefs(brand).length);
     setPostsCount(loadPosts(brand).length);
     fetch(`/api/threads/status?brand=${brand}`)
       .then(r => r.json())
@@ -1830,22 +1837,20 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         {/* 탭 */}
         <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 sm:p-1.5 rounded-2xl">
           {([
-            { tab: "trend" as Tab, label: "트렌드", icon: TrendingUp, badge: 0 },
-            { tab: "refs" as Tab, label: "레퍼런스", icon: BookmarkPlus, badge: refsCount },
             { tab: "generate" as Tab, label: "글 생성", icon: PenLine, badge: postsCount },
             { tab: "published" as Tab, label: "게시 관리", icon: BarChart2, badge: 0 },
           ]).map(({ tab: t, label, icon: Icon, badge }) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-1 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 tab === t
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
                   : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
               }`}
             >
               <Icon size={14} />
-              <span className="hidden sm:inline">{label}</span>
+              {label}
               {!!badge && (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === t ? "bg-white/20 dark:bg-zinc-900/30" : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"}`}>
                   {badge}
@@ -1856,8 +1861,6 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         </div>
 
         {/* 탭 콘텐츠 */}
-        {tab === "trend"     && <TrendTab brand={brand} />}
-        {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} brand={brand} />}
         {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} initialTopic={generateSeed?.topic} initialStyle={generateSeed?.style} onSeedConsumed={() => setGenerateSeed(null)} />}
         {tab === "published" && <PublishedTab brand={brand} onGenerateFromIdea={(topic, style) => { setGenerateSeed({ topic, style }); setTab("generate"); }} />}
 
