@@ -59,9 +59,9 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
   const total = chartData.reduce((s, c) => s + c.revenue, 0);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-100">채널별 매출 비교</h2>
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-4 sm:p-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-5">
+        <h2 className="text-base sm:text-lg font-semibold text-zinc-800 dark:text-zinc-100">채널별 매출 비교</h2>
         <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
           {PERIOD_LABELS.map(({ id, label }) => (
             <button
@@ -80,17 +80,17 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
       </div>
 
       {/* 채널별 비율 요약 */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-5">
         {chartData.map((ch) => {
           const pct = total > 0 ? ((ch.revenue / total) * 100).toFixed(1) : "0";
           return (
-            <div key={ch.name} className="rounded-xl p-3 bg-zinc-50 dark:bg-zinc-800/50">
+            <div key={ch.name} className="rounded-xl p-2.5 sm:p-3 bg-zinc-50 dark:bg-zinc-800/50">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ch.color }} />
-                <span className="text-xs text-zinc-500">{ch.name}</span>
+                <span className="text-[11px] sm:text-xs text-zinc-500">{ch.name}</span>
               </div>
-              <p className="text-base font-bold text-zinc-800 dark:text-zinc-100">{fmt(ch.revenue)}</p>
-              <p className="text-xs text-zinc-400">{pct}% · {ch.orders}건</p>
+              <p className="text-sm sm:text-base font-bold text-zinc-800 dark:text-zinc-100">{fmt(ch.revenue)}</p>
+              <p className="text-[10px] sm:text-xs text-zinc-400">{pct}% · {ch.orders}건</p>
             </div>
           );
         })}

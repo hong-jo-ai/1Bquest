@@ -20,18 +20,18 @@ export default function SalesSummary({ data }: { data: SalesSummaryData }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
       {cards.map(({ label, period, color, icon: Icon }) => {
         const d = data[period];
         if (!d) return null;
         return (
-          <div key={period} className={`bg-gradient-to-br ${color} rounded-2xl p-5 text-white shadow-lg`}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium opacity-80">{label}</span>
-              <div className="bg-white/20 rounded-xl p-1.5"><Icon size={15} /></div>
+          <div key={period} className={`bg-gradient-to-br ${color} rounded-2xl p-3.5 sm:p-5 text-white shadow-lg`}>
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-xs font-medium opacity-80">{label}</span>
+              <div className="bg-white/20 rounded-xl p-1 sm:p-1.5"><Icon size={14} /></div>
             </div>
-            <div className="text-2xl font-bold mb-2 tracking-tight leading-none">{fmt(d.revenue)}</div>
-            <div className="flex gap-3 text-xs opacity-80">
+            <div className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2 tracking-tight leading-none">{fmt(d.revenue)}</div>
+            <div className="flex gap-2 sm:gap-3 text-[10px] sm:text-xs opacity-80">
               <span>주문 {d.orders}건</span>
               <span>·</span>
               <span>평균 {fmt(d.avgOrder)}</span>

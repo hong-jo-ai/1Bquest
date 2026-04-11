@@ -15,7 +15,7 @@ export default function ChannelTabs({
   wconceptHasUpload = false, musinsaHasUpload = false,
 }: Props) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
       {CHANNELS.map((ch) => {
         const isActive = activeChannel === ch.id;
         const hasUpload =
@@ -29,7 +29,7 @@ export default function ChannelTabs({
             key={ch.id}
             onClick={() => onChange(ch.id)}
             className={`
-              flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all
+              flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0
               ${isActive
                 ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100 ring-2"
                 : "text-zinc-500 hover:bg-white/60 dark:hover:bg-zinc-800/60"}
