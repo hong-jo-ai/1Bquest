@@ -8,7 +8,7 @@ interface Props {
 
 export default function AppHeader({ isAuthenticated = false, refreshHref }: Props) {
   return (
-    <header className="bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 z-10">
+    <header className="hidden md:block bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 z-10">
       <div className="px-6 py-2.5 flex items-center justify-end gap-2">
         {isAuthenticated ? (
           <a
