@@ -408,11 +408,14 @@ function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; b
 
 // ── 글 생성 탭 ────────────────────────────────────────────────────────────
 
-function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => void; brand: BrandId }) {
+function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedConsumed }: {
+  onPostsChange: (n: number) => void; brand: BrandId;
+  initialTopic?: string; initialStyle?: PostStyle; onSeedConsumed?: () => void;
+}) {
   const brandConfig = BRANDS[brand];
   const [posts, setPosts]       = useState<GeneratedPost[]>([]);
-  const [topic, setTopic]       = useState("");
-  const [style, setStyle]       = useState<PostStyle>("공감형");
+  const [topic, setTopic]       = useState(initialTopic ?? "");
+  const [style, setStyle]       = useState<PostStyle>(initialStyle ?? "공감형");
   const [customCtx, setCustomCtx] = useState("");
   const [useRefs, setUseRefs]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -426,6 +429,14 @@ function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => v
   }, [onPostsChange, brand]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    if (initialTopic) {
+      setTopic(initialTopic);
+      if (initialStyle) setStyle(initialStyle);
+      onSeedConsumed?.();
+    }
+  }, [initialTopic, initialStyle]);
 
   const generate = async () => {
     if (!topic.trim()) return;
@@ -962,7 +973,7 @@ interface GeneratedReply {
   reply: string;
 }
 
-function PublishedTab({ brand }: { brand: BrandId }) {
+function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerateFromIdea?: (topic: string, style: PostStyle) => void }) {
   const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1382,6 +1393,15 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                           {idea.hook && <span className="text-[10px] text-zinc-400 italic">&ldquo;{idea.hook}&rdquo;</span>}
                         </div>
                       </div>
+                      {onGenerateFromIdea && (
+                        <button
+                          onClick={() => onGenerateFromIdea(idea.topic, STYLES.includes(idea.style) ? idea.style : "공감형")}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors flex-shrink-0"
+                        >
+                          <PenLine size={11} />
+                          글 생성
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1620,6 +1640,7 @@ function Section({ title, icon: Icon, children }: {
 
 export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBrand?: BrandId }) {
   const [tab, setTab]       = useState<Tab>("trend");
+  const [generateSeed, setGenerateSeed] = useState<{ topic: string; style: PostStyle } | null>(null);
   const [refsCount, setRefsCount]   = useState(0);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
@@ -1819,8 +1840,8 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         {/* 탭 콘텐츠 */}
         {tab === "trend"     && <TrendTab brand={brand} />}
         {tab === "refs"      && <RefsTab  onRefsChange={setRefsCount} brand={brand} />}
-        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} />}
-        {tab === "published" && <PublishedTab brand={brand} />}
+        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} initialTopic={generateSeed?.topic} initialStyle={generateSeed?.style} onSeedConsumed={() => setGenerateSeed(null)} />}
+        {tab === "published" && <PublishedTab brand={brand} onGenerateFromIdea={(topic, style) => { setGenerateSeed({ topic, style }); setTab("generate"); }} />}
 
       </div>
     </div>
