@@ -977,6 +977,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [generatingReplies, setGeneratingReplies] = useState(false);
   const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
   const [postedCommentIds, setPostedCommentIds] = useState<Set<string>>(new Set());
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1007,6 +1008,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     setGeneratedReplies([]);
     setEditedReplies({});
     setCommentsLoading(true);
+    setReplyError(null);
     try {
       const res = await fetch(`/api/threads/comments?threadId=${threadId}&brand=${brand}`);
       const data = await res.json();
@@ -1014,6 +1016,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       setComments(data.comments ?? []);
     } catch (e: any) {
       console.error("댓글 조회 실패:", e);
+      setReplyError(`댓글 조회 실패: ${e.message}`);
     } finally {
       setCommentsLoading(false);
     }
@@ -1021,16 +1024,22 @@ function PublishedTab({ brand }: { brand: BrandId }) {
 
   // AI 대댓글 생성
   const generateReplies = async (postText: string) => {
-    const unrepliedComments = comments.filter(c => !c.hasReplied && !postedCommentIds.has(c.id));
-    if (unrepliedComments.length === 0) return;
+    // hasReplied가 아닌 댓글 대상, 없으면 전체 댓글로 시도
+    let targetComments = comments.filter(c => !c.hasReplied && !postedCommentIds.has(c.id));
+    if (targetComments.length === 0) targetComments = comments.filter(c => !postedCommentIds.has(c.id));
+    if (targetComments.length === 0) {
+      setReplyError("대댓글을 작성할 댓글이 없습니다");
+      return;
+    }
 
     setGeneratingReplies(true);
+    setReplyError(null);
     try {
       const res = await fetch("/api/threads/comments/generate-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          comments: unrepliedComments.map(c => ({ username: c.username, text: c.text })),
+          comments: targetComments.map(c => ({ username: c.username, text: c.text })),
           postText,
           brand,
         }),
@@ -1038,7 +1047,6 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "생성 실패");
       setGeneratedReplies(data.replies ?? []);
-      // 편집용 초기값 세팅
       const edits: Record<number, string> = {};
       for (const r of data.replies ?? []) {
         edits[r.commentIndex] = r.reply;
@@ -1046,6 +1054,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       setEditedReplies(edits);
     } catch (e: any) {
       console.error("대댓글 생성 실패:", e);
+      setReplyError(`대댓글 생성 실패: ${e.message}`);
     } finally {
       setGeneratingReplies(false);
     }
@@ -1283,15 +1292,19 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                       </div>
 
                       {/* 하단 액션 버튼 */}
-                      <div className="flex items-center gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
-                        {generatedReplies.length === 0 && unrepliedComments.length > 0 && (
+                      <div className="flex flex-col gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                        {replyError && (
+                          <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 rounded-lg px-3 py-2">{replyError}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                        {generatedReplies.length === 0 && comments.filter(c => !postedCommentIds.has(c.id)).length > 0 && (
                           <button
                             onClick={() => generateReplies(post.text)}
                             disabled={generatingReplies}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors"
                           >
                             {generatingReplies ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                            AI 대댓글 생성 ({unrepliedComments.length}개)
+                            AI 대댓글 생성 ({comments.filter(c => !postedCommentIds.has(c.id)).length}개)
                           </button>
                         )}
                         {pendingReplies.length > 1 && (
@@ -1304,12 +1317,13 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                             전체 게시 ({pendingReplies.length}개)
                           </button>
                         )}
-                        {unrepliedComments.length === 0 && (
+                        {comments.length > 0 && comments.filter(c => !postedCommentIds.has(c.id)).length === 0 && (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                             <CheckCircle2 size={12} />
                             모든 댓글에 답글 완료
                           </p>
                         )}
+                        </div>
                       </div>
                     </>
                   )}
