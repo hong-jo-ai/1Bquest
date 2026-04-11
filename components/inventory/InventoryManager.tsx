@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Package, AlertTriangle, XCircle, TrendingDown,
   Search, SlidersHorizontal, RefreshCw, Link, Plus, EyeOff,
+  CloudUpload, Check, Loader2, ChevronDown, ChevronUp, X,
 } from "lucide-react";
 import {
   buildInventoryProducts,
@@ -61,6 +62,12 @@ export default function InventoryManager() {
   const [loading, setLoading]           = useState(true);
   const [isConnected, setIsConnected]   = useState(false);
   const [hiddenCount, setHiddenCount]   = useState(0);
+
+  // 동기화 상태
+  const [syncing, setSyncing]                 = useState(false);
+  const [syncResult, setSyncResult]           = useState<{ synced: number; failed: number; results: any[] } | null>(null);
+  const [lastSyncTime, setLastSyncTime]       = useState<string | null>(null);
+  const [showSyncDetail, setShowSyncDetail]   = useState(false);
 
   // Cafe24 API 결과는 state에 캐싱 — 30초 폴링 때 재호출 안 함
   const cafe24Cache = useState<{ list: ProductInfo[]; sales: { sku: string; sold: number }[] }>({
@@ -131,6 +138,38 @@ export default function InventoryManager() {
   }, [c24, rebuildProducts]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  // 마지막 동기화 시간 로드
+  useEffect(() => {
+    fetch("/api/cafe24/inventory-sync")
+      .then(r => r.json())
+      .then(d => {
+        const logs = d.logs ?? [];
+        if (logs.length > 0) setLastSyncTime(logs[0].timestamp);
+      })
+      .catch(() => {});
+  }, []);
+
+  // 수동 동기화 실행
+  const handleSync = useCallback(async (skus?: string[]) => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/cafe24/inventory-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "동기화 실패");
+      setSyncResult({ synced: data.synced, failed: data.failed, results: data.results ?? [] });
+      setLastSyncTime(new Date().toISOString());
+    } catch (e: any) {
+      setSyncResult({ synced: 0, failed: 0, results: [{ sku: "-", quantity: 0, ok: false, error: e.message }] });
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
 
   // 30초마다 자동 동기화
   useEffect(() => {
@@ -311,6 +350,86 @@ export default function InventoryManager() {
           </div>
         ))}
       </div>
+
+      {/* 카페24 동기화 */}
+      {isConnected && (
+        <div className="mb-6 space-y-2">
+          <div className="flex items-center justify-between bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <CloudUpload size={16} className="text-blue-500" />
+              <div>
+                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">카페24 재고 동기화</p>
+                <p className="text-[11px] text-zinc-400">
+                  {lastSyncTime
+                    ? `마지막 동기화: ${new Date(lastSyncTime).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                    : "아직 동기화한 적 없음"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleSync()}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {syncing ? <Loader2 size={13} className="animate-spin" /> : <CloudUpload size={13} />}
+              {syncing ? "동기화 중..." : "지금 동기화"}
+            </button>
+          </div>
+
+          {/* 동기화 결과 */}
+          {syncResult && (
+            <div className={`rounded-xl border px-4 py-3 ${
+              syncResult.failed === 0
+                ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800"
+                : "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {syncResult.failed === 0 ? (
+                    <Check size={14} className="text-emerald-500" />
+                  ) : (
+                    <AlertTriangle size={14} className="text-amber-500" />
+                  )}
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    성공 {syncResult.synced}개
+                    {syncResult.failed > 0 && <span className="text-amber-600"> · 실패 {syncResult.failed}개</span>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {syncResult.results.length > 0 && (
+                    <button
+                      onClick={() => setShowSyncDetail(!showSyncDetail)}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-600 flex items-center gap-0.5"
+                    >
+                      상세 {showSyncDetail ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                  )}
+                  <button onClick={() => setSyncResult(null)} className="text-zinc-300 hover:text-zinc-500">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+              {showSyncDetail && (
+                <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-700 space-y-1 max-h-40 overflow-y-auto">
+                  {syncResult.results.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-[11px]">
+                      <span className="text-zinc-600 dark:text-zinc-400 truncate max-w-[200px]">{r.sku}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400">수량: {r.quantity}</span>
+                        {r.ok ? (
+                          <span className="text-emerald-500 font-medium">성공</span>
+                        ) : (
+                          <span className="text-red-500 font-medium">{r.error}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 카테고리 탭 */}
       {categories.length > 1 && (
