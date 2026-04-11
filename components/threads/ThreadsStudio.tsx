@@ -63,13 +63,13 @@ function TabBtn({ tab, active, label, icon: Icon, badge, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+      className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
         active
           ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
           : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
       }`}
     >
-      <Icon size={15} />
+      <Icon size={14} />
       {label}
       {!!badge && (
         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-white/20 dark:bg-zinc-900/30" : "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"}`}>
@@ -1249,16 +1249,16 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
   return (
     <div className="space-y-4">
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {[
           { label: "게시 글", value: posts.length, suffix: "개", color: "text-blue-500" },
           { label: "총 좋아요", value: totalLikes, suffix: "", color: "text-rose-500" },
           { label: "총 댓글", value: totalReplies, suffix: "", color: "text-violet-500" },
           { label: "평균 좋아요", value: avgLikes, suffix: "", color: "text-emerald-500" },
         ].map(({ label, value, suffix, color }) => (
-          <div key={label} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400 mb-1">{label}</p>
-            <p className={`text-xl font-bold ${color}`}>
+          <div key={label} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-4">
+            <p className="text-[11px] sm:text-xs text-zinc-400 mb-1">{label}</p>
+            <p className={`text-lg sm:text-xl font-bold ${color}`}>
               {typeof value === "number" ? value.toLocaleString("ko-KR") : value}
               {suffix && <span className="text-sm font-normal text-zinc-400 ml-0.5">{suffix}</span>}
             </p>
@@ -1354,7 +1354,7 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
           {insights.sentiments && (
             <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
               <p className="text-xs font-semibold text-zinc-500 mb-2">반응 패턴</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] sm:text-xs">
                 {insights.sentiments.positive && (
                   <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-2.5">
                     <p className="font-semibold text-emerald-600 dark:text-emerald-400 mb-1">긍정</p>
@@ -1384,19 +1384,17 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
               <div className="space-y-3">
                 {insights.contentIdeas.map((idea: any, i: number) => (
                   <div key={i} className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{idea.topic}</p>
-                        <p className="text-[11px] text-zinc-400 mt-1">{idea.why}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full">{idea.style}</span>
-                          {idea.hook && <span className="text-[10px] text-zinc-400 italic">&ldquo;{idea.hook}&rdquo;</span>}
-                        </div>
+                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{idea.topic}</p>
+                    <p className="text-[11px] text-zinc-400 mt-1">{idea.why}</p>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full">{idea.style}</span>
+                        {idea.hook && <span className="text-[10px] text-zinc-400 italic line-clamp-1">&ldquo;{idea.hook}&rdquo;</span>}
                       </div>
                       {onGenerateFromIdea && (
                         <button
                           onClick={() => onGenerateFromIdea(idea.topic, STYLES.includes(idea.style) ? idea.style : "공감형")}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors flex-shrink-0"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors flex-shrink-0"
                         >
                           <PenLine size={11} />
                           글 생성
@@ -1494,7 +1492,7 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
 
                               {/* 대댓글 영역 (AI 생성 또는 직접 작성) */}
                               {!isPosted && (
-                                <div className="ml-6 flex items-start gap-2">
+                                <div className="ml-3 sm:ml-6 flex items-start gap-2">
                                   <CornerDownRight size={14} className={`${reply ? "text-violet-400" : "text-zinc-300 dark:text-zinc-600"} mt-2 flex-shrink-0`} />
                                   {reply ? (
                                     /* AI 생성 대댓글 */
@@ -1691,47 +1689,49 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 px-3 py-4 sm:p-6">
+      <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
 
         {/* 헤더 */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-zinc-900 dark:bg-zinc-100 rounded-xl flex items-center justify-center text-white dark:text-zinc-900">
-              <ThreadsLogo size={22} />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-zinc-900 dark:bg-zinc-100 rounded-xl flex items-center justify-center text-white dark:text-zinc-900 flex-shrink-0">
+              <ThreadsLogo size={20} />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 콘텐츠 스튜디오</h1>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                바이럴 트렌드 분석 · 레퍼런스 수집 · 글 생성 ·{" "}
-                <a href="/tools/threads-analytics" className="text-violet-500 hover:text-violet-600 transition-colors">종합 대시보드</a>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100 truncate">Threads 콘텐츠 스튜디오</h1>
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
+                트렌드 · 레퍼런스 · 글 생성 ·{" "}
+                <a href="/tools/threads-analytics" className="text-violet-500 hover:text-violet-600 transition-colors">대시보드</a>
               </p>
             </div>
           </div>
-          {metaConnected === false && (
-            <a
-              href={`/api/threads/auth/login?brand=${brand}`}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
-            >
-              <Send size={13} />
-              {brandConfig.name} Threads 연결
-            </a>
-          )}
-          {metaConnected === true && (
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-xl">
-                <Check size={12} /> Threads 게시 가능
-              </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {metaConnected === false && (
               <a
                 href={`/api/threads/auth/login?brand=${brand}`}
-                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                title="권한 업데이트를 위해 재인증"
+                className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-4 py-2 rounded-xl transition-colors"
               >
-                <RefreshCw size={10} />
-                재인증
+                <Send size={13} />
+                <span className="hidden sm:inline">{brandConfig.name}</span> Threads 연결
               </a>
-            </div>
-          )}
+            )}
+            {metaConnected === true && (
+              <>
+                <span className="flex items-center gap-1.5 text-[11px] sm:text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1.5 rounded-xl">
+                  <Check size={12} /> 게시 가능
+                </span>
+                <a
+                  href={`/api/threads/auth/login?brand=${brand}`}
+                  className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  title="권한 업데이트를 위해 재인증"
+                >
+                  <RefreshCw size={10} />
+                  재인증
+                </a>
+              </>
+            )}
+          </div>
         </div>
 
         {/* 큐 상태 + 게시 설정 */}
@@ -1741,7 +1741,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
           const isPaused = dailyTarget === 0;
           return (
             <div className="space-y-2">
-              <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${
+              <div className={`flex items-center justify-between rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm ${
                 isPaused
                   ? "bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700"
                   : isLow
@@ -1812,12 +1812,12 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         })()}
 
         {/* 브랜드 선택 */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           {BRAND_LIST.map((b) => (
             <button
               key={b.id}
               onClick={() => { window.location.href = `/tools/threads?brand=${b.id}`; }}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
                 brand === b.id
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
                   : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
@@ -1830,11 +1830,11 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         </div>
 
         {/* 탭 */}
-        <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-2xl overflow-x-auto">
-          <TabBtn tab="trend"     active={tab === "trend"}     label="트렌드 분석"  icon={TrendingUp}   onClick={() => setTab("trend")} />
-          <TabBtn tab="refs"      active={tab === "refs"}      label="레퍼런스 수집" icon={BookmarkPlus} badge={refsCount}   onClick={() => setTab("refs")} />
-          <TabBtn tab="generate"  active={tab === "generate"}  label="글 생성"      icon={PenLine}      badge={postsCount}  onClick={() => setTab("generate")} />
-          <TabBtn tab="published" active={tab === "published"} label="게시 관리"    icon={BarChart2}    onClick={() => setTab("published")} />
+        <div className="flex gap-1 sm:gap-2 bg-zinc-100 dark:bg-zinc-800 p-1 sm:p-1.5 rounded-2xl overflow-x-auto">
+          <TabBtn tab="trend"     active={tab === "trend"}     label="트렌드"    icon={TrendingUp}   onClick={() => setTab("trend")} />
+          <TabBtn tab="refs"      active={tab === "refs"}      label="레퍼런스"  icon={BookmarkPlus} badge={refsCount}   onClick={() => setTab("refs")} />
+          <TabBtn tab="generate"  active={tab === "generate"}  label="글 생성"   icon={PenLine}      badge={postsCount}  onClick={() => setTab("generate")} />
+          <TabBtn tab="published" active={tab === "published"} label="게시 관리" icon={BarChart2}    onClick={() => setTab("published")} />
         </div>
 
         {/* 탭 콘텐츠 */}

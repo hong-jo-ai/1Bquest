@@ -86,14 +86,14 @@ function StatCard({ label, value, suffix, icon: Icon, color, sub }: {
   icon: React.ElementType; color: string; sub?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}>
-          <Icon size={14} className="text-white" />
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-4">
+      <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon size={13} className="text-white" />
         </div>
-        <span className="text-xs text-zinc-400">{label}</span>
+        <span className="text-[11px] sm:text-xs text-zinc-400">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
+      <p className="text-xl sm:text-2xl font-bold text-zinc-800 dark:text-zinc-100">
         {typeof value === "number" ? value.toLocaleString("ko-KR") : value}
         {suffix && <span className="text-sm font-normal text-zinc-400 ml-1">{suffix}</span>}
       </p>
@@ -345,21 +345,21 @@ export default function ThreadsAnalyticsDashboard() {
     }));
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 px-3 py-4 sm:p-6">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
 
         {/* 헤더 */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 종합 대시보드</h1>
-            <p className="text-xs text-zinc-400 mt-0.5">전체 브랜드 성과 분석 · 성장 추이 · 콘텐츠 전략</p>
+            <h1 className="text-lg sm:text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 종합 대시보드</h1>
+            <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">전체 브랜드 성과 분석 · 성장 추이 · 콘텐츠 전략</p>
           </div>
           <div className="flex items-center gap-3">
             <a
               href="/tools/threads"
               className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
             >
-              콘텐츠 스튜디오 &rarr;
+              스튜디오 &rarr;
             </a>
             <button
               onClick={fetchData}
@@ -372,7 +372,7 @@ export default function ThreadsAnalyticsDashboard() {
         </div>
 
         {/* 전체 요약 */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <StatCard
             label="총 게시물" value={grandTotalPosts} suffix="개"
             icon={BarChart2} color="bg-blue-500"
@@ -397,9 +397,9 @@ export default function ThreadsAnalyticsDashboard() {
 
           {/* 브랜드별 참여 비율 */}
           {engagementPieData.length > 0 && (
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5">
-              <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-4">브랜드별 참여 비율</h3>
-              <ResponsiveContainer width="100%" height={200}>
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-5">
+              <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4">브랜드별 참여 비율</h3>
+              <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie
                     data={engagementPieData}
@@ -424,22 +424,22 @@ export default function ThreadsAnalyticsDashboard() {
         </div>
 
         {/* 브랜드별 카드 */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {brands.map(b => <BrandCompareCard key={b.brand} brand={b} />)}
         </div>
 
         {/* 일별 좋아요 추이 */}
         {combinedDaily.length > 0 && (
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-4 flex items-center gap-2">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4 flex items-center gap-2">
               <TrendingUp size={14} className="text-emerald-500" />
-              일별 좋아요 추이 (최근 30일)
+              일별 좋아요 추이 (30일)
             </h3>
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={combinedDaily}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#a1a1aa" />
-                <YAxis tick={{ fontSize: 11 }} stroke="#a1a1aa" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#a1a1aa" interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10 }} stroke="#a1a1aa" width={35} />
                 <Tooltip />
                 {connected.map(b => (
                   <Area
@@ -462,13 +462,13 @@ export default function ThreadsAnalyticsDashboard() {
 
         {/* 브랜드 비교 차트 */}
         {brandCompareData.length > 0 && (
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-4">브랜드 비교</h3>
-            <ResponsiveContainer width="100%" height={250}>
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4">브랜드 비교</h3>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={brandCompareData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-                <YAxis tick={{ fontSize: 11 }} stroke="#a1a1aa" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#a1a1aa" />
+                <YAxis tick={{ fontSize: 10 }} stroke="#a1a1aa" width={35} />
                 <Tooltip />
                 <Legend
                   formatter={(value) => <span className="text-xs text-zinc-600 dark:text-zinc-400">{value}</span>}
@@ -481,15 +481,15 @@ export default function ThreadsAnalyticsDashboard() {
         )}
 
         {/* 시간대별 성과 */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-4 flex items-center gap-2">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-5">
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4 flex items-center gap-2">
             <Clock size={14} className="text-blue-500" />
             시간대별 평균 좋아요
           </h3>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={180}>
             <BarChart data={hourlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="hour" tick={{ fontSize: 10 }} stroke="#a1a1aa" interval={2} />
+              <XAxis dataKey="hour" tick={{ fontSize: 9 }} stroke="#a1a1aa" interval={3} />
               <YAxis tick={{ fontSize: 11 }} stroke="#a1a1aa" />
               <Tooltip />
               <Bar dataKey="평균좋아요" fill="#3b82f6" radius={[3, 3, 0, 0]} />
