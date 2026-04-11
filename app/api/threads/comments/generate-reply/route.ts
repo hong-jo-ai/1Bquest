@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest } from "next/server";
 import { BRANDS, type BrandId } from "@/lib/threadsBrands";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -24,6 +26,14 @@ export async function POST(req: NextRequest) {
   const brandConfig = BRANDS[brand as BrandId] ?? BRANDS.paulvice;
   const client = getClient();
 
+  // 대댓글 가이드 파일 읽기
+  let replyGuide = "";
+  try {
+    replyGuide = readFileSync(join(process.cwd(), "config/threads-reply-guide.md"), "utf-8");
+  } catch {
+    replyGuide = "";
+  }
+
   const commentList = comments
     .map((c: { username: string; text: string }, i: number) => `[${i + 1}] @${c.username}: ${c.text}`)
     .join("\n");
@@ -32,7 +42,7 @@ export async function POST(req: NextRequest) {
 
 당신은 이 브랜드의 Threads 계정에서 팔로워들의 댓글에 대댓글을 작성하는 역할입니다.
 
-대댓글 작성 규칙:
+${replyGuide || `대댓글 작성 규칙:
 - 진심 어린 반응 (기계적 답변 절대 금지)
 - 댓글 내용에 맞는 구체적인 답변 (복붙 느낌 X)
 - 브랜드 톤 유지하되 너무 격식적이지 않게
@@ -41,7 +51,7 @@ export async function POST(req: NextRequest) {
 - 칭찬/공감에는 감사 + 추가 대화 유도
 - 이모지 0-1개 (과하지 않게)
 - 절대 홍보성 문구 삽입하지 않기
-- @username 멘션 하지 않기 (Threads가 자동으로 처리)
+- @username 멘션 하지 않기 (Threads가 자동으로 처리)`}
 
 반드시 유효한 JSON만 출력하세요.`;
 

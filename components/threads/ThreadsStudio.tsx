@@ -1297,14 +1297,14 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                           <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 rounded-lg px-3 py-2">{replyError}</p>
                         )}
                         <div className="flex items-center gap-2">
-                        {generatedReplies.length === 0 && comments.filter(c => !postedCommentIds.has(c.id)).length > 0 && (
+                        {comments.filter(c => !postedCommentIds.has(c.id)).length > 0 && (
                           <button
-                            onClick={() => generateReplies(post.text)}
+                            onClick={() => { setGeneratedReplies([]); setEditedReplies({}); generateReplies(post.text); }}
                             disabled={generatingReplies}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors"
                           >
-                            {generatingReplies ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                            AI 대댓글 생성 ({comments.filter(c => !postedCommentIds.has(c.id)).length}개)
+                            {generatingReplies ? <Loader2 size={13} className="animate-spin" /> : generatedReplies.length > 0 ? <RefreshCw size={13} /> : <Sparkles size={13} />}
+                            {generatedReplies.length > 0 ? "다시 생성" : `AI 대댓글 생성 (${comments.filter(c => !postedCommentIds.has(c.id)).length}개)`}
                           </button>
                         )}
                         {pendingReplies.length > 1 && (
