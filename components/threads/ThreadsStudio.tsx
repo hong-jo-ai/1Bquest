@@ -408,14 +408,11 @@ function RefsTab({ onRefsChange, brand }: { onRefsChange: (n: number) => void; b
 
 // ── 글 생성 탭 ────────────────────────────────────────────────────────────
 
-function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedConsumed }: {
-  onPostsChange: (n: number) => void; brand: BrandId;
-  initialTopic?: string; initialStyle?: PostStyle; onSeedConsumed?: () => void;
-}) {
+function GenerateTab({ onPostsChange, brand }: { onPostsChange: (n: number) => void; brand: BrandId }) {
   const brandConfig = BRANDS[brand];
   const [posts, setPosts]       = useState<GeneratedPost[]>([]);
-  const [topic, setTopic]       = useState(initialTopic ?? "");
-  const [style, setStyle]       = useState<PostStyle>(initialStyle ?? "공감형");
+  const [topic, setTopic]       = useState("");
+  const [style, setStyle]       = useState<PostStyle>("공감형");
   const [customCtx, setCustomCtx] = useState("");
   const [length, setLength]     = useState<"short" | "medium" | "long">("medium");
   const [loading, setLoading]   = useState(false);
@@ -429,14 +426,6 @@ function GenerateTab({ onPostsChange, brand, initialTopic, initialStyle, onSeedC
   }, [onPostsChange, brand]);
 
   useEffect(() => { reload(); }, [reload]);
-
-  useEffect(() => {
-    if (initialTopic) {
-      setTopic(initialTopic);
-      if (initialStyle) setStyle(initialStyle);
-      onSeedConsumed?.();
-    }
-  }, [initialTopic, initialStyle]);
 
   const generate = async () => {
     if (!topic.trim()) return;
@@ -967,6 +956,41 @@ interface PublishedPostMetrics {
   permalink: string | null;
 }
 
+function InlinePostCard({ post, index, brand, onSave, onCopy, copiedId }: {
+  post: any; index: number; brand: BrandId;
+  onSave: (p: any) => void; onCopy: (text: string, id: string) => void; copiedId: string | null;
+}) {
+  const [saved, setSaved] = useState(false);
+  const id = `inline_${index}`;
+  return (
+    <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-5 h-5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 text-[10px] font-bold flex items-center justify-center">{index + 1}</span>
+        <span className="text-[10px] font-semibold text-zinc-400 bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded-full">{post.style}</span>
+      </div>
+      <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line mb-2">{post.text}</p>
+      {post.whyItWorks && <p className="text-[11px] text-zinc-400 mb-2">{post.whyItWorks}</p>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { onSave(post); setSaved(true); }}
+          disabled={saved}
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+            saved ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : "bg-violet-600 text-white hover:bg-violet-700"
+          }`}
+        >
+          {saved ? <><CheckCircle2 size={11} /> 저장됨</> : <><Heart size={11} /> 저장</>}
+        </button>
+        <button
+          onClick={() => onCopy(post.text, id)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 transition-colors"
+        >
+          {copiedId === id ? <><Check size={11} /> 복사됨</> : <><Copy size={11} /> 복사</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface CommentData {
   id: string;
   text: string;
@@ -982,7 +1006,7 @@ interface GeneratedReply {
   reply: string;
 }
 
-function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerateFromIdea?: (topic: string, style: PostStyle) => void }) {
+function PublishedTab({ brand }: { brand: BrandId }) {
   const [posts, setPosts] = useState<PublishedPostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1005,6 +1029,15 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insights, setInsights] = useState<any | null>(null);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  // 인라인 글 생성 상태
+  const [inlineGenTopic, setInlineGenTopic] = useState<string | null>(null);
+  const [inlineGenStyle, setInlineGenStyle] = useState<PostStyle>("공감형");
+  const [inlineGenLength, setInlineGenLength] = useState<"short" | "medium" | "long">("medium");
+  const [inlineGenLoading, setInlineGenLoading] = useState(false);
+  const [inlineGenPosts, setInlineGenPosts] = useState<any[]>([]);
+  const [inlineGenError, setInlineGenError] = useState<string | null>(null);
+  const { copiedId, copy } = useCopy();
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1216,6 +1249,38 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
     }
   };
 
+  // 인라인 글 생성
+  const inlineGenerate = async () => {
+    if (!inlineGenTopic?.trim()) return;
+    setInlineGenLoading(true);
+    setInlineGenError(null);
+    setInlineGenPosts([]);
+    try {
+      const res = await fetch("/api/threads/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: inlineGenTopic,
+          style: inlineGenStyle,
+          count: 5,
+          brand,
+          length: inlineGenLength,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "생성 실패");
+      setInlineGenPosts(data.posts ?? []);
+    } catch (e: any) {
+      setInlineGenError(e.message);
+    } finally {
+      setInlineGenLoading(false);
+    }
+  };
+
+  const saveInlinePost = (post: any) => {
+    addPosts([post], brand);
+  };
+
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalReplies = posts.reduce((s, p) => s + p.replies, 0);
   const avgLikes = posts.length > 0 ? (totalLikes / posts.length).toFixed(1) : "0";
@@ -1400,19 +1465,101 @@ function PublishedTab({ brand, onGenerateFromIdea }: { brand: BrandId; onGenerat
                         <span className="text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full">{idea.style}</span>
                         {idea.hook && <span className="text-[10px] text-zinc-400 italic line-clamp-1">&ldquo;{idea.hook}&rdquo;</span>}
                       </div>
-                      {onGenerateFromIdea && (
-                        <button
-                          onClick={() => onGenerateFromIdea(idea.topic, STYLES.includes(idea.style) ? idea.style : "공감형")}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors flex-shrink-0"
-                        >
-                          <PenLine size={11} />
-                          글 생성
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setInlineGenTopic(idea.topic);
+                          setInlineGenStyle(STYLES.includes(idea.style) ? idea.style as PostStyle : "공감형");
+                          setInlineGenPosts([]);
+                          setInlineGenError(null);
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors flex-shrink-0 ${
+                          inlineGenTopic === idea.topic
+                            ? "bg-violet-600 text-white"
+                            : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
+                        }`}
+                      >
+                        <PenLine size={11} />
+                        {inlineGenTopic === idea.topic ? "선택됨" : "글 생성"}
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 인라인 글 생성 패널 */}
+      {inlineGenTopic && (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-violet-200 dark:border-violet-800 overflow-hidden">
+          <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <PenLine size={14} className="text-violet-500" />
+                <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">글 생성</span>
+              </div>
+              <button onClick={() => { setInlineGenTopic(null); setInlineGenPosts([]); }} className="text-zinc-300 hover:text-zinc-500">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* 주제 (편집 가능) */}
+            <input
+              value={inlineGenTopic}
+              onChange={(e) => setInlineGenTopic(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+
+            {/* 스타일 + 길이 */}
+            <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+              {STYLES.map((s) => (
+                <button key={s} onClick={() => setInlineGenStyle(s)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                    inlineGenStyle === s
+                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-700"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 mb-3">
+              {([
+                { id: "short" as const, label: "짧게" },
+                { id: "medium" as const, label: "보통" },
+                { id: "long" as const, label: "길게" },
+              ]).map((l) => (
+                <button key={l.id} onClick={() => setInlineGenLength(l.id)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                    inlineGenLength === l.id
+                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-700"
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={inlineGenerate}
+              disabled={inlineGenLoading}
+              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {inlineGenLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {inlineGenLoading ? "생성 중..." : "글 5개 생성"}
+            </button>
+            {inlineGenError && <p className="text-xs text-red-500 mt-2">{inlineGenError}</p>}
+          </div>
+
+          {/* 생성된 글 목록 */}
+          {inlineGenPosts.length > 0 && (
+            <div className="p-4 space-y-3">
+              {inlineGenPosts.map((p: any, i: number) => (
+                <InlinePostCard key={i} post={p} index={i} brand={brand} onSave={saveInlinePost} onCopy={copy} copiedId={copiedId} />
+              ))}
             </div>
           )}
         </div>
@@ -1647,7 +1794,6 @@ function Section({ title, icon: Icon, children }: {
 
 export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBrand?: BrandId }) {
   const [tab, setTab]       = useState<Tab>("generate");
-  const [generateSeed, setGenerateSeed] = useState<{ topic: string; style: PostStyle } | null>(null);
   const [postsCount, setPostsCount] = useState(0);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
   const [queueCount, setQueueCount] = useState<number | null>(null);
@@ -1861,8 +2007,8 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
         </div>
 
         {/* 탭 콘텐츠 */}
-        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} initialTopic={generateSeed?.topic} initialStyle={generateSeed?.style} onSeedConsumed={() => setGenerateSeed(null)} />}
-        {tab === "published" && <PublishedTab brand={brand} onGenerateFromIdea={(topic, style) => { setGenerateSeed({ topic, style }); setTab("generate"); }} />}
+        {tab === "generate"  && <GenerateTab onPostsChange={setPostsCount} brand={brand} />}
+        {tab === "published" && <PublishedTab brand={brand} />}
 
       </div>
     </div>
