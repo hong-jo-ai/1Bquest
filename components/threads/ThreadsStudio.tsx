@@ -981,6 +981,11 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
   const [polishingId, setPolishingId] = useState<string | null>(null);
 
+  // 댓글 인사이트 상태
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insights, setInsights] = useState<any | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+
   const fetchPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1140,6 +1145,56 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     }
   };
 
+  // 댓글 인사이트 분석
+  const analyzeCommentInsights = async () => {
+    setInsightsLoading(true);
+    setInsightsError(null);
+    setInsights(null);
+    try {
+      // 댓글 있는 게시물들의 댓글을 모두 가져오기
+      const postsWithReplies = posts.filter(p => p.replies > 0);
+      if (postsWithReplies.length === 0) {
+        setInsightsError("댓글이 있는 게시물이 없습니다");
+        setInsightsLoading(false);
+        return;
+      }
+
+      const postsData: Array<{ text: string; comments: Array<{ username: string; text: string }> }> = [];
+
+      for (const post of postsWithReplies.slice(0, 15)) {
+        try {
+          const res = await fetch(`/api/threads/comments?threadId=${post.threadId}&brand=${brand}`);
+          const data = await res.json();
+          if (res.ok && data.comments?.length > 0) {
+            postsData.push({
+              text: post.text,
+              comments: data.comments.map((c: CommentData) => ({ username: c.username, text: c.text })),
+            });
+          }
+        } catch {}
+      }
+
+      if (postsData.length === 0) {
+        setInsightsError("분석할 댓글이 없습니다");
+        setInsightsLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/threads/comments/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posts: postsData, brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "분석 실패");
+      setInsights(data.insights);
+    } catch (e: any) {
+      setInsightsError(`인사이트 분석 실패: ${e.message}`);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalReplies = posts.reduce((s, p) => s + p.replies, 0);
   const avgLikes = posts.length > 0 ? (totalLikes / posts.length).toFixed(1) : "0";
@@ -1211,8 +1266,16 @@ function PublishedTab({ brand }: { brand: BrandId }) {
         </div>
       )}
 
-      {/* 새로고침 */}
-      <div className="flex justify-end">
+      {/* 새로고침 + 인사이트 */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={analyzeCommentInsights}
+          disabled={insightsLoading}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors"
+        >
+          {insightsLoading ? <Loader2 size={13} className="animate-spin" /> : <Lightbulb size={13} />}
+          {insightsLoading ? "댓글 분석 중..." : "댓글 인사이트 분석"}
+        </button>
         <button
           onClick={fetchPosts}
           className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -1221,6 +1284,111 @@ function PublishedTab({ brand }: { brand: BrandId }) {
           새로고침
         </button>
       </div>
+
+      {/* 인사이트 결과 */}
+      {insightsError && (
+        <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 rounded-xl px-4 py-3">{insightsError}</p>
+      )}
+      {insights && (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+          {/* 요약 */}
+          <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Lightbulb size={14} className="text-amber-500" />
+              <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">댓글 인사이트</span>
+              <button onClick={() => setInsights(null)} className="ml-auto text-zinc-300 hover:text-zinc-500 transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{insights.summary}</p>
+          </div>
+
+          {/* 관심 주제 */}
+          {insights.themes?.length > 0 && (
+            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+              <p className="text-xs font-semibold text-zinc-500 mb-2">팔로워 관심 주제</p>
+              <div className="space-y-2">
+                {insights.themes.map((t: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="text-xs font-bold text-violet-500 bg-violet-50 dark:bg-violet-950/30 px-2 py-0.5 rounded-full flex-shrink-0">{t.count}</span>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t.theme}</p>
+                      {t.examples?.map((ex: string, j: number) => (
+                        <p key={j} className="text-[11px] text-zinc-400 mt-0.5">&ldquo;{ex}&rdquo;</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 자주 묻는 질문 */}
+          {insights.questions?.length > 0 && (
+            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+              <p className="text-xs font-semibold text-zinc-500 mb-2">팔로워들이 궁금해하는 것</p>
+              <ul className="space-y-1">
+                {insights.questions.map((q: string, i: number) => (
+                  <li key={i} className="text-sm text-zinc-600 dark:text-zinc-400 flex items-start gap-2">
+                    <MessageCircle size={12} className="text-blue-400 mt-0.5 flex-shrink-0" />
+                    {q}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 감정 분석 */}
+          {insights.sentiments && (
+            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+              <p className="text-xs font-semibold text-zinc-500 mb-2">반응 패턴</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                {insights.sentiments.positive && (
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-2.5">
+                    <p className="font-semibold text-emerald-600 dark:text-emerald-400 mb-1">긍정</p>
+                    <p className="text-zinc-600 dark:text-zinc-400">{insights.sentiments.positive}</p>
+                  </div>
+                )}
+                {insights.sentiments.curious && (
+                  <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-2.5">
+                    <p className="font-semibold text-blue-600 dark:text-blue-400 mb-1">궁금</p>
+                    <p className="text-zinc-600 dark:text-zinc-400">{insights.sentiments.curious}</p>
+                  </div>
+                )}
+                {insights.sentiments.requests && (
+                  <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-2.5">
+                    <p className="font-semibold text-amber-600 dark:text-amber-400 mb-1">요청</p>
+                    <p className="text-zinc-600 dark:text-zinc-400">{insights.sentiments.requests}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 콘텐츠 아이디어 */}
+          {insights.contentIdeas?.length > 0 && (
+            <div className="p-4">
+              <p className="text-xs font-semibold text-zinc-500 mb-3">추천 콘텐츠 아이디어</p>
+              <div className="space-y-3">
+                {insights.contentIdeas.map((idea: any, i: number) => (
+                  <div key={i} className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{idea.topic}</p>
+                        <p className="text-[11px] text-zinc-400 mt-1">{idea.why}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full">{idea.style}</span>
+                          {idea.hook && <span className="text-[10px] text-zinc-400 italic">&ldquo;{idea.hook}&rdquo;</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 게시물 목록 */}
       <div className="space-y-3">
