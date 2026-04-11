@@ -1680,7 +1680,10 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
             </div>
             <div>
               <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">Threads 콘텐츠 스튜디오</h1>
-              <p className="text-xs text-zinc-400 mt-0.5">바이럴 트렌드 분석 · 레퍼런스 수집 · 글 생성</p>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                바이럴 트렌드 분석 · 레퍼런스 수집 · 글 생성 ·{" "}
+                <a href="/tools/threads-analytics" className="text-violet-500 hover:text-violet-600 transition-colors">종합 대시보드</a>
+              </p>
             </div>
           </div>
           {metaConnected === false && (
