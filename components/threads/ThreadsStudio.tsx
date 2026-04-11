@@ -1151,8 +1151,9 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     setInsightsError(null);
     setInsights(null);
     try {
-      // 댓글 있는 게시물들의 댓글을 모두 가져오기
-      const postsWithReplies = posts.filter(p => p.replies > 0);
+      // 최근 1달 이내 + 댓글 있는 게시물만
+      const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const postsWithReplies = posts.filter(p => p.replies > 0 && new Date(p.publishedAt) >= oneMonthAgo);
       if (postsWithReplies.length === 0) {
         setInsightsError("댓글이 있는 게시물이 없습니다");
         setInsightsLoading(false);
