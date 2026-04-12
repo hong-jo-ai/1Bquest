@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Mail,
   AtSign,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   Send,
   Check,
+  Settings,
 } from "lucide-react";
 import type {
   CsThread,
@@ -187,14 +189,23 @@ export default function InboxClient() {
           <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
             CS 인박스
           </h2>
-          <button
-            onClick={triggerSync}
-            disabled={syncing}
-            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
-            title="새로고침 / 채널 동기화"
-          >
-            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={triggerSync}
+              disabled={syncing}
+              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
+              title="새로고침 / 채널 동기화"
+            >
+              <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            </button>
+            <Link
+              href="/inbox/setup"
+              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+              title="채널 연결 설정"
+            >
+              <Settings size={14} />
+            </Link>
+          </div>
         </div>
 
         {unansweredCount > 0 && (
