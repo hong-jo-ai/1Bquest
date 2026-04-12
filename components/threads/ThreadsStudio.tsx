@@ -1080,6 +1080,8 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [composeQueuing, setComposeQueuing] = useState(false);
   const [composePublishing, setComposePublishing] = useState(false);
   const [composeMsg, setComposeMsg] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
 
   // 인라인 글 생성 상태
   const [inlineGenTopic, setInlineGenTopic] = useState<string | null>(null);
@@ -1332,22 +1334,36 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     addPosts([post], brand);
   };
 
-  // 직접 작성 → 큐 추가
-  const composeToQueue = async () => {
+  // 직접 작성 → 큐 추가 (자동게시 또는 예약)
+  const composeToQueue = async (scheduled?: boolean) => {
     if (!composeText.trim()) return;
+    if (scheduled && (!scheduleDate || !scheduleTime)) {
+      setComposeMsg("날짜와 시간을 선택해주세요");
+      return;
+    }
     setComposeQueuing(true);
     setComposeMsg(null);
     try {
+      const body: any = { id: `manual_${Date.now()}`, text: composeText.trim(), brand };
+      if (scheduled) {
+        body.scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+09:00`).toISOString();
+      }
       const res = await fetch("/api/threads/queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: `manual_${Date.now()}`, text: composeText.trim(), brand }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "큐 추가 실패");
-      setComposeMsg("자동게시 예약 완료");
+      if (scheduled) {
+        setComposeMsg(`${scheduleDate} ${scheduleTime}에 예약 완료`);
+      } else {
+        setComposeMsg("자동게시 큐에 추가 완료");
+      }
       setComposeText("");
-      setTimeout(() => setComposeMsg(null), 3000);
+      setScheduleDate("");
+      setScheduleTime("");
+      setTimeout(() => setComposeMsg(null), 4000);
     } catch (e: any) {
       setComposeMsg(`실패: ${e.message}`);
     } finally {
@@ -1491,21 +1507,47 @@ function PublishedTab({ brand }: { brand: BrandId }) {
             className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-400 min-h-[100px]"
             rows={4}
           />
+          {/* 예약 날짜/시간 */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <input
+              type="date"
+              value={scheduleDate}
+              onChange={(e) => setScheduleDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 text-zinc-700 dark:text-zinc-300"
+            />
+            <input
+              type="time"
+              value={scheduleTime}
+              onChange={(e) => setScheduleTime(e.target.value)}
+              className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 text-zinc-700 dark:text-zinc-300"
+            />
+            <button
+              onClick={() => composeToQueue(true)}
+              disabled={!composeText.trim() || composeQueuing || !scheduleDate || !scheduleTime}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
+            >
+              {composeQueuing ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
+              예약 게시
+            </button>
+          </div>
+
+          {/* 하단 액션 */}
           <div className="flex items-center justify-between mt-3">
             <span className="text-[11px] text-zinc-400">{composeText.length}자</span>
             <div className="flex items-center gap-2">
               {composeMsg && (
-                <span className={`text-[11px] font-medium ${composeMsg.startsWith("실패") || composeMsg.startsWith("게시 실패") ? "text-red-500" : "text-emerald-500"}`}>
+                <span className={`text-[11px] font-medium ${composeMsg.startsWith("실패") ? "text-red-500" : "text-emerald-500"}`}>
                   {composeMsg}
                 </span>
               )}
               <button
-                onClick={composeToQueue}
+                onClick={() => composeToQueue(false)}
                 disabled={!composeText.trim() || composeQueuing}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-40 transition-colors"
               >
-                {composeQueuing ? <Loader2 size={12} className="animate-spin" /> : <CalendarClock size={12} />}
-                자동게시 예약
+                <CalendarClock size={12} />
+                자동게시 큐
               </button>
               <button
                 onClick={composePublishNow}

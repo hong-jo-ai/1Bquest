@@ -68,26 +68,40 @@ export async function savePostQueue(queue: QueuedPost[]): Promise<void> {
 export async function dequeuePost(): Promise<QueuedPost | null> {
   const queue = await getPostQueue();
   if (queue.length === 0) return null;
+  const now = Date.now();
 
   // brand 없는 기존 글은 paulvice로 할당
   for (const p of queue) {
     if (!p.brand) p.brand = "paulvice";
   }
 
-  // 브랜드별 그룹화 → 가장 많은 브랜드에서 꺼냄 (라운드로빈 효과)
+  // 1. 예약 시간이 지난 글 우선 처리 (브랜드 무관)
+  const scheduledReady = queue.filter(
+    (p) => p.scheduledAt && new Date(p.scheduledAt).getTime() <= now,
+  );
+  if (scheduledReady.length > 0) {
+    scheduledReady.sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime());
+    const pick = scheduledReady[0];
+    const idx = queue.indexOf(pick);
+    queue.splice(idx, 1);
+    await savePostQueue(queue);
+    return pick;
+  }
+
+  // 2. 예약 없는 일반 글 — 브랜드 라운드로빈
+  const normalQueue = queue.filter((p) => !p.scheduledAt);
+  if (normalQueue.length === 0) return null;
+
   const byBrand: Record<string, number[]> = {};
-  queue.forEach((p, i) => {
-    const b = p.brand;
-    if (!byBrand[b]) byBrand[b] = [];
-    byBrand[b].push(i);
+  normalQueue.forEach((p) => {
+    const idx = queue.indexOf(p);
+    if (!byBrand[p.brand]) byBrand[p.brand] = [];
+    byBrand[p.brand].push(idx);
   });
 
-  // 마지막 게시 브랜드를 추적하여 다른 브랜드 우선
   const lastBrandKey = "threads_last_autopost_brand";
   const lastBrand = (await kvGet<string>(lastBrandKey)) ?? "";
   const brands = Object.keys(byBrand);
-
-  // 마지막에 게시한 브랜드가 아닌 브랜드 우선 선택
   const nextBrand = brands.find((b) => b !== lastBrand) ?? brands[0];
   const candidates = byBrand[nextBrand];
   const pickIdx = candidates[Math.floor(Math.random() * candidates.length)];
@@ -100,11 +114,28 @@ export async function dequeuePost(): Promise<QueuedPost | null> {
 
 export async function dequeuePostByBrand(brand: BrandId): Promise<QueuedPost | null> {
   const queue = await getPostQueue();
+  const now = Date.now();
   // brand 없는 기존 글은 paulvice로 할당
   for (const p of queue) {
     if (!p.brand) p.brand = "paulvice";
   }
-  const candidates = queue.filter((p) => p.brand === brand);
+
+  // 1. 예약 시간이 지난 예약 글 우선 처리
+  const scheduledReady = queue.filter(
+    (p) => p.brand === brand && p.scheduledAt && new Date(p.scheduledAt).getTime() <= now,
+  );
+  if (scheduledReady.length > 0) {
+    // 가장 오래된 예약 글부터
+    scheduledReady.sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime());
+    const pick = scheduledReady[0];
+    const idx = queue.indexOf(pick);
+    queue.splice(idx, 1);
+    await savePostQueue(queue);
+    return pick;
+  }
+
+  // 2. 예약 시간이 없는 일반 글
+  const candidates = queue.filter((p) => p.brand === brand && !p.scheduledAt);
   if (candidates.length === 0) return null;
   const pick = candidates[Math.floor(Math.random() * candidates.length)];
   const idx = queue.indexOf(pick);
