@@ -14,6 +14,7 @@ import {
   BarChart2,
   ImagePlus,
   Gem,
+  Inbox,
   PanelLeftClose,
   PanelLeft,
   Menu,
@@ -22,6 +23,7 @@ import {
 
 type AppPage =
   | "dashboard"
+  | "inbox"
   | "inventory"
   | "jewelry"
   | "analytics"
@@ -38,6 +40,7 @@ const NAV_ITEMS: {
   page: AppPage;
 }[] = [
   { href: "/", label: "대시보드", icon: LayoutDashboard, page: "dashboard" },
+  { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
   { href: "/analytics", label: "방문자", icon: BarChart2, page: "analytics" },
@@ -50,6 +53,7 @@ const NAV_ITEMS: {
 
 const HREF_TO_PAGE: Record<string, AppPage> = {
   "/": "dashboard",
+  "/inbox": "inbox",
   "/inventory": "inventory",
   "/jewelry-clearance": "jewelry",
   "/analytics": "analytics",
@@ -89,6 +93,7 @@ export default function Sidebar() {
   const [progress, setProgress] = useState<Record<AppPage, number>>(() => {
     const defaults: Record<AppPage, number> = {
       dashboard: 0,
+      inbox: 0,
       inventory: 0,
       jewelry: 0,
       analytics: 0,
