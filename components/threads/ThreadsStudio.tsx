@@ -1082,6 +1082,8 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [composeMsg, setComposeMsg] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [queuedPosts, setQueuedPosts] = useState<Array<{ id: string; text: string; brand: string; scheduledAt?: string }>>([]);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   // 인라인 글 생성 상태
   const [inlineGenTopic, setInlineGenTopic] = useState<string | null>(null);
@@ -1334,6 +1336,31 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     addPosts([post], brand);
   };
 
+  // 예약/큐 목록 로드
+  const fetchQueue = useCallback(async () => {
+    try {
+      const res = await fetch("/api/threads/queue");
+      const data = await res.json();
+      setQueuedPosts((data.queue ?? []).filter((q: any) => (q.brand ?? "paulvice") === brand));
+    } catch {}
+  }, [brand]);
+
+  useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  // 예약 취소
+  const cancelQueued = async (id: string) => {
+    setCancellingId(id);
+    try {
+      await fetch("/api/threads/queue", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setQueuedPosts(prev => prev.filter(p => p.id !== id));
+    } catch {}
+    setCancellingId(null);
+  };
+
   // 직접 작성 → 큐 추가 (자동게시 또는 예약)
   const composeToQueue = async (scheduled?: boolean) => {
     if (!composeText.trim()) return;
@@ -1363,6 +1390,7 @@ function PublishedTab({ brand }: { brand: BrandId }) {
       setComposeText("");
       setScheduleDate("");
       setScheduleTime("");
+      fetchQueue();
       setTimeout(() => setComposeMsg(null), 4000);
     } catch (e: any) {
       setComposeMsg(`실패: ${e.message}`);
@@ -1558,6 +1586,51 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                 즉시 게시
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 예약/대기 글 목록 */}
+      {queuedPosts.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+            <CalendarClock size={14} className="text-blue-500" />
+            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">대기 중인 글</span>
+            <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full">{queuedPosts.length}</span>
+          </div>
+          <div className="divide-y divide-zinc-50 dark:divide-zinc-800/50">
+            {queuedPosts
+              .sort((a, b) => {
+                if (a.scheduledAt && b.scheduledAt) return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+                if (a.scheduledAt) return -1;
+                if (b.scheduledAt) return 1;
+                return 0;
+              })
+              .map((q) => (
+              <div key={q.id} className="px-4 py-3 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2">{q.text}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {q.scheduledAt ? (
+                      <span className="flex items-center gap-1 text-[11px] text-blue-500 font-medium">
+                        <Clock size={10} />
+                        {new Date(q.scheduledAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-zinc-400">자동게시 대기</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => cancelQueued(q.id)}
+                  disabled={cancellingId === q.id}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex-shrink-0 disabled:opacity-50"
+                >
+                  {cancellingId === q.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                  취소
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
