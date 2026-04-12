@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Mail, Check, AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { Mail, Check, AlertCircle, ArrowLeft, Loader2, X, RefreshCw } from "lucide-react";
 
 interface Account {
   id: string;
@@ -13,6 +13,12 @@ interface Account {
   status: "active" | "paused" | "error";
   last_synced_at: string | null;
   error_message: string | null;
+}
+
+interface HealthCheck {
+  name: string;
+  ok: boolean;
+  detail?: string;
 }
 
 const BRAND_LABEL = {
@@ -28,6 +34,9 @@ const EXPECTED_EMAIL = {
 export default function InboxSetupClient() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<HealthCheck[] | null>(null);
+  const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
   const params = useSearchParams();
   const connected = params.get("connected");
   const error = params.get("error");
@@ -38,6 +47,22 @@ export default function InboxSetupClient() {
       .then((json) => setAccounts(json.accounts ?? []))
       .finally(() => setLoading(false));
   }, [connected]);
+
+  const runHealthCheck = async () => {
+    setHealthLoading(true);
+    try {
+      const res = await fetch("/api/cs/health");
+      const json = await res.json();
+      setHealth(json.checks ?? []);
+      setHealthOk(json.ok ?? false);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    runHealthCheck();
+  }, []);
 
   const gmailAccount = (brand: "paulvice" | "harriot") =>
     accounts.find((a) => a.brand === brand && a.channel === "gmail");
@@ -153,7 +178,65 @@ export default function InboxSetupClient() {
         </div>
       )}
 
-      <section className="mt-8 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
+      <section className="mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+            시스템 상태
+          </h2>
+          <button
+            onClick={runHealthCheck}
+            disabled={healthLoading}
+            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
+            title="다시 확인"
+          >
+            <RefreshCw size={13} className={healthLoading ? "animate-spin" : ""} />
+          </button>
+        </div>
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-800">
+          {!health && healthLoading && (
+            <div className="p-4 text-sm text-zinc-400 flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin" />
+              검사 중…
+            </div>
+          )}
+          {health?.map((c) => (
+            <div
+              key={c.name}
+              className="flex items-center justify-between px-4 py-2.5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {c.ok ? (
+                  <Check
+                    size={14}
+                    className="text-emerald-500 flex-shrink-0"
+                  />
+                ) : (
+                  <X size={14} className="text-red-500 flex-shrink-0" />
+                )}
+                <span className="text-sm text-zinc-800 dark:text-zinc-200 truncate">
+                  {c.name}
+                </span>
+              </div>
+              {c.detail && (
+                <span
+                  className={`text-[11px] ml-2 flex-shrink-0 ${
+                    c.ok ? "text-zinc-400" : "text-red-500"
+                  }`}
+                >
+                  {c.detail}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        {healthOk === false && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+            빨간 항목을 먼저 해결해야 CS 인박스가 정상 작동합니다.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
         <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
           ⚠️ Google Cloud Console 설정 필수
         </h3>
