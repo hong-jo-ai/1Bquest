@@ -23,6 +23,22 @@
     {
       "path": "/api/cron/threads-monitor",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cs/ingest/gmail",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cs/ingest/threads",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cs/notify",
+      "schedule": "2,12,22,32,42,52 * * * *"
+    },
+    {
+      "path": "/api/cs/notify?mode=stale",
+      "schedule": "30 * * * *"
     }
   ]
 }
