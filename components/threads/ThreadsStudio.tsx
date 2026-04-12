@@ -1074,6 +1074,13 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [insights, setInsights] = useState<any | null>(null);
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
+  // 직접 작성 상태
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeText, setComposeText] = useState("");
+  const [composeQueuing, setComposeQueuing] = useState(false);
+  const [composePublishing, setComposePublishing] = useState(false);
+  const [composeMsg, setComposeMsg] = useState<string | null>(null);
+
   // 인라인 글 생성 상태
   const [inlineGenTopic, setInlineGenTopic] = useState<string | null>(null);
   const [inlineGenStyle, setInlineGenStyle] = useState<PostStyle>("공감형");
@@ -1325,6 +1332,52 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     addPosts([post], brand);
   };
 
+  // 직접 작성 → 큐 추가
+  const composeToQueue = async () => {
+    if (!composeText.trim()) return;
+    setComposeQueuing(true);
+    setComposeMsg(null);
+    try {
+      const res = await fetch("/api/threads/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: `manual_${Date.now()}`, text: composeText.trim(), brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "큐 추가 실패");
+      setComposeMsg("자동게시 예약 완료");
+      setComposeText("");
+      setTimeout(() => setComposeMsg(null), 3000);
+    } catch (e: any) {
+      setComposeMsg(`실패: ${e.message}`);
+    } finally {
+      setComposeQueuing(false);
+    }
+  };
+
+  // 직접 작성 → 즉시 게시
+  const composePublishNow = async () => {
+    if (!composeText.trim()) return;
+    setComposePublishing(true);
+    setComposeMsg(null);
+    try {
+      const res = await fetch("/api/threads/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: composeText.trim(), brand }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "게시 실패");
+      setComposeMsg("게시 완료!");
+      setComposeText("");
+      setTimeout(() => { setComposeMsg(null); fetchPosts(); }, 2000);
+    } catch (e: any) {
+      setComposeMsg(`게시 실패: ${e.message}`);
+    } finally {
+      setComposePublishing(false);
+    }
+  };
+
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalReplies = posts.reduce((s, p) => s + p.replies, 0);
   const avgLikes = posts.length > 0 ? (totalLikes / posts.length).toFixed(1) : "0";
@@ -1396,16 +1449,29 @@ function PublishedTab({ brand }: { brand: BrandId }) {
         </div>
       )}
 
-      {/* 새로고침 + 인사이트 */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={analyzeCommentInsights}
-          disabled={insightsLoading}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors"
-        >
-          {insightsLoading ? <Loader2 size={13} className="animate-spin" /> : <Lightbulb size={13} />}
-          {insightsLoading ? "댓글 분석 중..." : "댓글 인사이트 분석"}
-        </button>
+      {/* 액션 바 */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCompose(!showCompose)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              showCompose
+                ? "bg-violet-600 text-white"
+                : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
+            }`}
+          >
+            <PenLine size={13} />
+            직접 작성
+          </button>
+          <button
+            onClick={analyzeCommentInsights}
+            disabled={insightsLoading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 disabled:opacity-50 transition-colors"
+          >
+            {insightsLoading ? <Loader2 size={13} className="animate-spin" /> : <Lightbulb size={13} />}
+            {insightsLoading ? "분석 중..." : "댓글 인사이트"}
+          </button>
+        </div>
         <button
           onClick={fetchPosts}
           className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -1414,6 +1480,45 @@ function PublishedTab({ brand }: { brand: BrandId }) {
           새로고침
         </button>
       </div>
+
+      {/* 직접 작성 패널 */}
+      {showCompose && (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
+          <textarea
+            value={composeText}
+            onChange={(e) => setComposeText(e.target.value)}
+            placeholder="쓰레드에 올릴 글을 직접 작성하세요..."
+            className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-400 min-h-[100px]"
+            rows={4}
+          />
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-[11px] text-zinc-400">{composeText.length}자</span>
+            <div className="flex items-center gap-2">
+              {composeMsg && (
+                <span className={`text-[11px] font-medium ${composeMsg.startsWith("실패") || composeMsg.startsWith("게시 실패") ? "text-red-500" : "text-emerald-500"}`}>
+                  {composeMsg}
+                </span>
+              )}
+              <button
+                onClick={composeToQueue}
+                disabled={!composeText.trim() || composeQueuing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-40 transition-colors"
+              >
+                {composeQueuing ? <Loader2 size={12} className="animate-spin" /> : <CalendarClock size={12} />}
+                자동게시 예약
+              </button>
+              <button
+                onClick={composePublishNow}
+                disabled={!composeText.trim() || composePublishing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-colors"
+              >
+                {composePublishing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                즉시 게시
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 인사이트 결과 */}
       {insightsError && (
