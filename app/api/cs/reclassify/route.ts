@@ -33,7 +33,7 @@ export async function POST() {
     .from("cs_threads")
     .select("id, brand, channel, customer_handle, customer_name, subject")
     .eq("status", "unanswered")
-    .not("channel", "in", "(sixshop_board,cafe24_board)")
+    .neq("channel", "threads") // Threads는 제외 (분류기는 이메일용)
     .order("last_message_at", { ascending: false })
     .limit(200);
 

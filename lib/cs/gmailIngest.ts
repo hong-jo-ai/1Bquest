@@ -112,26 +112,19 @@ export async function syncAllGmailAccounts(): Promise<{
         const { text, html } = extractBody(msg);
         const channel = detectChannel(fromHeader, account);
 
-        // 식스샵·카페24 알림은 분류기 건너뛰고 그대로 수집 (게시판 채널로 태깅)
-        const isPlatformAlert =
-          channel === "sixshop_board" || channel === "cafe24_board";
-
-        let aiReason = "필터 통과";
-        if (!isPlatformAlert) {
-          // 4차: AI 분류
-          const cls = await classifyEmail({
-            brand: account.brand,
-            fromName: name,
-            fromEmail: email,
-            subject,
-            bodySnippet: text || msg.snippet || "",
-          });
-          if (!cls.isCs) {
-            classifiedOut++;
-            continue;
-          }
-          aiReason = `${cls.category} (${cls.reason})`;
+        // 4차: AI 분류 — 카페24/식스샵 알림도 분류기를 거쳐 게시판 글 vs 주문 알림 구분
+        const cls = await classifyEmail({
+          brand: account.brand,
+          fromName: name,
+          fromEmail: email,
+          subject,
+          bodySnippet: text || msg.snippet || "",
+        });
+        if (!cls.isCs) {
+          classifiedOut++;
+          continue;
         }
+        const aiReason = `${cls.category} (${cls.reason})`;
 
         const payload: IngestPayload = {
           brand: account.brand,
