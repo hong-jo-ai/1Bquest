@@ -15,6 +15,7 @@ import {
   Check,
   Settings,
   Ban,
+  Filter,
 } from "lucide-react";
 import type {
   CsThread,
@@ -69,6 +70,7 @@ export default function InboxClient() {
   const [replyText, setReplyText] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [reclassifying, setReclassifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -177,6 +179,30 @@ export default function InboxClient() {
     showToast("해결됨으로 표시");
   };
 
+  const reclassifyAll = async () => {
+    if (
+      !confirm(
+        "현재 미답변 스레드를 모두 AI로 다시 분류해서 노이즈를 자동 보관합니다. 계속할까요? (최대 200건, ~30초 소요)"
+      )
+    )
+      return;
+    setReclassifying(true);
+    try {
+      const res = await fetch("/api/cs/reclassify", { method: "POST" });
+      const json = await res.json();
+      if (json.ok) {
+        showToast(
+          `처리 ${json.processed} → 보관 ${json.archived}, 유지 ${json.kept}${json.failed ? `, 실패 ${json.failed}` : ""}`
+        );
+        await loadThreads();
+      } else {
+        showToast(json.error ?? "재분류 실패");
+      }
+    } finally {
+      setReclassifying(false);
+    }
+  };
+
   const markNotCs = async () => {
     if (!selectedId) return;
     if (
@@ -223,6 +249,14 @@ export default function InboxClient() {
               title="새로고침 / 채널 동기화"
             >
               <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={reclassifyAll}
+              disabled={reclassifying}
+              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
+              title="AI로 미답변 전체 재분류 (노이즈 정리)"
+            >
+              <Filter size={14} className={reclassifying ? "animate-pulse" : ""} />
             </button>
             <Link
               href="/inbox/setup"
