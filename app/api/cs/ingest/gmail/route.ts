@@ -3,20 +3,7 @@ import { syncAllGmailAccounts } from "@/lib/cs/gmailIngest";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-/**
- * POST /api/cs/ingest/gmail
- * Cron 또는 수동 호출. 모든 등록된 Gmail 계정의 최근 INBOX를 수집한다.
- * 보호: CRON_SECRET 헤더 검증.
- */
-export async function POST(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
-  }
-
+async function run() {
   try {
     const result = await syncAllGmailAccounts();
     return Response.json({ ok: true, ...result });
@@ -26,7 +13,19 @@ export async function POST(req: Request) {
   }
 }
 
+// GET: Vercel Cron 호출용 — CRON_SECRET 검증
 export async function GET(req: Request) {
-  // Vercel Cron은 기본적으로 GET으로 호출됨
-  return POST(req);
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.get("authorization");
+    if (auth !== `Bearer ${secret}`) {
+      return Response.json({ error: "unauthorized" }, { status: 401 });
+    }
+  }
+  return run();
+}
+
+// POST: UI 수동 트리거용 — 인증 없이 허용 (앱 내부에서만 호출)
+export async function POST() {
+  return run();
 }
