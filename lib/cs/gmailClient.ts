@@ -97,14 +97,23 @@ export async function getGmailAccessToken(account: GmailAccount): Promise<string
 
 /**
  * 계정의 INBOX에서 최근 메시지를 가져온다.
- * historyId가 없으면 초기 sync (최근 N건).
+ * Gmail 카테고리 중 PRIMARY만, 자동알림 송신자 제외, 자기 자신이 보낸 것 제외.
  */
 export async function fetchRecentInboxMessages(
   accessToken: string,
   opts: { maxResults?: number; query?: string } = {}
 ): Promise<GmailMessage[]> {
-  const q = opts.query ?? "in:inbox -category:promotions -category:social newer_than:7d";
-  const listUrl = `/messages?maxResults=${opts.maxResults ?? 30}&q=${encodeURIComponent(q)}`;
+  const q =
+    opts.query ??
+    [
+      "in:inbox",
+      "category:primary",
+      "-from:noreply",
+      "-from:no-reply",
+      "-from:donotreply",
+      "newer_than:14d",
+    ].join(" ");
+  const listUrl = `/messages?maxResults=${opts.maxResults ?? 50}&q=${encodeURIComponent(q)}`;
   const list = await gmailFetch<{ messages?: Array<{ id: string; threadId: string }> }>(
     accessToken,
     listUrl

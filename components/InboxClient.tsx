@@ -14,6 +14,7 @@ import {
   Send,
   Check,
   Settings,
+  Ban,
 } from "lucide-react";
 import type {
   CsThread,
@@ -176,6 +177,31 @@ export default function InboxClient() {
     showToast("해결됨으로 표시");
   };
 
+  const markNotCs = async () => {
+    if (!selectedId) return;
+    if (
+      !confirm(
+        "이 스레드를 CS 아님으로 처리하고, 같은 송신자를 앞으로 자동 차단할까요?"
+      )
+    )
+      return;
+    const res = await fetch(`/api/cs/threads/${selectedId}/not-cs`, {
+      method: "POST",
+    });
+    const json = await res.json();
+    if (json.ok) {
+      showToast(
+        json.blacklisted
+          ? `차단됨: ${json.blacklisted}`
+          : "보관됨 (차단 추가 없음)"
+      );
+      await loadThreads();
+      setSelectedId(null);
+    } else {
+      showToast(json.error ?? "실패");
+    }
+  };
+
   const unansweredCount = useMemo(
     () => threads.filter((t) => t.status === "unanswered").length,
     [threads]
@@ -336,13 +362,23 @@ export default function InboxClient() {
                   {detail.thread.customer_name} ({detail.thread.customer_handle})
                 </div>
               </div>
-              <button
-                onClick={markResolved}
-                className="px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
-              >
-                <Check size={13} />
-                해결됨
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={markNotCs}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
+                  title="이 송신자를 앞으로 자동 차단"
+                >
+                  <Ban size={13} />
+                  CS 아님
+                </button>
+                <button
+                  onClick={markResolved}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
+                >
+                  <Check size={13} />
+                  해결됨
+                </button>
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
