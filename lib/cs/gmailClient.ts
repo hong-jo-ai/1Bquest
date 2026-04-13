@@ -134,6 +134,31 @@ export async function fetchRecentInboxMessages(
   return fetched;
 }
 
+/**
+ * 특정 Gmail 스레드의 모든 메시지를 시간순으로 가져온다.
+ * 받은메일 + 보낸메일 모두 포함.
+ */
+export async function fetchFullGmailThread(
+  accessToken: string,
+  threadId: string
+): Promise<GmailMessage[]> {
+  const res = await gmailFetch<{ messages?: GmailMessage[] }>(
+    accessToken,
+    `/threads/${threadId}?format=full`
+  );
+  return res.messages ?? [];
+}
+
+export function isFromSelf(msg: GmailMessage, selfEmail: string): boolean {
+  if (msg.labelIds?.includes("SENT")) return true;
+  const fromHeader = msg.payload?.headers?.find(
+    (h) => h.name.toLowerCase() === "from"
+  )?.value;
+  if (!fromHeader) return false;
+  const lower = fromHeader.toLowerCase();
+  return lower.includes(selfEmail.toLowerCase());
+}
+
 export function extractHeader(
   msg: GmailMessage,
   name: string

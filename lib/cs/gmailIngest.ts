@@ -2,8 +2,10 @@ import { ingestMessage } from "./store";
 import {
   extractBody,
   extractHeader,
+  fetchFullGmailThread,
   fetchRecentInboxMessages,
   getGmailAccessToken,
+  isFromSelf,
   listGmailAccounts,
   parseFrom,
   updateGmailSyncState,
@@ -16,14 +18,7 @@ import {
 } from "./classifier";
 import type { CsChannel, IngestPayload } from "./types";
 
-/**
- * 식스샵은 공개 API가 없으므로 관리자 알림 메일을 직접 수집한다.
- */
 const SIXSHOP_SENDER_PATTERNS = [/sixshop/i, /식스샵/, /noreply@.*sixshop/i];
-
-/**
- * 폴바이스: 카페24 알림. 2단계에서 정식 API로 대체.
- */
 const CAFE24_SENDER_PATTERNS = [/cafe24/i, /카페24/, /cafe24corp/i];
 
 /**
@@ -79,75 +74,104 @@ export async function syncAllGmailAccounts(): Promise<{
   for (const account of accounts) {
     try {
       const accessToken = await getGmailAccessToken(account);
-      const messages = await fetchRecentInboxMessages(accessToken, {
+      const recent = await fetchRecentInboxMessages(accessToken, {
         maxResults: 50,
       });
 
-      for (const msg of messages) {
-        const fromHeader = extractHeader(msg, "From");
-        const { name, email } = parseFrom(fromHeader);
+      // threadId로 중복 제거
+      const threadIds = Array.from(new Set(recent.map((m) => m.threadId)));
 
-        // 1차: 자기 자신이 보낸 것 (Sent에서 InBox에 같이 잡힌 케이스)
+      for (const threadId of threadIds) {
+        let fullMsgs;
+        try {
+          fullMsgs = await fetchFullGmailThread(accessToken, threadId);
+        } catch {
+          continue;
+        }
+        if (fullMsgs.length === 0) continue;
+
+        // 시간순 정렬 (Gmail은 보통 오래된 순 반환)
+        fullMsgs.sort(
+          (a, b) => Number(a.internalDate) - Number(b.internalDate)
+        );
+
+        // 최근 수신 메시지(=내가 아닌 것) 찾기 — 분류 판단 기준
+        const latestIncoming = [...fullMsgs]
+          .reverse()
+          .find((m) => !isFromSelf(m, account.displayName));
+
+        if (!latestIncoming) {
+          // 전부 내가 보낸 것만 있는 스레드 (일방 발신) → 스킵
+          skipped++;
+          continue;
+        }
+
+        // 1차: blacklist & hard skip은 최근 incoming 메시지 기준
+        const latestFromHeader = extractHeader(latestIncoming, "From");
+        const { name: latestName, email: latestEmail } = parseFrom(latestFromHeader);
+
         if (
-          email &&
-          email.toLowerCase() === account.displayName.toLowerCase()
+          latestFromHeader &&
+          HARD_SKIP_PATTERNS.some((r) => r.test(latestFromHeader))
         ) {
           skipped++;
           continue;
         }
-
-        // 2차: 명백한 시스템·자동발송 (정규식)
-        if (fromHeader && HARD_SKIP_PATTERNS.some((r) => r.test(fromHeader))) {
+        if (isBlacklisted(latestEmail, blacklist)) {
           skipped++;
           continue;
         }
 
-        // 3차: 사용자 학습 차단 목록
-        if (isBlacklisted(email, blacklist)) {
-          skipped++;
-          continue;
-        }
+        const latestSubject = extractHeader(latestIncoming, "Subject") ?? "(제목 없음)";
+        const { text: latestText } = extractBody(latestIncoming);
 
-        const subject = extractHeader(msg, "Subject") ?? "(제목 없음)";
-        const { text, html } = extractBody(msg);
-        const channel = detectChannel(fromHeader, account);
-
-        // 4차: AI 분류 — 카페24/식스샵 알림도 분류기를 거쳐 게시판 글 vs 주문 알림 구분
+        // 2차: AI 분류 — 최근 수신 메시지 기준으로 스레드 전체를 판단
         const cls = await classifyEmail({
           brand: account.brand,
-          fromName: name,
-          fromEmail: email,
-          subject,
-          bodySnippet: text || msg.snippet || "",
+          fromName: latestName,
+          fromEmail: latestEmail,
+          subject: latestSubject,
+          bodySnippet: latestText || latestIncoming.snippet || "",
         });
         if (!cls.isCs) {
           classifiedOut++;
           continue;
         }
-        const aiReason = `${cls.category} (${cls.reason})`;
 
-        const payload: IngestPayload = {
-          brand: account.brand,
-          channel,
-          externalThreadId: msg.threadId,
-          externalMessageId: msg.id,
-          customerHandle: email ?? undefined,
-          customerName: name ?? undefined,
-          subject,
-          bodyText: text || undefined,
-          bodyHtml: html || undefined,
-          sentAt: new Date(Number(msg.internalDate)),
-          direction: "in",
-          raw: {
-            labelIds: msg.labelIds,
-            snippet: msg.snippet,
-            classifier: aiReason,
-          },
-        };
+        const channel = detectChannel(latestFromHeader, account);
 
-        const result = await ingestMessage(payload);
-        if (result.inserted) inserted++;
-        else skipped++;
+        // 3차: 스레드 전체 메시지를 시간순으로 ingest
+        // 마지막 ingest 호출의 direction이 cs_threads.status를 결정
+        // (ingestMessage: in → 'unanswered', out → 'waiting')
+        for (const m of fullMsgs) {
+          const isOut = isFromSelf(m, account.displayName);
+          const fromH = extractHeader(m, "From");
+          const { name: n, email: e } = parseFrom(fromH);
+          const subj = extractHeader(m, "Subject") ?? latestSubject;
+          const { text, html } = extractBody(m);
+
+          const payload: IngestPayload = {
+            brand: account.brand,
+            channel,
+            externalThreadId: m.threadId,
+            externalMessageId: m.id,
+            customerHandle: isOut ? latestEmail ?? undefined : e ?? undefined,
+            customerName: isOut ? latestName ?? undefined : n ?? undefined,
+            subject: subj,
+            bodyText: text || undefined,
+            bodyHtml: html || undefined,
+            sentAt: new Date(Number(m.internalDate)),
+            direction: isOut ? "out" : "in",
+            raw: {
+              labelIds: m.labelIds,
+              snippet: m.snippet,
+              classifier: isOut ? undefined : `${cls.category} (${cls.reason})`,
+            },
+          };
+          const result = await ingestMessage(payload);
+          if (result.inserted) inserted++;
+          else skipped++;
+        }
       }
 
       await updateGmailSyncState(account.id, { error: null });
