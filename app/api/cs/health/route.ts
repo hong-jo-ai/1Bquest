@@ -8,8 +8,26 @@ interface CheckResult {
   detail?: string;
 }
 
+function extractSupabaseRef(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const checks: CheckResult[] = [];
+
+  // 0. 현재 연결된 Supabase 프로젝트 호스트
+  const supabaseHost = extractSupabaseRef(process.env.SUPABASE_URL);
+  checks.push({
+    name: "Supabase 프로젝트 호스트",
+    ok: !!supabaseHost,
+    detail: supabaseHost ?? "SUPABASE_URL 미설정",
+  });
 
   // 1. 환경변수
   const envVars = [
