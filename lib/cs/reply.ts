@@ -133,49 +133,108 @@ async function sendThreadsReply(
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
-  const { thread } = data;
+  const { thread, messages } = data;
 
   const token = await getThreadsTokenFromStore(thread.brand as CsBrandId);
   if (!token) return { ok: false, error: "Threads 토큰 없음" };
 
-  // Threads: 답글은 먼저 container를 만든 다음 publish 해야 함.
-  // reply_to_id는 원글의 thread_id가 아니라 댓글 맥락에 맞는 메시지 id.
-  // 1단계에서는 원본 externalThreadId(=원글 id)에 답글을 다는 방식으로 동작.
-  const replyToId = thread.external_thread_id;
+  // 답장 대상: 가장 최근 "수신(in)" 메시지의 external_message_id (= 고객 댓글 id)
+  // 없으면 원글 id로 폴백
+  const latestIn = [...messages].reverse().find((m) => m.direction === "in");
+  const replyToId =
+    latestIn?.external_message_id ?? thread.external_thread_id;
+  if (!replyToId) return { ok: false, error: "답장 대상 id 없음" };
 
-  const createRes = await fetch(
-    `https://graph.threads.net/v1.0/me/threads?media_type=TEXT&text=${encodeURIComponent(body)}&reply_to_id=${encodeURIComponent(replyToId)}&access_token=${encodeURIComponent(token)}`,
-    { method: "POST" }
-  );
-  if (!createRes.ok) {
-    return { ok: false, error: `Threads container 생성 실패: ${await createRes.text()}` };
+  const BASE = "https://graph.threads.net/v1.0";
+
+  try {
+    // 1) userId 조회
+    const meRes = await fetch(
+      `${BASE}/me?fields=id&access_token=${encodeURIComponent(token)}`,
+      { cache: "no-store" }
+    );
+    if (!meRes.ok) {
+      return { ok: false, error: `Threads 계정 조회 실패: ${await meRes.text()}` };
+    }
+    const me = (await meRes.json()) as { id: string };
+
+    // 2) 대댓글 컨테이너 생성 (POST form body)
+    const containerRes = await fetch(`${BASE}/${me.id}/threads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        access_token: token,
+        media_type: "TEXT",
+        text: body.trim(),
+        reply_to_id: replyToId,
+      }),
+    });
+    if (!containerRes.ok) {
+      return {
+        ok: false,
+        error: `Threads 컨테이너 생성 실패: ${await containerRes.text()}`,
+      };
+    }
+    const container = (await containerRes.json()) as { id: string };
+
+    // 3) 컨테이너 FINISHED 대기 (최대 15초)
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const statusRes = await fetch(
+        `${BASE}/${container.id}?fields=status&access_token=${encodeURIComponent(token)}`,
+        { cache: "no-store" }
+      );
+      if (statusRes.ok) {
+        const s = (await statusRes.json()) as { status?: string };
+        if (s.status === "FINISHED") break;
+        if (s.status === "ERROR") {
+          return { ok: false, error: "Threads 컨테이너 처리 에러" };
+        }
+      }
+    }
+
+    // 4) 게시
+    const publishRes = await fetch(`${BASE}/${me.id}/threads_publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        access_token: token,
+        creation_id: container.id,
+      }),
+    });
+    if (!publishRes.ok) {
+      return {
+        ok: false,
+        error: `Threads 게시 실패: ${await publishRes.text()}`,
+      };
+    }
+    const published = (await publishRes.json()) as { id: string };
+
+    // DB에 내 답장 기록
+    await ingestMessage({
+      brand: thread.brand as CsBrandId,
+      channel: "threads",
+      externalThreadId: thread.external_thread_id,
+      externalMessageId: published.id,
+      bodyText: body,
+      sentAt: new Date(),
+      direction: "out",
+      raw: { sent_via: "inbox_ui", reply_to_id: replyToId },
+    });
+
+    const db = getCsSupabase();
+    await db
+      .from("cs_threads")
+      .update({ status: "waiting" })
+      .eq("id", threadId);
+
+    return { ok: true, externalMessageId: published.id };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
-  const { id: containerId } = (await createRes.json()) as { id: string };
-
-  const publishRes = await fetch(
-    `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${encodeURIComponent(containerId)}&access_token=${encodeURIComponent(token)}`,
-    { method: "POST" }
-  );
-  if (!publishRes.ok) {
-    return { ok: false, error: `Threads publish 실패: ${await publishRes.text()}` };
-  }
-  const { id: publishedId } = (await publishRes.json()) as { id: string };
-
-  await ingestMessage({
-    brand: thread.brand as CsBrandId,
-    channel: "threads",
-    externalThreadId: thread.external_thread_id,
-    externalMessageId: publishedId,
-    bodyText: body,
-    sentAt: new Date(),
-    direction: "out",
-    raw: { sent_via: "inbox_ui" },
-  });
-
-  const db = getCsSupabase();
-  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
-
-  return { ok: true, externalMessageId: publishedId };
 }
 
 function encodeMimeHeader(text: string): string {
