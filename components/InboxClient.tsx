@@ -203,23 +203,16 @@ export default function InboxClient() {
     }
   };
 
-  const markNotCs = async () => {
+  const markNotCs = async (blockSender = false) => {
     if (!selectedId) return;
-    if (
-      !confirm(
-        "이 스레드를 CS 아님으로 처리하고, 같은 송신자를 앞으로 자동 차단할까요?"
-      )
-    )
-      return;
-    const res = await fetch(`/api/cs/threads/${selectedId}/not-cs`, {
-      method: "POST",
-    });
+    const url = `/api/cs/threads/${selectedId}/not-cs${blockSender ? "?blockSender=1" : ""}`;
+    const res = await fetch(url, { method: "POST" });
     const json = await res.json();
     if (json.ok) {
       showToast(
-        json.blacklisted
-          ? `차단됨: ${json.blacklisted}`
-          : "보관됨 (차단 추가 없음)"
+        blockSender && json.blacklisted
+          ? `보관 + 송신자 차단: ${json.blacklisted}`
+          : "보관됨"
       );
       await loadThreads();
       setSelectedId(null);
@@ -398,12 +391,19 @@ export default function InboxClient() {
               </div>
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={markNotCs}
+                  onClick={() => markNotCs(false)}
                   className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
-                  title="이 송신자를 앞으로 자동 차단"
+                  title="이 스레드 보관"
                 >
                   <Ban size={13} />
                   CS 아님
+                </button>
+                <button
+                  onClick={() => markNotCs(true)}
+                  className="px-2 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500"
+                  title="보관 + 이 송신자 앞으로 차단 (스팸·마케팅용)"
+                >
+                  송신자 차단
                 </button>
                 <button
                   onClick={markResolved}
