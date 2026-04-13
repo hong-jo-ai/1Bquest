@@ -5,6 +5,7 @@ import {
   listGmailAccounts,
 } from "./gmailClient";
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
+import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -26,6 +27,7 @@ export async function sendReply(
   > = {
     gmail: sendGmailReply,
     threads: sendThreadsReply,
+    crisp: sendCrispReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -234,6 +236,48 @@ async function sendThreadsReply(
       ok: false,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+async function sendCrispReply(
+  threadId: string,
+  body: string
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  const accounts = await listCrispAccounts();
+  const account = accounts.find((a) => a.brand === thread.brand);
+  if (!account) return { ok: false, error: "Crisp 계정 미등록" };
+
+  try {
+    const result = await sendCrispMessage(
+      account,
+      thread.external_thread_id,
+      body
+    );
+
+    await ingestMessage({
+      brand: thread.brand as CsBrandId,
+      channel: "crisp",
+      externalThreadId: thread.external_thread_id,
+      externalMessageId: `${thread.external_thread_id}:${result.fingerprint}`,
+      bodyText: body,
+      sentAt: new Date(),
+      direction: "out",
+      raw: { sent_via: "inbox_ui" },
+    });
+
+    const db = getCsSupabase();
+    await db
+      .from("cs_threads")
+      .update({ status: "waiting" })
+      .eq("id", threadId);
+
+    return { ok: true, externalMessageId: String(result.fingerprint) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

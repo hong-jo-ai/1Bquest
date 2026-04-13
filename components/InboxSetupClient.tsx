@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Mail, Check, AlertCircle, ArrowLeft, Loader2, X, RefreshCw } from "lucide-react";
+import { Mail, Check, AlertCircle, ArrowLeft, Loader2, X, RefreshCw, MessageSquare } from "lucide-react";
 
 interface Account {
   id: string;
@@ -66,6 +66,55 @@ export default function InboxSetupClient() {
 
   const gmailAccount = (brand: "paulvice" | "harriot") =>
     accounts.find((a) => a.brand === brand && a.channel === "gmail");
+
+  const crispAccount = (brand: "paulvice" | "harriot") =>
+    accounts.find((a) => a.brand === brand && a.channel === "crisp");
+
+  const [crispForm, setCrispForm] = useState<{
+    brand: "paulvice" | "harriot";
+    displayName: string;
+    websiteId: string;
+    identifier: string;
+    key: string;
+  }>({
+    brand: "harriot",
+    displayName: "harriotwatches.com",
+    websiteId: "",
+    identifier: "",
+    key: "",
+  });
+  const [crispSaving, setCrispSaving] = useState(false);
+
+  const submitCrisp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCrispSaving(true);
+    try {
+      const res = await fetch("/api/cs/accounts/crisp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(crispForm),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setCrispForm({ ...crispForm, websiteId: "", identifier: "", key: "" });
+        const r = await fetch("/api/cs/accounts");
+        const j = await r.json();
+        setAccounts(j.accounts ?? []);
+      } else {
+        alert(json.error ?? "Crisp 등록 실패");
+      }
+    } finally {
+      setCrispSaving(false);
+    }
+  };
+
+  const disconnectCrisp = async (id: string) => {
+    if (!confirm("Crisp 연결을 해제할까요?")) return;
+    await fetch(`/api/cs/accounts/crisp?id=${id}`, { method: "DELETE" });
+    const r = await fetch("/api/cs/accounts");
+    const j = await r.json();
+    setAccounts(j.accounts ?? []);
+  };
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -177,6 +226,132 @@ export default function InboxSetupClient() {
           불러오는 중…
         </div>
       )}
+
+      <section className="mb-6">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3">
+          Crisp (웹사이트 채팅)
+        </h2>
+        <div className="space-y-3">
+          {(["harriot", "paulvice"] as const).map((brand) => {
+            const account = crispAccount(brand);
+            if (!account) return null;
+            return (
+              <div
+                key={brand}
+                className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30">
+                    <MessageSquare size={18} className="text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                      {BRAND_LABEL[brand]}
+                    </div>
+                    <div className="text-xs text-zinc-500 truncate">
+                      {account.display_name}
+                    </div>
+                    {account.error_message && (
+                      <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                        {account.error_message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => disconnectCrisp(account.id)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  연결 해제
+                </button>
+              </div>
+            );
+          })}
+          <form
+            onSubmit={submitCrisp}
+            className="p-4 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 space-y-3"
+          >
+            <div className="text-xs text-zinc-500 mb-2">
+              Crisp Personal Plugin의 자격증명을 입력하세요. (
+              <a
+                href="https://marketplace.crisp.chat/plugins/personal/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-violet-600 underline"
+              >
+                Crisp Marketplace에서 발급
+              </a>
+              )
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={crispForm.brand}
+                onChange={(e) =>
+                  setCrispForm({
+                    ...crispForm,
+                    brand: e.target.value as "paulvice" | "harriot",
+                    displayName:
+                      e.target.value === "harriot"
+                        ? "harriotwatches.com"
+                        : "paulvice.com",
+                  })
+                }
+                className="px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              >
+                <option value="harriot">해리엇</option>
+                <option value="paulvice">폴바이스</option>
+              </select>
+              <input
+                type="text"
+                placeholder="display name (예: harriotwatches.com)"
+                value={crispForm.displayName}
+                onChange={(e) =>
+                  setCrispForm({ ...crispForm, displayName: e.target.value })
+                }
+                className="px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+                required
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Website ID (uuid 형식)"
+              value={crispForm.websiteId}
+              onChange={(e) =>
+                setCrispForm({ ...crispForm, websiteId: e.target.value })
+              }
+              className="w-full px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              required
+            />
+            <input
+              type="text"
+              placeholder="Plugin Identifier"
+              value={crispForm.identifier}
+              onChange={(e) =>
+                setCrispForm({ ...crispForm, identifier: e.target.value })
+              }
+              className="w-full px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Plugin Key"
+              value={crispForm.key}
+              onChange={(e) =>
+                setCrispForm({ ...crispForm, key: e.target.value })
+              }
+              className="w-full px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              required
+            />
+            <button
+              type="submit"
+              disabled={crispSaving}
+              className="w-full px-4 py-2 rounded-md text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {crispSaving ? "검증 중…" : "Crisp 연결"}
+            </button>
+          </form>
+        </div>
+      </section>
 
       <section className="mt-6">
         <div className="flex items-center justify-between mb-3">

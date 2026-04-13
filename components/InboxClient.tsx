@@ -32,6 +32,7 @@ const CHANNEL_ICON: Record<CsChannel, React.ElementType> = {
   ig_dm: Camera,
   ig_comment: Camera,
   channeltalk: MessageCircle,
+  crisp: MessageCircle,
   kakao_bizchat: MessageCircle,
   cafe24_board: Store,
   sixshop_board: ShoppingBag,
@@ -114,6 +115,7 @@ export default function InboxClient() {
       await Promise.all([
         fetch("/api/cs/ingest/gmail", { method: "POST" }),
         fetch("/api/cs/ingest/threads", { method: "POST" }),
+        fetch("/api/cs/ingest/crisp", { method: "POST" }),
       ]);
       await loadThreads();
       showToast("동기화 완료");
