@@ -29,11 +29,12 @@ interface GmailMessage {
 
 export async function listGmailAccounts(): Promise<GmailAccount[]> {
   const db = getCsSupabase();
+  // 'paused'만 제외 — 'error' 상태도 자동 재시도 대상에 포함
   const { data, error } = await db
     .from("cs_accounts")
     .select("*")
     .eq("channel", "gmail")
-    .eq("status", "active");
+    .in("status", ["active", "error"]);
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => {
     const creds = (row.credentials ?? {}) as Record<string, unknown>;
