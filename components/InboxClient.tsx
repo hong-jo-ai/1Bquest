@@ -139,6 +139,7 @@ export default function InboxClient() {
   const [sending, setSending] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -155,6 +156,7 @@ export default function InboxClient() {
       const res = await fetch(`/api/cs/threads?${params}`);
       const json = await res.json();
       setThreads(json.threads ?? []);
+      setLastRefresh(new Date());
     } finally {
       setLoading(false);
     }
@@ -173,6 +175,43 @@ export default function InboxClient() {
 
   useEffect(() => {
     loadThreads();
+  }, [loadThreads]);
+
+  // 10분마다 자동 동기화 + 목록 갱신
+  // 탭이 숨겨져 있으면(visibility:hidden) 쉬었다가 다시 보일 때 1회 재시도
+  useEffect(() => {
+    const INTERVAL_MS = 10 * 60 * 1000;
+
+    const tick = async () => {
+      if (document.hidden) return;
+      try {
+        await Promise.all([
+          fetch("/api/cs/ingest/gmail", { method: "POST" }),
+          fetch("/api/cs/ingest/threads", { method: "POST" }),
+          fetch("/api/cs/ingest/crisp", { method: "POST" }),
+          fetch("/api/cs/ingest/instagram", { method: "POST" }),
+        ]);
+      } catch {
+        // 조용히 실패
+      }
+      await loadThreads();
+    };
+
+    const id = setInterval(tick, INTERVAL_MS);
+
+    // 탭이 다시 포커스될 때 즉시 한 번 갱신 (마지막 갱신이 2분 이상 됐으면)
+    const onVisible = () => {
+      if (!document.hidden && Date.now() - lastRefresh.getTime() > 2 * 60 * 1000) {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadThreads]);
 
   useEffect(() => {
@@ -460,8 +499,13 @@ export default function InboxClient() {
               : STATUS_LABEL[statusFilter as CsStatus]}
             {brandFilter !== "all" && ` · ${BRAND_LABEL[brandFilter as CsBrandId]}`}
           </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
-            {threads.length}건
+          <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
+            <span>{threads.length}건</span>
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <span>
+              마지막 갱신 {formatRelative(lastRefresh)}
+              <span className="text-zinc-400 ml-1">(10분마다 자동)</span>
+            </span>
           </div>
         </div>
 
@@ -970,6 +1014,16 @@ function stringGradient(s: string): string {
     hash = (hash * 31 + s.charCodeAt(i)) | 0;
   }
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+}
+
+function formatRelative(d: Date): string {
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  return d.toLocaleDateString("ko-KR");
 }
 
 // ── 시간 포맷 ──────────────────────────────────────────────
