@@ -6,6 +6,7 @@ import {
 } from "./gmailClient";
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
+import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -28,6 +29,7 @@ export async function sendReply(
     gmail: sendGmailReply,
     threads: sendThreadsReply,
     crisp: sendCrispReply,
+    ig_dm: sendIgReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -236,6 +238,49 @@ async function sendThreadsReply(
       ok: false,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+async function sendIgReply(
+  threadId: string,
+  body: string
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread, messages } = data;
+
+  const accounts = await listIgAccounts();
+  const account = accounts.find((a) => a.brand === thread.brand);
+  if (!account) return { ok: false, error: "IG 계정 미등록" };
+
+  // 상대방 IGSID: 최근 수신 메시지 raw에서 from.id 추출
+  const latestIn = [...messages].reverse().find((m) => m.direction === "in");
+  if (!latestIn) {
+    return { ok: false, error: "상대방 메시지가 없어 답장 대상을 찾을 수 없음" };
+  }
+  const raw = (latestIn.raw ?? {}) as { from?: { id?: string } };
+  const recipientId = raw.from?.id;
+  if (!recipientId) {
+    return { ok: false, error: "IGSID를 찾을 수 없음" };
+  }
+
+  try {
+    const result = await sendIgMessage(account, recipientId, body);
+    await ingestMessage({
+      brand: thread.brand as CsBrandId,
+      channel: "ig_dm",
+      externalThreadId: thread.external_thread_id,
+      externalMessageId: result.message_id,
+      bodyText: body,
+      sentAt: new Date(),
+      direction: "out",
+      raw: { sent_via: "inbox_ui" },
+    });
+    const db = getCsSupabase();
+    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+    return { ok: true, externalMessageId: result.message_id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

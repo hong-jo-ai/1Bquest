@@ -37,6 +37,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cs/ingest/instagram",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cs/notify",
       "schedule": "2,12,22,32,42,52 * * * *"
     },

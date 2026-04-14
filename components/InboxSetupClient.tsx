@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Mail, Check, AlertCircle, ArrowLeft, Loader2, X, RefreshCw, MessageSquare } from "lucide-react";
+import { Mail, Check, AlertCircle, ArrowLeft, Loader2, X, RefreshCw, MessageSquare, Camera } from "lucide-react";
 
 interface Account {
   id: string;
@@ -69,6 +69,9 @@ export default function InboxSetupClient() {
 
   const crispAccount = (brand: "paulvice" | "harriot") =>
     accounts.find((a) => a.brand === brand && a.channel === "crisp");
+
+  const igAccount = (brand: "paulvice" | "harriot") =>
+    accounts.find((a) => a.brand === brand && a.channel === "ig_dm");
 
   const [crispForm, setCrispForm] = useState<{
     brand: "paulvice" | "harriot";
@@ -226,6 +229,67 @@ export default function InboxSetupClient() {
           불러오는 중…
         </div>
       )}
+
+      <section className="mb-6">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3">
+          Instagram DM
+        </h2>
+        <div className="space-y-3">
+          {(["paulvice", "harriot"] as const).map((brand) => {
+            const account = igAccount(brand);
+            const connected = !!account;
+            return (
+              <div
+                key={brand}
+                className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      connected
+                        ? "bg-emerald-100 dark:bg-emerald-900/30"
+                        : "bg-zinc-100 dark:bg-zinc-800"
+                    }`}
+                  >
+                    <Camera
+                      size={18}
+                      className={
+                        connected
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-zinc-400"
+                      }
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                      {BRAND_LABEL[brand]}
+                    </div>
+                    <div className="text-xs text-zinc-500 truncate">
+                      {account?.display_name ??
+                        (brand === "paulvice" ? "@plve_seoul" : "@harriotwatches")}
+                    </div>
+                    {account?.error_message && (
+                      <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                        {account.error_message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <a
+                  href={`/api/cs/auth/instagram/start?brand=${brand}`}
+                  className={`px-4 py-2 rounded-md text-sm font-medium flex-shrink-0 ${
+                    connected
+                      ? "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"
+                      : "bg-violet-600 text-white hover:bg-violet-700"
+                  }`}
+                >
+                  {connected ? "재연결" : "연결"}
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="mb-6">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3">
