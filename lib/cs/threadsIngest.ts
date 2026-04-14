@@ -97,10 +97,15 @@ async function syncBrand(brand: CsBrandId): Promise<{
         continue;
       }
 
+      // 각 댓글 작성자별로 별도 스레드 — 같은 원글이라도 사람마다 분리
+      const threadKey = replierUsername
+        ? `${post.id}:${replierUsername}`
+        : `${post.id}:unknown:${reply.id}`;
+
       const payload: IngestPayload = {
         brand,
         channel: "threads",
-        externalThreadId: post.id, // 원글 ID로 스레드 묶음
+        externalThreadId: threadKey,
         externalMessageId: reply.id,
         customerHandle: replierUsername ?? undefined,
         customerName: replierUsername ?? undefined,
@@ -108,7 +113,7 @@ async function syncBrand(brand: CsBrandId): Promise<{
         bodyText: reply.text ?? "",
         sentAt: new Date(reply.timestamp),
         direction: "in",
-        raw: reply,
+        raw: { ...reply, original_post_id: post.id },
       };
 
       const result = await ingestMessage(payload);

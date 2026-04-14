@@ -143,11 +143,11 @@ async function sendThreadsReply(
   if (!token) return { ok: false, error: "Threads 토큰 없음" };
 
   // 답장 대상: 가장 최근 "수신(in)" 메시지의 external_message_id (= 고객 댓글 id)
-  // 없으면 원글 id로 폴백
   const latestIn = [...messages].reverse().find((m) => m.direction === "in");
-  const replyToId =
-    latestIn?.external_message_id ?? thread.external_thread_id;
-  if (!replyToId) return { ok: false, error: "답장 대상 id 없음" };
+  if (!latestIn?.external_message_id) {
+    return { ok: false, error: "답장 대상 댓글 id 없음 (수신 메시지 없음)" };
+  }
+  const replyToId = latestIn.external_message_id;
 
   const BASE = "https://graph.threads.net/v1.0";
 
