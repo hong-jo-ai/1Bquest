@@ -9,6 +9,27 @@ export const EXPECTED_IG_USERNAME: Record<CsBrandId, string> = {
   harriot: "harriotwatches",
 };
 
+/**
+ * 브랜드별 Meta 앱 자격증명.
+ * - paulvice: META_APP_ID / META_APP_SECRET (기존 env)
+ * - harriot:  META_APP_ID_HARRIOT / META_APP_SECRET_HARRIOT (신규 env)
+ */
+export function getMetaAppCredentials(brand: CsBrandId): {
+  appId: string;
+  appSecret: string;
+} {
+  if (brand === "harriot") {
+    return {
+      appId: (process.env.META_APP_ID_HARRIOT ?? "").trim(),
+      appSecret: (process.env.META_APP_SECRET_HARRIOT ?? "").trim(),
+    };
+  }
+  return {
+    appId: (process.env.META_APP_ID ?? "").trim(),
+    appSecret: (process.env.META_APP_SECRET ?? "").trim(),
+  };
+}
+
 export interface IgAccount {
   id: string;
   brand: CsBrandId;
@@ -32,12 +53,19 @@ interface IgBusinessAccount {
 }
 
 export async function exchangeCodeForToken(
+  brand: CsBrandId,
   code: string,
   redirectUri: string
 ): Promise<string> {
+  const { appId, appSecret } = getMetaAppCredentials(brand);
+  if (!appId || !appSecret) {
+    throw new Error(
+      `${brand} Meta 앱 자격증명 누락 (${brand === "harriot" ? "META_APP_ID_HARRIOT / META_APP_SECRET_HARRIOT" : "META_APP_ID / META_APP_SECRET"})`
+    );
+  }
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID ?? "",
-    client_secret: process.env.META_APP_SECRET ?? "",
+    client_id: appId,
+    client_secret: appSecret,
     redirect_uri: redirectUri,
     code,
   });
@@ -48,12 +76,14 @@ export async function exchangeCodeForToken(
 }
 
 export async function getLongLivedUserToken(
+  brand: CsBrandId,
   shortToken: string
 ): Promise<string> {
+  const { appId, appSecret } = getMetaAppCredentials(brand);
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
-    client_id: process.env.META_APP_ID ?? "",
-    client_secret: process.env.META_APP_SECRET ?? "",
+    client_id: appId,
+    client_secret: appSecret,
     fb_exchange_token: shortToken,
   });
   const res = await fetch(`${META_BASE}/oauth/access_token?${params}`);

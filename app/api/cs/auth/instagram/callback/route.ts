@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${origin}/api/cs/auth/instagram/callback`;
   let shortToken: string;
   try {
-    shortToken = await exchangeCodeForToken(code, redirectUri);
+    shortToken = await exchangeCodeForToken(brand, code, redirectUri);
     steps.push({
       name: "단기 토큰 교환",
       ok: true,
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
   // 2. 장기 토큰 교환
   let longToken: string;
   try {
-    longToken = await getLongLivedUserToken(shortToken);
+    longToken = await getLongLivedUserToken(brand, shortToken);
     steps.push({ name: "장기 토큰 교환 (60일)", ok: true });
   } catch (e) {
     steps.push({

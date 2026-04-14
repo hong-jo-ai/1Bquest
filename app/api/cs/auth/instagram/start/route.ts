@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
-
-const APP_ID = process.env.META_APP_ID ?? "";
+import { getMetaAppCredentials } from "@/lib/cs/instagramClient";
+import type { CsBrandId } from "@/lib/cs/types";
 
 /**
  * GET /api/cs/auth/instagram/start?brand=paulvice
- * Facebook OAuth로 리다이렉트. 스코프는 IG DM 관리에 필요한 것들.
+ * 브랜드별 Meta 앱으로 OAuth 리다이렉트.
  */
 export async function GET(req: NextRequest) {
   const brand = req.nextUrl.searchParams.get("brand") ?? "";
@@ -15,11 +15,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const { appId } = getMetaAppCredentials(brand as CsBrandId);
+  if (!appId) {
+    return Response.json(
+      {
+        error: `${brand} Meta 앱 ID 누락. Vercel env에 ${brand === "harriot" ? "META_APP_ID_HARRIOT" : "META_APP_ID"}를 설정하세요.`,
+      },
+      { status: 500 }
+    );
+  }
+
   const origin = req.nextUrl.origin;
   const redirectUri = `${origin}/api/cs/auth/instagram/callback`;
 
   const params = new URLSearchParams({
-    client_id: APP_ID,
+    client_id: appId,
     redirect_uri: redirectUri,
     response_type: "code",
     scope: [
