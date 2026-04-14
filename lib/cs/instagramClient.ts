@@ -5,7 +5,7 @@ const META_BASE = "https://graph.facebook.com/v22.0";
 
 // 각 브랜드의 예상 IG 유저네임 (잘못된 계정 연결 방지)
 export const EXPECTED_IG_USERNAME: Record<CsBrandId, string> = {
-  paulvice: "plve_seoul",
+  paulvice: "paulvicedesign",
   harriot: "harriotwatches",
 };
 
