@@ -170,8 +170,9 @@ export async function listIgConversations(
   const maxPages = opts.maxPages ?? 1;
   const all: IgConversation[] = [];
 
+  // 일부 페이지는 limit=25에서 "reduce the amount of data" 에러 → 10으로 줄임
   let nextUrl: string | null =
-    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&limit=25&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&limit=10&access_token=${encodeURIComponent(account.pageAccessToken)}`;
 
   for (let page = 0; page < maxPages && nextUrl; page++) {
     const res = await fetch(nextUrl, { cache: "no-store" });
