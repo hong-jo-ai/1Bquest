@@ -29,9 +29,15 @@ function preview(text: string | undefined | null, max = 140): string | null {
 }
 
 /**
- * 스레드를 upsert하고 메시지를 삽입한다.
- * external_message_id가 이미 있으면 중복 삽입을 건너뛴다.
- * 수신(in) 메시지는 thread.status를 'unanswered'로 돌린다.
+ * 스레드 + 메시지 ingest.
+ *
+ * 핵심 규칙:
+ *   1. 메시지 중복(external_message_id 기준)이면 스레드를 전혀 건드리지 않고 return.
+ *      → archived / resolved 스레드의 상태가 재동기화로 덮어쓰이는 걸 방지.
+ *   2. 새 메시지인 경우:
+ *      - 스레드가 이미 있으면: last_message_* 만 갱신. status는
+ *        archived/resolved 면 보존, 나머지는 방향에 따라 unanswered/waiting.
+ *      - 새 스레드면: status는 방향에 따라 초기 설정.
  */
 export async function ingestMessage(payload: IngestPayload): Promise<{
   threadId: string;
@@ -40,11 +46,56 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
   const db = getCsSupabase();
   const bodyForPreview = payload.bodyText ?? stripHtml(payload.bodyHtml);
 
-  // 1. thread upsert
-  const { data: thread, error: threadErr } = await db
+  // 1. 메시지 중복 검사 (전역)
+  if (payload.externalMessageId) {
+    const { data: existingMsg } = await db
+      .from("cs_messages")
+      .select("id, thread_id")
+      .eq("external_message_id", payload.externalMessageId)
+      .maybeSingle();
+    if (existingMsg) {
+      return { threadId: existingMsg.thread_id, inserted: false };
+    }
+  }
+
+  // 2. 기존 스레드 조회
+  const { data: existingThread } = await db
     .from("cs_threads")
-    .upsert(
-      {
+    .select("id, status")
+    .eq("channel", payload.channel)
+    .eq("external_thread_id", payload.externalThreadId)
+    .maybeSingle();
+
+  let threadId: string;
+
+  if (existingThread) {
+    // archived / resolved는 보존 — 사용자가 명시적으로 처리한 상태는 덮어쓰지 않음
+    const preserve =
+      existingThread.status === "archived" ||
+      existingThread.status === "resolved";
+    const nextStatus = preserve
+      ? existingThread.status
+      : payload.direction === "in"
+        ? "unanswered"
+        : "waiting";
+
+    const { error: updErr } = await db
+      .from("cs_threads")
+      .update({
+        last_message_at: payload.sentAt.toISOString(),
+        last_message_preview: preview(bodyForPreview),
+        customer_handle: payload.customerHandle ?? null,
+        customer_name: payload.customerName ?? null,
+        subject: payload.subject ?? null,
+        status: nextStatus,
+      })
+      .eq("id", existingThread.id);
+    if (updErr) throw new Error(`cs_threads update 실패: ${updErr.message}`);
+    threadId = existingThread.id;
+  } else {
+    const { data: inserted, error: insErr } = await db
+      .from("cs_threads")
+      .insert({
         brand: payload.brand,
         channel: payload.channel,
         external_thread_id: payload.externalThreadId,
@@ -54,32 +105,18 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
         last_message_at: payload.sentAt.toISOString(),
         last_message_preview: preview(bodyForPreview),
         status: payload.direction === "in" ? "unanswered" : "waiting",
-      },
-      { onConflict: "channel,external_thread_id" }
-    )
-    .select("id")
-    .single();
-
-  if (threadErr || !thread) {
-    throw new Error(`cs_threads upsert 실패: ${threadErr?.message}`);
-  }
-
-  // 2. 중복 검사
-  if (payload.externalMessageId) {
-    const { data: existing } = await db
-      .from("cs_messages")
+      })
       .select("id")
-      .eq("thread_id", thread.id)
-      .eq("external_message_id", payload.externalMessageId)
-      .maybeSingle();
-    if (existing) {
-      return { threadId: thread.id, inserted: false };
+      .single();
+    if (insErr || !inserted) {
+      throw new Error(`cs_threads insert 실패: ${insErr?.message}`);
     }
+    threadId = inserted.id;
   }
 
   // 3. 메시지 삽입
   const { error: msgErr } = await db.from("cs_messages").insert({
-    thread_id: thread.id,
+    thread_id: threadId,
     direction: payload.direction,
     external_message_id: payload.externalMessageId ?? null,
     body_text: payload.bodyText ?? null,
@@ -92,7 +129,7 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
     throw new Error(`cs_messages insert 실패: ${msgErr.message}`);
   }
 
-  return { threadId: thread.id, inserted: true };
+  return { threadId, inserted: true };
 }
 
 export async function listThreads(opts: {
