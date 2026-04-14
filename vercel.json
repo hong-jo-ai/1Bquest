@@ -47,6 +47,10 @@
     {
       "path": "/api/cs/notify?mode=stale",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cs/notify/email",
+      "schedule": "7,17,27,37,47,57 * * * *"
     }
   ]
 }
