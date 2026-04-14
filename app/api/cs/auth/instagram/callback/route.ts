@@ -6,6 +6,7 @@ import {
   getLongLivedUserToken,
   listManagedPages,
   EXPECTED_IG_USERNAME,
+  EXPECTED_IG_USERNAMES,
 } from "@/lib/cs/instagramClient";
 import type { CsBrandId } from "@/lib/cs/types";
 
@@ -155,8 +156,9 @@ export async function GET(req: NextRequest) {
     detail: `${pagesWithIg.length}개`,
   });
 
-  // 5. 브랜드에 맞는 IG 계정 찾기 (username 매칭)
-  const expectedUsername = EXPECTED_IG_USERNAME[brand];
+  // 5. 브랜드에 맞는 IG 계정 찾기 (username 매칭, 여러 후보 허용)
+  const candidates = EXPECTED_IG_USERNAMES[brand].map((s) => s.toLowerCase());
+  const fallbackUsername = EXPECTED_IG_USERNAME[brand];
   let matched: {
     pageId: string;
     pageName: string;
@@ -164,42 +166,40 @@ export async function GET(req: NextRequest) {
     igUserId: string;
     igUsername: string;
   } | null = null;
+  const allFound: string[] = [];
 
   for (const p of pagesWithIg) {
     const igId = p.instagram_business_account!.id;
     try {
       const ig = await getIgBusinessAccount(igId, p.access_token);
-      if (ig.username.toLowerCase() === expectedUsername.toLowerCase()) {
+      const uname = ig.username ?? "";
+      allFound.push(`@${uname} (page: ${p.name})`);
+      if (candidates.includes(uname.toLowerCase())) {
         matched = {
           pageId: p.id,
           pageName: p.name,
           pageAccessToken: p.access_token,
           igUserId: ig.id,
-          igUsername: ig.username,
+          igUsername: uname,
         };
-        break;
       }
-    } catch {
-      // continue
+    } catch (e) {
+      allFound.push(
+        `(IG fetch 실패: ${e instanceof Error ? e.message : String(e)})`
+      );
     }
   }
 
   if (!matched) {
-    const tried: string[] = [];
-    for (const p of pagesWithIg) {
-      const igId = p.instagram_business_account!.id;
-      try {
-        const ig = await getIgBusinessAccount(igId, p.access_token);
-        tried.push(`@${ig.username}`);
-      } catch {}
-    }
     steps.push({
       name: "브랜드 IG 매칭",
       ok: false,
-      detail: `@${expectedUsername} 예상했지만 찾은 계정: ${tried.join(", ") || "없음"}`,
+      detail: `기대: ${candidates.map((c) => "@" + c).join(" 또는 ")} / 실제로 찾은 계정: ${allFound.join(" | ") || "없음"}`,
     });
     return renderDebugPage(steps, false, brand);
   }
+
+  void fallbackUsername; // unused 경고 방지
 
   steps.push({
     name: "브랜드 IG 매칭",

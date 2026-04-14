@@ -4,8 +4,15 @@ import type { CsBrandId } from "./types";
 const META_BASE = "https://graph.facebook.com/v22.0";
 
 // 각 브랜드의 예상 IG 유저네임 (잘못된 계정 연결 방지)
+// 여러 대체 유저네임 허용 (브랜드 리네임·다계정 운영 대비)
+export const EXPECTED_IG_USERNAMES: Record<CsBrandId, string[]> = {
+  paulvice: ["plve_seoul", "paulvicedesign", "paulvice"],
+  harriot: ["harriotwatches"],
+};
+
+// 호환용 단일 값 (에러 메시지 표기)
 export const EXPECTED_IG_USERNAME: Record<CsBrandId, string> = {
-  paulvice: "paulvicedesign",
+  paulvice: "plve_seoul",
   harriot: "harriotwatches",
 };
 
