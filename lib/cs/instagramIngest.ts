@@ -7,7 +7,10 @@ import {
 } from "./instagramClient";
 import type { IngestPayload } from "./types";
 
-export async function syncAllIgAccounts(): Promise<{
+export async function syncAllIgAccounts(opts: {
+  sinceDays?: number;
+  maxPages?: number;
+} = {}): Promise<{
   accounts: number;
   inserted: number;
   skipped: number;
@@ -18,9 +21,17 @@ export async function syncAllIgAccounts(): Promise<{
   let skipped = 0;
   const errors: string[] = [];
 
+  const since = opts.sinceDays
+    ? new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000)
+    : undefined;
+  const maxPages = opts.maxPages ?? 1;
+
   for (const account of accounts) {
     try {
-      const conversations = await listIgConversations(account);
+      const conversations = await listIgConversations(account, {
+        since,
+        maxPages,
+      });
 
       for (const conv of conversations) {
         let messages;

@@ -159,18 +159,47 @@ interface IgMessage {
 }
 
 /**
- * 최근 업데이트된 IG DM 대화 목록.
+ * IG DM 대화 목록. 페이지네이션으로 since 날짜까지 거슬러 올라간다.
  * Meta 문서: GET /{PAGE-ID}/conversations?platform=instagram
- * PAGE access token 사용.
  */
 export async function listIgConversations(
-  account: IgAccount
+  account: IgAccount,
+  opts: { since?: Date; maxPages?: number } = {}
 ): Promise<IgConversation[]> {
-  const url = `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&access_token=${encodeURIComponent(account.pageAccessToken)}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`IG 대화 조회 실패: ${await res.text()}`);
-  const json = (await res.json()) as { data?: IgConversation[] };
-  return json.data ?? [];
+  const sinceMs = opts.since ? opts.since.getTime() : 0;
+  const maxPages = opts.maxPages ?? 1;
+  const all: IgConversation[] = [];
+
+  let nextUrl: string | null =
+    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&limit=25&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+
+  for (let page = 0; page < maxPages && nextUrl; page++) {
+    const res = await fetch(nextUrl, { cache: "no-store" });
+    if (!res.ok) throw new Error(`IG 대화 조회 실패: ${await res.text()}`);
+    const json = (await res.json()) as {
+      data?: IgConversation[];
+      paging?: { next?: string };
+    };
+    const batch = json.data ?? [];
+    all.push(...batch);
+
+    // since보다 이전 대화만 있으면 중단
+    if (
+      sinceMs &&
+      batch.length > 0 &&
+      batch.every((c) => new Date(c.updated_time).getTime() < sinceMs)
+    ) {
+      break;
+    }
+
+    nextUrl = json.paging?.next ?? null;
+  }
+
+  // since 필터 적용
+  if (sinceMs) {
+    return all.filter((c) => new Date(c.updated_time).getTime() >= sinceMs);
+  }
+  return all;
 }
 
 export async function fetchIgMessages(
