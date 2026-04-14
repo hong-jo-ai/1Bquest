@@ -160,11 +160,13 @@ interface IgMessage {
 
 /**
  * 최근 업데이트된 IG DM 대화 목록.
+ * Meta 문서: GET /{PAGE-ID}/conversations?platform=instagram
+ * PAGE access token 사용.
  */
 export async function listIgConversations(
   account: IgAccount
 ): Promise<IgConversation[]> {
-  const url = `${META_BASE}/${account.igUserId}/conversations?platform=instagram&fields=id,updated_time,participants&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+  const url = `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&access_token=${encodeURIComponent(account.pageAccessToken)}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`IG 대화 조회 실패: ${await res.text()}`);
   const json = (await res.json()) as { data?: IgConversation[] };
@@ -184,18 +186,23 @@ export async function fetchIgMessages(
   return json.messages?.data ?? [];
 }
 
+/**
+ * IG DM 전송: Messenger Platform의 /me/messages 엔드포인트 사용.
+ * 페이지 액세스 토큰 + recipient.id (IGSID).
+ */
 export async function sendIgMessage(
   account: IgAccount,
   recipientIgsid: string,
   text: string
 ): Promise<{ message_id: string }> {
-  const url = `${META_BASE}/${account.igUserId}/messages`;
+  const url = `${META_BASE}/${account.pageId}/messages`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipient: { id: recipientIgsid },
       message: { text },
+      messaging_type: "RESPONSE",
       access_token: account.pageAccessToken,
     }),
   });
