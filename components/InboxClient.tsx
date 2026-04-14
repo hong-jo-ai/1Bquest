@@ -177,32 +177,22 @@ export default function InboxClient() {
     loadThreads();
   }, [loadThreads]);
 
-  // 10분마다 자동 동기화 + 목록 갱신
-  // 탭이 숨겨져 있으면(visibility:hidden) 쉬었다가 다시 보일 때 1회 재시도
+  // 자동 동기화 — 탭 포커스 시 60초, 백그라운드에서는 쉼
+  // 실시간 채널(IG DM, Crisp)은 서버 webhook으로 즉시 ingest되므로
+  // 클라이언트는 목록만 빠르게 폴링하면 됨
   useEffect(() => {
-    const INTERVAL_MS = 10 * 60 * 1000;
+    const FAST_INTERVAL_MS = 60 * 1000; // 1분
 
-    const tick = async () => {
+    const fastTick = async () => {
       if (document.hidden) return;
-      try {
-        await Promise.all([
-          fetch("/api/cs/ingest/gmail", { method: "POST" }),
-          fetch("/api/cs/ingest/threads", { method: "POST" }),
-          fetch("/api/cs/ingest/crisp", { method: "POST" }),
-          fetch("/api/cs/ingest/instagram", { method: "POST" }),
-        ]);
-      } catch {
-        // 조용히 실패
-      }
-      await loadThreads();
+      await loadThreads(); // ingest는 서버 cron과 webhook이 담당
     };
 
-    const id = setInterval(tick, INTERVAL_MS);
+    const id = setInterval(fastTick, FAST_INTERVAL_MS);
 
-    // 탭이 다시 포커스될 때 즉시 한 번 갱신 (마지막 갱신이 2분 이상 됐으면)
     const onVisible = () => {
-      if (!document.hidden && Date.now() - lastRefresh.getTime() > 2 * 60 * 1000) {
-        tick();
+      if (!document.hidden && Date.now() - lastRefresh.getTime() > 30 * 1000) {
+        fastTick();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -504,7 +494,7 @@ export default function InboxClient() {
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <span>
               마지막 갱신 {formatRelative(lastRefresh)}
-              <span className="text-zinc-400 ml-1">(10분마다 자동)</span>
+              <span className="text-zinc-400 ml-1">(1분마다 자동)</span>
             </span>
           </div>
         </div>
