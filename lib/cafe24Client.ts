@@ -154,9 +154,11 @@ export async function fetchBoardArticles(
     limit: String(limit),
   });
   if (opts.sinceDate) {
-    // YYYY-MM-DD 형식
-    const d = opts.sinceDate.toISOString().slice(0, 10);
-    params.set("start_date", d);
+    // Cafe24 API: start_date와 end_date는 한 쌍으로만 허용됨
+    const start = opts.sinceDate.toISOString().slice(0, 10);
+    const end = new Date().toISOString().slice(0, 10);
+    params.set("start_date", start);
+    params.set("end_date", end);
   }
   const json = (await cafe24Get(
     `/api/v2/admin/boards/${boardNo}/articles?${params}`,
