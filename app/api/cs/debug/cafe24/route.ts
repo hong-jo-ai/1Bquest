@@ -24,7 +24,10 @@ export async function POST(req: Request) {
   const variant = body.variant ?? 1;
 
   // 여러 payload 포맷 시도
-  const variants: Record<number, { path: string; payload: unknown }> = {
+  const variants: Record<
+    number,
+    { path: string; payload: unknown; method?: string }
+  > = {
     1: {
       path: `/api/v2/admin/boards/${boardNo}/articles`,
       payload: {
@@ -150,6 +153,58 @@ export async function POST(req: Request) {
         },
       },
     },
+    10: {
+      // 루트 article 생성 — parent 없이 기본 필드만
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          title: "테스트 글",
+          content,
+          writer: "관리자",
+          password: "paulvice1!",
+        },
+      },
+    },
+    11: {
+      // reply_depth 명시
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+          password: "paulvice1!",
+          reply_depth: 1,
+          reply_sequence: 1,
+        },
+      },
+    },
+    12: {
+      // PUT으로 원글에 admin reply 설정
+      path: `/api/v2/admin/boards/${boardNo}/articles/${articleNo}`,
+      method: "PUT",
+      payload: {
+        shop_no: 1,
+        request: {
+          reply: "T",
+          reply_content: content,
+        },
+      },
+    },
+    13: {
+      // 주문게시판(문의하기)용 answer 엔드포인트 후보
+      path: `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/answer`,
+      payload: {
+        shop_no: 1,
+        request: {
+          content,
+          writer: "관리자",
+        },
+      },
+    },
   };
 
   const chosen = variants[variant];
@@ -157,7 +212,7 @@ export async function POST(req: Request) {
 
   try {
     const res = await fetch(`${BASE_URL}${chosen.path}`, {
-      method: "POST",
+      method: chosen.method ?? "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
