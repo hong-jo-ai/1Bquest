@@ -205,6 +205,41 @@ export async function POST(req: Request) {
         },
       },
     },
+    14: {
+      // 실제 답변글 516 구조를 완전 모방
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          board_no: boardNo,
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "한지형",
+          writer_email: "@",
+          member_id: "icaruse2000",
+          reply_depth: 1,
+          reply_sequence: 1,
+          reply_mail: "Y",
+          secret: "T",
+        },
+      },
+    },
+    15: {
+      // 최소 필드 + member_id (mall_id)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "한지형",
+          writer_email: "@",
+          member_id: "icaruse2000",
+        },
+      },
+    },
   };
 
   const chosen = variants[variant];
