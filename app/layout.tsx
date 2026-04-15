@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PAULVICE Dashboard",
-  description: "PAULVICE 통합 판매 대시보드 · 카페24 · W컨셉 · 무신사",
+  title: "Harriot Watches · AI 운영 허브",
+  description:
+    "해리엇와치스 AI 운영 허브 — 폴바이스·해리엇 브랜드 통합 대시보드 (CS, 재고, 광고, 콘텐츠)",
 };
 
 export default function RootLayout({

@@ -175,10 +175,10 @@ export default function Sidebar() {
           {(!collapsed || isMobile) && (
             <div>
               <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight leading-none">
-                PAULVICE
+                HARRIOT WATCHES
               </h1>
               <p className="text-[11px] text-zinc-400 leading-none mt-0.5">
-                카페24 · W컨셉 · 무신사
+                AI 운영 허브 · 멀티 브랜드
               </p>
             </div>
           )}
@@ -309,7 +309,7 @@ export default function Sidebar() {
             <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg p-1.5">
               <Watch size={14} className="text-white" />
             </div>
-            <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100">PAULVICE</span>
+            <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100">HARRIOT WATCHES</span>
           </div>
         </div>
       </div>
