@@ -19,7 +19,7 @@ export default function ShippingModal({ influencer, onUpdate, onClose }: Props) 
   const [address, setAddress]             = useState(existing?.address ?? "");
   const [addressDetail, setAddressDetail] = useState(existing?.addressDetail ?? "");
   const [postalCode, setPostalCode]       = useState(existing?.postalCode ?? "");
-  const [productName, setProductName]     = useState(existing?.productName ?? "PAULVICE 시계");
+  const [productName, setProductName]     = useState(existing?.productName ?? "시계");
   const [quantity, setQuantity]           = useState(existing?.quantity ?? 1);
   const [memo, setMemo]                   = useState(existing?.memo ?? "");
 
@@ -144,7 +144,7 @@ export default function ShippingModal({ influencer, onUpdate, onClose }: Props) 
                 제품명 <span className="text-red-500">*</span>
               </label>
               <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)}
-                placeholder="PAULVICE 시계"
+                placeholder="시계 제품명"
                 className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
               />
             </div>

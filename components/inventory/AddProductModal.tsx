@@ -75,7 +75,7 @@ export default function AddProductModal({ existingSkus, categories, onSave, onCl
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="예) PAULVICE 클래식 오토매틱"
+              placeholder="예) 클래식 오토매틱"
               className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>

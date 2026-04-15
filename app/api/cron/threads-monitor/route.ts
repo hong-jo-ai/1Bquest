@@ -175,17 +175,17 @@ export async function GET(request: NextRequest) {
       ${queueWarningHtml}
       ${hitsSection}
       <p style="font-size:12px;color:#a1a1aa;margin-top:24px">
-        PAULVICE Dashboard 자동 알림
+        Harriot Watches 대시보드 자동 알림
       </p>
     </div>
   `;
 
   try {
     const subject = hits.length > 0 && lowBrands.length > 0
-      ? `[PAULVICE] 인기 게시물 ${hits.length}건 + 큐 부족 ${lowBrands.length}개 브랜드`
+      ? `[Harriot Watches] 인기 게시물 ${hits.length}건 + 큐 부족 ${lowBrands.length}개 브랜드`
       : hits.length > 0
-      ? `[PAULVICE] Threads 인기 게시물 ${hits.length}건 발견!`
-      : `[PAULVICE] Threads 자동 게시 큐 부족 — ${lowBrands.map(b => b.name).join(", ")}`;
+      ? `[Harriot Watches] Threads 인기 게시물 ${hits.length}건 발견!`
+      : `[Harriot Watches] Threads 자동 게시 큐 부족 — ${lowBrands.map(b => b.name).join(", ")}`;
     await sendGmail(gmailToken, NOTIFY_EMAIL, subject, html);
     console.log(`[Cron:threads-monitor] Gmail 알림 발송 — ${hits.length}건`);
   } catch (e: any) {

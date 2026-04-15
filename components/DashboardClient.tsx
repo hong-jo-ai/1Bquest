@@ -259,7 +259,7 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
 
       {/* 푸터 */}
       <footer className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 text-center text-xs text-zinc-300 dark:text-zinc-600">
-        PAULVICE Dashboard · 카페24 icaruse2000 · W컨셉 · 무신사 통합 현황
+        Harriot Watches · 멀티 브랜드 통합 현황
       </footer>
     </>
   );

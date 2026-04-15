@@ -284,7 +284,7 @@ export default function DiscoverModal({ onClose, onAdded }: Props) {
               </div>
               <div>
                 <h3 className="text-base font-bold text-zinc-800 dark:text-zinc-100">AI 인플루언서 발굴</h3>
-                <p className="text-xs text-zinc-400">PAULVICE와 어울리는 인플루언서를 자동으로 찾아드립니다</p>
+                <p className="text-xs text-zinc-400">브랜드와 어울리는 인플루언서를 자동으로 찾아드립니다</p>
               </div>
             </div>
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors">

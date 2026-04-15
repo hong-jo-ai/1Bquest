@@ -151,7 +151,7 @@ export default function InfluencerManager() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">인플루언서 마케팅</h1>
-            <p className="text-sm text-zinc-400 mt-0.5">PAULVICE 협찬 인플루언서 파이프라인 관리</p>
+            <p className="text-sm text-zinc-400 mt-0.5">협찬 인플루언서 파이프라인 관리</p>
           </div>
           <div className="flex items-center gap-2">
             {confirmedCount > 0 && (

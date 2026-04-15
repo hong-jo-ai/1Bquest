@@ -198,7 +198,7 @@ export default function ImageMakerPage() {
             화보 메이커
           </h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-            PAULVICE 브랜드 톤에 맞는 착용컷을 AI로 생성합니다
+            브랜드 톤에 맞는 착용컷을 AI로 생성합니다
           </p>
         </div>
 
@@ -256,7 +256,7 @@ export default function ImageMakerPage() {
               </h2>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
                 원하는 톤의 화보 이미지를 업로드하세요. 구도, 포즈, 조명, 색감
-                등을 분석하여 PAULVICE 스타일 가이드라인을 만듭니다.
+                등을 분석하여 브랜드 스타일 가이드라인을 만듭니다.
               </p>
 
               <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 hover:bg-violet-50/50 dark:hover:bg-violet-500/5 transition-colors">
@@ -330,7 +330,7 @@ export default function ImageMakerPage() {
           <div className="space-y-6">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6">
               <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
-                PAULVICE 스타일 가이드라인
+                브랜드 스타일 가이드라인
               </h2>
 
               <div className="grid grid-cols-2 gap-4">
