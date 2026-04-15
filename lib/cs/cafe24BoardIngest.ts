@@ -29,13 +29,11 @@ function isCsBoard(board: Cafe24Board): boolean {
 
 /**
  * 해당 글에 운영자 답글이 있는지 판별.
- * 1) article.reply 필드가 있으면 답글 있음
- * 2) comments 배열에 is_admin_user='T' 댓글이 있으면 답글 있음
+ * Cafe24 API: reply 필드가 "T"이면 답글 존재, "F"이면 미답변.
+ * reply_user_id가 있으면 추가로 답변자 id가 찍혀있음.
  */
 function hasAdminReply(article: Cafe24Article): boolean {
-  if (article.reply && article.reply.trim().length > 0) return true;
-  if (article.comments?.some((c) => c.is_admin_user === "T")) return true;
-  return false;
+  return article.reply === "T";
 }
 
 function articlePreview(article: Cafe24Article): string {
@@ -51,6 +49,7 @@ function articlePreview(article: Cafe24Article): string {
 
 export async function syncCafe24Boards(): Promise<{
   boards: number;
+  boardNames?: string[];
   articles: number;
   inserted: number;
   skipped: number;
@@ -98,12 +97,13 @@ export async function syncCafe24Boards(): Promise<{
   let totalArticles = 0;
   let inserted = 0;
   let skipped = 0;
+  const boardNames = csBoards.map((b) => b.board_name);
 
   for (const board of csBoards) {
     let articles: Cafe24Article[] = [];
     try {
       articles = await fetchBoardArticles(accessToken, board.board_no, {
-        limit: 30,
+        limit: 50,
         sinceDate,
       });
     } catch (e) {
@@ -115,8 +115,14 @@ export async function syncCafe24Boards(): Promise<{
     totalArticles += articles.length;
 
     for (const article of articles) {
+      if (article.deleted === "T") {
+        skipped++;
+        continue;
+      }
+
       const hasReply = hasAdminReply(article);
-      const preview = articlePreview(article).slice(0, 200);
+      const preview = articlePreview(article).slice(0, 500);
+      const writerName = article.writer ?? "(익명)";
 
       // 1) 고객 글 (수신)
       const inPayload: IngestPayload = {
@@ -124,8 +130,8 @@ export async function syncCafe24Boards(): Promise<{
         channel: "cafe24_board",
         externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
         externalMessageId: `cafe24_${board.board_no}_${article.article_no}_article`,
-        customerHandle: article.writer_email ?? article.writer_id ?? undefined,
-        customerName: article.writer_name ?? undefined,
+        customerHandle: article.writer_email ?? article.member_id ?? undefined,
+        customerName: writerName,
         subject: `[${board.board_name}] ${article.title}`,
         bodyText: preview || article.title,
         sentAt: new Date(article.created_date),
@@ -141,54 +147,31 @@ export async function syncCafe24Boards(): Promise<{
       if (r1.inserted) inserted++;
       else skipped++;
 
-      // 2) 답글이 이미 있으면 상태를 waiting으로 맞춤 + 답글도 메시지로 추가
+      // 2) 운영자 답글이 이미 있으면 placeholder 메시지 추가 → 상태를 waiting으로
       if (hasReply) {
-        // article.reply가 있으면 운영자 답변을 out 메시지로 추가
-        if (article.reply) {
-          const outPayload: IngestPayload = {
-            brand: "paulvice",
-            channel: "cafe24_board",
-            externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
-            externalMessageId: `cafe24_${board.board_no}_${article.article_no}_reply`,
-            customerHandle: article.writer_email ?? article.writer_id ?? undefined,
-            customerName: article.writer_name ?? undefined,
-            subject: `[${board.board_name}] ${article.title}`,
-            bodyText: article.reply.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "),
-            sentAt: new Date(article.created_date),
-            direction: "out",
-            raw: { reply_from_article: true },
-          };
-          const r2 = await ingestMessage(outPayload);
-          if (r2.inserted) inserted++;
-          else skipped++;
-        }
-
-        // comments 배열에 admin 답글이 있으면 추가
-        for (const c of article.comments ?? []) {
-          if (c.is_admin_user !== "T" || !c.content) continue;
-          const commentPayload: IngestPayload = {
-            brand: "paulvice",
-            channel: "cafe24_board",
-            externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
-            externalMessageId: `cafe24_${board.board_no}_${article.article_no}_comment_${c.comment_no}`,
-            customerHandle: article.writer_email ?? undefined,
-            customerName: article.writer_name ?? undefined,
-            subject: `[${board.board_name}] ${article.title}`,
-            bodyText: c.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "),
-            sentAt: new Date(c.created_date ?? article.created_date),
-            direction: "out",
-            raw: { admin_comment: c },
-          };
-          const rc = await ingestMessage(commentPayload);
-          if (rc.inserted) inserted++;
-          else skipped++;
-        }
+        const outPayload: IngestPayload = {
+          brand: "paulvice",
+          channel: "cafe24_board",
+          externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
+          externalMessageId: `cafe24_${board.board_no}_${article.article_no}_adminreply`,
+          customerHandle: article.writer_email ?? article.member_id ?? undefined,
+          customerName: writerName,
+          subject: `[${board.board_name}] ${article.title}`,
+          bodyText: "(운영자 답변 완료 — 카페24 관리자 페이지에서 확인)",
+          sentAt: new Date(article.created_date),
+          direction: "out",
+          raw: { reply_placeholder: true, reply_user_id: article.reply_user_id },
+        };
+        const r2 = await ingestMessage(outPayload);
+        if (r2.inserted) inserted++;
+        else skipped++;
       }
     }
   }
 
   return {
     boards: csBoards.length,
+    boardNames,
     articles: totalArticles,
     inserted,
     skipped,

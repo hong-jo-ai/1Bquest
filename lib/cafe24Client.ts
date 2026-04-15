@@ -111,30 +111,29 @@ export async function cafe24Post(
 export interface Cafe24Board {
   board_no: number;
   board_name: string;
-  board_type: string;
-  use: "T" | "F";
+  board_type: number;
+  use_board: "T" | "F";
+  use_display?: "T" | "F";
 }
 
 export interface Cafe24Article {
   article_no: number;
+  parent_article_no?: number | null;
   board_no: number;
   title: string;
   content?: string;
-  writer_name?: string;
-  writer_email?: string;
-  writer_id?: string;
+  writer?: string;
+  writer_email?: string | null;
+  member_id?: string;
   created_date: string;
-  reply?: string;
-  reply_count?: number;
-  reply_user_id?: string;
-  is_secret?: "T" | "F";
-  comments?: Array<{
-    comment_no: number;
-    writer_name?: string;
-    content?: string;
-    created_date?: string;
-    is_admin_user?: "T" | "F";
-  }>;
+  // Cafe24 API: 'reply'는 "T"/"F" 플래그 (답글 존재 여부)
+  reply?: "T" | "F";
+  reply_user_id?: string | null;
+  reply_status?: string | null;
+  secret?: "T" | "F";
+  rating?: number;
+  sales_channel?: string | null;
+  deleted?: "T" | "F";
 }
 
 export async function fetchBoards(accessToken: string): Promise<Cafe24Board[]> {
@@ -142,7 +141,7 @@ export async function fetchBoards(accessToken: string): Promise<Cafe24Board[]> {
     `/api/v2/admin/boards?limit=100`,
     accessToken
   )) as { boards?: Cafe24Board[] };
-  return (json.boards ?? []).filter((b) => b.use === "T");
+  return (json.boards ?? []).filter((b) => b.use_board === "T");
 }
 
 export async function fetchBoardArticles(
