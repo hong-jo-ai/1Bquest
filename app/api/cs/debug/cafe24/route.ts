@@ -290,6 +290,24 @@ export async function POST(req: Request) {
         },
       },
     },
+    19: {
+      // requests 배열 + client_ip
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        requests: [
+          {
+            parent_article_no: articleNo,
+            title: "답변드립니다",
+            content,
+            writer: "한지형",
+            writer_email: "@",
+            member_id: "icaruse2000",
+            client_ip: "127.0.0.1",
+          },
+        ],
+      },
+    },
   };
 
   const chosen = variants[variant];
