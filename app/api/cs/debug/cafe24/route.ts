@@ -76,6 +76,80 @@ export async function POST(req: Request) {
         },
       },
     },
+    5: {
+      // board_no 제거 (URL path에만)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+        },
+      },
+    },
+    6: {
+      // writer_id 추가
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+          writer_id: "admin",
+          writer_email: "plvekorea@gmail.com",
+        },
+      },
+    },
+    7: {
+      // member_id + password
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+          password: "paulvice1!",
+          member_id: "admin",
+        },
+      },
+    },
+    8: {
+      // 비회원 글쓰기 방식 (password 필수)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+          password: "paulvice1!",
+        },
+      },
+    },
+    9: {
+      // is_new_article + admin input
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "관리자",
+          password: "paulvice1!",
+          input_channel: "A",
+          secret: "F",
+          display: "T",
+        },
+      },
+    },
   };
 
   const chosen = variants[variant];
