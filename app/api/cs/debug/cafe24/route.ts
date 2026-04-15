@@ -240,6 +240,56 @@ export async function POST(req: Request) {
         },
       },
     },
+    16: {
+      // 14 - reply_sequence - reply_mail 제거 (9 필드)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          board_no: boardNo,
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "한지형",
+          writer_email: "@",
+          member_id: "icaruse2000",
+          reply_depth: 1,
+          secret: "T",
+        },
+      },
+    },
+    17: {
+      // requests 배열 (bulk 형식)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        requests: [
+          {
+            parent_article_no: articleNo,
+            title: "답변드립니다",
+            content,
+            writer: "한지형",
+            writer_email: "@",
+            member_id: "icaruse2000",
+          },
+        ],
+      },
+    },
+    18: {
+      // 7 필드 (최소화)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          parent_article_no: articleNo,
+          title: "답변드립니다",
+          content,
+          writer: "한지형",
+          member_id: "icaruse2000",
+          secret: "T",
+        },
+      },
+    },
   };
 
   const chosen = variants[variant];
