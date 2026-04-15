@@ -220,6 +220,7 @@ export default function InboxClient() {
         fetch("/api/cs/ingest/threads", { method: "POST" }),
         fetch("/api/cs/ingest/crisp", { method: "POST" }),
         fetch("/api/cs/ingest/instagram", { method: "POST" }),
+        fetch("/api/cs/ingest/cafe24", { method: "POST" }),
       ]);
       await loadThreads();
       showToast("동기화 완료");
