@@ -7,6 +7,8 @@ import {
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
+import { cafe24Post } from "../cafe24Client";
+import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -30,6 +32,7 @@ export async function sendReply(
     threads: sendThreadsReply,
     crisp: sendCrispReply,
     ig_dm: sendIgReply,
+    cafe24_board: sendCafe24BoardReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -239,6 +242,74 @@ async function sendThreadsReply(
       error: e instanceof Error ? e.message : String(e),
     };
   }
+}
+
+async function sendCafe24BoardReply(
+  threadId: string,
+  body: string
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  // external_thread_id: "cafe24_{board_no}_{article_no}"
+  const match = thread.external_thread_id.match(/^cafe24_(\d+)_(\d+)$/);
+  if (!match) {
+    return { ok: false, error: "cafe24 thread id 형식 오류" };
+  }
+  const boardNo = Number(match[1]);
+  const articleNo = Number(match[2]);
+
+  const accessToken = await getCafe24AccessToken();
+  if (!accessToken) {
+    return { ok: false, error: "Cafe24 토큰 없음 — 재인증 필요" };
+  }
+
+  // 답변 글 = parent_article_no가 원글을 가리키는 새 게시글
+  const payload = {
+    shop_no: 1,
+    request: {
+      board_no: boardNo,
+      parent_article_no: articleNo,
+      title: `RE: ${(thread.subject ?? "").replace(/^\[[^\]]+\]\s*/, "")}`.slice(0, 80),
+      content: body.replace(/\n/g, "<br/>"),
+      writer: "관리자",
+      secret: "F",
+      display: "T",
+    },
+  };
+
+  let result: unknown;
+  try {
+    result = await cafe24Post(
+      `/api/v2/admin/boards/${boardNo}/articles`,
+      accessToken,
+      payload
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Cafe24 답변 등록 실패: ${msg}` };
+  }
+
+  // 답변을 cs_messages에 out 메시지로 기록
+  await ingestMessage({
+    brand: "paulvice",
+    channel: "cafe24_board",
+    externalThreadId: thread.external_thread_id,
+    externalMessageId: `cafe24_${boardNo}_${articleNo}_reply_${Date.now()}`,
+    bodyText: body,
+    sentAt: new Date(),
+    direction: "out",
+    raw: { sent_via: "inbox_ui", cafe24_response: result },
+  });
+
+  const db = getCsSupabase();
+  await db
+    .from("cs_threads")
+    .update({ status: "waiting" })
+    .eq("id", threadId);
+
+  return { ok: true };
 }
 
 async function sendIgReply(
