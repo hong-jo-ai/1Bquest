@@ -106,6 +106,7 @@ export default function Sidebar() {
     return defaults;
   });
   const [mounted, setMounted] = useState(false);
+  const [csUnanswered, setCsUnanswered] = useState(0);
 
   useEffect(() => {
     try {
@@ -115,6 +116,26 @@ export default function Sidebar() {
       }
     } catch {}
     setMounted(true);
+  }, []);
+
+  // CS 미답변 수 폴링
+  useEffect(() => {
+    const fetchCount = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch("/api/cs/notifications", { cache: "no-store" });
+        const json = await res.json();
+        setCsUnanswered(json.unansweredCount ?? 0);
+      } catch {}
+    };
+    fetchCount();
+    const id = setInterval(fetchCount, 60 * 1000);
+    const onVisible = () => !document.hidden && fetchCount();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const updateProgress = (page: AppPage, value: number) => {
@@ -191,6 +212,7 @@ export default function Sidebar() {
           {NAV_ITEMS.map(({ href, label, icon: Icon, page }) => {
             const isActive = activePage === page;
             const prog = progress[page];
+            const badge = page === "inbox" && csUnanswered > 0 ? csUnanswered : 0;
 
             return (
               <div key={page} className="group">
@@ -204,11 +226,27 @@ export default function Sidebar() {
                     }`}
                     title={collapsed && !isMobile ? label : undefined}
                   >
-                    <Icon
-                      size={18}
-                      className={isActive ? "text-violet-600 dark:text-violet-400" : "text-zinc-400 dark:text-zinc-500"}
-                    />
-                    {(!collapsed || isMobile) && <span>{label}</span>}
+                    <div className="relative">
+                      <Icon
+                        size={18}
+                        className={isActive ? "text-violet-600 dark:text-violet-400" : "text-zinc-400 dark:text-zinc-500"}
+                      />
+                      {badge > 0 && collapsed && !isMobile && (
+                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      )}
+                    </div>
+                    {(!collapsed || isMobile) && (
+                      <>
+                        <span className="flex-1">{label}</span>
+                        {badge > 0 && (
+                          <span className="min-w-[18px] h-[18px] px-1.5 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">
+                            {badge > 99 ? "99+" : badge}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </Link>
                 </div>
 
