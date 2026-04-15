@@ -7,7 +7,7 @@ import {
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
-import { cafe24Post } from "../cafe24Client";
+import { cafe24Post, cafe24Put } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import type { CsBrandId, CsChannel } from "./types";
 
@@ -292,6 +292,26 @@ async function sendCafe24BoardReply(
       ok: false,
       error: `Cafe24 답변 등록 실패 (board ${boardNo}): ${msg}. 이 게시판이 코멘트를 허용하지 않으면 카페24 관리자 페이지에서 직접 답변해 주세요.`,
     };
+  }
+
+  // 원글의 reply_status를 "C"(답변완료)로 업데이트
+  // 실패해도 답변 자체는 이미 완료됐으므로 무시
+  try {
+    await cafe24Put(
+      `/api/v2/admin/boards/${boardNo}/articles/${articleNo}`,
+      accessToken,
+      {
+        shop_no: 1,
+        request: {
+          reply_status: "C",
+        },
+      }
+    );
+  } catch (e) {
+    console.warn(
+      `[Cafe24] reply_status 업데이트 실패 (${articleNo}):`,
+      e instanceof Error ? e.message : e
+    );
   }
 
   // 답변을 cs_messages에 out 메시지로 기록
