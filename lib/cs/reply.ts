@@ -265,30 +265,33 @@ async function sendCafe24BoardReply(
     return { ok: false, error: "Cafe24 토큰 없음 — 재인증 필요" };
   }
 
-  // 답변 글 = parent_article_no가 원글을 가리키는 새 게시글
+  // 카페24 admin 코멘트 엔드포인트 — 검증된 방법.
+  // 단, 해당 게시판이 use_comment="T"여야 함 (문의하기 board 6은 OK,
+  // 1:1 맞춤상담 board 9는 use_comment="F"라 실패할 수 있음).
+  const password =
+    process.env.CAFE24_COMMENT_PASSWORD ?? "paulviceAdmin1!";
   const payload = {
     shop_no: 1,
     request: {
-      board_no: boardNo,
-      parent_article_no: articleNo,
-      title: `RE: ${(thread.subject ?? "").replace(/^\[[^\]]+\]\s*/, "")}`.slice(0, 80),
       content: body.replace(/\n/g, "<br/>"),
       writer: "관리자",
-      secret: "F",
-      display: "T",
+      password,
     },
   };
 
   let result: unknown;
   try {
     result = await cafe24Post(
-      `/api/v2/admin/boards/${boardNo}/articles`,
+      `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/comments`,
       accessToken,
       payload
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `Cafe24 답변 등록 실패: ${msg}` };
+    return {
+      ok: false,
+      error: `Cafe24 답변 등록 실패 (board ${boardNo}): ${msg}. 이 게시판이 코멘트를 허용하지 않으면 카페24 관리자 페이지에서 직접 답변해 주세요.`,
+    };
   }
 
   // 답변을 cs_messages에 out 메시지로 기록
