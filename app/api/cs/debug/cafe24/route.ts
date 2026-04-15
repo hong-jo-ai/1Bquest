@@ -4,6 +4,111 @@ import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+const BASE_URL = `https://${process.env.CAFE24_MALL_ID}.cafe24api.com`;
+
+/**
+ * POST /api/cs/debug/cafe24
+ * body: { boardNo, articleNo, payloadVariant }
+ * 다양한 payload 포맷을 시도해서 Cafe24 답변 등록 성공하는 것 찾기
+ */
+export async function POST(req: Request) {
+  const accessToken = await getAccessTokenFromStore();
+  if (!accessToken) {
+    return Response.json({ error: "no token" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const boardNo = body.boardNo ?? 6;
+  const articleNo = body.articleNo ?? 0;
+  const content = body.content ?? "디버그 테스트 답변";
+  const variant = body.variant ?? 1;
+
+  // 여러 payload 포맷 시도
+  const variants: Record<number, { path: string; payload: unknown }> = {
+    1: {
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          board_no: boardNo,
+          parent_article_no: articleNo,
+          title: "RE: 답변",
+          content,
+          writer: "관리자",
+        },
+      },
+    },
+    2: {
+      // 어드민 코멘트 엔드포인트
+      path: `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/comments`,
+      payload: {
+        shop_no: 1,
+        request: {
+          content,
+          writer: "관리자",
+        },
+      },
+    },
+    3: {
+      // input_channel=A (admin)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        request: {
+          board_no: boardNo,
+          parent_article_no: articleNo,
+          title: "RE: 답변",
+          content,
+          writer: "관리자",
+          input_channel: "A",
+        },
+      },
+    },
+    4: {
+      // 전용 reply 엔드포인트
+      path: `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/reply`,
+      payload: {
+        shop_no: 1,
+        request: {
+          content,
+          writer: "관리자",
+        },
+      },
+    },
+  };
+
+  const chosen = variants[variant];
+  if (!chosen) return Response.json({ error: "invalid variant" }, { status: 400 });
+
+  try {
+    const res = await fetch(`${BASE_URL}${chosen.path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Cafe24-Api-Version": "2026-03-01",
+      },
+      body: JSON.stringify(chosen.payload),
+    });
+    const text = await res.text();
+    return Response.json({
+      status: res.status,
+      ok: res.ok,
+      variant,
+      path: chosen.path,
+      payload: chosen.payload,
+      response: text,
+    });
+  } catch (e) {
+    return Response.json(
+      {
+        error: e instanceof Error ? e.message : String(e),
+      },
+      { status: 500 }
+    );
+  }
+}
+
 /**
  * GET /api/cs/debug/cafe24
  * Cafe24 토큰 상태 + 게시판 목록 raw 응답 확인
