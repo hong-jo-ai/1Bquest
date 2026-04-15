@@ -39,13 +39,14 @@ export async function POST(req: Request) {
       },
     },
     2: {
-      // 어드민 코멘트 엔드포인트
+      // 어드민 코멘트 엔드포인트 (password 필수)
       path: `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/comments`,
       payload: {
         shop_no: 1,
         request: {
           content,
           writer: "관리자",
+          password: "adminpass",
         },
       },
     },
