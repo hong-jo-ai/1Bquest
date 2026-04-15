@@ -325,6 +325,44 @@ export async function POST(req: Request) {
         ],
       },
     },
+    21: {
+      // reply_depth 추가 (진짜 답변글)
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        requests: [
+          {
+            parent_article_no: articleNo,
+            title: "답변드립니다",
+            content,
+            writer: "한지형",
+            member_id: "icaruse2000",
+            client_ip: "127.0.0.1",
+            reply_depth: 1,
+          },
+        ],
+      },
+    },
+    22: {
+      // 실제 516번 구조에서 영감: 모든 관련 필드 포함
+      path: `/api/v2/admin/boards/${boardNo}/articles`,
+      payload: {
+        shop_no: 1,
+        requests: [
+          {
+            parent_article_no: articleNo,
+            title: "답변드립니다",
+            content,
+            writer: "한지형",
+            member_id: "icaruse2000",
+            client_ip: "127.0.0.1",
+            reply_depth: 1,
+            reply_sequence: 1,
+            secret: "T",
+          },
+        ],
+      },
+    },
   };
 
   const chosen = variants[variant];
