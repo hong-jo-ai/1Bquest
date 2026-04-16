@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cs/ingest/crisp",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cs/ingest/instagram",
