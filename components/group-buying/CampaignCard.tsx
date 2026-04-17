@@ -23,17 +23,17 @@ function formatDate(d: string | null) {
 export default function CampaignCard({ campaign: c, onDetail, onAdvance, onDelete }: Props) {
   const status = GB_STATUS_CONFIG[c.status];
   const nextStatus = status.next ? GB_STATUS_CONFIG[status.next] : null;
+  const products = c.products ?? [];
 
   return (
     <div
       className={`group relative bg-white dark:bg-zinc-900 rounded-2xl border overflow-hidden transition-all hover:shadow-lg cursor-pointer ${status.border}`}
       onClick={() => onDetail(c)}
     >
-      {/* 상태 컬러 라인 */}
       <div className={`h-1 ${status.bg}`} />
 
       <div className="p-4">
-        {/* 헤더: 제목 + 상태 */}
+        {/* 헤더 */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-zinc-800 dark:text-zinc-100 text-sm truncate">{c.title}</p>
@@ -44,28 +44,35 @@ export default function CampaignCard({ campaign: c, onDetail, onAdvance, onDelet
           </span>
         </div>
 
-        {/* 상품 정보 */}
-        {c.product_name && (
-          <div className="flex items-center gap-2 mb-3">
-            {c.product_image ? (
-              <img src={c.product_image} alt="" className="w-10 h-10 rounded-lg object-cover border border-zinc-100 dark:border-zinc-800" />
-            ) : (
-              <div className="w-10 h-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                <Package size={16} className="text-zinc-400" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-zinc-600 dark:text-zinc-300 truncate">{c.product_name}</p>
-              {c.discount_price && (
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-xs font-semibold text-violet-600">{formatPrice(c.discount_price)}</span>
-                  {c.original_price && (
-                    <span className="text-[10px] text-zinc-400 line-through">{formatPrice(c.original_price)}</span>
+        {/* 상품 목록 */}
+        {products.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {products.slice(0, 3).map((p) => (
+              <div key={p.id} className="flex items-center gap-2">
+                {p.product_image ? (
+                  <img src={p.product_image} alt="" className="w-8 h-8 rounded-lg object-cover border border-zinc-100 dark:border-zinc-800" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                    <Package size={14} className="text-zinc-400" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-zinc-600 dark:text-zinc-300 truncate">{p.product_name}</p>
+                  {p.discount_price && (
+                    <span className="text-[10px] font-semibold text-violet-600">{formatPrice(p.discount_price)}</span>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            ))}
+            {products.length > 3 && (
+              <p className="text-[10px] text-zinc-400">+{products.length - 3}개 상품</p>
+            )}
           </div>
+        )}
+
+        {/* 상품 없으면 안내 */}
+        {products.length === 0 && c.status !== "proposal" && (
+          <p className="text-[11px] text-zinc-400 mb-3">상품 미등록</p>
         )}
 
         {/* 지표 */}
@@ -92,21 +99,12 @@ export default function CampaignCard({ campaign: c, onDetail, onAdvance, onDelet
           )}
         </div>
 
-        {/* 재고 / 주문 요약 */}
-        {c.allocated_stock > 0 && (
-          <div className="mb-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-[11px] text-zinc-500">
-            배정 {c.allocated_stock}개
-            {c.total_quantity != null && ` · 판매 ${c.total_quantity}개`}
-            {c.total_revenue != null && c.total_revenue > 0 && ` · ${formatPrice(c.total_revenue)}`}
-          </div>
-        )}
-
         {/* 메모 */}
         {c.notes && (
           <p className="text-[11px] text-zinc-400 line-clamp-2 mb-3">{c.notes}</p>
         )}
 
-        {/* 액션 버튼 */}
+        {/* 액션 */}
         <div className="flex gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => onDetail(c)}

@@ -1,4 +1,4 @@
-import { getCampaign, bulkImportOrders } from "@/lib/groupBuying/store";
+import { getCampaign, listProducts, bulkImportOrders } from "@/lib/groupBuying/store";
 import { fetchAllOrders } from "@/lib/cafe24Data";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import type { NextRequest } from "next/server";
@@ -13,48 +13,50 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     const campaign = await getCampaign(id);
     if (!campaign) return Response.json({ error: "캠페인 없음" }, { status: 404 });
-    if (!campaign.product_sku) return Response.json({ error: "상품 SKU 미설정" }, { status: 400 });
     if (!campaign.start_date || !campaign.end_date) return Response.json({ error: "공구 기간 미설정" }, { status: 400 });
+
+    const products = await listProducts(id);
+    const skuMap = new Map(products.filter((p) => p.product_sku).map((p) => [p.product_sku!, p]));
+    if (skuMap.size === 0) return Response.json({ error: "SKU가 등록된 상품이 없습니다" }, { status: 400 });
 
     const token = await getAccessTokenFromStore();
     if (!token) return Response.json({ error: "Cafe24 토큰 없음" }, { status: 401 });
 
-    // Cafe24 주문 조회
     const orders = await fetchAllOrders(token, campaign.start_date, campaign.end_date);
 
-    // SKU 매칭 필터
-    const matched = orders.filter((o: any) =>
-      (o.items ?? []).some((item: any) => item.product_code === campaign.product_sku)
-    );
-
-    // gb_orders 형식으로 변환
-    const gbOrders = matched.map((o: any) => {
-      const matchingItem = (o.items ?? []).find((item: any) => item.product_code === campaign.product_sku);
-      const qty = matchingItem?.quantity ?? 1;
-      const unitPrice = campaign.discount_price ?? Math.round(parseFloat(matchingItem?.order_price ?? "0"));
-      return {
-        campaign_id: id,
-        cafe24_order_id: o.order_id ?? o.order_no,
-        customer_name: null as string | null,
-        customer_phone: null as string | null,
-        customer_address: null as string | null,
-        product_name: matchingItem?.product_name ?? campaign.product_name,
-        variant_name: matchingItem?.option_value ?? null,
-        quantity: qty,
-        unit_price: unitPrice,
-        total_amount: unitPrice * qty,
-        shipping_status: "pending" as const,
-        tracking_number: null as string | null,
-        tracking_carrier: null as string | null,
-        shipped_at: null as string | null,
-        delivered_at: null as string | null,
-        is_returned: false,
-        return_reason: null as string | null,
-      };
-    });
+    // SKU 매칭: 캠페인 상품 SKU 중 하나라도 포함된 주문
+    const gbOrders: any[] = [];
+    for (const o of orders) {
+      for (const item of o.items ?? []) {
+        const product = skuMap.get(item.product_code);
+        if (!product) continue;
+        const qty = item.quantity ?? 1;
+        const unitPrice = product.discount_price ?? Math.round(parseFloat(item.order_price ?? "0"));
+        gbOrders.push({
+          campaign_id: id,
+          product_id: product.id,
+          cafe24_order_id: `${o.order_id ?? o.order_no}:${item.product_code}`,
+          customer_name: null,
+          customer_phone: null,
+          customer_address: null,
+          product_name: item.product_name ?? product.product_name,
+          variant_name: item.option_value ?? null,
+          quantity: qty,
+          unit_price: unitPrice,
+          total_amount: unitPrice * qty,
+          shipping_status: "pending",
+          tracking_number: null,
+          tracking_carrier: null,
+          shipped_at: null,
+          delivered_at: null,
+          is_returned: false,
+          return_reason: null,
+        });
+      }
+    }
 
     const result = await bulkImportOrders(gbOrders);
-    return Response.json({ ok: true, total_cafe24: matched.length, ...result });
+    return Response.json({ ok: true, total_matched: gbOrders.length, ...result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return Response.json({ error: msg }, { status: 500 });

@@ -1,4 +1,4 @@
-import { getCampaign, bulkImportOrders } from "@/lib/groupBuying/store";
+import { getCampaign, listProducts, bulkImportOrders } from "@/lib/groupBuying/store";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +7,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /**
  * 발주서 엑셀/CSV 업로드.
- * body: { orders: Array<{ customer_name, customer_phone?, customer_address?, variant_name?, quantity, unit_price? }> }
- *
- * 프론트에서 파싱 후 JSON 배열로 전송.
+ * body: { orders: Array<{ customer_name, customer_phone?, customer_address?, product_name?, variant_name?, quantity, unit_price? }> }
  */
 export async function POST(req: NextRequest, ctx: Ctx) {
   try {
@@ -22,18 +20,21 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       return Response.json({ error: "주문 데이터가 비어 있습니다" }, { status: 400 });
     }
 
-    const unitPrice = campaign.discount_price ?? campaign.original_price ?? 0;
+    const products = await listProducts(id);
+    const firstProduct = products[0] ?? null;
+    const defaultPrice = firstProduct?.discount_price ?? firstProduct?.original_price ?? 0;
 
     const gbOrders = rows.map((r: any) => {
       const qty = Number(r.quantity) || 1;
-      const price = Number(r.unit_price) || unitPrice;
+      const price = Number(r.unit_price) || defaultPrice;
       return {
         campaign_id: id,
+        product_id: firstProduct?.id ?? null,
         cafe24_order_id: null as string | null,
         customer_name: r.customer_name ?? null,
         customer_phone: r.customer_phone ?? null,
         customer_address: r.customer_address ?? null,
-        product_name: campaign.product_name,
+        product_name: r.product_name ?? firstProduct?.product_name ?? null,
         variant_name: r.variant_name ?? null,
         quantity: qty,
         unit_price: price,

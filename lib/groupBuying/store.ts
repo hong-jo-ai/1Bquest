@@ -3,9 +3,9 @@ import type {
   GbCampaign,
   GbOrder,
   GbPriceCheck,
+  GbProduct,
   GbSettlement,
   GbStatus,
-  ShippingStatus,
 } from "./types";
 
 // ── Supabase 클라이언트 ──────────────────────────────────────────────
@@ -35,7 +35,7 @@ export async function listCampaigns(opts?: {
   const db = getGbSupabase();
   let q = db
     .from("gb_campaigns")
-    .select("*")
+    .select("*, gb_products(*)")
     .order("updated_at", { ascending: false })
     .limit(opts?.limit ?? 100);
 
@@ -44,28 +44,37 @@ export async function listCampaigns(opts?: {
   }
   if (opts?.search) {
     q = q.or(
-      `title.ilike.%${opts.search}%,influencer_handle.ilike.%${opts.search}%,influencer_name.ilike.%${opts.search}%,product_name.ilike.%${opts.search}%`
+      `title.ilike.%${opts.search}%,influencer_handle.ilike.%${opts.search}%,influencer_name.ilike.%${opts.search}%`
     );
   }
 
   const { data, error } = await q;
   if (error) throw new Error(`listCampaigns: ${error.message}`);
-  return (data ?? []) as GbCampaign[];
+  return ((data ?? []) as any[]).map((c) => ({
+    ...c,
+    products: c.gb_products ?? [],
+    gb_products: undefined,
+  })) as GbCampaign[];
 }
 
 export async function getCampaign(id: string): Promise<GbCampaign | null> {
   const db = getGbSupabase();
   const { data, error } = await db
     .from("gb_campaigns")
-    .select("*")
+    .select("*, gb_products(*)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`getCampaign: ${error.message}`);
-  return data as GbCampaign | null;
+  if (!data) return null;
+  return {
+    ...(data as any),
+    products: (data as any).gb_products ?? [],
+    gb_products: undefined,
+  } as GbCampaign;
 }
 
 export async function createCampaign(
-  input: Omit<GbCampaign, "id" | "created_at" | "updated_at" | "order_count" | "total_revenue" | "total_quantity">
+  input: Omit<GbCampaign, "id" | "created_at" | "updated_at" | "products" | "order_count" | "total_revenue" | "total_quantity">
 ): Promise<GbCampaign> {
   const db = getGbSupabase();
   const { data, error } = await db
@@ -74,12 +83,12 @@ export async function createCampaign(
     .select("*")
     .single();
   if (error) throw new Error(`createCampaign: ${error.message}`);
-  return data as GbCampaign;
+  return { ...(data as any), products: [] } as GbCampaign;
 }
 
 export async function updateCampaign(
   id: string,
-  patch: Partial<Omit<GbCampaign, "id" | "created_at" | "updated_at">>
+  patch: Partial<Omit<GbCampaign, "id" | "created_at" | "updated_at" | "products">>
 ): Promise<GbCampaign> {
   const db = getGbSupabase();
   const { data, error } = await db
@@ -96,6 +105,53 @@ export async function deleteCampaign(id: string): Promise<void> {
   const db = getGbSupabase();
   const { error } = await db.from("gb_campaigns").delete().eq("id", id);
   if (error) throw new Error(`deleteCampaign: ${error.message}`);
+}
+
+// ── 상품 CRUD ────────────────────────────────────────────────────────
+
+export async function listProducts(campaignId: string): Promise<GbProduct[]> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_products")
+    .select("*")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`listProducts: ${error.message}`);
+  return (data ?? []) as GbProduct[];
+}
+
+export async function createProduct(
+  input: Omit<GbProduct, "id" | "created_at" | "updated_at">
+): Promise<GbProduct> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_products")
+    .insert(input)
+    .select("*")
+    .single();
+  if (error) throw new Error(`createProduct: ${error.message}`);
+  return data as GbProduct;
+}
+
+export async function updateProduct(
+  id: string,
+  patch: Partial<Omit<GbProduct, "id" | "campaign_id" | "created_at" | "updated_at">>
+): Promise<GbProduct> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_products")
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(`updateProduct: ${error.message}`);
+  return data as GbProduct;
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const db = getGbSupabase();
+  const { error } = await db.from("gb_products").delete().eq("id", id);
+  if (error) throw new Error(`deleteProduct: ${error.message}`);
 }
 
 // ── 주문 CRUD ────────────────────────────────────────────────────────
@@ -145,7 +201,6 @@ export async function bulkImportOrders(
   if (orders.length === 0) return { inserted: 0, skipped: 0 };
   const db = getGbSupabase();
 
-  // cafe24_order_id 기준 중복 제거
   const cafe24Ids = orders
     .map((o) => o.cafe24_order_id)
     .filter(Boolean) as string[];
@@ -229,7 +284,6 @@ export async function calculateSettlement(
     receipt_url: null,
   };
 
-  // upsert: 캠페인당 정산은 하나
   const existing = await getSettlement(campaignId);
   if (existing) {
     const { data, error } = await db
@@ -298,7 +352,6 @@ export async function getCampaignStats(): Promise<{
     .map((c) => c.commission_rate)
     .filter((r): r is number => r != null);
 
-  // 전체 정산 매출 합산
   const { data: settlements } = await db
     .from("gb_settlements")
     .select("total_revenue");

@@ -59,25 +59,34 @@ export interface GbCampaign {
   commission_rate: number | null;
   commission_type: "rate" | "fixed_per_unit";
   commission_fixed_amount: number | null;
-  discount_price: number | null;
-  original_price: number | null;
-  product_sku: string | null;
-  product_name: string | null;
-  product_image: string | null;
-  allocated_stock: number;
   order_mode: OrderMode;
   notes: string | null;
   created_at: string;
   updated_at: string;
   // 집계 (API 조인 시)
+  products?: GbProduct[];
   order_count?: number;
   total_revenue?: number;
   total_quantity?: number;
 }
 
+export interface GbProduct {
+  id: string;
+  campaign_id: string;
+  product_sku: string | null;
+  product_name: string;
+  product_image: string | null;
+  original_price: number | null;
+  discount_price: number | null;
+  allocated_stock: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface GbOrder {
   id: string;
   campaign_id: string;
+  product_id: string | null;
   cafe24_order_id: string | null;
   customer_name: string | null;
   customer_phone: string | null;
