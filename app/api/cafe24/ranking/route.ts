@@ -1,5 +1,6 @@
 import { fetchAllOrders, buildRanking } from "@/lib/cafe24Data";
 import { doRefresh } from "@/lib/cafe24Client";
+import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -82,6 +83,10 @@ export async function GET() {
     } catch (e: any) {
       return NextResponse.json({ error: `토큰 갱신 실패: ${e.message}` }, { status: 401 });
     }
+  }
+
+  if (!accessToken) {
+    accessToken = await getAccessTokenFromStore() ?? undefined;
   }
 
   if (!accessToken) {

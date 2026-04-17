@@ -1,4 +1,5 @@
 import { cafe24Get, doRefresh } from "@/lib/cafe24Client";
+import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -60,6 +61,11 @@ export async function GET() {
     } catch {
       return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
     }
+  }
+
+  // 쿠키에 토큰이 없으면 kv_store에서 가져오기 (cron과 동일 경로)
+  if (!accessToken) {
+    accessToken = await getAccessTokenFromStore() ?? undefined;
   }
 
   if (!accessToken) {
