@@ -15,6 +15,7 @@ import {
   ImagePlus,
   Gem,
   Inbox,
+  ShoppingBag,
   PanelLeftClose,
   PanelLeft,
   Menu,
@@ -28,6 +29,7 @@ type AppPage =
   | "jewelry"
   | "analytics"
   | "influencer"
+  | "groupbuying"
   | "ads"
   | "threads"
   | "content"
@@ -45,6 +47,7 @@ const NAV_ITEMS: {
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
   { href: "/analytics", label: "방문자", icon: BarChart2, page: "analytics" },
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
+  { href: "/tools/group-buying", label: "공동구매", icon: ShoppingBag, page: "groupbuying" },
   { href: "/ads", label: "광고", icon: Megaphone, page: "ads" },
   { href: "/tools/threads", label: "쓰레드", icon: AtSign, page: "threads" },
   { href: "/tools/content", label: "콘텐츠", icon: Film, page: "content" },
@@ -58,6 +61,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/jewelry-clearance": "jewelry",
   "/analytics": "analytics",
   "/tools/influencer": "influencer",
+  "/tools/group-buying": "groupbuying",
   "/ads": "ads",
   "/tools/threads": "threads",
   "/tools/content": "content",
@@ -98,6 +102,7 @@ export default function Sidebar() {
       jewelry: 0,
       analytics: 0,
       influencer: 0,
+      groupbuying: 0,
       ads: 0,
       threads: 0,
       content: 0,
