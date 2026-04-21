@@ -234,10 +234,19 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   const handleSaveProposal = async () => {
     setProposalSaving(true);
     try {
+      // 발굴 상태에서 제안메시지를 처음 저장하면 "제안 완료"로 전환할지 물어봄
+      const shouldAdvance =
+        campaign.status === "scouted" &&
+        proposalDraft.trim().length > 0 &&
+        confirm("이 인플루언서를 '제안 완료' 상태로 전환할까요?\n(메시지 전송 후 이 버튼을 눌러주세요)");
+
+      const patch: Record<string, unknown> = { proposal_message: proposalDraft || null };
+      if (shouldAdvance) patch.status = "proposal";
+
       const res = await fetch(base, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proposal_message: proposalDraft || null }),
+        body: JSON.stringify(patch),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -626,6 +635,11 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
 
               <p className="text-xs text-zinc-400 leading-relaxed">
                 💡 실제 전송은 IG/카톡 등에서 붙여넣기. 저장하면 나중에 이 캠페인을 다시 열었을 때 보낸 메시지가 복원됩니다.
+                {campaign.status === "scouted" && (
+                  <span className="block mt-1 text-violet-500">
+                    현재 상태: <b>발굴</b> — 저장 시 &quot;제안 완료&quot;로 전환할지 물어봅니다.
+                  </span>
+                )}
               </p>
             </div>
           )}

@@ -42,7 +42,7 @@ export default function CreateCampaignModal({ onSave, onClose }: Props) {
           commission_fixed_amount: null,
           order_mode: "cafe24",
           notes: form.notes || null,
-          status: "proposal" as GbStatus,
+          status: "scouted" as GbStatus,
         }),
       });
       onSave();
@@ -60,7 +60,7 @@ export default function CreateCampaignModal({ onSave, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between p-5 border-b border-zinc-100 dark:border-zinc-800">
-          <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">새 공동구매 제안</h2>
+          <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">인플루언서 발굴 등록</h2>
           <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors">
             <X size={20} />
           </button>
@@ -109,7 +109,7 @@ export default function CreateCampaignModal({ onSave, onClose }: Props) {
               취소
             </button>
             <button type="submit" disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl transition-colors disabled:opacity-50">
-              {saving ? "저장 중..." : "제안 등록"}
+              {saving ? "저장 중..." : "발굴 등록"}
             </button>
           </div>
         </form>

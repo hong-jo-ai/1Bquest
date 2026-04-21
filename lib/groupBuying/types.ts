@@ -1,7 +1,8 @@
 // ── 공동구매 타입 & 설정 ─────────────────────────────────────────────
 
 export type GbStatus =
-  | "proposal"        // 발굴/제안
+  | "scouted"         // 발굴 (제안 전)
+  | "proposal"        // 제안 완료
   | "negotiating"     // 협의중
   | "confirmed"       // 조건확정
   | "active"          // 공구진행중
@@ -23,7 +24,8 @@ export const GB_STATUS_CONFIG: Record<
   GbStatus,
   { label: string; color: string; bg: string; border: string; next: GbStatus | null }
 > = {
-  proposal:       { label: "발굴/제안",  color: "text-zinc-600",   bg: "bg-zinc-100",    border: "border-zinc-200",  next: "negotiating" },
+  scouted:        { label: "발굴",       color: "text-zinc-500",   bg: "bg-zinc-50",     border: "border-zinc-200",  next: "proposal" },
+  proposal:       { label: "제안 완료",  color: "text-zinc-600",   bg: "bg-zinc-100",    border: "border-zinc-300",  next: "negotiating" },
   negotiating:    { label: "협의중",     color: "text-amber-600",  bg: "bg-amber-50",    border: "border-amber-200", next: "confirmed" },
   confirmed:      { label: "조건확정",   color: "text-blue-600",   bg: "bg-blue-50",     border: "border-blue-200",  next: "active" },
   active:         { label: "공구진행중", color: "text-violet-600", bg: "bg-violet-50",   border: "border-violet-200",next: "shipped" },
