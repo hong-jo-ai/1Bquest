@@ -4,6 +4,7 @@ import type {
   GbOrder,
   GbPriceCheck,
   GbProduct,
+  GbProposalTemplate,
   GbSettlement,
   GbStatus,
 } from "./types";
@@ -329,6 +330,53 @@ export async function savePriceCheck(
     .single();
   if (error) throw new Error(`savePriceCheck: ${error.message}`);
   return data as GbPriceCheck;
+}
+
+// ── 제안 템플릿 ──────────────────────────────────────────────────────
+
+export async function listProposalTemplates(): Promise<GbProposalTemplate[]> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_proposal_templates")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`listProposalTemplates: ${error.message}`);
+  return (data ?? []) as GbProposalTemplate[];
+}
+
+export async function createProposalTemplate(
+  input: Omit<GbProposalTemplate, "id" | "created_at" | "updated_at">
+): Promise<GbProposalTemplate> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_proposal_templates")
+    .insert(input)
+    .select("*")
+    .single();
+  if (error) throw new Error(`createProposalTemplate: ${error.message}`);
+  return data as GbProposalTemplate;
+}
+
+export async function updateProposalTemplate(
+  id: string,
+  patch: Partial<Omit<GbProposalTemplate, "id" | "created_at" | "updated_at">>
+): Promise<GbProposalTemplate> {
+  const db = getGbSupabase();
+  const { data, error } = await db
+    .from("gb_proposal_templates")
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(`updateProposalTemplate: ${error.message}`);
+  return data as GbProposalTemplate;
+}
+
+export async function deleteProposalTemplate(id: string): Promise<void> {
+  const db = getGbSupabase();
+  const { error } = await db.from("gb_proposal_templates").delete().eq("id", id);
+  if (error) throw new Error(`deleteProposalTemplate: ${error.message}`);
 }
 
 // ── 통계 ─────────────────────────────────────────────────────────────

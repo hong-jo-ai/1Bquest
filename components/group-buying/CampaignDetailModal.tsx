@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Package, BarChart3, DollarSign, Tag, Edit3, Save, Plus, Trash2, ExternalLink } from "lucide-react";
+import { X, Package, BarChart3, DollarSign, Tag, Edit3, Save, Plus, Trash2, ExternalLink, MessageSquare, Copy, Check } from "lucide-react";
 import {
-  GB_STATUS_CONFIG, SHIPPING_STATUS_CONFIG, getInfluencerProfileUrl,
-  type GbCampaign, type GbOrder, type GbProduct, type GbSettlement, type GbPriceCheck, type ShippingStatus,
+  GB_STATUS_CONFIG, SHIPPING_STATUS_CONFIG, getInfluencerProfileUrl, fillTemplate,
+  type GbCampaign, type GbOrder, type GbProduct, type GbSettlement, type GbPriceCheck, type ShippingStatus, type GbProposalTemplate,
 } from "@/lib/groupBuying/types";
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "info" | "products" | "orders" | "prices" | "settlement" | "performance";
+type Tab = "info" | "products" | "orders" | "prices" | "settlement" | "performance" | "proposal";
 
 function formatPrice(n: number | null | undefined) {
   if (n == null) return "-";
@@ -57,12 +57,29 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
     setPriceChecks(json.checks ?? []);
   }, [base]);
 
+  // 제안 템플릿
+  const [templates, setTemplates] = useState<GbProposalTemplate[]>([]);
+  const [proposalDraft, setProposalDraft] = useState<string>(initialCampaign.proposal_message ?? "");
+  const [proposalSaving, setProposalSaving] = useState(false);
+  const [proposalCopied, setProposalCopied] = useState(false);
+
+  const loadTemplates = useCallback(async () => {
+    const res = await fetch("/api/group-buying/proposal-templates");
+    const json = await res.json();
+    setTemplates(json.templates ?? []);
+  }, []);
+
   useEffect(() => {
     loadProducts();
     loadOrders();
     loadSettlement();
     loadPrices();
-  }, [loadProducts, loadOrders, loadSettlement, loadPrices]);
+    loadTemplates();
+  }, [loadProducts, loadOrders, loadSettlement, loadPrices, loadTemplates]);
+
+  useEffect(() => {
+    setProposalDraft(campaign.proposal_message ?? "");
+  }, [campaign.proposal_message]);
 
   const refreshCampaign = async () => {
     const res = await fetch(base);
@@ -189,6 +206,37 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
     onUpdate();
   };
 
+  // ── 제안메시지 ──
+
+  const handleLoadTemplate = (templateId: string) => {
+    const t = templates.find((x) => x.id === templateId);
+    if (!t) return;
+    if (proposalDraft.trim() && !confirm("현재 작성 중인 내용을 덮어씁니다. 계속할까요?")) return;
+    const filled = fillTemplate(t.body, { campaign: { ...campaign, products } });
+    setProposalDraft(filled);
+  };
+
+  const handleSaveProposal = async () => {
+    setProposalSaving(true);
+    try {
+      await fetch(base, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposal_message: proposalDraft || null }),
+      });
+      await refreshCampaign();
+    } finally {
+      setProposalSaving(false);
+    }
+  };
+
+  const handleCopyProposal = async () => {
+    if (!proposalDraft) return;
+    await navigator.clipboard.writeText(proposalDraft);
+    setProposalCopied(true);
+    setTimeout(() => setProposalCopied(false), 1500);
+  };
+
   // ── 가격비교 ──
 
   const handleAddPriceCheck = async () => {
@@ -213,6 +261,7 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   const profileUrl = getInfluencerProfileUrl(campaign.influencer_handle, campaign.influencer_platform);
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "info", label: "정보", icon: Edit3 },
+    { id: "proposal", label: "제안", icon: MessageSquare },
     { id: "products", label: `상품 (${products.length})`, icon: Package },
     { id: "orders", label: `주문 (${orders.length})`, icon: Package },
     { id: "prices", label: "가격비교", icon: Tag },
@@ -497,6 +546,68 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
                 </div>
               )}
             </>
+          )}
+
+          {/* ── 제안 탭 ── */}
+          {tab === "proposal" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <select
+                  onChange={(e) => { if (e.target.value) { handleLoadTemplate(e.target.value); e.target.value = ""; } }}
+                  defaultValue=""
+                  className={inputCls + " flex-1"}
+                >
+                  <option value="" disabled>
+                    {templates.length === 0 ? "등록된 템플릿이 없습니다" : "템플릿 불러오기..."}
+                  </option>
+                  {templates
+                    .filter((t) => !t.platform || t.platform === "all" || t.platform === campaign.influencer_platform)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {t.platform && t.platform !== "all" ? ` · ${t.platform}` : ""}
+                      </option>
+                    ))}
+                </select>
+                <a
+                  href="/tools/group-buying/proposal-templates"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-xs text-violet-600 hover:underline whitespace-nowrap px-2"
+                >
+                  템플릿 관리
+                </a>
+              </div>
+
+              <textarea
+                className={inputCls + " font-mono"}
+                rows={12}
+                placeholder="템플릿을 불러오거나 직접 작성하세요. {{handle}} 같은 변수는 불러올 때 자동 치환됩니다."
+                value={proposalDraft}
+                onChange={(e) => setProposalDraft(e.target.value)}
+              />
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyProposal}
+                  disabled={!proposalDraft}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 rounded-xl py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                >
+                  {proposalCopied ? <><Check size={14} /> 복사됨</> : <><Copy size={14} /> 클립보드 복사</>}
+                </button>
+                <button
+                  onClick={handleSaveProposal}
+                  disabled={proposalSaving}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl py-2.5 transition-colors disabled:opacity-50"
+                >
+                  <Save size={14} /> {proposalSaving ? "저장 중..." : "저장"}
+                </button>
+              </div>
+
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                💡 실제 전송은 IG/카톡 등에서 붙여넣기. 저장하면 나중에 이 캠페인을 다시 열었을 때 보낸 메시지가 복원됩니다.
+              </p>
+            </div>
           )}
 
           {/* ── 가격비교 탭 ── */}

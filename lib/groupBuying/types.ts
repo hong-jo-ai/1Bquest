@@ -77,6 +77,7 @@ export interface GbCampaign {
   commission_fixed_amount: number | null;
   order_mode: OrderMode;
   notes: string | null;
+  proposal_message: string | null;
   created_at: string;
   updated_at: string;
   // 집계 (API 조인 시)
@@ -139,6 +140,63 @@ export interface GbSettlement {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface GbProposalTemplate {
+  id: string;
+  name: string;
+  platform: "instagram" | "youtube" | "tiktok" | "all" | null;
+  body: string;
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const TEMPLATE_VARIABLES: { key: string; desc: string }[] = [
+  { key: "{{handle}}",         desc: "인플루언서 핸들 (@ 제외)" },
+  { key: "{{name}}",           desc: "인플루언서 이름 (없으면 핸들)" },
+  { key: "{{platform}}",       desc: "플랫폼명" },
+  { key: "{{title}}",          desc: "캠페인 제목" },
+  { key: "{{product}}",        desc: "대표 상품명 (첫 번째 상품)" },
+  { key: "{{discount_price}}", desc: "공구가 (원)" },
+  { key: "{{original_price}}", desc: "정가 (원)" },
+  { key: "{{commission}}",     desc: "수수료 조건 (예: 15% / 건당 3,000원)" },
+  { key: "{{start_date}}",     desc: "시작일" },
+  { key: "{{end_date}}",       desc: "종료일" },
+  { key: "{{brand}}",          desc: "브랜드명 (폴바이스)" },
+];
+
+export function fillTemplate(
+  body: string,
+  ctx: { campaign: GbCampaign; product?: GbProduct | null; brand?: string },
+): string {
+  const { campaign, product, brand = "폴바이스" } = ctx;
+  const p = product ?? campaign.products?.[0] ?? null;
+  const fmtPrice = (n: number | null | undefined) =>
+    n == null ? "" : n.toLocaleString("ko-KR") + "원";
+  const commission =
+    campaign.commission_type === "rate"
+      ? campaign.commission_rate != null ? `${campaign.commission_rate}%` : ""
+      : campaign.commission_fixed_amount != null ? `건당 ${fmtPrice(campaign.commission_fixed_amount)}` : "";
+
+  const map: Record<string, string> = {
+    handle:         (campaign.influencer_handle ?? "").replace(/^@+/, ""),
+    name:           campaign.influencer_name || campaign.influencer_handle.replace(/^@+/, "") || "",
+    platform:       campaign.influencer_platform ?? "",
+    title:          campaign.title ?? "",
+    product:        p?.product_name ?? "",
+    discount_price: fmtPrice(p?.discount_price),
+    original_price: fmtPrice(p?.original_price),
+    commission,
+    start_date:     campaign.start_date ?? "",
+    end_date:       campaign.end_date ?? "",
+    brand,
+  };
+
+  return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) =>
+    map[k] != null ? map[k] : `{{${k}}}`,
+  );
 }
 
 export interface GbPriceCheck {
