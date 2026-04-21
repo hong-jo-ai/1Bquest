@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Package, BarChart3, DollarSign, Tag, Edit3, Save, Plus, Trash2 } from "lucide-react";
+import { X, Package, BarChart3, DollarSign, Tag, Edit3, Save, Plus, Trash2, ExternalLink } from "lucide-react";
 import {
-  GB_STATUS_CONFIG, SHIPPING_STATUS_CONFIG,
+  GB_STATUS_CONFIG, SHIPPING_STATUS_CONFIG, getInfluencerProfileUrl,
   type GbCampaign, type GbOrder, type GbProduct, type GbSettlement, type GbPriceCheck, type ShippingStatus,
 } from "@/lib/groupBuying/types";
 
@@ -210,6 +210,7 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   };
 
   const status = GB_STATUS_CONFIG[campaign.status];
+  const profileUrl = getInfluencerProfileUrl(campaign.influencer_handle, campaign.influencer_platform);
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "info", label: "정보", icon: Edit3 },
     { id: "products", label: `상품 (${products.length})`, icon: Package },
@@ -235,7 +236,20 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
               <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">{campaign.title}</h2>
               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>{status.label}</span>
             </div>
-            <p className="text-sm text-zinc-400 mt-0.5">@{campaign.influencer_handle}</p>
+            {profileUrl ? (
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-violet-600 transition-colors mt-0.5"
+                title={`${campaign.influencer_platform ?? ""} 프로필 방문`}
+              >
+                @{campaign.influencer_handle.replace(/^@+/, "")}
+                <ExternalLink size={12} />
+              </a>
+            ) : (
+              <p className="text-sm text-zinc-400 mt-0.5">@{campaign.influencer_handle}</p>
+            )}
           </div>
           <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors">
             <X size={20} />
@@ -266,7 +280,25 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
             <>
               {!editing ? (
                 <div className="space-y-3">
-                  <Row label="인플루언서" value={`@${campaign.influencer_handle} (${campaign.influencer_name ?? "-"})`} />
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-zinc-500">인플루언서</span>
+                    {profileUrl ? (
+                      <a
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-violet-600 hover:underline"
+                      >
+                        @{campaign.influencer_handle.replace(/^@+/, "")}
+                        {campaign.influencer_name ? ` (${campaign.influencer_name})` : ""}
+                        <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <span className="font-medium text-zinc-700 dark:text-zinc-200">
+                        @{campaign.influencer_handle} ({campaign.influencer_name ?? "-"})
+                      </span>
+                    )}
+                  </div>
                   <Row label="플랫폼" value={campaign.influencer_platform ?? "-"} />
                   <Row label="팔로워" value={campaign.influencer_followers?.toLocaleString() ?? "-"} />
                   <Row label="수수료" value={campaign.commission_type === "rate" ? (campaign.commission_rate != null ? `${campaign.commission_rate}%` : "미정") : `건당 ${formatPrice(campaign.commission_fixed_amount)}`} />

@@ -1,7 +1,7 @@
 "use client";
 
-import { Calendar, Package, Users, TrendingUp, ChevronRight, Trash2 } from "lucide-react";
-import { GB_STATUS_CONFIG, type GbCampaign } from "@/lib/groupBuying/types";
+import { Calendar, Package, Users, TrendingUp, ChevronRight, Trash2, ExternalLink } from "lucide-react";
+import { GB_STATUS_CONFIG, getInfluencerProfileUrl, type GbCampaign } from "@/lib/groupBuying/types";
 
 interface Props {
   campaign: GbCampaign;
@@ -24,6 +24,7 @@ export default function CampaignCard({ campaign: c, onDetail, onAdvance, onDelet
   const status = GB_STATUS_CONFIG[c.status];
   const nextStatus = status.next ? GB_STATUS_CONFIG[status.next] : null;
   const products = c.products ?? [];
+  const profileUrl = getInfluencerProfileUrl(c.influencer_handle, c.influencer_platform);
 
   return (
     <div
@@ -37,7 +38,21 @@ export default function CampaignCard({ campaign: c, onDetail, onAdvance, onDelet
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-zinc-800 dark:text-zinc-100 text-sm truncate">{c.title}</p>
-            <p className="text-xs text-zinc-400 truncate mt-0.5">@{c.influencer_handle}</p>
+            {profileUrl ? (
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-violet-600 transition-colors mt-0.5 truncate"
+                title={`${c.influencer_platform ?? ""} 프로필 방문`}
+              >
+                @{c.influencer_handle.replace(/^@+/, "")}
+                <ExternalLink size={10} />
+              </a>
+            ) : (
+              <p className="text-xs text-zinc-400 truncate mt-0.5">@{c.influencer_handle}</p>
+            )}
           </div>
           <span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>
             {status.label}

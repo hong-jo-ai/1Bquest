@@ -33,6 +33,22 @@ export const GB_STATUS_CONFIG: Record<
   analyzed:       { label: "성과분석",   color: "text-teal-600",   bg: "bg-teal-50",     border: "border-teal-200",  next: null },
 };
 
+export function getInfluencerProfileUrl(
+  handle: string | null | undefined,
+  platform: string | null | undefined,
+): string | null {
+  if (!handle) return null;
+  const h = handle.trim().replace(/^@+/, "");
+  if (!h) return null;
+  switch ((platform ?? "").toLowerCase()) {
+    case "instagram": return `https://www.instagram.com/${h}/`;
+    case "youtube":   return `https://www.youtube.com/@${h}`;
+    case "tiktok":    return `https://www.tiktok.com/@${h}`;
+    case "threads":   return `https://www.threads.com/@${h}`;
+    default:          return `https://www.instagram.com/${h}/`;
+  }
+}
+
 export const SHIPPING_STATUS_CONFIG: Record<
   ShippingStatus,
   { label: string; color: string }
