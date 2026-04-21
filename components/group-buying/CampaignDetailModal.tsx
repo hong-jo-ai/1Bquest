@@ -89,11 +89,26 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   };
 
   const handleSaveEdit = async () => {
-    await fetch(base, {
+    const patch = {
+      title: editForm.title ?? null,
+      commission_type: editForm.commission_type ?? "rate",
+      commission_rate: editForm.commission_type === "rate" ? (editForm.commission_rate ?? null) : null,
+      commission_fixed_amount: editForm.commission_type === "fixed_per_unit" ? (editForm.commission_fixed_amount ?? null) : null,
+      start_date: editForm.start_date ?? null,
+      end_date: editForm.end_date ?? null,
+      order_mode: editForm.order_mode ?? "cafe24",
+      notes: editForm.notes ?? null,
+    };
+    const res = await fetch(base, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editForm),
+      body: JSON.stringify(patch),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`저장 실패: ${json.error ?? res.statusText}`);
+      return;
+    }
     await refreshCampaign();
     setEditing(false);
   };
@@ -219,11 +234,16 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   const handleSaveProposal = async () => {
     setProposalSaving(true);
     try {
-      await fetch(base, {
+      const res = await fetch(base, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proposal_message: proposalDraft || null }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`저장 실패: ${json.error ?? res.statusText}`);
+        return;
+      }
       await refreshCampaign();
     } finally {
       setProposalSaving(false);
