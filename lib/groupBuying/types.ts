@@ -9,7 +9,8 @@ export type GbStatus =
   | "shipped"         // 발송완료
   | "pending_settle"  // 정산대기
   | "settled"         // 정산완료
-  | "analyzed";       // 성과분석
+  | "analyzed"        // 성과분석
+  | "archived";       // 보관 (무응답 등으로 파이프라인 제외, 재제안 후보)
 
 export type OrderMode = "cafe24" | "purchase_order";
 
@@ -33,6 +34,7 @@ export const GB_STATUS_CONFIG: Record<
   pending_settle: { label: "정산대기",   color: "text-orange-600", bg: "bg-orange-50",   border: "border-orange-200",next: "settled" },
   settled:        { label: "정산완료",   color: "text-emerald-600",bg: "bg-emerald-50",  border: "border-emerald-200",next: "analyzed" },
   analyzed:       { label: "성과분석",   color: "text-teal-600",   bg: "bg-teal-50",     border: "border-teal-200",  next: null },
+  archived:       { label: "보관",       color: "text-zinc-400",   bg: "bg-zinc-100",    border: "border-zinc-200",  next: null },
 };
 
 export function getInfluencerProfileUrl(

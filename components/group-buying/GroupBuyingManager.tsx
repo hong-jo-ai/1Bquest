@@ -85,7 +85,13 @@ export default function GroupBuyingManager() {
   }, [campaigns]);
 
   const tabCount = (id: TabId) =>
-    id === "all" ? allCampaigns.length : allCampaigns.filter((c) => c.status === id).length;
+    id === "all"
+      ? allCampaigns.filter((c) => c.status !== "archived").length
+      : allCampaigns.filter((c) => c.status === id).length;
+
+  // "전체" 탭에서는 보관 제외 (보관 탭에서만 표시)
+  const visibleCampaigns =
+    activeTab === "all" ? campaigns.filter((c) => c.status !== "archived") : campaigns;
 
   const handleAdvance = async (campaignId: string) => {
     const c = campaigns.find((x) => x.id === campaignId);
@@ -197,13 +203,13 @@ export default function GroupBuyingManager() {
         {/* 결과 */}
         {(activeTab !== "all" || search) && (
           <p className="text-sm text-zinc-400">
-            <span className="font-semibold text-zinc-700 dark:text-zinc-300">{campaigns.length}건</span> 표시 중
+            <span className="font-semibold text-zinc-700 dark:text-zinc-300">{visibleCampaigns.length}건</span> 표시 중
             {search && <span className="ml-1">— &quot;{search}&quot; 검색 결과</span>}
           </p>
         )}
 
         {/* 카드 그리드 */}
-        {campaigns.length === 0 ? (
+        {visibleCampaigns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-zinc-400 gap-3">
             <ShoppingBag size={48} className="opacity-20" />
             <p className="text-base font-medium">
@@ -221,7 +227,7 @@ export default function GroupBuyingManager() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {campaigns.map((c) => (
+            {visibleCampaigns.map((c) => (
               <CampaignCard
                 key={c.id}
                 campaign={c}
