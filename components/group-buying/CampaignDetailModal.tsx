@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { X, Package, BarChart3, DollarSign, Tag, Edit3, Save, Plus, Trash2, ExternalLink, MessageSquare, Copy, Check } from "lucide-react";
 import {
   GB_STATUS_CONFIG, SHIPPING_STATUS_CONFIG, getInfluencerProfileUrl, fillTemplate,
-  type GbCampaign, type GbOrder, type GbProduct, type GbSettlement, type GbPriceCheck, type ShippingStatus, type GbProposalTemplate,
+  type GbCampaign, type GbOrder, type GbProduct, type GbSettlement, type GbPriceCheck, type ShippingStatus, type GbProposalTemplate, type GbStatus,
 } from "@/lib/groupBuying/types";
 
 interface Props {
@@ -91,6 +91,7 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
   const handleSaveEdit = async () => {
     const patch = {
       title: editForm.title ?? null,
+      status: editForm.status ?? campaign.status,
       commission_type: editForm.commission_type ?? "rate",
       commission_rate: editForm.commission_type === "rate" ? (editForm.commission_rate ?? null) : null,
       commission_fixed_amount: editForm.commission_type === "fixed_per_unit" ? (editForm.commission_fixed_amount ?? null) : null,
@@ -395,6 +396,18 @@ export default function CampaignDetailModal({ campaign: initialCampaign, onUpdat
                   <div>
                     <label className="text-xs font-medium text-zinc-500 mb-1 block">캠페인 제목</label>
                     <input className={inputCls} value={editForm.title ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-zinc-500 mb-1 block">상태</label>
+                    <select
+                      className={inputCls}
+                      value={editForm.status ?? campaign.status}
+                      onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value as GbStatus }))}
+                    >
+                      {(Object.keys(GB_STATUS_CONFIG) as GbStatus[]).map((s) => (
+                        <option key={s} value={s}>{GB_STATUS_CONFIG[s].label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
