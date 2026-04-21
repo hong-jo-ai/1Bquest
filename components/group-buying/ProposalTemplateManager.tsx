@@ -72,21 +72,23 @@ export default function ProposalTemplateManager() {
     }
     setSaving(true);
     try {
-      if (selectedId) {
-        await fetch(`/api/group-buying/proposal-templates/${selectedId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editForm),
-        });
-      } else {
-        const res = await fetch("/api/group-buying/proposal-templates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editForm),
-        });
-        const json = await res.json();
-        if (json.template) setSelectedId(json.template.id);
+      const url = selectedId
+        ? `/api/group-buying/proposal-templates/${selectedId}`
+        : "/api/group-buying/proposal-templates";
+      const res = await fetch(url, {
+        method: selectedId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = String(json.error ?? "").includes("gb_proposal_templates")
+          ? "\n\nSupabase에서 20260421_gb_proposal_templates.sql 마이그레이션을 먼저 실행해야 합니다."
+          : "";
+        alert(`저장 실패: ${json.error ?? res.statusText}${hint}`);
+        return;
       }
+      if (!selectedId && json.template) setSelectedId(json.template.id);
       await load();
     } finally {
       setSaving(false);
