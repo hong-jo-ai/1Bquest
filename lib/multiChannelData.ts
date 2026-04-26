@@ -14,15 +14,43 @@ export type ChannelId =
   | "wconcept"
   | "musinsa"
   | "29cm"
-  | "groupbuy";
+  | "groupbuy"
+  | "sixshop"
+  | "naver_smartstore"
+  | "sixshop_global";
 
-export type UploadableChannel = "wconcept" | "musinsa" | "29cm" | "groupbuy";
+export type UploadableChannel =
+  | "wconcept"
+  | "musinsa"
+  | "29cm"
+  | "groupbuy"
+  | "sixshop"
+  | "naver_smartstore"
+  | "sixshop_global";
+
 export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "wconcept",
   "musinsa",
   "29cm",
   "groupbuy",
+  "sixshop",
+  "naver_smartstore",
+  "sixshop_global",
 ];
+
+// ── 브랜드 ─────────────────────────────────────────────────────────────────
+export type Brand = "paulvice" | "harriot";
+
+export const BRANDS: { id: Brand; name: string; gradient: string; accent: string }[] = [
+  { id: "paulvice", name: "폴바이스", gradient: "from-violet-500 to-fuchsia-500", accent: "#7c3aed" },
+  { id: "harriot",  name: "해리엇",   gradient: "from-amber-600 to-stone-800",     accent: "#b45309" },
+];
+
+/** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
+export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
+  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy"],
+  harriot:  ["all", "sixshop", "naver_smartstore", "sixshop_global"],
+};
 
 export interface ChannelMeta {
   id: ChannelId;
@@ -39,6 +67,11 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "musinsa",  name: "무신사",   color: "#2563eb", bgColor: "bg-blue-600",     textColor: "text-blue-600"    },
   { id: "29cm",     name: "29CM",     color: "#000000", bgColor: "bg-zinc-900",     textColor: "text-zinc-900"    },
   { id: "groupbuy", name: "공동구매", color: "#f59e0b", bgColor: "bg-amber-500",    textColor: "text-amber-600"   },
+
+  // 해리엇 채널
+  { id: "sixshop",          name: "식스샵",         color: "#10b981", bgColor: "bg-emerald-500", textColor: "text-emerald-600" },
+  { id: "naver_smartstore", name: "네이버 스마트스토어", color: "#22c55e", bgColor: "bg-green-500",   textColor: "text-green-600"   },
+  { id: "sixshop_global",   name: "식스샵 글로벌",   color: "#0d9488", bgColor: "bg-teal-600",    textColor: "text-teal-600"    },
 ];
 
 export interface MultiChannelData {
@@ -179,11 +212,27 @@ export const groupbuyDummy: MultiChannelData = {
   inventory: [],
 };
 
+export const sixshopDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+export const naverSmartstoreDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+export const sixshopGlobalDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+
 export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   wconcept: wconceptDummy,
   musinsa: musinsaDummy,
   "29cm": twentyNineCmDummy,
   groupbuy: groupbuyDummy,
+  sixshop: sixshopDummy,
+  naver_smartstore: naverSmartstoreDummy,
+  sixshop_global: sixshopGlobalDummy,
 };
 
 // ── 합산 유틸 ─────────────────────────────────────────────────────────────

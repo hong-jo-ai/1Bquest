@@ -18,9 +18,12 @@ import {
   UPLOADABLE_DUMMIES,
   mergeChannelData,
   CHANNELS,
+  BRANDS,
+  BRAND_CHANNELS,
   type ChannelId,
   type MultiChannelData,
   type UploadableChannel,
+  type Brand,
 } from "@/lib/multiChannelData";
 import {
   salesSummary as dummySales,
@@ -33,10 +36,13 @@ import type { DashboardData } from "@/lib/cafe24Data";
 
 // ── localStorage 키 ────────────────────────────────────────────────────────
 const LS_KEY: Record<UploadableChannel, { data: string; meta: string }> = {
-  wconcept: { data: "wconcept_excel_data", meta: "wconcept_excel_meta" },
-  musinsa:  { data: "musinsa_excel_data",  meta: "musinsa_excel_meta"  },
-  "29cm":   { data: "29cm_excel_data",     meta: "29cm_excel_meta"     },
-  groupbuy: { data: "groupbuy_excel_data", meta: "groupbuy_excel_meta" },
+  wconcept:         { data: "wconcept_excel_data",         meta: "wconcept_excel_meta"         },
+  musinsa:          { data: "musinsa_excel_data",          meta: "musinsa_excel_meta"          },
+  "29cm":           { data: "29cm_excel_data",             meta: "29cm_excel_meta"             },
+  groupbuy:         { data: "groupbuy_excel_data",         meta: "groupbuy_excel_meta"         },
+  sixshop:          { data: "sixshop_excel_data",          meta: "sixshop_excel_meta"          },
+  naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta" },
+  sixshop_global:   { data: "sixshop_global_excel_data",   meta: "sixshop_global_excel_meta"   },
 };
 
 interface UploadMeta {
@@ -50,22 +56,34 @@ type ChannelUploads = Record<UploadableChannel, MultiChannelData | null>;
 type ChannelMetas = Record<UploadableChannel, UploadMeta | null>;
 const EMPTY_UPLOADS: ChannelUploads = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+  sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 const EMPTY_METAS: ChannelMetas = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+  sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────
 interface Props {
+  brand: Brand;
   cafe24Data: DashboardData | null;
   isAuthenticated: boolean;
   apiError: string | null;
   now: string;
 }
 
-export default function DashboardClient({ cafe24Data, isAuthenticated, apiError, now }: Props) {
+export default function DashboardClient({ brand, cafe24Data, isAuthenticated, apiError, now }: Props) {
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
+
+  // 브랜드 변경 시 채널 선택 초기화
+  useEffect(() => {
+    setActiveChannel("all");
+    setShowUpload(false);
+  }, [brand]);
+
+  // 현재 브랜드의 채널 ID 목록
+  const brandChannelIds = BRAND_CHANNELS[brand];
 
   // 업로드된 데이터 상태 (4개 채널 통합 관리)
   const [uploads, setUploads] = useState<ChannelUploads>(EMPTY_UPLOADS);
@@ -127,26 +145,30 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
 
   // 실제 표시 데이터 (업로드 > 더미)
   const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => ({
-    wconcept: uploads.wconcept ?? UPLOADABLE_DUMMIES.wconcept,
-    musinsa:  uploads.musinsa  ?? UPLOADABLE_DUMMIES.musinsa,
-    "29cm":   uploads["29cm"]  ?? UPLOADABLE_DUMMIES["29cm"],
-    groupbuy: uploads.groupbuy ?? UPLOADABLE_DUMMIES.groupbuy,
+    wconcept:         uploads.wconcept         ?? UPLOADABLE_DUMMIES.wconcept,
+    musinsa:          uploads.musinsa          ?? UPLOADABLE_DUMMIES.musinsa,
+    "29cm":           uploads["29cm"]          ?? UPLOADABLE_DUMMIES["29cm"],
+    groupbuy:         uploads.groupbuy         ?? UPLOADABLE_DUMMIES.groupbuy,
+    sixshop:          uploads.sixshop          ?? UPLOADABLE_DUMMIES.sixshop,
+    naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
+    sixshop_global:   uploads.sixshop_global   ?? UPLOADABLE_DUMMIES.sixshop_global,
   }), [uploads]);
 
   const displayData: MultiChannelData = useMemo(() => {
     if (activeChannel === "cafe24") return cafe24Channel;
     if (activeChannel === "all") {
-      return mergeChannelData([
-        cafe24Channel,
-        channelDataMap.wconcept,
-        channelDataMap.musinsa,
-        channelDataMap["29cm"],
-        channelDataMap.groupbuy,
-      ]);
+      // 현재 브랜드의 채널만 합산
+      const list: MultiChannelData[] = [];
+      for (const id of brandChannelIds) {
+        if (id === "all") continue;
+        if (id === "cafe24") list.push(cafe24Channel);
+        else list.push(channelDataMap[id as UploadableChannel]);
+      }
+      return mergeChannelData(list);
     }
     // 업로드 가능 채널
     return channelDataMap[activeChannel as UploadableChannel];
-  }, [activeChannel, cafe24Channel, channelDataMap]);
+  }, [activeChannel, cafe24Channel, channelDataMap, brandChannelIds]);
 
   const cafe24IsReal       = cafe24Data?.isReal === true;
   const isUploadableActive = UPLOADABLE_CHANNELS.includes(activeChannel as UploadableChannel);
@@ -155,24 +177,23 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
   const activeMeta         = activeUploadable ? metas[activeUploadable] : null;
   const activeChannelMeta  = CHANNELS.find(c => c.id === activeChannel);
 
-  // ChannelComparisonChart에 넘길 채널 데이터
-  const cafe24Color = CHANNELS.find(c => c.id === "cafe24")?.color ?? "#0ea5e9";
+  // ChannelComparisonChart에 넘길 채널 데이터 (브랜드 채널만)
   const comparisonChannels = useMemo(() => {
-    const list: { channelId: string; name: string; color: string; data: MultiChannelData }[] = [
-      { channelId: "cafe24", name: "카페24", color: cafe24Color, data: cafe24Channel },
-    ];
-    for (const ch of UPLOADABLE_CHANNELS) {
-      const meta = CHANNELS.find(c => c.id === ch);
+    const list: { channelId: string; name: string; color: string; data: MultiChannelData }[] = [];
+    for (const id of brandChannelIds) {
+      if (id === "all") continue;
+      const meta = CHANNELS.find(c => c.id === id);
       if (!meta) continue;
-      list.push({ channelId: ch, name: meta.name, color: meta.color, data: channelDataMap[ch] });
+      const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+      list.push({ channelId: id, name: meta.name, color: meta.color, data });
     }
     return list;
-  }, [cafe24Channel, channelDataMap, cafe24Color]);
+  }, [cafe24Channel, channelDataMap, brandChannelIds]);
 
   return (
     <>
-      {/* API 오류 배너 */}
-      {apiError && (
+      {/* API 오류 배너 (폴바이스 카페24만) */}
+      {apiError && brand === "paulvice" && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl px-4 py-3 text-sm">
             <AlertCircle size={16} className="shrink-0" />
@@ -181,8 +202,8 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
         </div>
       )}
 
-      {/* 미연결 배너 */}
-      {!isAuthenticated && (
+      {/* 미연결 배너 (폴바이스만) */}
+      {!isAuthenticated && brand === "paulvice" && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded-xl px-4 py-3 text-sm">
             <span>카페24가 연결되지 않았습니다. 현재 더미 데이터를 표시 중입니다.</span>
@@ -233,17 +254,24 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
       {/* 메인 */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
+        {/* 브랜드 스위처 */}
+        <BrandSwitcher current={brand} />
+
         {/* 채널 탭 */}
         <div className="bg-zinc-100/70 dark:bg-zinc-800/50 rounded-2xl p-2">
           <ChannelTabs
             activeChannel={activeChannel}
             onChange={ch => { setActiveChannel(ch); setShowUpload(false); }}
             cafe24IsReal={cafe24IsReal}
+            visibleChannels={brandChannelIds}
             uploadStatus={{
               wconcept: !!uploads.wconcept,
               musinsa:  !!uploads.musinsa,
               "29cm":   !!uploads["29cm"],
               groupbuy: !!uploads.groupbuy,
+              sixshop:  !!uploads.sixshop,
+              naver_smartstore: !!uploads.naver_smartstore,
+              sixshop_global:   !!uploads.sixshop_global,
             }}
           />
         </div>
@@ -308,5 +336,42 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
         Harriot Watches · 멀티 브랜드 통합 현황
       </footer>
     </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 브랜드 스위처
+// ────────────────────────────────────────────────────────────────────
+function BrandSwitcher({ current }: { current: Brand }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1">
+        브랜드
+      </span>
+      <div className="inline-flex items-center bg-zinc-100 dark:bg-zinc-800 rounded-full p-1">
+        {BRANDS.map((b) => {
+          const active = current === b.id;
+          return (
+            <a
+              key={b.id}
+              href={`/?brand=${b.id}`}
+              className={`px-4 sm:px-5 h-9 inline-flex items-center gap-2 rounded-full text-sm font-semibold transition ${
+                active
+                  ? `text-white bg-gradient-to-br ${b.gradient} shadow-sm`
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  active ? "bg-white" : "opacity-50"
+                }`}
+                style={!active ? { backgroundColor: b.accent } : undefined}
+              />
+              {b.name}
+            </a>
+          );
+        })}
+      </div>
+    </div>
   );
 }

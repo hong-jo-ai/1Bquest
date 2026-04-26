@@ -15,7 +15,14 @@ interface UploadMeta {
 }
 
 interface Props {
-  channel: "wconcept" | "musinsa" | "29cm" | "groupbuy";
+  channel:
+    | "wconcept"
+    | "musinsa"
+    | "29cm"
+    | "groupbuy"
+    | "sixshop"
+    | "naver_smartstore"
+    | "sixshop_global";
   channelName: string;
   channelColor: string;
   onDataLoaded: (data: MultiChannelData, meta: UploadMeta) => void;
@@ -151,6 +158,15 @@ export default function ExcelUploadPanel({
             )}
             {channel === "groupbuy" && (
               <p className="mt-0.5">공동구매 캠페인 결과를 정리한 엑셀 (날짜·상품명·수량·매출)</p>
+            )}
+            {channel === "sixshop" && (
+              <p className="mt-0.5">식스샵 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
+            )}
+            {channel === "naver_smartstore" && (
+              <p className="mt-0.5">스마트스토어센터 → 판매관리 → 주문통합검색 → 엑셀 다운로드 (API 자동화 예정)</p>
+            )}
+            {channel === "sixshop_global" && (
+              <p className="mt-0.5">식스샵 글로벌 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
             )}
             <p className="mt-1 text-zinc-300 dark:text-zinc-500">지원 형식: .xlsx, .xls, .csv (최대 10MB)</p>
           </div>

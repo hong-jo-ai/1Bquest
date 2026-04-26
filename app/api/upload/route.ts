@@ -1,7 +1,15 @@
 import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
 
-const ALLOWED_CHANNELS = ["wconcept", "musinsa", "29cm", "groupbuy"] as const;
+const ALLOWED_CHANNELS = [
+  "wconcept",
+  "musinsa",
+  "29cm",
+  "groupbuy",
+  "sixshop",
+  "naver_smartstore",
+  "sixshop_global",
+] as const;
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function POST(req: NextRequest) {

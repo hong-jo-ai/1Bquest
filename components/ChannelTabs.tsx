@@ -7,15 +7,24 @@ interface Props {
   onChange: (id: ChannelId) => void;
   cafe24IsReal: boolean;
   uploadStatus?: Partial<Record<UploadableChannel, boolean>>;
+  visibleChannels?: ChannelId[]; // 표시할 채널 ID 목록 (브랜드 분기용). 없으면 전체.
 }
 
 export default function ChannelTabs({
   activeChannel, onChange, cafe24IsReal,
   uploadStatus = {},
+  visibleChannels,
 }: Props) {
+  const channelsToShow = visibleChannels
+    ? CHANNELS.filter((c) => visibleChannels.includes(c.id))
+        .sort(
+          (a, b) => visibleChannels.indexOf(a.id) - visibleChannels.indexOf(b.id)
+        )
+    : CHANNELS;
+
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-      {CHANNELS.map((ch) => {
+      {channelsToShow.map((ch) => {
         const isActive = activeChannel === ch.id;
         const isUploadable = UPLOADABLE_CHANNELS.includes(ch.id as UploadableChannel);
         const hasUpload = isUploadable && !!uploadStatus[ch.id as UploadableChannel];
