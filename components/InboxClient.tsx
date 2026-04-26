@@ -80,6 +80,11 @@ const CHANNEL_STYLE: Record<
     color: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/40",
   },
+  naver_qna: {
+    icon: Store,
+    color: "text-green-600 dark:text-green-400",
+    bg: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-900/40",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
@@ -453,6 +458,7 @@ export default function InboxClient() {
               "crisp",
               "cafe24_board",
               "sixshop_board",
+              "naver_qna",
             ] as (CsChannel | "all")[]
           ).map((c) => {
             const Icon = c !== "all" ? CHANNEL_STYLE[c as CsChannel].icon : Hash;

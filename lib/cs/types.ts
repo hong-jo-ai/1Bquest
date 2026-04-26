@@ -11,7 +11,8 @@ export type CsChannel =
   | "crisp"
   | "kakao_bizchat"
   | "cafe24_board"
-  | "sixshop_board";
+  | "sixshop_board"
+  | "naver_qna";
 
 export type CsStatus = "unanswered" | "waiting" | "resolved" | "archived";
 export type CsDirection = "in" | "out";
@@ -69,6 +70,7 @@ export const CHANNEL_LABEL: Record<CsChannel, string> = {
   kakao_bizchat: "카카오 상담톡",
   cafe24_board: "카페24 게시판",
   sixshop_board: "식스샵 게시판",
+  naver_qna: "네이버 Q&A",
 };
 
 export const BRAND_LABEL: Record<CsBrandId, string> = {

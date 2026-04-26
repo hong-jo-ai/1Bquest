@@ -24,6 +24,7 @@ const CHANNEL_ICON: Record<CsChannel, React.ElementType> = {
   kakao_bizchat: MessageCircle,
   cafe24_board: Store,
   sixshop_board: ShoppingBag,
+  naver_qna: Store,
 };
 
 const BRAND_COLOR: Record<CsBrandId, string> = {

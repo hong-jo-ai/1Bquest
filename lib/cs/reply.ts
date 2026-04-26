@@ -9,6 +9,7 @@ import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import { cafe24Post, cafe24Put } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
+import { answerNaverQna } from "../naverCommerceClient";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -33,6 +34,7 @@ export async function sendReply(
     crisp: sendCrispReply,
     ig_dm: sendIgReply,
     cafe24_board: sendCafe24BoardReply,
+    naver_qna: sendNaverQnaReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -331,6 +333,47 @@ async function sendCafe24BoardReply(
     .from("cs_threads")
     .update({ status: "waiting" })
     .eq("id", threadId);
+
+  return { ok: true };
+}
+
+async function sendNaverQnaReply(
+  threadId: string,
+  body: string
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  // external_thread_id: "naver_qna_{inquiryNo}"
+  const match = thread.external_thread_id.match(/^naver_qna_(\d+)$/);
+  if (!match) {
+    return { ok: false, error: "naver thread id 형식 오류" };
+  }
+  const inquiryNo = Number(match[1]);
+
+  try {
+    await answerNaverQna(inquiryNo, body);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `네이버 답변 등록 실패: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  await ingestMessage({
+    brand: thread.brand as CsBrandId,
+    channel: "naver_qna",
+    externalThreadId: thread.external_thread_id,
+    externalMessageId: `naver_qna_${inquiryNo}_reply_${Date.now()}`,
+    bodyText: body,
+    sentAt: new Date(),
+    direction: "out",
+    raw: { sent_via: "inbox_ui" },
+  });
+
+  const db = getCsSupabase();
+  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
 
   return { ok: true };
 }
