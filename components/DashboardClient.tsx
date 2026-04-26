@@ -1,15 +1,12 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertCircle, UploadCloud } from "lucide-react";
+import { AlertCircle, UploadCloud, ChevronDown, ChevronUp } from "lucide-react";
 
 import ChannelTabs from "@/components/ChannelTabs";
 import ChannelComparisonChart from "@/components/ChannelComparisonChart";
 import SalesSummary from "@/components/SalesSummary";
-import HourlyChart from "@/components/HourlyChart";
-import WeeklyChart from "@/components/WeeklyChart";
 import TopProducts from "@/components/TopProducts";
-import InventoryStatus from "@/components/InventoryStatus";
 import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboard";
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 
@@ -288,35 +285,13 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
           />
         )}
 
-        {/* 매출 요약 */}
+        {/* 매출 요약 — 오늘/이번주/이번달 KPI */}
         <SalesSummary data={displayData.salesSummary} />
 
-        {/* 채널 비교 + 주문 차트 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChannelComparisonChart channels={comparisonChannels} />
-          <HourlyChart data={displayData.hourlyOrders} />
-        </div>
+        {/* 채널 비교 — 채널별 매출 한눈에 */}
+        <ChannelComparisonChart channels={comparisonChannels} />
 
-        {/* 주간 매출 + 상품 순위 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <WeeklyChart data={displayData.weeklyRevenue} />
-          <TopProducts
-            today={
-              !isUploadableActive && cafe24IsReal
-                ? (cafe24Data?.topProductsToday ?? displayData.topProducts)
-                : displayData.topProducts
-            }
-            week={
-              !isUploadableActive && cafe24IsReal
-                ? (cafe24Data?.topProductsWeek ?? displayData.topProducts)
-                : displayData.topProducts
-            }
-            month={displayData.topProducts}
-            isReal={cafe24IsReal && !isUploadableActive || activeHasUpload}
-          />
-        </div>
-
-        {/* 손익 분석 (P&L) — 매출, 수수료, 부가세, 매입원가, 고정비 → 영업이익 */}
+        {/* 손익 분석 (P&L) — 메인 도구: 매출, 수수료, 부가세, 매입원가, 광고비, 고정비 → 영업이익 */}
         <ProfitDashboard
           channels={
             comparisonChannels.map<ProfitChannel>((c) => ({
@@ -329,6 +304,24 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
           }
           unmatchedSkus={cafe24Data?.unmatchedSkus ?? []}
         />
+
+        {/* 상품별 판매 순위 — 보조 정보 (접힘) */}
+        <CollapsibleSection title="상품별 판매 순위" defaultOpen={false}>
+          <TopProducts
+            today={
+              !isUploadableActive && cafe24IsReal
+                ? (cafe24Data?.topProductsToday ?? displayData.topProducts)
+                : displayData.topProducts
+            }
+            week={
+              !isUploadableActive && cafe24IsReal
+                ? (cafe24Data?.topProductsWeek ?? displayData.topProducts)
+                : displayData.topProducts
+            }
+            month={displayData.topProducts}
+            isReal={(cafe24IsReal && !isUploadableActive) || activeHasUpload}
+          />
+        </CollapsibleSection>
       </main>
 
       {/* 푸터 */}
@@ -336,6 +329,43 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
         Harriot Watches · 멀티 브랜드 통합 현황
       </footer>
     </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 접힘 섹션
+// ────────────────────────────────────────────────────────────────────
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 sm:px-6 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition"
+      >
+        <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">
+          {title}
+        </span>
+        {open ? (
+          <ChevronUp size={16} className="text-zinc-400" />
+        ) : (
+          <ChevronDown size={16} className="text-zinc-400" />
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-zinc-100 dark:border-zinc-800 p-4 sm:p-6">
+          {children}
+        </div>
+      )}
+    </section>
   );
 }
 
