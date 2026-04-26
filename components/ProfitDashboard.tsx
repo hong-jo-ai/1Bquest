@@ -61,6 +61,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
   const [settings, setSettings] = useState<ProfitSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<string>("all");
+  const [metaDaily, setMetaDaily] = useState<{ date: string; spend: number }[]>([]);
+  const [metaLinked, setMetaLinked] = useState(false);
 
   // 설정 불러오기
   useEffect(() => {
@@ -70,6 +72,21 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
         if (j.ok) setSettings(j.settings);
       })
       .catch(() => {/* 기본값 사용 */});
+  }, []);
+
+  // 메타 광고비 불러오기 (지난 60일)
+  useEffect(() => {
+    fetch("/api/profit/meta-spend?days=60")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) {
+          setMetaDaily(j.daily ?? []);
+          setMetaLinked(true);
+        } else {
+          setMetaLinked(false);
+        }
+      })
+      .catch(() => setMetaLinked(false));
   }, []);
 
   const saveSettings = useCallback(async (patch: Partial<ProfitSettings>) => {
@@ -153,8 +170,22 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
       }
     }
 
-    // 매출총이익 = 순매출 - 수수료 - 택배비 - 매입원가
-    const grossProfit = revenueExVat - totalFees - shipping - totalCogs;
+    // 메타 광고비 — 기간 내 합 × 채널 안분 비율
+    // (광고는 모든 채널로 트래픽을 보내기 때문에 채널별로 안분)
+    let totalMetaSpend = 0;
+    for (const m of metaDaily) {
+      if (m.date >= startDate && m.date <= endDate) totalMetaSpend += m.spend;
+    }
+    const totalMetaSpendForChannel =
+      activeChannel === "all"
+        ? totalMetaSpend
+        : totalRevAllChannels > 0
+          ? totalMetaSpend * (totalRev / totalRevAllChannels)
+          : 0;
+
+    // 매출총이익 = 순매출 - 수수료 - 택배비 - 매입원가 - 광고비
+    const grossProfit =
+      revenueExVat - totalFees - shipping - totalCogs - totalMetaSpendForChannel;
 
     // 고정비 (월 기준 → 일별로 안분 → 기간 일수만큼)
     // 특정 채널 보기일 때는 그 채널의 매출 비중만큼만 안분
@@ -181,6 +212,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
     }
     const dates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
 
+    // 채널 안분 비율 (광고비를 채널별로 나누는 데 사용) — 위에서 정의된 값 사용
+    const _channelShareForRows = activeChannel === "all" ? 1 : (totalRevAllChannels > 0 ? totalRev / totalRevAllChannels : 0);
+
     const dailyRows = dates.map((date) => {
       let dayRev = 0;
       let dayOrders = 0;
@@ -199,8 +233,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
       }
       const dayVat = (dayRev * settings.vatRate) / (100 + settings.vatRate);
       const dayShipping = dayOrders * settings.shippingPerOrder;
-      const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs;
-      return { date, dayRev, dayOrders, dayFee, dayVat, dayShipping, dayCogs, dayNet };
+      const metaEntry = metaDaily.find((m) => m.date === date);
+      const dayMeta = (metaEntry?.spend ?? 0) * _channelShareForRows;
+      const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs - dayMeta;
+      return { date, dayRev, dayOrders, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayNet };
     });
 
     return {
@@ -212,6 +248,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
       totalFees,
       shipping,
       totalCogs,
+      totalMetaSpend,
+      totalMetaSpendForChannel,
       grossProfit,
       monthlyFixedTotal,
       fixedAllocated,
@@ -221,7 +259,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily]);
 
   return (
     <section className="space-y-4">
@@ -377,6 +415,17 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
             }
             amount={-calc.totalCogs}
           />
+          <PnlRow
+            label="메타 광고비"
+            sub={
+              !metaLinked
+                ? "Meta 미연결 — 고정비에 수동 입력 가능"
+                : activeChannel === "all"
+                  ? "Meta API 자동 동기화 (전체 광고 계정 합산)"
+                  : `Meta API · 채널 매출 비중 ${(calc.channelShare * 100).toFixed(1)}%`
+            }
+            amount={-calc.totalMetaSpendForChannel}
+          />
           <PnlRow label="매출총이익" amount={calc.grossProfit} bold accent />
         </PnlSection>
 
@@ -478,6 +527,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
                 <th className="px-4 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-400 text-xs whitespace-nowrap">
                   매입원가
                 </th>
+                <th className="px-4 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-400 text-xs whitespace-nowrap">
+                  광고비
+                </th>
                 <th className="px-4 py-2.5 text-right font-bold text-zinc-700 dark:text-zinc-300 text-xs whitespace-nowrap">
                   순이익
                 </th>
@@ -489,7 +541,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
             <tbody>
               {calc.dailyRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-400">
                     해당 기간의 매출 데이터가 없습니다
                   </td>
                 </tr>
@@ -516,6 +568,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
                     </td>
                     <td className="px-4 py-2.5 text-right text-zinc-500 tabular-nums whitespace-nowrap">
                       {r.dayCogs > 0 ? `-${fmtKrw(r.dayCogs)}` : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-zinc-500 tabular-nums whitespace-nowrap">
+                      {r.dayMeta > 0 ? `-${fmtKrw(r.dayMeta)}` : "—"}
                     </td>
                     <td
                       className={`px-4 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap ${
