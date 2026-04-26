@@ -285,8 +285,8 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
           />
         )}
 
-        {/* 매출 요약 — 오늘/이번주/이번달 KPI */}
-        <SalesSummary data={displayData.salesSummary} />
+        {/* 매출 요약 — 4지표 + 비교 % */}
+        <SalesSummary daily={displayData.dailyRevenue ?? []} />
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />
