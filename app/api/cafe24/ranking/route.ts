@@ -1,7 +1,5 @@
 import { fetchAllOrders, buildRanking } from "@/lib/cafe24Data";
-import { doRefresh } from "@/lib/cafe24Client";
-import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
-import { cookies } from "next/headers";
+import { getValidC24Token } from "@/lib/cafe24Auth";
 import { NextResponse } from "next/server";
 
 function kstNow() {
@@ -62,33 +60,7 @@ async function fetchOrdersForMonths(
 }
 
 export async function GET() {
-  const cookieStore = await cookies();
-  let accessToken = cookieStore.get("c24_at")?.value;
-  const refreshToken = cookieStore.get("c24_rt")?.value;
-
-  if (!accessToken && refreshToken) {
-    try {
-      const newToken = await doRefresh(refreshToken);
-      accessToken = newToken.access_token;
-      cookieStore.set("c24_at", newToken.access_token, {
-        httpOnly: true, secure: true,
-        maxAge: newToken.expires_in ?? 7200,
-        path: "/", sameSite: "lax",
-      });
-      cookieStore.set("c24_rt", newToken.refresh_token, {
-        httpOnly: true, secure: true,
-        maxAge: 60 * 60 * 24 * 14,
-        path: "/", sameSite: "lax",
-      });
-    } catch (e: any) {
-      return NextResponse.json({ error: `토큰 갱신 실패: ${e.message}` }, { status: 401 });
-    }
-  }
-
-  if (!accessToken) {
-    accessToken = await getAccessTokenFromStore() ?? undefined;
-  }
-
+  const accessToken = await getValidC24Token();
   if (!accessToken) {
     return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   }
