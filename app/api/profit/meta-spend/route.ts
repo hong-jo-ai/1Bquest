@@ -98,6 +98,9 @@ export async function GET(req: NextRequest) {
             // time_range가 date_preset보다 안정적 (last_60d 같은 무효 프리셋 회피)
             time_range: JSON.stringify({ since, until }),
             level: "account",
+            // 기본 limit이 25라 60일 요청해도 첫 25일만 반환되어 데이터 누락.
+            // 90일까지 충분히 커버하도록 명시.
+            limit: "100",
           })) as { data?: InsightRow[] };
 
           for (const row of ins.data ?? []) {

@@ -273,20 +273,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
     });
 
     if (typeof window !== "undefined") {
-      const firstMeta = metaDaily[0];
-      const firstSpendType = firstMeta ? typeof firstMeta.spend : "n/a";
-      const firstDateType = firstMeta ? typeof firstMeta.date : "n/a";
-      const sampleCheck = firstMeta
-        ? `${firstMeta.date}>=${startDate}=${firstMeta.date >= startDate} && ${firstMeta.date}<=${endDate}=${firstMeta.date <= endDate}`
-        : "n/a";
       console.log(
         `[P&L calc] ch=${activeChannel} period=${startDate}~${endDate} ` +
         `metaDays=${metaDaily.length} metaSpend=${Math.round(totalMetaSpend)} ` +
-        `metaForChannel=${Math.round(totalMetaSpendForChannel)} ` +
-        `channelShare=${channelShare.toFixed(3)} ` +
-        `totalRev=${totalRev} totalRevAll=${totalRevAllChannels} ` +
-        `| firstMeta=${JSON.stringify(firstMeta)} (date:${firstDateType}, spend:${firstSpendType}) ` +
-        `range:${sampleCheck}`
+        `metaForChannel=${Math.round(totalMetaSpendForChannel)}`
       );
     }
 
