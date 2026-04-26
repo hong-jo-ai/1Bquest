@@ -88,31 +88,38 @@ export default function FinanceClient() {
       </div>
 
       {/* 업로드 */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <UploadCard
           title="KB국민은행 거래내역"
-          hint="인터넷뱅킹 → 거래내역 조회 → 엑셀 (.xls)"
+          hint="인터넷뱅킹 → 거래내역 → 엑셀"
           accept=".xls,.xlsx,.csv"
           uploadUrl="/api/finance/bank-tx?bank=KB"
-          onSuccess={(j) => `${j.parsed}건 분석 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
+          onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
           onDone={loadTxs}
         />
         <UploadCard
+          title="네이버페이 영수증"
+          hint="네이버페이 → 결제내역 → 엑셀 다운로드"
+          accept=".xls,.xlsx"
+          uploadUrl="/api/finance/card-usage?source=npay"
+          onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
+        />
+        <UploadCard
           title="홈택스 매입세금계산서"
-          hint="전자세금계산서 → 매입 → 목록 다운로드"
+          hint="전자세금계산서 → 매입 → 다운로드"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/tax-invoices?type=purchase"
           onSuccess={(j) =>
-            `${j.invoicesUpserted}건 (${j.itemsInserted}품목) — 합계 ₩${(j.totalAmount ?? 0).toLocaleString()} ${j.detectedBusinessName ? "· " + j.detectedBusinessName : ""}`
+            `${j.invoicesUpserted}건 (${j.itemsInserted}품목) · ₩${(j.totalAmount ?? 0).toLocaleString()}`
           }
         />
         <UploadCard
           title="홈택스 매출세금계산서"
-          hint="전자세금계산서 → 매출 → 목록 다운로드"
+          hint="전자세금계산서 → 매출 → 다운로드"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/tax-invoices?type=sales"
           onSuccess={(j) =>
-            `${j.invoicesUpserted}건 (${j.itemsInserted}품목) — 합계 ₩${(j.totalAmount ?? 0).toLocaleString()}`
+            `${j.invoicesUpserted}건 · ₩${(j.totalAmount ?? 0).toLocaleString()}`
           }
         />
       </section>
