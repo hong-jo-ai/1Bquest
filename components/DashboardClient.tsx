@@ -10,7 +10,7 @@ import HourlyChart from "@/components/HourlyChart";
 import WeeklyChart from "@/components/WeeklyChart";
 import TopProducts from "@/components/TopProducts";
 import InventoryStatus from "@/components/InventoryStatus";
-import DailySalesTable, { type DailySalesChannel } from "@/components/DailySalesTable";
+import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboard";
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 
 import {
@@ -248,10 +248,10 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
           />
         </div>
 
-        {/* 일별 매출 상세 표 (전체 채널 통합) */}
-        <DailySalesTable
+        {/* 손익 분석 (P&L) — 매출, 수수료, 부가세, 고정비 → 영업이익 */}
+        <ProfitDashboard
           channels={
-            comparisonChannels.map<DailySalesChannel>((c) => ({
+            comparisonChannels.map<ProfitChannel>((c) => ({
               id: c.channelId,
               name: c.name,
               color: c.color,
