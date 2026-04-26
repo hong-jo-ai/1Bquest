@@ -32,16 +32,10 @@ create table if not exists finance_bank_tx (
   category      text,                            -- 자동/수동 분류 카테고리
   category_source text,                          -- 'rule' | 'manual' | 'ai'
   raw           jsonb,                           -- 원본 행
-  -- 중복 방지: 같은 사업자 + 시점 + 잔액 + 출금/입금 조합으로 unique
-  dedupe_key    text generated always as (
-    coalesce(business_id::text, '') || '|' ||
-    extract(epoch from tx_date)::text || '|' ||
-    coalesce(balance::text, '') || '|' ||
-    withdrawal::text || '|' ||
-    deposit::text
-  ) stored,
   created_at    timestamptz not null default now(),
-  unique (dedupe_key)
+  -- 중복 방지: 같은 사업자 + 시점 + 출금/입금/잔액 조합은 unique
+  -- (generated column 대신 직접 다중 컬럼 unique 제약 사용 — timestamptz extract가 immutable이 아니라 generated column에 못 씀)
+  unique (business_id, tx_date, withdrawal, deposit, balance)
 );
 
 create index if not exists idx_finance_bank_tx_business_date on finance_bank_tx (business_id, tx_date desc);

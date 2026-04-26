@@ -93,11 +93,13 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // 중복(unique dedupe_key) 무시하면서 삽입
-  // ON CONFLICT 처리를 위해 upsert with ignoreDuplicates
+  // 중복 방지: (business_id, tx_date, withdrawal, deposit, balance) unique 제약
   const { data, error } = await db
     .from("finance_bank_tx")
-    .upsert(records, { onConflict: "dedupe_key", ignoreDuplicates: true })
+    .upsert(records, {
+      onConflict: "business_id,tx_date,withdrawal,deposit,balance",
+      ignoreDuplicates: true,
+    })
     .select("id");
 
   if (error) {
