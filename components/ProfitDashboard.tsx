@@ -58,6 +58,7 @@ export default function ProfitDashboard({ channels }: Props) {
   const [customEnd, setCustomEnd] = useState<string>(todayStr());
   const [settings, setSettings] = useState<ProfitSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeChannel, setActiveChannel] = useState<string>("all");
 
   // 설정 불러오기
   useEffect(() => {
@@ -88,14 +89,35 @@ export default function ProfitDashboard({ channels }: Props) {
     return { startDate: customStart, endDate: customEnd };
   }, [preset, customStart, customEnd]);
 
+  // 채널 필터링 (전체 또는 특정 채널만)
+  const visibleChannels = useMemo(
+    () =>
+      activeChannel === "all"
+        ? channels
+        : channels.filter((c) => c.id === activeChannel),
+    [channels, activeChannel]
+  );
+
+  // 고정비도 채널별 보기에서는 매출 비중만큼 안분 (전체에서 차지하는 매출 비율로)
+  // 단순화를 위해 일단 전체 매출 대비 그 채널 매출 비율로 안분
+  const totalRevAllChannels = useMemo(() => {
+    let s = 0;
+    for (const ch of channels) {
+      for (const d of ch.daily) {
+        if (d.date >= startDate && d.date <= endDate) s += d.revenue;
+      }
+    }
+    return s;
+  }, [channels, startDate, endDate]);
+
   // ── 계산 ───────────────────────────────────────────────────────────────
   const calc = useMemo(() => {
-    // 채널별 매출/주문 합산 (기간 내)
+    // 채널별 매출/주문 합산 (기간 내) — visible만
     const perChannel: Record<string, { revenue: number; orders: number; fee: number }> = {};
     let totalRev = 0;
     let totalOrders = 0;
 
-    for (const ch of channels) {
+    for (const ch of visibleChannels) {
       let chRev = 0;
       let chOrd = 0;
       for (const d of ch.daily) {
@@ -125,16 +147,24 @@ export default function ProfitDashboard({ channels }: Props) {
     const grossProfit = revenueExVat - totalFees - shipping;
 
     // 고정비 (월 기준 → 일별로 안분 → 기간 일수만큼)
+    // 특정 채널 보기일 때는 그 채널의 매출 비중만큼만 안분
     const days = daysBetween(startDate, endDate);
     const monthlyFixedTotal = settings.fixedCosts.reduce((s, c) => s + c.monthly, 0);
-    const fixedAllocated = (monthlyFixedTotal / 30) * days;
+    const fullPeriodFixed = (monthlyFixedTotal / 30) * days;
+    const channelShare =
+      activeChannel === "all"
+        ? 1
+        : totalRevAllChannels > 0
+          ? totalRev / totalRevAllChannels
+          : 0;
+    const fixedAllocated = fullPeriodFixed * channelShare;
 
     const operatingProfit = grossProfit - fixedAllocated;
     const margin = totalRev > 0 ? (operatingProfit / totalRev) * 100 : 0;
 
-    // 일별 행 (표 표시용)
+    // 일별 행 (표 표시용) — visible 채널만
     const dateSet = new Set<string>();
-    for (const ch of channels) {
+    for (const ch of visibleChannels) {
       for (const d of ch.daily) {
         if (d.date >= startDate && d.date <= endDate) dateSet.add(d.date);
       }
@@ -145,7 +175,7 @@ export default function ProfitDashboard({ channels }: Props) {
       let dayRev = 0;
       let dayOrders = 0;
       let dayFee = 0;
-      for (const ch of channels) {
+      for (const ch of visibleChannels) {
         const found = ch.daily.find((d) => d.date === date);
         const rev = found?.revenue ?? 0;
         const ord = found?.orders ?? 0;
@@ -171,12 +201,13 @@ export default function ProfitDashboard({ channels }: Props) {
       grossProfit,
       monthlyFixedTotal,
       fixedAllocated,
+      channelShare,
       operatingProfit,
       margin,
       days,
       dailyRows,
     };
-  }, [channels, settings, startDate, endDate]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels]);
 
   return (
     <section className="space-y-4">
@@ -239,6 +270,43 @@ export default function ProfitDashboard({ channels }: Props) {
             </div>
           )}
         </div>
+
+        {/* 채널 토글 */}
+        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1">
+            채널
+          </span>
+          <button
+            onClick={() => setActiveChannel("all")}
+            className={`px-3 h-8 rounded-full text-xs font-medium transition ${
+              activeChannel === "all"
+                ? "bg-violet-600 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            전체 합산
+          </button>
+          {channels.map((ch) => (
+            <button
+              key={ch.id}
+              onClick={() => setActiveChannel(ch.id)}
+              className={`px-3 h-8 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+                activeChannel === ch.id
+                  ? "text-white"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+              style={
+                activeChannel === ch.id ? { backgroundColor: ch.color } : undefined
+              }
+            >
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: ch.color }}
+              />
+              {ch.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* P&L 요약 카드 */}
@@ -290,14 +358,20 @@ export default function ProfitDashboard({ channels }: Props) {
         </PnlSection>
 
         {/* 고정비 */}
-        <PnlSection title={`고정비 (월 환산 → ${calc.days}일치 안분)`}>
+        <PnlSection
+          title={
+            activeChannel === "all"
+              ? `고정비 (월 환산 → ${calc.days}일치 안분)`
+              : `고정비 (월 환산 × ${calc.days}일 × 매출 비중 ${(calc.channelShare * 100).toFixed(1)}%)`
+          }
+        >
           {settings.fixedCosts.length === 0 ? (
             <div className="px-4 py-3 text-xs text-zinc-400 text-center">
               아직 고정비가 설정되지 않았습니다. 우상단 ⚙ 아이콘으로 추가하세요.
             </div>
           ) : (
             settings.fixedCosts.map((c) => {
-              const allocated = (c.monthly / 30) * calc.days;
+              const allocated = (c.monthly / 30) * calc.days * calc.channelShare;
               return (
                 <PnlRow
                   key={c.id}
