@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, RefreshCw, ChevronDown } from "lucide-react";
+import { Upload, RefreshCw, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { CATEGORY_COLOR, type TxCategory } from "@/lib/finance/categorize";
 
 interface BankTx {
@@ -40,10 +40,6 @@ export default function FinanceClient() {
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | TxCategory>("all");
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
   const loadTxs = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,31 +57,6 @@ export default function FinanceClient() {
   }, [filter]);
 
   useEffect(() => { loadTxs(); }, [loadTxs]);
-
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    setUploadStatus(null);
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/finance/bank-tx?bank=KB", {
-        method: "POST",
-        body: formData,
-      });
-      const j = await res.json();
-      if (res.ok) {
-        setUploadStatus(`✅ ${j.parsed}건 분석 → ${j.inserted}건 신규 저장 (${j.skipped}건 중복 스킵)`);
-        await loadTxs();
-      } else {
-        setUploadStatus(`❌ ${j.error ?? "업로드 실패"}`);
-      }
-    } catch (e) {
-      setUploadStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
 
   const totals = useMemo(() => {
     let inflow = 0, outflow = 0;
@@ -117,40 +88,33 @@ export default function FinanceClient() {
       </div>
 
       {/* 업로드 */}
-      <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              KB국민은행 거래내역 업로드
-            </div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">
-              인터넷뱅킹 → 거래내역 조회 → 엑셀 다운로드 (.xls)
-            </div>
-          </div>
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            <Upload size={14} />
-            {uploading ? "처리 중…" : "파일 선택"}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xls,.xlsx,.csv"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleUpload(f);
-            }}
-          />
-        </div>
-        {uploadStatus && (
-          <div className="text-xs px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300">
-            {uploadStatus}
-          </div>
-        )}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <UploadCard
+          title="KB국민은행 거래내역"
+          hint="인터넷뱅킹 → 거래내역 조회 → 엑셀 (.xls)"
+          accept=".xls,.xlsx,.csv"
+          uploadUrl="/api/finance/bank-tx?bank=KB"
+          onSuccess={(j) => `${j.parsed}건 분석 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
+          onDone={loadTxs}
+        />
+        <UploadCard
+          title="홈택스 매입세금계산서"
+          hint="전자세금계산서 → 매입 → 목록 다운로드"
+          accept=".xls,.xlsx"
+          uploadUrl="/api/finance/tax-invoices?type=purchase"
+          onSuccess={(j) =>
+            `${j.invoicesUpserted}건 (${j.itemsInserted}품목) — 합계 ₩${(j.totalAmount ?? 0).toLocaleString()} ${j.detectedBusinessName ? "· " + j.detectedBusinessName : ""}`
+          }
+        />
+        <UploadCard
+          title="홈택스 매출세금계산서"
+          hint="전자세금계산서 → 매출 → 목록 다운로드"
+          accept=".xls,.xlsx"
+          uploadUrl="/api/finance/tax-invoices?type=sales"
+          onSuccess={(j) =>
+            `${j.invoicesUpserted}건 (${j.itemsInserted}품목) — 합계 ₩${(j.totalAmount ?? 0).toLocaleString()}`
+          }
+        />
       </section>
 
       {/* 요약 카드 */}
@@ -282,6 +246,89 @@ export default function FinanceClient() {
         </div>
       </section>
     </main>
+  );
+}
+
+function UploadCard({
+  title,
+  hint,
+  accept,
+  uploadUrl,
+  onSuccess,
+  onDone,
+}: {
+  title: string;
+  hint: string;
+  accept: string;
+  uploadUrl: string;
+  onSuccess: (json: Record<string, unknown> & { [key: string]: any }) => string;
+  onDone?: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handle = async (file: File) => {
+    setUploading(true);
+    setStatus(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(uploadUrl, { method: "POST", body: formData });
+      const j = await res.json();
+      if (res.ok && j.ok !== false) {
+        setStatus({ type: "ok", msg: onSuccess(j) });
+        onDone?.();
+      } else {
+        setStatus({ type: "err", msg: j.error ?? "업로드 실패" });
+      }
+    } catch (e) {
+      setStatus({ type: "err", msg: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <FileSpreadsheet size={16} className="text-zinc-400 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{title}</div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">{hint}</div>
+        </div>
+      </div>
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
+      >
+        <Upload size={12} />
+        {uploading ? "처리 중…" : "파일 선택"}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handle(f);
+        }}
+      />
+      {status && (
+        <div
+          className={`text-[11px] px-2 py-1.5 rounded-md ${
+            status.type === "ok"
+              ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
+              : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
+          }`}
+        >
+          {status.msg}
+        </div>
+      )}
+    </div>
   );
 }
 
