@@ -12,7 +12,7 @@ export function getMetaAuthUrl(returnTo?: string): string {
   const params = new URLSearchParams({
     client_id:     APP_ID,
     redirect_uri:  REDIRECT_URI,
-    scope:         "ads_management,ads_read,pages_read_engagement,pages_show_list,threads_basic,threads_content_publish",
+    scope:         "ads_management,ads_read,business_management,pages_read_engagement,pages_show_list",
     response_type: "code",
     state,
     auth_type:     "rerequest",
