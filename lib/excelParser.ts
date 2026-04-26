@@ -5,6 +5,8 @@ import type { ProductRank, HourlyData, WeeklyData } from "./cafe24Data";
 // ── 컬럼 키워드 매핑 ─────────────────────────────────────────────────────────
 const COL_ALIASES = {
   date:    ["주문일시", "주문일", "결제일시", "결제일", "날짜"],
+  // 주문번호 — 주의: '주문상품번호'와 충돌 안 되게 정확히 매칭되도록 alias 정렬
+  orderId: ["주문번호", "주문 번호", "order_no", "order_id", "order no", "order id", "ordersn"],
   name:    ["상품명", "품목명"],
   sku:     ["상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
   qty:     ["수량", "주문수량", "판매수량"],
@@ -18,11 +20,30 @@ const DAY_IDX: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수"
 
 interface ParsedRow {
   date: Date | null;
+  orderId: string;
   name: string;
   sku: string;
   qty: number;
   revenue: number;
   status: string;
+}
+
+/**
+ * 주문 수 카운트.
+ * - 주문번호 컬럼이 있으면: 기간 내 distinct 주문번호 개수
+ * - 없으면: 행 개수 (각 행 = 1 주문으로 가정)
+ *
+ * 수량(qty) 합산을 주문 수로 쓰지 않는 게 핵심. 한 주문에 시계 3개여도 1주문이고
+ * 택배비도 1번만 발생하므로.
+ */
+function countOrders(rows: ParsedRow[]): number {
+  const hasOrderId = rows.some((r) => r.orderId);
+  if (!hasOrderId) return rows.length;
+  const set = new Set<string>();
+  for (const r of rows) {
+    if (r.orderId) set.add(r.orderId);
+  }
+  return set.size;
 }
 
 // 헤더 키워드 매칭으로 컬럼 인덱스 찾기
@@ -92,6 +113,7 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
 
   const headers = allRows[headerIdx].map(c => String(c ?? "").trim());
   const dateCol    = findColIdx(headers, COL_ALIASES.date);
+  const orderIdCol = findColIdx(headers, COL_ALIASES.orderId);
   const nameCol    = findColIdx(headers, COL_ALIASES.name);
   const skuCol     = findColIdx(headers, COL_ALIASES.sku);
   const qtyCol     = findColIdx(headers, COL_ALIASES.qty);
@@ -123,6 +145,7 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
 
     rows.push({
       date:    dateCol >= 0    ? parseDate(row[dateCol])       : null,
+      orderId: orderIdCol >= 0 ? String(row[orderIdCol] ?? "").trim() : "",
       name:    nameCol >= 0    ? String(row[nameCol] ?? "")    : "",
       sku:     skuCol >= 0     ? String(row[skuCol] ?? "")     : "",
       qty:     qtyCol >= 0     ? Math.max(1, parseNum(row[qtyCol])) : 1,
@@ -152,36 +175,32 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
   const prevMonthYear  = curMonth === 0 ? curYear - 1 : curYear;
   const prevMonthMonth = curMonth === 0 ? 11 : curMonth - 1;
 
-  let todayRev = 0,     todayOrders = 0;
-  let weekRev = 0,      weekOrders = 0;
-  let monthRev = 0,     monthOrders = 0;
-  let prevMonthRev = 0, prevMonthOrders = 0;
+  // 기간별 행 수집 후 distinct 주문 수 산정
+  const todayRows: ParsedRow[] = [];
+  const weekRows: ParsedRow[] = [];
+  const monthRows: ParsedRow[] = [];
+  const prevMonthRows: ParsedRow[] = [];
 
   for (const r of rows) {
     if (!r.date) continue;
     const ry = r.date.getFullYear();
     const rm = r.date.getMonth();
-    // 이번달
-    if (ry === curYear && rm === curMonth) {
-      monthRev    += r.revenue;
-      monthOrders += r.qty;
-    }
-    // 지난달
-    if (ry === prevMonthYear && rm === prevMonthMonth) {
-      prevMonthRev    += r.revenue;
-      prevMonthOrders += r.qty;
-    }
-    // 이번주 (최근 7일)
-    if (r.date >= weekAgo) {
-      weekRev    += r.revenue;
-      weekOrders += r.qty;
-    }
-    // 오늘
-    if (fmt(r.date) === todayStr) {
-      todayRev    += r.revenue;
-      todayOrders += r.qty;
-    }
+    if (ry === curYear && rm === curMonth) monthRows.push(r);
+    if (ry === prevMonthYear && rm === prevMonthMonth) prevMonthRows.push(r);
+    if (r.date >= weekAgo) weekRows.push(r);
+    if (fmt(r.date) === todayStr) todayRows.push(r);
   }
+
+  const sumRev = (arr: ParsedRow[]) => arr.reduce((s, r) => s + r.revenue, 0);
+  const todayRev = sumRev(todayRows);
+  const weekRev = sumRev(weekRows);
+  const monthRev = sumRev(monthRows);
+  const prevMonthRev = sumRev(prevMonthRows);
+
+  const todayOrders = countOrders(todayRows);
+  const weekOrders = countOrders(weekRows);
+  const monthOrders = countOrders(monthRows);
+  const prevMonthOrders = countOrders(prevMonthRows);
 
   const salesSummary = {
     today:     { revenue: todayRev,     orders: todayOrders,     avgOrder: todayOrders     > 0 ? Math.round(todayRev     / todayOrders)     : 0 },
@@ -206,47 +225,46 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
     .map((p, i) => ({ rank: i + 1, name: p.name, sku: p.sku, sold: p.sold, revenue: p.revenue, image: "⌚" }));
 
   // ── 시간대별 ──────────────────────────────────────────────────────────────
-  const hourMap: Record<number, { orders: number; revenue: number }> = {};
-  for (let h = 0; h < 24; h++) hourMap[h] = { orders: 0, revenue: 0 };
+  const hourBuckets: Record<number, ParsedRow[]> = {};
+  for (let h = 0; h < 24; h++) hourBuckets[h] = [];
   for (const r of rows) {
     if (!r.date) continue;
-    const h = r.date.getHours();
-    hourMap[h].orders  += r.qty;
-    hourMap[h].revenue += r.revenue;
+    hourBuckets[r.date.getHours()].push(r);
   }
-  const hourlyOrders: HourlyData[] = Object.entries(hourMap).map(([h, v]) => ({
+  const hourlyOrders: HourlyData[] = Object.entries(hourBuckets).map(([h, arr]) => ({
     hour: `${String(h).padStart(2, "0")}시`,
-    orders: v.orders,
-    revenue: v.revenue,
+    orders: countOrders(arr),
+    revenue: sumRev(arr),
   }));
 
   // ── 요일별 ────────────────────────────────────────────────────────────────
-  const dayMap: Record<string, { orders: number; revenue: number }> = {};
-  for (const d of WEEK_ORDER) dayMap[d] = { orders: 0, revenue: 0 };
+  const dayBuckets: Record<string, ParsedRow[]> = {};
+  for (const d of WEEK_ORDER) dayBuckets[d] = [];
   for (const r of rows) {
     if (!r.date) continue;
-    const day = DAY_IDX[r.date.getDay()];
-    dayMap[day].orders  += r.qty;
-    dayMap[day].revenue += r.revenue;
+    dayBuckets[DAY_IDX[r.date.getDay()]].push(r);
   }
   const weeklyRevenue: WeeklyData[] = WEEK_ORDER.map(day => ({
     day,
-    orders: dayMap[day].orders,
-    revenue: dayMap[day].revenue,
+    orders: countOrders(dayBuckets[day]),
+    revenue: sumRev(dayBuckets[day]),
   }));
 
   // ── 일별 매출 (전체 기간) ──────────────────────────────────────────────
-  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  const dailyBuckets = new Map<string, ParsedRow[]>();
   for (const r of rows) {
     if (!r.date) continue;
     const ds = fmt(r.date);
-    const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0 };
-    cur.revenue += r.revenue;
-    cur.orders += r.qty;
-    dailyMap.set(ds, cur);
+    const arr = dailyBuckets.get(ds) ?? [];
+    arr.push(r);
+    dailyBuckets.set(ds, arr);
   }
-  const dailyRevenue = Array.from(dailyMap.entries())
-    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+  const dailyRevenue = Array.from(dailyBuckets.entries())
+    .map(([date, arr]) => ({
+      date,
+      revenue: Math.round(sumRev(arr)),
+      orders: countOrders(arr),
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return {
