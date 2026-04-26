@@ -118,6 +118,92 @@ function parseNum(val: unknown): number {
   return parseFloat(String(val ?? "0").replace(/,/g, "").replace(/[^\d.-]/g, "")) || 0;
 }
 
+// HTML 엔티티 디코딩
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
+}
+
+/**
+ * XML(SpreadsheetML 2003) 또는 HTML 형식의 표를 행 배열로 추출.
+ * 무신사 등 일부 셀러센터가 .xls 확장자로 이런 포맷을 내려보냄.
+ */
+function extractRowsFromMarkup(text: string): unknown[][] {
+  const decoded = decodeHtmlEntities(text);
+  const rows: unknown[][] = [];
+
+  // <row>(XML) 또는 <tr>(HTML) 모두 처리
+  const rowRegex = /<(?:row|tr)\b[^>]*>([\s\S]*?)<\/(?:row|tr)>/gi;
+  let m;
+  while ((m = rowRegex.exec(decoded)) !== null) {
+    const content = m[1];
+    const cells: string[] = [];
+    // <cell>/<data>(XML) 또는 <td>/<th>(HTML)
+    const cellRegex =
+      /<(?:cell|td|th)\b[^>]*>([\s\S]*?)<\/(?:cell|td|th)>/gi;
+    let c;
+    while ((c = cellRegex.exec(content)) !== null) {
+      const inner = c[1]
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      cells.push(inner);
+    }
+    if (cells.length > 0) rows.push(cells);
+  }
+  return rows;
+}
+
+/**
+ * UTF-8 / UTF-16 순으로 텍스트 디코딩 시도.
+ */
+function tryDecode(buffer: ArrayBuffer): string | null {
+  const u8 = new Uint8Array(buffer);
+  // UTF-16 BOM
+  if (u8.length >= 2 && u8[0] === 0xff && u8[1] === 0xfe) {
+    try {
+      return new TextDecoder("utf-16le").decode(buffer);
+    } catch { /* try other */ }
+  }
+  if (u8.length >= 2 && u8[0] === 0xfe && u8[1] === 0xff) {
+    try {
+      return new TextDecoder("utf-16be").decode(buffer);
+    } catch { /* try other */ }
+  }
+  try {
+    return new TextDecoder("utf-8").decode(buffer);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SheetJS 파싱이 실패한 경우의 fallback — 텍스트 기반 포맷(XML/HTML) 시도.
+ */
+function tryParseAsMarkup(buffer: ArrayBuffer): unknown[][] | null {
+  const text = tryDecode(buffer);
+  if (!text) return null;
+  const head = text.slice(0, 1000).toLowerCase();
+  const looksLikeMarkup =
+    head.includes("<workbook") ||
+    head.includes("<?xml") ||
+    head.includes("<html") ||
+    head.includes("<table") ||
+    head.includes("mime-version") ||
+    head.includes("<!doctype");
+  if (!looksLikeMarkup) return null;
+  const rows = extractRowsFromMarkup(text);
+  return rows.length > 0 ? rows : null;
+}
+
 // ── 메인 파서 ────────────────────────────────────────────────────────────────
 
 export interface ExcelParseResult {
@@ -128,35 +214,48 @@ export interface ExcelParseResult {
 }
 
 export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
-  // XLSX 라이브러리는 .xlsx (ZIP 기반), .xls (BIFF), CSV, HTML 등 자동 감지.
-  // 무신사 등 일부 셀러센터가 HTML/MHTML을 .xls로 내려주는 케이스도 처리하기 위해
-  // 옵션을 보수적으로 넓게 잡음.
-  let wb;
+  let allRows: unknown[][];
+  let sheetName = "(unknown)";
+
+  // 1차: 표준 SheetJS 파싱 (XLSX/XLS/CSV)
   try {
-    wb = XLSX.read(new Uint8Array(buffer), {
+    const wb = XLSX.read(new Uint8Array(buffer), {
       type: "array",
       cellDates: true,
       cellNF: false,
       cellText: false,
     });
-  } catch (e) {
-    throw new Error(
-      `파일을 읽을 수 없습니다 (.xlsx / .xls / .csv 만 지원). 원본 에러: ${e instanceof Error ? e.message : String(e)}`
+    if (!wb.SheetNames || wb.SheetNames.length === 0) {
+      throw new Error("엑셀에 시트가 없습니다.");
+    }
+    sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
+  } catch (xlsxErr) {
+    // 2차: SheetJS가 못 읽으면 XML/HTML 형식으로 추정해 fallback 파싱
+    // (무신사 등 일부 셀러센터가 .xls 확장자로 SpreadsheetML/HTML을 내려보냄)
+    console.warn(
+      "[excelParser] SheetJS 파싱 실패, XML/HTML fallback 시도:",
+      xlsxErr instanceof Error ? xlsxErr.message : String(xlsxErr)
     );
+    const fallbackRows = tryParseAsMarkup(buffer);
+    if (!fallbackRows) {
+      throw new Error(
+        `파일을 읽을 수 없습니다 (.xlsx / .xls / .csv / XML / HTML 표 형식 지원). 원본 에러: ${xlsxErr instanceof Error ? xlsxErr.message : String(xlsxErr)}`
+      );
+    }
+    allRows = fallbackRows;
+    sheetName = "(XML/HTML fallback)";
+    console.log("[excelParser] XML/HTML fallback 파싱 성공:", allRows.length, "행");
   }
-  if (!wb.SheetNames || wb.SheetNames.length === 0) {
-    throw new Error("엑셀에 시트가 없습니다.");
-  }
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const allRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
 
   // 디버그: 처음 3행을 콘솔에 찍어 진단 도움
-  console.log(`[excelParser] 시트 '${wb.SheetNames[0]}', 총 ${allRows.length}행`);
+  console.log(`[excelParser] 시트 '${sheetName}', 총 ${allRows.length}행`);
   console.log("[excelParser] 처음 3행:", allRows.slice(0, 3).map((r) => r.map((c) => String(c).slice(0, 40))));
 
   if (allRows.length < 2) {
     throw new Error(
-      `엑셀에 데이터가 없습니다. (총 ${allRows.length}행 — 시트: ${wb.SheetNames[0]})`
+      `엑셀에 데이터가 없습니다. (총 ${allRows.length}행 — 시트: ${sheetName})`
     );
   }
 
