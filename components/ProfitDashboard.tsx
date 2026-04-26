@@ -272,6 +272,21 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       return { date, dayRev, dayOrders, dayShipments, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayNet };
     });
 
+    if (typeof window !== "undefined") {
+      console.log("[P&L] calc 결과:", {
+        activeChannel,
+        period: `${startDate} ~ ${endDate}`,
+        metaDailyEntries: metaDaily.length,
+        metaDailyFirstDate: metaDaily[0]?.date,
+        metaDailyLastDate: metaDaily[metaDaily.length - 1]?.date,
+        totalMetaSpend,
+        totalMetaSpendForChannel,
+        channelShare,
+        totalRev,
+        totalRevAllChannels,
+      });
+    }
+
     return {
       perChannel,
       totalRev,
