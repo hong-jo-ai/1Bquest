@@ -279,18 +279,29 @@ export function mergeChannelData(datasets: MultiChannelData[]): MultiChannelData
     orders:  datasets.reduce((s, d) => s + (d.weeklyRevenue[i]?.orders  ?? 0), 0),
   }));
 
-  // Daily revenue — 날짜 기준 합산
-  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  // Daily revenue — 날짜 기준 합산 (shipments 포함)
+  const dailyMap = new Map<
+    string,
+    { revenue: number; orders: number; shipments: number; hasShipments: boolean }
+  >();
   for (const d of datasets) {
     for (const day of d.dailyRevenue ?? []) {
-      const cur = dailyMap.get(day.date) ?? { revenue: 0, orders: 0 };
+      const cur = dailyMap.get(day.date) ?? { revenue: 0, orders: 0, shipments: 0, hasShipments: false };
       cur.revenue += day.revenue;
       cur.orders += day.orders;
+      // shipments가 있으면 합산, 없으면 orders로 fallback
+      cur.shipments += day.shipments ?? day.orders;
+      if (day.shipments !== undefined) cur.hasShipments = true;
       dailyMap.set(day.date, cur);
     }
   }
   const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
-    .map(([date, v]) => ({ date, revenue: v.revenue, orders: v.orders }))
+    .map(([date, v]) => ({
+      date,
+      revenue: v.revenue,
+      orders: v.orders,
+      shipments: v.hasShipments ? v.shipments : undefined,
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // Inventory — 카페24(첫 번째) 데이터만 사용

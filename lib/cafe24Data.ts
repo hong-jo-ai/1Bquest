@@ -41,6 +41,8 @@ export interface DailyData {
   date: string; // YYYY-MM-DD (KST)
   revenue: number;
   orders: number;
+  /** 합배송 그룹핑 후 실제 배송 건수. 없으면 orders와 동일하게 사용. */
+  shipments?: number;
 }
 
 export interface DailyCost {
@@ -236,18 +238,34 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     };
   });
 
-  // ── 일별 매출 (최근 60일 = 이번달+지난달) ────────────────────────────
+  // ── 일별 매출 + 합배송 그룹 (최근 60일 = 이번달+지난달) ────────────────
+  // 같은 날 동일 (구매자, 수령인, 수령지) 조합은 1건의 배송으로 묶음
   const allOrdersForDaily = [...prevMonthOrders, ...monthOrders];
-  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  const dailyMap = new Map<
+    string,
+    { revenue: number; orders: number; shipments: Set<string> }
+  >();
   for (const o of allOrdersForDaily) {
     const ds = kstDateStr(o.payment_date ?? o.order_date);
-    const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0 };
+    const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0, shipments: new Set<string>() };
     cur.revenue += parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0");
     cur.orders += 1;
+    // 합배송 키: 주문자+수령인+연락처+주소
+    const buyer = o.buyer_name ?? "";
+    const receiver = o.receiver_name ?? "";
+    const phone = o.receiver_cellphone ?? o.receiver_phone ?? "";
+    const addr = `${o.receiver_address1 ?? ""}${o.receiver_address2 ?? ""}${o.receiver_zipcode ?? ""}`;
+    const shipKey = `${buyer}|${receiver}|${phone}|${addr}`;
+    cur.shipments.add(shipKey);
     dailyMap.set(ds, cur);
   }
   const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
-    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+    .map(([date, v]) => ({
+      date,
+      revenue: Math.round(v.revenue),
+      orders: v.orders,
+      shipments: v.shipments.size,
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // ── 일별 매입원가 (COGS) — items 단위로 SKU × 단가 합산 ────────────────

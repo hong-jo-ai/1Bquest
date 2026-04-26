@@ -159,8 +159,16 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
     // 채널 수수료 합
     const totalFees = Object.values(perChannel).reduce((s, c) => s + c.fee, 0);
 
-    // 택배비 = 주문수 × 단가
-    const shipping = totalOrders * settings.shippingPerOrder;
+    // 택배비 = 합배송 그룹 단위 × 단가 (없으면 주문수 fallback)
+    let totalShipments = 0;
+    for (const ch of visibleChannels) {
+      for (const d of ch.daily) {
+        if (d.date >= startDate && d.date <= endDate) {
+          totalShipments += d.shipments ?? d.orders;
+        }
+      }
+    }
+    const shipping = totalShipments * settings.shippingPerOrder;
 
     // 매입원가 (COGS) — 채널의 cogs 배열에서 기간 내 합
     let totalCogs = 0;
@@ -218,31 +226,35 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
     const dailyRows = dates.map((date) => {
       let dayRev = 0;
       let dayOrders = 0;
+      let dayShipments = 0;
       let dayFee = 0;
       let dayCogs = 0;
       for (const ch of visibleChannels) {
         const found = ch.daily.find((d) => d.date === date);
         const rev = found?.revenue ?? 0;
         const ord = found?.orders ?? 0;
+        const ship = found?.shipments ?? ord;
         const feeRate = settings.channelFees[ch.id] ?? 0;
         dayRev += rev;
         dayOrders += ord;
+        dayShipments += ship;
         dayFee += (rev * feeRate) / 100;
         const cogsEntry = ch.cogs?.find((c) => c.date === date);
         if (cogsEntry) dayCogs += cogsEntry.cost;
       }
       const dayVat = (dayRev * settings.vatRate) / (100 + settings.vatRate);
-      const dayShipping = dayOrders * settings.shippingPerOrder;
+      const dayShipping = dayShipments * settings.shippingPerOrder;
       const metaEntry = metaDaily.find((m) => m.date === date);
       const dayMeta = (metaEntry?.spend ?? 0) * _channelShareForRows;
       const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs - dayMeta;
-      return { date, dayRev, dayOrders, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayNet };
+      return { date, dayRev, dayOrders, dayShipments, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayNet };
     });
 
     return {
       perChannel,
       totalRev,
       totalOrders,
+      totalShipments,
       vatLiability,
       revenueExVat,
       totalFees,
@@ -403,7 +415,11 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
           })}
           <PnlRow
             label="택배비"
-            sub={`${calc.totalOrders.toLocaleString("ko-KR")}건 × ${fmtKrw(settings.shippingPerOrder)}`}
+            sub={
+              calc.totalShipments < calc.totalOrders
+                ? `합배송 ${calc.totalShipments.toLocaleString("ko-KR")}건 × ${fmtKrw(settings.shippingPerOrder)} (주문 ${calc.totalOrders}건 → 합배송 후 ${calc.totalShipments}건)`
+                : `${calc.totalShipments.toLocaleString("ko-KR")}건 × ${fmtKrw(settings.shippingPerOrder)}`
+            }
             amount={-calc.shipping}
           />
           <PnlRow
