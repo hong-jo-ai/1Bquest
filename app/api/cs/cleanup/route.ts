@@ -1,5 +1,10 @@
 import { getCsSupabase } from "@/lib/cs/store";
-import { classifyEmail, isBlacklisted, getSenderBlacklist } from "@/lib/cs/classifier";
+import {
+  classifyEmail,
+  getSenderBlacklist,
+  isBlacklisted,
+  isNonCsSender,
+} from "@/lib/cs/classifier";
 import type { CsBrandId } from "@/lib/cs/types";
 
 export const maxDuration = 300; // 최대 5분 (Gemini RPM 제한 고려)
@@ -66,10 +71,22 @@ async function run() {
         continue;
       }
 
-      // 블랙리스트는 즉시 archived
-      if (isBlacklisted(t.customer_handle, blacklist)) {
+      // 블랙리스트 또는 NON-CS 도메인 패턴은 즉시 archived (LLM 호출 안 함)
+      if (
+        isBlacklisted(t.customer_handle, blacklist) ||
+        isNonCsSender(t.customer_handle)
+      ) {
         await db.from("cs_threads").update({ status: "archived" }).eq("id", t.id);
         result.archived++;
+        if (result.archived_samples.length < 30) {
+          result.archived_samples.push({
+            brand: t.brand,
+            from: t.customer_handle,
+            subject: t.subject,
+            category: "hard_skip_pattern",
+            reason: "발신자가 NON-CS 패턴(블랙리스트/입점 플랫폼/거래처)에 매칭",
+          });
+        }
         continue;
       }
 

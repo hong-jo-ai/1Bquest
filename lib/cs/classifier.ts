@@ -4,6 +4,63 @@ import { getCsSupabase } from "./store";
 const MODEL = "gemini-2.5-flash";
 const BLACKLIST_KEY = "cs_sender_blacklist";
 
+/**
+ * CS가 절대 아닌 발신자 패턴 — LLM 호출 전에 즉시 차단.
+ * gmailIngest와 cleanup 모두 사용.
+ *
+ * 두 종류:
+ *   1. Gmail 프로토콜 / 시스템 발신 (mailer-daemon, noreply 등)
+ *   2. 운영하면서 학습된 입점 플랫폼 / 광고 / 거래처 / 결제 도메인
+ */
+export const NON_CS_SENDER_PATTERNS: RegExp[] = [
+  // 시스템·자동발송
+  /noreply/i,
+  /no-reply/i,
+  /donotreply/i,
+  /do-not-reply/i,
+  /mailer-daemon/i,
+  /postmaster@/i,
+  /notification@/i,
+  /alert@/i,
+  /alerts?@/i,
+  /support@google/i,
+  /accounts\.google/i,
+  /security@google/i,
+  /noreply@(meta|facebook|instagram|github|vercel|supabase|youtube)/i,
+  /@stripe\.com$/i,
+  /naver\.com.*pay/i,
+  /kakao(pay|corp)/i,
+  /tossbank|tosspayments/i,
+  /\.bank\./i,
+  /@(shinhan|kookmin|kb|woori|hana|nh|ibk|sc|citi)/i,
+
+  // 입점 플랫폼 / 광고 / 마케팅
+  /@29cm\.co\.kr$/i,
+  /@(qoo10|qoo10info|qoo10cs)\.jp$/i,
+  /@musinsa\.com$/i,
+  /@a-bly\.com$/i,
+  /@intl\.paypal\.com$/i,
+  /@message\.fedex\.com$/i,
+  /@crosscert\.com$/i,
+  /@300cbt\.com$/i,
+  /@directsend61\.com$/i,
+  /@wethemoment\.net$/i,
+  /@keywordlab\.kr$/i,
+  /@coceanchina\.com$/i,
+  /@korcham\.net$/i,
+
+  // 거래처 (CS 인박스에서 제외하기로 결정)
+  /@fjord\.kr$/i,
+];
+
+/**
+ * 발신자 헤더 또는 이메일이 NON-CS 패턴에 매칭되는지 확인.
+ */
+export function isNonCsSender(senderText: string | null | undefined): boolean {
+  if (!senderText) return false;
+  return NON_CS_SENDER_PATTERNS.some((r) => r.test(senderText));
+}
+
 export interface ClassifyInput {
   brand: "paulvice" | "harriot";
   fromName: string | null;

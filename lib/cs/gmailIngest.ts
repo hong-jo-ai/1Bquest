@@ -15,36 +15,12 @@ import {
   classifyEmail,
   getSenderBlacklist,
   isBlacklisted,
+  isNonCsSender,
 } from "./classifier";
 import type { CsChannel, IngestPayload } from "./types";
 
 const SIXSHOP_SENDER_PATTERNS = [/sixshop/i, /식스샵/, /noreply@.*sixshop/i];
 const CAFE24_SENDER_PATTERNS = [/cafe24/i, /카페24/, /cafe24corp/i];
-
-/**
- * 명백한 시스템·자동발송 메일 — 분류기 호출 전에 즉시 차단.
- */
-const HARD_SKIP_PATTERNS = [
-  /noreply/i,
-  /no-reply/i,
-  /donotreply/i,
-  /do-not-reply/i,
-  /mailer-daemon/i,
-  /postmaster@/i,
-  /notification@/i,
-  /alert@/i,
-  /alerts?@/i,
-  /support@google/i,
-  /accounts\.google/i,
-  /security@google/i,
-  /noreply@(meta|facebook|instagram|github|vercel|supabase|youtube)/i,
-  /@stripe\.com$/i,
-  /naver\.com.*pay/i,
-  /kakao(pay|corp)/i,
-  /tossbank|tosspayments/i,
-  /\.bank\./i,
-  /@(shinhan|kookmin|kb|woori|hana|nh|ibk|sc|citi)/i,
-];
 
 function detectChannel(from: string | undefined, account: GmailAccount): CsChannel {
   if (!from) return "gmail";
@@ -110,10 +86,7 @@ export async function syncAllGmailAccounts(): Promise<{
         const latestFromHeader = extractHeader(latestIncoming, "From");
         const { name: latestName, email: latestEmail } = parseFrom(latestFromHeader);
 
-        if (
-          latestFromHeader &&
-          HARD_SKIP_PATTERNS.some((r) => r.test(latestFromHeader))
-        ) {
+        if (isNonCsSender(latestFromHeader)) {
           skipped++;
           continue;
         }
