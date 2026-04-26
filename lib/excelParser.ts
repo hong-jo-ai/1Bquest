@@ -88,7 +88,25 @@ export interface ExcelParseResult {
 }
 
 export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
-  const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
+  // XLSX 라이브러리는 .xlsx (ZIP 기반), .xls (BIFF), CSV, HTML 등 자동 감지.
+  // 무신사 등 일부 셀러센터가 HTML/MHTML을 .xls로 내려주는 케이스도 처리하기 위해
+  // 옵션을 보수적으로 넓게 잡음.
+  let wb;
+  try {
+    wb = XLSX.read(new Uint8Array(buffer), {
+      type: "array",
+      cellDates: true,
+      cellNF: false,
+      cellText: false,
+    });
+  } catch (e) {
+    throw new Error(
+      `파일을 읽을 수 없습니다 (.xlsx / .xls / .csv 만 지원). 원본 에러: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+  if (!wb.SheetNames || wb.SheetNames.length === 0) {
+    throw new Error("엑셀에 시트가 없습니다.");
+  }
   const ws = wb.Sheets[wb.SheetNames[0]];
   const allRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
 
