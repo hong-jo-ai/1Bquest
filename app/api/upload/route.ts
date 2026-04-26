@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
+import { parseGroupBuyExcel } from "@/lib/groupBuyParser";
 
 const ALLOWED_CHANNELS = [
   "wconcept",
@@ -42,7 +43,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const buffer = await file.arrayBuffer();
-    const result = await parseExcelBuffer(buffer);
+    // 공동구매는 집계 형태라 별도 파서 사용
+    const result =
+      channel === "groupbuy"
+        ? parseGroupBuyExcel(buffer)
+        : await parseExcelBuffer(buffer);
     return Response.json({
       ok: true,
       channel,
