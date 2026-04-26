@@ -273,18 +273,14 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
     });
 
     if (typeof window !== "undefined") {
-      console.log("[P&L] calc 결과:", {
-        activeChannel,
-        period: `${startDate} ~ ${endDate}`,
-        metaDailyEntries: metaDaily.length,
-        metaDailyFirstDate: metaDaily[0]?.date,
-        metaDailyLastDate: metaDaily[metaDaily.length - 1]?.date,
-        totalMetaSpend,
-        totalMetaSpendForChannel,
-        channelShare,
-        totalRev,
-        totalRevAllChannels,
-      });
+      // 한 줄 문자열로 출력 (객체 펼치기 안 해도 보임)
+      console.log(
+        `[P&L calc] ch=${activeChannel} period=${startDate}~${endDate} ` +
+        `metaDays=${metaDaily.length} metaSpend=${Math.round(totalMetaSpend)} ` +
+        `metaForChannel=${Math.round(totalMetaSpendForChannel)} ` +
+        `channelShare=${channelShare.toFixed(3)} ` +
+        `totalRev=${totalRev} totalRevAll=${totalRevAllChannels}`
+      );
     }
 
     return {
