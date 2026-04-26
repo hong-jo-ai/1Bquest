@@ -88,7 +88,7 @@ export default function FinanceClient() {
       </div>
 
       {/* 업로드 */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <UploadCard
           title="KB국민은행 거래내역"
           hint="인터넷뱅킹 → 거래내역 → 엑셀"
@@ -96,6 +96,13 @@ export default function FinanceClient() {
           uploadUrl="/api/finance/bank-tx?bank=KB"
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
           onDone={loadTxs}
+        />
+        <UploadCard
+          title="현대카드 이용내역"
+          hint="현대카드 → 이용내역 → 엑셀 다운로드"
+          accept=".xls,.xlsx"
+          uploadUrl="/api/finance/card-usage?source=card_hyundai"
+          onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
         />
         <UploadCard
           title="네이버페이 영수증"

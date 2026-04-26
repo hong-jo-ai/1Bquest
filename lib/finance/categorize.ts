@@ -181,6 +181,56 @@ export function categorizeTx(input: {
   return { category: "기타", source: "rule" };
 }
 
+/**
+ * 카드 사용/네이버페이 영수증의 가맹점명/상품명만으로 카테고리 추론.
+ * (은행 거래내역과는 다른 함수 — 가맹점명만 보면 되니 더 단순)
+ */
+export function categorizeMerchant(text: string): TxCategory {
+  const t = text.trim();
+
+  // 네이버페이 결제는 별도 표시 (네이버페이 영수증과 매칭 필요)
+  if (/^네이버페이$/i.test(t)) return "기타";
+
+  // 매입 (포장재 / 자재)
+  if (/뽁뽁이|에어캡|박스|포장|패키지|봉투|테이프|스티커|라벨|아이스팩/.test(t)) return "매입";
+  if (/^[A-Z]형\s*\d/.test(t)) return "매입"; // "A형 280x260x120"
+
+  // 광고비
+  if (/광고|마케팅|배너|상위노출|키워드|facebook|meta|google\s*ads|kakao.*ad|naver.*ad|tiktok/i.test(t)) return "광고비";
+
+  // 소프트웨어 / SaaS / 촬영장비
+  if (/saas|구독|월정액|cloud|aws|github|notion|figma|chatgpt|claude|openai|anthropic|vercel|supabase/i.test(t)) return "소프트웨어";
+  if (/dji|드론|카메라|액션캠|마이크|렌즈|카드리더|hdmi/i.test(t)) return "소프트웨어";
+
+  // 통신비
+  if (/skt|sk\s*텔레콤|kt\s|lgu\+|엘지유플러스|sk브로드밴드|통신/i.test(t)) return "통신비";
+
+  // 택배비
+  if (/택배|배송비|운송|cj대한통운|한진택배|로젠|쿠팡로지스|우체국택배/.test(t)) return "택배비";
+
+  // 임대료
+  if (/임대료|월세|관리비|렌트/.test(t)) return "임대료";
+
+  // 세금
+  if (/국세|부가세|소득세|법인세|건강보험|국민연금|고용보험|산재보험/.test(t)) return "세금";
+
+  // 식비 (식당 / 카페 / 마트 / 편의점 / 배달앱)
+  if (/스타벅스|커피|이디야|투썸|파스쿠치|메가커피|던킨|버거킹|맥도날드|롯데리아|서브웨이/.test(t)) return "식비";
+  if (/식당|숯불|구이|국밥|한식|중식|일식|치킨|피자|면|밥|식탁|식사/.test(t)) return "식비";
+  if (/배달의민족|배민|쿠팡이츠|요기요/.test(t)) return "식비";
+  if (/이마트|홈플러스|롯데마트|편의점|GS25|CU\b|세븐일레븐|마켓컬리|컬리/.test(t)) return "식비";
+
+  // 교통/연료
+  if (/주유소|GS칼텍스|SK에너지|S-OIL|현대오일/.test(t)) return "교통/연료";
+  if (/카카오T|kakaomobility|kakao\s*t|택시|TADA|타다/i.test(t)) return "교통/연료";
+  if (/지하철|버스|코레일|KTX|SRT|하이패스|highway|톨게이트/i.test(t)) return "교통/연료";
+
+  // 경조사 (식비도 광고비도 아닌 일회성)
+  if (/꽃다발|화환|근조|축하|결혼|장례|조의|부고|개업/.test(t)) return "기타";
+
+  return "기타";
+}
+
 /** 카테고리별 색상 (UI용) */
 export const CATEGORY_COLOR: Record<TxCategory, string> = {
   매출: "#10b981",

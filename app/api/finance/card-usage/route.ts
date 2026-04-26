@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
-import { parseNpayReceiptExcel, categorizeCardUsage } from "@/lib/finance/npayParser";
+import { parseNpayReceiptExcel } from "@/lib/finance/npayParser";
+import { parseHyundaiCardExcel } from "@/lib/finance/hyundaiCardParser";
+import { categorizeMerchant } from "@/lib/finance/categorize";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -65,13 +67,33 @@ export async function POST(req: NextRequest) {
         supply_amount: r.supplyAmount,
         tax_amount: r.taxAmount,
         installment: r.installment,
-        category: categorizeCardUsage(r.merchant),
+        category: categorizeMerchant(r.merchant),
+        category_source: "rule",
+        raw: r,
+      }));
+    } else if (source === "card_hyundai") {
+      const parsed = parseHyundaiCardExcel(buffer);
+      records = parsed.rows.map((r) => ({
+        business_id: businessId,
+        source: "card_hyundai",
+        card_company: r.cardCompany,
+        card_number: r.cardNumber,
+        approval_no: r.approvalNo,
+        use_date: r.useDate.toISOString(),
+        cancel_date: r.cancelDate?.toISOString() ?? null,
+        merchant: r.merchant,
+        amount: r.amount,
+        cancel_amount: r.cancelAmount,
+        supply_amount: null,
+        tax_amount: null,
+        installment: r.installment,
+        category: categorizeMerchant(r.merchant),
         category_source: "rule",
         raw: r,
       }));
     } else {
       return Response.json(
-        { error: `지원하지 않는 source: ${source} (현재 'npay'만 지원)` },
+        { error: `지원하지 않는 source: ${source} (현재 'npay', 'card_hyundai' 지원)` },
         { status: 400 }
       );
     }
