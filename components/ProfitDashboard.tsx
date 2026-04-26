@@ -17,6 +17,7 @@ export interface ProfitChannel {
 interface Props {
   channels: ProfitChannel[];
   unmatchedSkus?: string[];
+  brand?: string; // 메타 광고 계정 브랜드 필터링용
 }
 
 type Preset = "today" | "7d" | "30d" | "60d" | "custom";
@@ -54,7 +55,7 @@ function daysBetween(start: string, end: string): number {
   return Math.max(1, Math.round((e - s) / 86400000) + 1);
 }
 
-export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
+export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Props) {
   const [preset, setPreset] = useState<Preset>("30d");
   const [customStart, setCustomStart] = useState<string>(daysAgoStr(30));
   const [customEnd, setCustomEnd] = useState<string>(todayStr());
@@ -74,9 +75,11 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
       .catch(() => {/* 기본값 사용 */});
   }, []);
 
-  // 메타 광고비 불러오기 (지난 60일)
+  // 메타 광고비 불러오기 (지난 60일, 브랜드 필터)
   useEffect(() => {
-    fetch("/api/profit/meta-spend?days=60")
+    const params = new URLSearchParams({ days: "60" });
+    if (brand) params.set("brand", brand);
+    fetch(`/api/profit/meta-spend?${params}`)
       .then((r) => r.json())
       .then((j) => {
         if (j.ok) {
@@ -87,7 +90,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
         }
       })
       .catch(() => setMetaLinked(false));
-  }, []);
+  }, [brand]);
 
   const saveSettings = useCallback(async (patch: Partial<ProfitSettings>) => {
     const res = await fetch("/api/profit/settings", {

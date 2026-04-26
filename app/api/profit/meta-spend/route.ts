@@ -15,6 +15,18 @@ function kstDateStr(offsetDays: number = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
+// 광고 계정명 → 브랜드 자동 매칭 (계정명에 키워드 포함 시 해당 브랜드)
+const BRAND_ACCOUNT_PATTERNS: Record<string, RegExp[]> = {
+  paulvice: [/icaruse/i, /폴바이스/, /paulvice/i],
+  harriot:  [/해리엇/, /harriot/i],
+};
+
+function accountMatchesBrand(name: string, brand: string): boolean {
+  const patterns = BRAND_ACCOUNT_PATTERNS[brand];
+  if (!patterns) return false;
+  return patterns.some((p) => p.test(name));
+}
+
 /**
  * 최근 N일치 메타 광고비를 일별로 가져온다 (전체 광고 계정 합산).
  *
@@ -33,6 +45,7 @@ export async function GET(req: NextRequest) {
     Math.max(parseInt(req.nextUrl.searchParams.get("days") ?? "60", 10), 1),
     90
   );
+  const brand = req.nextUrl.searchParams.get("brand") ?? "";
   const until = kstDateStr(0);
   const since = kstDateStr(-(days - 1));
 
@@ -43,13 +56,32 @@ export async function GET(req: NextRequest) {
       limit: "20",
     })) as { data?: Array<{ id: string; name: string }> };
 
-    const accounts = accountsRes.data ?? [];
-    if (accounts.length === 0) {
+    const allAccounts = accountsRes.data ?? [];
+    if (allAccounts.length === 0) {
       return Response.json({
         ok: true,
         daily: [],
         accounts: 0,
         warning: "Meta에 광고 계정이 없거나 토큰에 접근 권한 없음",
+      });
+    }
+
+    // 브랜드 필터링: 지정된 브랜드 패턴에 매칭되는 계정만
+    // brand 미지정 또는 빈 값이면 모두 합산
+    const accounts = brand
+      ? allAccounts.filter((a) => accountMatchesBrand(a.name, brand))
+      : allAccounts;
+    const excludedAccounts = brand
+      ? allAccounts.filter((a) => !accountMatchesBrand(a.name, brand)).map((a) => a.name)
+      : [];
+
+    if (accounts.length === 0) {
+      return Response.json({
+        ok: true,
+        daily: [],
+        accounts: 0,
+        warning: `브랜드 '${brand}'에 매칭되는 광고 계정 없음. 전체 계정: ${allAccounts.map((a) => a.name).join(", ")}`,
+        excludedAccounts,
       });
     }
 
@@ -89,7 +121,9 @@ export async function GET(req: NextRequest) {
       daily,
       accounts: accounts.length,
       accountNames: accounts.map((a) => a.name),
+      excludedAccounts: excludedAccounts.length > 0 ? excludedAccounts : undefined,
       accountErrors: accountErrors.length > 0 ? accountErrors : undefined,
+      brand: brand || "all",
       since,
       until,
     });

@@ -358,6 +358,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
             }))
           }
           unmatchedSkus={cafe24Data?.unmatchedSkus ?? []}
+          brand={brand}
         />
 
         {/* 상품별 판매 순위 — 보조 정보 (접힘) */}
