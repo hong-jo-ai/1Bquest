@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import { getCsSupabase } from "./store";
 
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "gemini-2.5-flash";
 const BLACKLIST_KEY = "cs_sender_blacklist";
 
 export interface ClassifyInput {
@@ -68,18 +68,18 @@ export function isBlacklisted(
   return false;
 }
 
-let cachedClient: Anthropic | null = null;
-function getClient(): Anthropic | null {
+let cachedClient: GoogleGenAI | null = null;
+function getClient(): GoogleGenAI | null {
   if (cachedClient) return cachedClient;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
-  cachedClient = new Anthropic({ apiKey });
+  cachedClient = new GoogleGenAI({ apiKey });
   return cachedClient;
 }
 
 /**
- * Haiku로 메일이 고객 문의인지 분류한다.
- * 빠르고 저렴 (입력 ~500자, 출력 ~50자).
+ * Gemini Flash로 메일이 고객 문의인지 분류한다.
+ * 빠르고 저렴 (free tier 내에서 무료 운영 가능).
  */
 export async function classifyEmail(
   input: ClassifyInput
@@ -91,7 +91,7 @@ export async function classifyEmail(
       isCs: true,
       confidence: 0,
       category: "other",
-      reason: "ANTHROPIC_API_KEY 미설정 — 분류 생략",
+      reason: "GEMINI_API_KEY 미설정 — 분류 생략",
     };
   }
 
@@ -131,16 +131,22 @@ Subject: ${input.subject}
 Body (요약): ${input.bodySnippet.slice(0, 500)}`;
 
   try {
-    const res = await client.messages.create({
+    const res = await client.models.generateContent({
       model: MODEL,
-      max_tokens: 200,
-      messages: [{ role: "user", content: prompt }],
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 300,
+        // Gemini 2.5 Flash는 기본적으로 thinking 토큰을 소비하는데
+        // 분류처럼 추론 깊이가 거의 필요없는 작업은 비활성화해야 출력 토큰이 살아남음
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     });
-    const block = res.content.find((c) => c.type === "text");
-    if (!block || block.type !== "text") {
-      return fallback("text 블록 없음");
+    const text = res.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!text) {
+      return fallback("Gemini 응답 비어있음");
     }
-    const cleaned = block.text
+    const cleaned = text
       .trim()
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
