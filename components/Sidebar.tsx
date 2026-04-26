@@ -22,6 +22,7 @@ import {
   X,
   LogIn,
   LogOut,
+  Store,
 } from "lucide-react";
 
 type AppPage =
@@ -93,9 +94,13 @@ function getProgressLabel(value: number) {
 
 interface SidebarProps {
   cafe24Connected?: boolean;
+  metaConnected?: boolean;
 }
 
-export default function Sidebar({ cafe24Connected = false }: SidebarProps = {}) {
+export default function Sidebar({
+  cafe24Connected = false,
+  metaConnected = false,
+}: SidebarProps = {}) {
   const pathname = usePathname();
   const activePage = HREF_TO_PAGE[pathname] ?? "dashboard";
 
@@ -289,35 +294,70 @@ export default function Sidebar({ cafe24Connected = false }: SidebarProps = {}) 
         </div>
       </nav>
 
-      {/* 카페24 연결 (모바일 전용 — 데스크톱은 AppHeader에 별도) */}
+      {/* 외부 서비스 연결 (모바일 전용) */}
       {isMobile && (
-        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1.5">
-          {cafe24Connected ? (
+        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+          {/* 카페24 */}
+          <div className="space-y-1">
+            <div className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Store size={11} />
+              카페24
+              {cafe24Connected && (
+                <span className="text-emerald-500 normal-case font-medium ml-auto">● 연결됨</span>
+              )}
+            </div>
             <a
               href="/api/auth/login"
-              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 active:bg-violet-100 dark:active:bg-violet-500/20"
+              className={`w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm ${
+                cafe24Connected
+                  ? "font-medium bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 active:bg-sky-100"
+                  : "font-semibold bg-violet-600 text-white active:bg-violet-700"
+              }`}
             >
               <LogIn size={16} />
-              카페24 재연결
+              {cafe24Connected ? "재연결" : "연결하기"}
             </a>
-          ) : (
+            {cafe24Connected && (
+              <a
+                href="/api/auth/logout"
+                className="w-full flex items-center gap-2 px-3 h-10 rounded-lg text-xs text-zinc-500 dark:text-zinc-500 active:bg-zinc-100 dark:active:bg-zinc-800"
+              >
+                <LogOut size={14} />
+                연결 해제
+              </a>
+            )}
+          </div>
+
+          {/* 메타 광고 */}
+          <div className="space-y-1">
+            <div className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Megaphone size={11} />
+              Meta 광고
+              {metaConnected && (
+                <span className="text-emerald-500 normal-case font-medium ml-auto">● 연결됨</span>
+              )}
+            </div>
             <a
-              href="/api/auth/login"
-              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm font-semibold bg-violet-600 text-white active:bg-violet-700"
+              href="/api/meta/auth/login"
+              className={`w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm ${
+                metaConnected
+                  ? "font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 active:bg-blue-100"
+                  : "font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 active:opacity-80"
+              }`}
             >
               <LogIn size={16} />
-              카페24 연결하기
+              {metaConnected ? "재연결" : "연결하기"}
             </a>
-          )}
-          {cafe24Connected && (
-            <a
-              href="/api/auth/logout"
-              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm text-zinc-600 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800"
-            >
-              <LogOut size={16} />
-              연결 해제
-            </a>
-          )}
+            {metaConnected && (
+              <a
+                href="/api/meta/auth/logout"
+                className="w-full flex items-center gap-2 px-3 h-10 rounded-lg text-xs text-zinc-500 dark:text-zinc-500 active:bg-zinc-100 dark:active:bg-zinc-800"
+              >
+                <LogOut size={14} />
+                연결 해제
+              </a>
+            )}
+          </div>
         </div>
       )}
 
