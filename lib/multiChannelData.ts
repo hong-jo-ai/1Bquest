@@ -8,7 +8,21 @@ import type {
   InventoryItem,
 } from "./cafe24Data";
 
-export type ChannelId = "all" | "cafe24" | "wconcept" | "musinsa";
+export type ChannelId =
+  | "all"
+  | "cafe24"
+  | "wconcept"
+  | "musinsa"
+  | "29cm"
+  | "groupbuy";
+
+export type UploadableChannel = "wconcept" | "musinsa" | "29cm" | "groupbuy";
+export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
+  "wconcept",
+  "musinsa",
+  "29cm",
+  "groupbuy",
+];
 
 export interface ChannelMeta {
   id: ChannelId;
@@ -19,10 +33,12 @@ export interface ChannelMeta {
 }
 
 export const CHANNELS: ChannelMeta[] = [
-  { id: "all",      name: "전체",    color: "#7c3aed", bgColor: "bg-violet-600", textColor: "text-violet-600" },
-  { id: "cafe24",   name: "카페24",  color: "#0ea5e9", bgColor: "bg-sky-500",    textColor: "text-sky-600"    },
-  { id: "wconcept", name: "W컨셉",   color: "#e11d48", bgColor: "bg-rose-500",   textColor: "text-rose-600"   },
-  { id: "musinsa",  name: "무신사",  color: "#2563eb", bgColor: "bg-blue-600",   textColor: "text-blue-600"   },
+  { id: "all",      name: "전체",     color: "#7c3aed", bgColor: "bg-violet-600",   textColor: "text-violet-600"  },
+  { id: "cafe24",   name: "카페24",   color: "#0ea5e9", bgColor: "bg-sky-500",      textColor: "text-sky-600"     },
+  { id: "wconcept", name: "W컨셉",    color: "#e11d48", bgColor: "bg-rose-500",     textColor: "text-rose-600"    },
+  { id: "musinsa",  name: "무신사",   color: "#2563eb", bgColor: "bg-blue-600",     textColor: "text-blue-600"    },
+  { id: "29cm",     name: "29CM",     color: "#000000", bgColor: "bg-zinc-900",     textColor: "text-zinc-900"    },
+  { id: "groupbuy", name: "공동구매", color: "#f59e0b", bgColor: "bg-amber-500",    textColor: "text-amber-600"   },
 ];
 
 export interface MultiChannelData {
@@ -121,6 +137,53 @@ export const musinsaDummy: MultiChannelData = {
     { day: "일", revenue: 29_700_000, orders: 75 },
   ],
   inventory: [],
+};
+
+// ── 29CM·공동구매 빈 더미 (Excel 업로드 전 placeholder) ───────────────────
+
+const HOURS_EMPTY = Array.from({ length: 24 }, (_, h) => ({
+  hour: `${String(h).padStart(2, "0")}시`,
+  orders: 0,
+  revenue: 0,
+}));
+const WEEK_EMPTY = ["월", "화", "수", "목", "금", "토", "일"].map((day) => ({
+  day,
+  revenue: 0,
+  orders: 0,
+}));
+const PERIOD_EMPTY = { revenue: 0, orders: 0, avgOrder: 0 };
+
+export const twentyNineCmDummy: MultiChannelData = {
+  salesSummary: {
+    today: PERIOD_EMPTY,
+    week: PERIOD_EMPTY,
+    month: PERIOD_EMPTY,
+    prevMonth: PERIOD_EMPTY,
+  },
+  topProducts: [],
+  hourlyOrders: HOURS_EMPTY,
+  weeklyRevenue: WEEK_EMPTY,
+  inventory: [],
+};
+
+export const groupbuyDummy: MultiChannelData = {
+  salesSummary: {
+    today: PERIOD_EMPTY,
+    week: PERIOD_EMPTY,
+    month: PERIOD_EMPTY,
+    prevMonth: PERIOD_EMPTY,
+  },
+  topProducts: [],
+  hourlyOrders: HOURS_EMPTY,
+  weeklyRevenue: WEEK_EMPTY,
+  inventory: [],
+};
+
+export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
+  wconcept: wconceptDummy,
+  musinsa: musinsaDummy,
+  "29cm": twentyNineCmDummy,
+  groupbuy: groupbuyDummy,
 };
 
 // ── 합산 유틸 ─────────────────────────────────────────────────────────────

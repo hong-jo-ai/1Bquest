@@ -14,12 +14,13 @@ import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboar
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 
 import {
-  wconceptDummy,
-  musinsaDummy,
+  UPLOADABLE_CHANNELS,
+  UPLOADABLE_DUMMIES,
   mergeChannelData,
   CHANNELS,
   type ChannelId,
   type MultiChannelData,
+  type UploadableChannel,
 } from "@/lib/multiChannelData";
 import {
   salesSummary as dummySales,
@@ -31,10 +32,12 @@ import {
 import type { DashboardData } from "@/lib/cafe24Data";
 
 // ── localStorage 키 ────────────────────────────────────────────────────────
-const LS_KEY = {
+const LS_KEY: Record<UploadableChannel, { data: string; meta: string }> = {
   wconcept: { data: "wconcept_excel_data", meta: "wconcept_excel_meta" },
   musinsa:  { data: "musinsa_excel_data",  meta: "musinsa_excel_meta"  },
-} as const;
+  "29cm":   { data: "29cm_excel_data",     meta: "29cm_excel_meta"     },
+  groupbuy: { data: "groupbuy_excel_data", meta: "groupbuy_excel_meta" },
+};
 
 interface UploadMeta {
   fileName: string;
@@ -42,6 +45,15 @@ interface UploadMeta {
   period: { start: string; end: string };
   uploadedAt: string;
 }
+
+type ChannelUploads = Record<UploadableChannel, MultiChannelData | null>;
+type ChannelMetas = Record<UploadableChannel, UploadMeta | null>;
+const EMPTY_UPLOADS: ChannelUploads = {
+  wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+};
+const EMPTY_METAS: ChannelMetas = {
+  wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+};
 
 // ── Props ─────────────────────────────────────────────────────────────────
 interface Props {
@@ -55,43 +67,52 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
 
-  // 업로드된 데이터 상태
-  const [wconceptUpload, setWconceptUpload] = useState<MultiChannelData | null>(null);
-  const [wconceptMeta,   setWconceptMeta]   = useState<UploadMeta | null>(null);
-  const [musinsaUpload,  setMusinsaUpload]  = useState<MultiChannelData | null>(null);
-  const [musinsaMeta,    setMusinsaMeta]    = useState<UploadMeta | null>(null);
+  // 업로드된 데이터 상태 (4개 채널 통합 관리)
+  const [uploads, setUploads] = useState<ChannelUploads>(EMPTY_UPLOADS);
+  const [metas, setMetas]     = useState<ChannelMetas>(EMPTY_METAS);
 
   // localStorage에서 복원
   useEffect(() => {
     try {
-      const wd = localStorage.getItem(LS_KEY.wconcept.data);
-      const wm = localStorage.getItem(LS_KEY.wconcept.meta);
-      if (wd && wm) { setWconceptUpload(JSON.parse(wd)); setWconceptMeta(JSON.parse(wm)); }
-
-      const md = localStorage.getItem(LS_KEY.musinsa.data);
-      const mm = localStorage.getItem(LS_KEY.musinsa.meta);
-      if (md && mm) { setMusinsaUpload(JSON.parse(md)); setMusinsaMeta(JSON.parse(mm)); }
+      const restoredUploads: Partial<ChannelUploads> = {};
+      const restoredMetas: Partial<ChannelMetas> = {};
+      for (const ch of UPLOADABLE_CHANNELS) {
+        const d = localStorage.getItem(LS_KEY[ch].data);
+        const m = localStorage.getItem(LS_KEY[ch].meta);
+        if (d && m) {
+          restoredUploads[ch] = JSON.parse(d);
+          restoredMetas[ch] = JSON.parse(m);
+        }
+      }
+      setUploads((prev) => ({ ...prev, ...restoredUploads }));
+      setMetas((prev) => ({ ...prev, ...restoredMetas }));
     } catch { /* localStorage 접근 불가 시 무시 */ }
   }, []);
 
   // 업로드 데이터 저장
-  const handleDataLoaded = useCallback((ch: "wconcept" | "musinsa") => (data: MultiChannelData, meta: UploadMeta) => {
-    try {
-      localStorage.setItem(LS_KEY[ch].data, JSON.stringify(data));
-      localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(meta));
-    } catch { /* 용량 초과 등 무시 */ }
-    if (ch === "wconcept") { setWconceptUpload(data); setWconceptMeta(meta); }
-    else                   { setMusinsaUpload(data);  setMusinsaMeta(meta);  }
-    setShowUpload(false);
-  }, []);
+  const handleDataLoaded = useCallback(
+    (ch: UploadableChannel) => (data: MultiChannelData, meta: UploadMeta) => {
+      try {
+        localStorage.setItem(LS_KEY[ch].data, JSON.stringify(data));
+        localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(meta));
+      } catch { /* 용량 초과 등 무시 */ }
+      setUploads((prev) => ({ ...prev, [ch]: data }));
+      setMetas((prev) => ({ ...prev, [ch]: meta }));
+      setShowUpload(false);
+    },
+    []
+  );
 
   // 업로드 데이터 삭제
-  const handleClear = useCallback((ch: "wconcept" | "musinsa") => () => {
-    localStorage.removeItem(LS_KEY[ch].data);
-    localStorage.removeItem(LS_KEY[ch].meta);
-    if (ch === "wconcept") { setWconceptUpload(null); setWconceptMeta(null); }
-    else                   { setMusinsaUpload(null);  setMusinsaMeta(null);  }
-  }, []);
+  const handleClear = useCallback(
+    (ch: UploadableChannel) => () => {
+      localStorage.removeItem(LS_KEY[ch].data);
+      localStorage.removeItem(LS_KEY[ch].meta);
+      setUploads((prev) => ({ ...prev, [ch]: null }));
+      setMetas((prev) => ({ ...prev, [ch]: null }));
+    },
+    []
+  );
 
   // 카페24 데이터를 MultiChannelData 형태로 변환
   const cafe24Channel: MultiChannelData = useMemo(() => ({
@@ -105,34 +126,48 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
   }), [cafe24Data]);
 
   // 실제 표시 데이터 (업로드 > 더미)
-  const wconceptData = wconceptUpload ?? wconceptDummy;
-  const musinsaData  = musinsaUpload  ?? musinsaDummy;
+  const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => ({
+    wconcept: uploads.wconcept ?? UPLOADABLE_DUMMIES.wconcept,
+    musinsa:  uploads.musinsa  ?? UPLOADABLE_DUMMIES.musinsa,
+    "29cm":   uploads["29cm"]  ?? UPLOADABLE_DUMMIES["29cm"],
+    groupbuy: uploads.groupbuy ?? UPLOADABLE_DUMMIES.groupbuy,
+  }), [uploads]);
 
   const displayData: MultiChannelData = useMemo(() => {
-    switch (activeChannel) {
-      case "cafe24":   return cafe24Channel;
-      case "wconcept": return wconceptData;
-      case "musinsa":  return musinsaData;
-      case "all":
-      default:         return mergeChannelData([cafe24Channel, wconceptData, musinsaData]);
+    if (activeChannel === "cafe24") return cafe24Channel;
+    if (activeChannel === "all") {
+      return mergeChannelData([
+        cafe24Channel,
+        channelDataMap.wconcept,
+        channelDataMap.musinsa,
+        channelDataMap["29cm"],
+        channelDataMap.groupbuy,
+      ]);
     }
-  }, [activeChannel, cafe24Channel, wconceptData, musinsaData]);
+    // 업로드 가능 채널
+    return channelDataMap[activeChannel as UploadableChannel];
+  }, [activeChannel, cafe24Channel, channelDataMap]);
 
-  const cafe24IsReal     = cafe24Data?.isReal === true;
-  const activeIsWconcept = activeChannel === "wconcept";
-  const activeIsMusinsa  = activeChannel === "musinsa";
-  const isSampleChannel  = activeIsWconcept || activeIsMusinsa;
+  const cafe24IsReal       = cafe24Data?.isReal === true;
+  const isUploadableActive = UPLOADABLE_CHANNELS.includes(activeChannel as UploadableChannel);
+  const activeUploadable   = isUploadableActive ? (activeChannel as UploadableChannel) : null;
+  const activeHasUpload    = activeUploadable ? !!uploads[activeUploadable] : false;
+  const activeMeta         = activeUploadable ? metas[activeUploadable] : null;
+  const activeChannelMeta  = CHANNELS.find(c => c.id === activeChannel);
 
-  const activeHasUpload  = activeIsWconcept ? !!wconceptUpload : activeIsMusinsa ? !!musinsaUpload : false;
-  const activeMeta       = activeIsWconcept ? wconceptMeta     : activeIsMusinsa ? musinsaMeta     : null;
-  const activeChannelMeta = CHANNELS.find(c => c.id === activeChannel);
-
-  // ChannelComparisonChart 에 넘길 3개 채널 고정 데이터
-  const comparisonChannels = [
-    { channelId: "cafe24",   name: "카페24", color: CHANNELS[1].color, data: cafe24Channel },
-    { channelId: "wconcept", name: "W컨셉",  color: CHANNELS[2].color, data: wconceptData  },
-    { channelId: "musinsa",  name: "무신사", color: CHANNELS[3].color, data: musinsaData   },
-  ];
+  // ChannelComparisonChart에 넘길 채널 데이터
+  const cafe24Color = CHANNELS.find(c => c.id === "cafe24")?.color ?? "#0ea5e9";
+  const comparisonChannels = useMemo(() => {
+    const list: { channelId: string; name: string; color: string; data: MultiChannelData }[] = [
+      { channelId: "cafe24", name: "카페24", color: cafe24Color, data: cafe24Channel },
+    ];
+    for (const ch of UPLOADABLE_CHANNELS) {
+      const meta = CHANNELS.find(c => c.id === ch);
+      if (!meta) continue;
+      list.push({ channelId: ch, name: meta.name, color: meta.color, data: channelDataMap[ch] });
+    }
+    return list;
+  }, [cafe24Channel, channelDataMap, cafe24Color]);
 
   return (
     <>
@@ -158,15 +193,15 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
         </div>
       )}
 
-      {/* W컨셉 / 무신사 배너 */}
-      {isSampleChannel && (
+      {/* 업로드 가능 채널 배너 */}
+      {isUploadableActive && activeChannelMeta && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
           {activeHasUpload ? (
             /* 실 데이터 사용 중 */
             <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl px-4 py-3 text-sm">
               <AlertCircle size={16} className="shrink-0" />
               <span className="flex-1">
-                {activeIsWconcept ? "W컨셉" : "무신사"} 실 데이터 사용 중 —{" "}
+                {activeChannelMeta.name} 실 데이터 사용 중 —{" "}
                 {activeMeta?.fileName} ({activeMeta?.period.start} ~ {activeMeta?.period.end})
               </span>
               <button
@@ -177,11 +212,11 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
               </button>
             </div>
           ) : (
-            /* 샘플 데이터 */
+            /* 데이터 없음 — 업로드 유도 */
             <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 rounded-xl px-4 py-3 text-sm">
               <div className="flex items-center gap-2">
                 <AlertCircle size={16} className="shrink-0" />
-                <span>{activeIsWconcept ? "W컨셉" : "무신사"} 샘플 데이터 표시 중 — 엑셀을 업로드해 실 데이터를 볼 수 있습니다.</span>
+                <span>{activeChannelMeta.name} 데이터가 없습니다 — 엑셀을 업로드해 매출을 확인하세요.</span>
               </div>
               <button
                 onClick={() => setShowUpload(v => !v)}
@@ -204,19 +239,23 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
             activeChannel={activeChannel}
             onChange={ch => { setActiveChannel(ch); setShowUpload(false); }}
             cafe24IsReal={cafe24IsReal}
-            wconceptHasUpload={!!wconceptUpload}
-            musinsaHasUpload={!!musinsaUpload}
+            uploadStatus={{
+              wconcept: !!uploads.wconcept,
+              musinsa:  !!uploads.musinsa,
+              "29cm":   !!uploads["29cm"],
+              groupbuy: !!uploads.groupbuy,
+            }}
           />
         </div>
 
-        {/* 엑셀 업로드 패널 (W컨셉/무신사만) */}
-        {isSampleChannel && showUpload && activeChannelMeta && (
+        {/* 엑셀 업로드 패널 (업로드 가능 채널) */}
+        {isUploadableActive && showUpload && activeChannelMeta && activeUploadable && (
           <ExcelUploadPanel
-            channel={activeChannel as "wconcept" | "musinsa"}
+            channel={activeUploadable}
             channelName={activeChannelMeta.name}
             channelColor={activeChannelMeta.color}
-            onDataLoaded={handleDataLoaded(activeChannel as "wconcept" | "musinsa")}
-            onClear={handleClear(activeChannel as "wconcept" | "musinsa")}
+            onDataLoaded={handleDataLoaded(activeUploadable)}
+            onClear={handleClear(activeUploadable)}
             currentMeta={activeMeta}
           />
         )}
@@ -235,17 +274,17 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
           <WeeklyChart data={displayData.weeklyRevenue} />
           <TopProducts
             today={
-              !isSampleChannel && cafe24IsReal
+              !isUploadableActive && cafe24IsReal
                 ? (cafe24Data?.topProductsToday ?? displayData.topProducts)
                 : displayData.topProducts
             }
             week={
-              !isSampleChannel && cafe24IsReal
+              !isUploadableActive && cafe24IsReal
                 ? (cafe24Data?.topProductsWeek ?? displayData.topProducts)
                 : displayData.topProducts
             }
             month={displayData.topProducts}
-            isReal={cafe24IsReal && !isSampleChannel || activeHasUpload}
+            isReal={cafe24IsReal && !isUploadableActive || activeHasUpload}
           />
         </div>
 

@@ -1,28 +1,26 @@
 "use client";
 
-import { CHANNELS, type ChannelId } from "@/lib/multiChannelData";
+import { CHANNELS, UPLOADABLE_CHANNELS, type ChannelId, type UploadableChannel } from "@/lib/multiChannelData";
 
 interface Props {
   activeChannel: ChannelId;
   onChange: (id: ChannelId) => void;
   cafe24IsReal: boolean;
-  wconceptHasUpload?: boolean;
-  musinsaHasUpload?: boolean;
+  uploadStatus?: Partial<Record<UploadableChannel, boolean>>;
 }
 
 export default function ChannelTabs({
   activeChannel, onChange, cafe24IsReal,
-  wconceptHasUpload = false, musinsaHasUpload = false,
+  uploadStatus = {},
 }: Props) {
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
       {CHANNELS.map((ch) => {
         const isActive = activeChannel === ch.id;
-        const hasUpload =
-          (ch.id === "wconcept" && wconceptHasUpload) ||
-          (ch.id === "musinsa"  && musinsaHasUpload);
+        const isUploadable = UPLOADABLE_CHANNELS.includes(ch.id as UploadableChannel);
+        const hasUpload = isUploadable && !!uploadStatus[ch.id as UploadableChannel];
         const isReal   = ch.id === "cafe24" && cafe24IsReal;
-        const isSample = (ch.id === "wconcept" || ch.id === "musinsa") && !hasUpload;
+        const isEmpty = isUploadable && !hasUpload;
 
         return (
           <button
@@ -54,10 +52,10 @@ export default function ChannelTabs({
                 업로드됨
               </span>
             )}
-            {/* 샘플 뱃지 */}
-            {isSample && (
+            {/* 데이터 없음 뱃지 */}
+            {isEmpty && (
               <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-400 dark:bg-zinc-700 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
-                샘플
+                미업로드
               </span>
             )}
           </button>

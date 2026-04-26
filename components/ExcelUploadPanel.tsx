@@ -15,7 +15,7 @@ interface UploadMeta {
 }
 
 interface Props {
-  channel: "wconcept" | "musinsa";
+  channel: "wconcept" | "musinsa" | "29cm" | "groupbuy";
   channelName: string;
   channelColor: string;
   onDataLoaded: (data: MultiChannelData, meta: UploadMeta) => void;
@@ -140,10 +140,17 @@ export default function ExcelUploadPanel({
           <Info size={13} className="shrink-0 mt-0.5" />
           <div>
             <p className="font-medium text-zinc-500 dark:text-zinc-300">{channelName} 엑셀 내보내기 방법</p>
-            {channel === "wconcept" ? (
+            {channel === "wconcept" && (
               <p className="mt-0.5">W컨셉 파트너 센터 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
-            ) : (
+            )}
+            {channel === "musinsa" && (
               <p className="mt-0.5">무신사 스튜디오 → 주문관리 → 전체주문 → 엑셀 다운로드</p>
+            )}
+            {channel === "29cm" && (
+              <p className="mt-0.5">29CM 파트너센터 → 주문/배송 → 주문 목록 → 엑셀 다운로드</p>
+            )}
+            {channel === "groupbuy" && (
+              <p className="mt-0.5">공동구매 캠페인 결과를 정리한 엑셀 (날짜·상품명·수량·매출)</p>
             )}
             <p className="mt-1 text-zinc-300 dark:text-zinc-500">지원 형식: .xlsx, .xls, .csv (최대 10MB)</p>
           </div>
