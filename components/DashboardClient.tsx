@@ -10,6 +10,7 @@ import HourlyChart from "@/components/HourlyChart";
 import WeeklyChart from "@/components/WeeklyChart";
 import TopProducts from "@/components/TopProducts";
 import InventoryStatus from "@/components/InventoryStatus";
+import DailySalesTable, { type DailySalesChannel } from "@/components/DailySalesTable";
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 
 import {
@@ -98,6 +99,7 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
     topProducts:  (cafe24Data?.topProducts?.length ?? 0) > 0 ? cafe24Data!.topProducts : dummyProducts,
     hourlyOrders: cafe24Data?.hourlyOrders ?? dummyHourly,
     weeklyRevenue: cafe24Data?.weeklyRevenue ?? dummyWeekly,
+    dailyRevenue: cafe24Data?.dailyRevenue ?? [],
     inventory:    (cafe24Data?.inventory?.length ?? 0) > 0 ? cafe24Data!.inventory : dummyInventory,
   }), [cafe24Data]);
 
@@ -246,15 +248,17 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
           />
         </div>
 
-        {/* 재고 현황 (전체 or 카페24만 표시) */}
-        {(activeChannel === "all" || activeChannel === "cafe24") && (
-          <InventoryStatus items={displayData.inventory} />
-        )}
-        {isSampleChannel && (
-          <div className="bg-zinc-50 dark:bg-zinc-800/50 border border-dashed border-zinc-200 dark:border-zinc-700 rounded-2xl p-8 text-center text-zinc-400 text-sm">
-            재고 현황은 카페24 연동 데이터만 표시됩니다
-          </div>
-        )}
+        {/* 일별 매출 상세 표 (전체 채널 통합) */}
+        <DailySalesTable
+          channels={
+            comparisonChannels.map<DailySalesChannel>((c) => ({
+              id: c.channelId,
+              name: c.name,
+              color: c.color,
+              daily: c.data.dailyRevenue ?? [],
+            }))
+          }
+        />
       </main>
 
       {/* 푸터 */}

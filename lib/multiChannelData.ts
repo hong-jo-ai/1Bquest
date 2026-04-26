@@ -3,6 +3,7 @@ import type {
   ProductRank,
   HourlyData,
   WeeklyData,
+  DailyData,
   InventoryItem,
 } from "./cafe24Data";
 
@@ -28,6 +29,7 @@ export interface MultiChannelData {
   topProducts: ProductRank[];
   hourlyOrders: HourlyData[];
   weeklyRevenue: WeeklyData[];
+  dailyRevenue?: DailyData[]; // 일별 매출 (있는 채널만)
   inventory: InventoryItem[];
 }
 
@@ -163,8 +165,22 @@ export function mergeChannelData(datasets: MultiChannelData[]): MultiChannelData
     orders:  datasets.reduce((s, d) => s + (d.weeklyRevenue[i]?.orders  ?? 0), 0),
   }));
 
+  // Daily revenue — 날짜 기준 합산
+  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  for (const d of datasets) {
+    for (const day of d.dailyRevenue ?? []) {
+      const cur = dailyMap.get(day.date) ?? { revenue: 0, orders: 0 };
+      cur.revenue += day.revenue;
+      cur.orders += day.orders;
+      dailyMap.set(day.date, cur);
+    }
+  }
+  const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, revenue: v.revenue, orders: v.orders }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   // Inventory — 카페24(첫 번째) 데이터만 사용
   const inventory = datasets[0].inventory;
 
-  return { salesSummary, topProducts, hourlyOrders, weeklyRevenue, inventory };
+  return { salesSummary, topProducts, hourlyOrders, weeklyRevenue, dailyRevenue, inventory };
 }

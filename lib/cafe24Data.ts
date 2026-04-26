@@ -36,6 +36,12 @@ export interface WeeklyData {
   orders: number;
 }
 
+export interface DailyData {
+  date: string; // YYYY-MM-DD (KST)
+  revenue: number;
+  orders: number;
+}
+
 export interface InventoryItem {
   name: string;
   sku: string;
@@ -51,6 +57,7 @@ export interface DashboardData {
   topProductsWeek: ProductRank[];    // 이번 주
   hourlyOrders: HourlyData[];
   weeklyRevenue: WeeklyData[];
+  dailyRevenue: DailyData[]; // 최근 60일치 일별 매출
   inventory: InventoryItem[];
   isReal: true;
 }
@@ -221,6 +228,20 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     };
   });
 
+  // ── 일별 매출 (최근 60일 = 이번달+지난달) ────────────────────────────
+  const allOrdersForDaily = [...prevMonthOrders, ...monthOrders];
+  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  for (const o of allOrdersForDaily) {
+    const ds = kstDateStr(o.payment_date ?? o.order_date);
+    const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0 };
+    cur.revenue += parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0");
+    cur.orders += 1;
+    dailyMap.set(ds, cur);
+  }
+  const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   // ── 재고 현황 ──────────────────────────────────────────────────────────
   const THRESHOLD = 10;
   const inventory: InventoryItem[] = (productsData.products ?? []).map((p: any) => {
@@ -250,6 +271,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     topProductsWeek,
     hourlyOrders,
     weeklyRevenue,
+    dailyRevenue,
     inventory,
     isReal: true,
   };

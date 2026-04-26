@@ -235,8 +235,22 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
     revenue: dayMap[day].revenue,
   }));
 
+  // ── 일별 매출 (전체 기간) ──────────────────────────────────────────────
+  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  for (const r of rows) {
+    if (!r.date) continue;
+    const ds = fmt(r.date);
+    const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0 };
+    cur.revenue += r.revenue;
+    cur.orders += r.qty;
+    dailyMap.set(ds, cur);
+  }
+  const dailyRevenue = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   return {
-    data: { salesSummary, topProducts, hourlyOrders, weeklyRevenue, inventory: [] },
+    data: { salesSummary, topProducts, hourlyOrders, weeklyRevenue, dailyRevenue, inventory: [] },
     rowCount: rows.length,
     period: { start: fmt(minDate), end: fmt(maxDate) },
     columns: {
