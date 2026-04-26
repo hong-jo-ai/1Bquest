@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase CLI
+supabase/.temp/
+
+# 잘못 생성된 시크릿 파일 (파일명에 키가 노출됨)
+crisp plugin identifier*

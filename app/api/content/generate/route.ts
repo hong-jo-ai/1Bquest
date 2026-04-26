@@ -105,7 +105,7 @@ channelVersions는 요청된 채널(${channelList})에 맞게 각각 작성.
 
   try {
     const res = await client.messages.create({
-      model: "claude-opus-4-5", max_tokens: 5000, system: SYSTEM,
+      model: "claude-haiku-4-5", max_tokens: 5000, system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });
     const raw = (res.content[0] as { text: string }).text.trim();

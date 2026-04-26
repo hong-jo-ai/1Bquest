@@ -76,7 +76,7 @@ ${WRITING_RULES}`;
 
   try {
     const res = await client.messages.create({
-      model:      "claude-opus-4-5",
+      model:      "claude-haiku-4-5",
       max_tokens: length === "long" ? 5000 : 3000,
       system,
       messages:   [{ role: "user", content: prompt }],

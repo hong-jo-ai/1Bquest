@@ -60,7 +60,7 @@ async function getBrowser() {
 // ── Claude 스크린샷 분석 ──────────────────────────────────────────────
 async function askClaude(screenshot, question) {
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-5",
+    model: "claude-haiku-4-5",
     max_tokens: 1000,
     messages: [{
       role: "user",

@@ -54,7 +54,7 @@ ${idea}
 
   try {
     const res = await client.messages.create({
-      model: "claude-opus-4-5", max_tokens: 3000, system: SYSTEM,
+      model: "claude-haiku-4-5", max_tokens: 3000, system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });
     const raw = (res.content[0] as { text: string }).text.trim();

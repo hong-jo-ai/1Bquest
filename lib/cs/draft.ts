@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getThread } from "./store";
 import { BRAND_LABEL, CHANNEL_LABEL, type CsMessage } from "./types";
 
-const MODEL = "claude-opus-4-6";
+const MODEL = "claude-haiku-4-5";
 let skillContent: string | null = null;
 
 async function loadSkill(): Promise<string> {

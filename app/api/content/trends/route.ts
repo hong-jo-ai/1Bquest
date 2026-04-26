@@ -169,7 +169,7 @@ async function fetchClaudeWebSearch(
     const query = `${keywords.slice(0, 3).join(" ")} 인스타그램 릴스 유튜브 쇼츠 트렌드 2025 한국`;
 
     const res = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 1500,
       tools: [{ type: "web_search_20250305", name: "web_search" }] as any,
       messages: [
@@ -267,7 +267,7 @@ viralHooks 8개, contentFormats 5개, trendingThemes 5개, searchKeywords 6개, 
 
   try {
     const res = await client.messages.create({
-      model: "claude-opus-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 3500,
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],

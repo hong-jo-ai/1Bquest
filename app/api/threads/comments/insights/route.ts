@@ -74,7 +74,7 @@ themes는 3-5개, contentIdeas는 5개로 제안해주세요.
 
   try {
     const res = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 6000,
       system,
       messages: [{ role: "user", content: prompt }],

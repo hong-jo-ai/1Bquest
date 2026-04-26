@@ -76,7 +76,7 @@ ${text}
 
   try {
     const res = await client.messages.create({
-      model:      "claude-haiku-4-5",
+      model:      "claude-sonnet-4-6",
       max_tokens: 800,
       system,
       messages:   [{ role: "user", content: prompt }],

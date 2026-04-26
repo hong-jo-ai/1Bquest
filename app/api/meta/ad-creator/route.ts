@@ -83,7 +83,7 @@ adSets 2~3개, creatives 3개(다양한 형식), timeline 4주치.`;
 
   try {
     const res = await client.messages.create({
-      model: "claude-opus-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 4000,
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],

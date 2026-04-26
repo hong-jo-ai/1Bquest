@@ -52,7 +52,7 @@ pauseNow/increaseBudget은 실제 데이터 기반으로만, newCampaigns는 2~3
 
   try {
     const res = await client.messages.create({
-      model: "claude-opus-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 3000,
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
