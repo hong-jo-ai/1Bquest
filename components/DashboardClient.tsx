@@ -82,12 +82,14 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   // 현재 브랜드의 채널 ID 목록
   const brandChannelIds = BRAND_CHANNELS[brand];
 
-  // 업로드된 데이터 상태 (4개 채널 통합 관리)
+  // 업로드된 데이터 상태 (7개 채널 통합 관리)
   const [uploads, setUploads] = useState<ChannelUploads>(EMPTY_UPLOADS);
   const [metas, setMetas]     = useState<ChannelMetas>(EMPTY_METAS);
 
-  // localStorage에서 복원
+  // 1) localStorage에서 즉시 복원 (서버 응답 전 빠른 표시)
+  // 2) 서버 동기화 (다른 기기에서 업로드한 데이터 가져오기 — SSOT)
   useEffect(() => {
+    // 1단계: 로컬 캐시
     try {
       const restoredUploads: Partial<ChannelUploads> = {};
       const restoredMetas: Partial<ChannelMetas> = {};
@@ -102,9 +104,49 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       setUploads((prev) => ({ ...prev, ...restoredUploads }));
       setMetas((prev) => ({ ...prev, ...restoredMetas }));
     } catch { /* localStorage 접근 불가 시 무시 */ }
+
+    // 2단계: 서버 SSOT (모든 기기에서 동일한 데이터)
+    fetch("/api/profit/channel-uploads")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) return;
+        const serverUploads: Partial<ChannelUploads> = {};
+        const serverMetas: Partial<ChannelMetas> = {};
+        for (const ch of UPLOADABLE_CHANNELS) {
+          const entry = j.uploads?.[ch];
+          if (entry?.data && entry?.meta) {
+            serverUploads[ch] = entry.data;
+            serverMetas[ch] = entry.meta;
+            // 로컬 캐시도 갱신 (다음 로드 시 빠른 표시)
+            try {
+              localStorage.setItem(LS_KEY[ch].data, JSON.stringify(entry.data));
+              localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(entry.meta));
+            } catch { /* ignore */ }
+          } else {
+            // 마이그레이션: 서버에는 없지만 로컬에 있으면 서버로 푸시
+            // (이전에 데스크톱에서만 업로드한 데이터)
+            try {
+              const localData = localStorage.getItem(LS_KEY[ch].data);
+              const localMeta = localStorage.getItem(LS_KEY[ch].meta);
+              if (localData && localMeta) {
+                const data = JSON.parse(localData);
+                const meta = JSON.parse(localMeta);
+                fetch("/api/profit/channel-uploads", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ channel: ch, data, meta }),
+                }).catch(() => { /* 마이그레이션 실패는 조용히 */ });
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        setUploads((prev) => ({ ...prev, ...serverUploads }));
+        setMetas((prev) => ({ ...prev, ...serverMetas }));
+      })
+      .catch(() => { /* 서버 fetch 실패 시 로컬 캐시만 사용 */ });
   }, []);
 
-  // 업로드 데이터 저장
+  // 업로드 데이터 저장 (서버 + 로컬 동시)
   const handleDataLoaded = useCallback(
     (ch: UploadableChannel) => (data: MultiChannelData, meta: UploadMeta) => {
       try {
@@ -114,17 +156,30 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       setUploads((prev) => ({ ...prev, [ch]: data }));
       setMetas((prev) => ({ ...prev, [ch]: meta }));
       setShowUpload(false);
+
+      // 서버 동기화 (실패해도 로컬은 유지)
+      fetch("/api/profit/channel-uploads", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: ch, data, meta }),
+      }).catch((e) => console.error(`[upload] 서버 저장 실패 (${ch}):`, e));
     },
     []
   );
 
-  // 업로드 데이터 삭제
+  // 업로드 데이터 삭제 (서버 + 로컬 동시)
   const handleClear = useCallback(
     (ch: UploadableChannel) => () => {
       localStorage.removeItem(LS_KEY[ch].data);
       localStorage.removeItem(LS_KEY[ch].meta);
       setUploads((prev) => ({ ...prev, [ch]: null }));
       setMetas((prev) => ({ ...prev, [ch]: null }));
+
+      fetch("/api/profit/channel-uploads", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: ch, clear: true }),
+      }).catch((e) => console.error(`[upload] 서버 삭제 실패 (${ch}):`, e));
     },
     []
   );
