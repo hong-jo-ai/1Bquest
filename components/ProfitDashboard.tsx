@@ -79,9 +79,25 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
   useEffect(() => {
     const params = new URLSearchParams({ days: "60" });
     if (brand) params.set("brand", brand);
-    fetch(`/api/profit/meta-spend?${params}`)
+    const url = `/api/profit/meta-spend?${params}`;
+    console.log(`[P&L] Meta spend fetch: ${url}`);
+    fetch(url)
       .then((r) => r.json())
       .then((j) => {
+        console.log("[P&L] Meta spend response:", {
+          ok: j.ok,
+          accounts: j.accounts,
+          accountNames: j.accountNames,
+          dailyCount: j.daily?.length,
+          totalSpend: (j.daily ?? []).reduce(
+            (s: number, d: { spend: number }) => s + d.spend,
+            0
+          ),
+          since: j.since,
+          until: j.until,
+          warning: j.warning,
+          error: j.error,
+        });
         if (j.ok) {
           setMetaDaily(j.daily ?? []);
           setMetaLinked(true);
@@ -89,7 +105,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           setMetaLinked(false);
         }
       })
-      .catch(() => setMetaLinked(false));
+      .catch((e) => {
+        console.error("[P&L] Meta spend fetch failed:", e);
+        setMetaLinked(false);
+      });
   }, [brand]);
 
   const saveSettings = useCallback(async (patch: Partial<ProfitSettings>) => {
