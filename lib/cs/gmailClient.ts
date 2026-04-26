@@ -1,6 +1,7 @@
 import { refreshGoogleToken } from "../ga4Client";
 import { getCsSupabase } from "./store";
-import type { CsBrandId } from "./types";
+import { sendTelegramMessage } from "./telegram";
+import { BRAND_LABEL, type CsBrandId } from "./types";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -56,20 +57,63 @@ export async function updateGmailSyncState(
   const db = getCsSupabase();
   const { data: row } = await db
     .from("cs_accounts")
-    .select("credentials")
+    .select("credentials, status, brand, display_name")
     .eq("id", accountId)
     .single();
   const creds = (row?.credentials ?? {}) as Record<string, unknown>;
   if (patch.lastHistoryId) creds.last_history_id = patch.lastHistoryId;
+
+  const previousStatus = row?.status as string | undefined;
+  const newStatus = patch.error ? "error" : "active";
+
   await db
     .from("cs_accounts")
     .update({
       credentials: creds,
       last_synced_at: new Date().toISOString(),
-      status: patch.error ? "error" : "active",
+      status: newStatus,
       error_message: patch.error ?? null,
     })
     .eq("id", accountId);
+
+  // 상태가 active → error로 전환된 순간만 알림 (반복 실패 시 스팸 방지)
+  if (newStatus === "error" && previousStatus !== "error" && patch.error) {
+    await notifyGmailDisconnected(
+      row?.brand as CsBrandId,
+      (row?.display_name as string) ?? "(이름 없음)",
+      patch.error
+    );
+  }
+}
+
+async function notifyGmailDisconnected(
+  brand: CsBrandId,
+  email: string,
+  errorMsg: string
+): Promise<void> {
+  const isTokenError =
+    errorMsg.includes("invalid_grant") ||
+    errorMsg.includes("expired") ||
+    errorMsg.includes("revoked");
+
+  const reason = isTokenError
+    ? "Google 토큰이 만료되거나 취소됨 — <b>대시보드에서 재인증 필요</b>"
+    : `오류: ${errorMsg.slice(0, 250)}`;
+
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+
+  const text = [
+    `🚨 <b>Gmail 연결 끊김</b>`,
+    `<b>${BRAND_LABEL[brand] ?? brand}</b> · ${email}`,
+    reason,
+    base ? `<a href="${base}/inbox/setup">인박스 설정 열기</a>` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await sendTelegramMessage(text);
 }
 
 async function gmailFetch<T>(
