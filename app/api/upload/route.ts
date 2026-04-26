@@ -49,7 +49,12 @@ export async function POST(req: NextRequest) {
       fileName: file.name,
       ...result,
     });
-  } catch (e: any) {
-    return Response.json({ error: e.message ?? "파싱 실패" }, { status: 422 });
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? (e.message || `${e.name}: 메시지 없음 (${file.name}, ${file.size}바이트)`)
+        : String(e);
+    console.error("[upload] 파싱 실패:", file.name, file.size, "bytes —", msg);
+    return Response.json({ error: msg }, { status: 422 });
   }
 }

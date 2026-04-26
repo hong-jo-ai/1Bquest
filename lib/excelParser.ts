@@ -3,14 +3,15 @@ import type { MultiChannelData } from "./multiChannelData";
 import type { ProductRank, HourlyData, WeeklyData } from "./cafe24Data";
 
 // ── 컬럼 키워드 매핑 ─────────────────────────────────────────────────────────
+// 매칭 순서: (1) 정확 매칭 → (2) 부분 매칭(includes)
+// 정확 매칭이 우선이라 "수량"이 "현재수량"으로 잘못 잡히는 등의 문제 방지
 const COL_ALIASES = {
-  date:    ["주문일시", "주문일", "결제일시", "결제일", "날짜"],
-  // 주문번호 — 주의: '주문상품번호'와 충돌 안 되게 정확히 매칭되도록 alias 정렬
+  date:    ["주문일시", "결제일시", "주문일", "결제일", "날짜"],
   orderId: ["주문번호", "주문 번호", "order_no", "order_id", "order no", "order id", "ordersn"],
   name:    ["상품명", "품목명"],
-  sku:     ["상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
-  qty:     ["수량", "주문수량", "판매수량"],
-  revenue: ["결제금액", "실결제금액", "판매금액", "판매가격", "판매가", "정산금액"],
+  sku:     ["상품번호", "상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
+  qty:     ["수량", "주문수량", "판매수량"], // "현재수량" 같은 재고 컬럼이 있어도 정확 매칭으로 회피
+  revenue: ["실결제금액", "결제금액", "매출금액", "판매금액", "판매가격", "판매가", "정산금액"],
   status:  ["주문상태", "처리상태", "배송상태"],
 };
 
@@ -46,11 +47,21 @@ function countOrders(rows: ParsedRow[]): number {
   return set.size;
 }
 
-// 헤더 키워드 매칭으로 컬럼 인덱스 찾기
+// 헤더 매칭으로 컬럼 인덱스 찾기.
+// 1차로 정확 매칭(=)을 모두 시도, 실패 시 부분 매칭(includes)으로 fallback.
+// 이렇게 해야 "수량"과 "현재수량" 같이 한쪽이 다른 쪽 부분문자열인 케이스에서
+// 의도한 컬럼이 잡힘.
 function findColIdx(headers: string[], aliases: string[]): number {
   const norm = headers.map(h => String(h ?? "").replace(/\s+/g, "").toLowerCase());
+  // 1차: 정확 매칭
   for (const alias of aliases) {
-    const a = alias.toLowerCase();
+    const a = alias.toLowerCase().replace(/\s+/g, "");
+    const idx = norm.findIndex(h => h === a);
+    if (idx !== -1) return idx;
+  }
+  // 2차: includes 매칭
+  for (const alias of aliases) {
+    const a = alias.toLowerCase().replace(/\s+/g, "");
     const idx = norm.findIndex(h => h.includes(a));
     if (idx !== -1) return idx;
   }
@@ -110,7 +121,15 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const allRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
 
-  if (allRows.length < 2) throw new Error("엑셀에 데이터가 없습니다.");
+  // 디버그: 처음 3행을 콘솔에 찍어 진단 도움
+  console.log(`[excelParser] 시트 '${wb.SheetNames[0]}', 총 ${allRows.length}행`);
+  console.log("[excelParser] 처음 3행:", allRows.slice(0, 3).map((r) => r.map((c) => String(c).slice(0, 40))));
+
+  if (allRows.length < 2) {
+    throw new Error(
+      `엑셀에 데이터가 없습니다. (총 ${allRows.length}행 — 시트: ${wb.SheetNames[0]})`
+    );
+  }
 
   // 헤더 행 탐색 (최대 10행까지)
   let headerIdx = 0;
@@ -138,14 +157,15 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
   const revenueCol = findColIdx(headers, COL_ALIASES.revenue);
   const statusCol  = findColIdx(headers, COL_ALIASES.status);
 
+  const allHeadersStr = headers.filter(Boolean).join(" | ");
   if (nameCol === -1 && skuCol === -1) {
     throw new Error(
-      `상품명 또는 상품코드 컬럼을 찾을 수 없습니다.\n감지된 헤더: ${headers.slice(0, 8).join(", ")}`
+      `상품명 또는 상품코드 컬럼을 찾을 수 없습니다.\n감지된 헤더 (${headers.length}개): ${allHeadersStr}`
     );
   }
   if (revenueCol === -1) {
     throw new Error(
-      `판매금액/결제금액 컬럼을 찾을 수 없습니다.\n감지된 헤더: ${headers.slice(0, 8).join(", ")}`
+      `판매금액/결제금액 컬럼을 찾을 수 없습니다.\n감지된 헤더 (${headers.length}개): ${allHeadersStr}`
     );
   }
 
@@ -173,7 +193,9 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
   }
 
   if (rows.length === 0) {
-    throw new Error("유효한 주문 데이터가 없습니다. 취소/반품 건을 제외하면 데이터가 0건입니다.");
+    throw new Error(
+      `유효한 주문 데이터가 없습니다 (취소/반품 제외).\n감지된 헤더: ${allHeadersStr}\n총 행: ${allRows.length - headerIdx - 1}`
+    );
   }
 
   // ── 기간 산정 ──────────────────────────────────────────────────────────────
