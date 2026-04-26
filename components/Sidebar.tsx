@@ -20,6 +20,8 @@ import {
   PanelLeft,
   Menu,
   X,
+  LogIn,
+  LogOut,
 } from "lucide-react";
 
 type AppPage =
@@ -89,7 +91,11 @@ function getProgressLabel(value: number) {
   return "완료";
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  cafe24Connected?: boolean;
+}
+
+export default function Sidebar({ cafe24Connected = false }: SidebarProps = {}) {
   const pathname = usePathname();
   const activePage = HREF_TO_PAGE[pathname] ?? "dashboard";
 
@@ -282,6 +288,38 @@ export default function Sidebar() {
           })}
         </div>
       </nav>
+
+      {/* 카페24 연결 (모바일 전용 — 데스크톱은 AppHeader에 별도) */}
+      {isMobile && (
+        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1.5">
+          {cafe24Connected ? (
+            <a
+              href="/api/auth/login"
+              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 active:bg-violet-100 dark:active:bg-violet-500/20"
+            >
+              <LogIn size={16} />
+              카페24 재연결
+            </a>
+          ) : (
+            <a
+              href="/api/auth/login"
+              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm font-semibold bg-violet-600 text-white active:bg-violet-700"
+            >
+              <LogIn size={16} />
+              카페24 연결하기
+            </a>
+          )}
+          {cafe24Connected && (
+            <a
+              href="/api/auth/logout"
+              className="w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm text-zinc-600 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800"
+            >
+              <LogOut size={16} />
+              연결 해제
+            </a>
+          )}
+        </div>
+      )}
 
       {/* 접기/펼치기 (데스크톱만) */}
       {!isMobile && (
