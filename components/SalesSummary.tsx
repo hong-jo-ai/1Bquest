@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Clock, Calendar, Activity } from "lucide-react";
 import type { DailyData } from "@/lib/cafe24Data";
 
@@ -70,6 +71,24 @@ interface CardData {
 }
 
 export default function SalesSummary({ daily }: { daily: DailyData[] }) {
+  // 클라이언트 마운트 후에만 날짜 계산 — 서버/클라이언트 hydration mismatch 방지
+  // (서버 렌더 시점과 클라이언트 마운트 시점의 날짜가 자정 부근에서 다를 수 있음)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) {
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-zinc-100 dark:bg-zinc-800/40 rounded-2xl p-3.5 sm:p-5 animate-pulse h-[140px]"
+          />
+        ))}
+      </div>
+    );
+  }
+
   const today = kstTodayStr();
   const yesterday = daysAgoStr(1);
   const last7Start = daysAgoStr(6); // 오늘 포함 7일
