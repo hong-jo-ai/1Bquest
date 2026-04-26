@@ -20,6 +20,10 @@ import {
   Hash,
   User,
   Inbox as InboxIcon,
+  ArrowLeft,
+  MoreVertical,
+  Menu as MenuIcon,
+  X,
 } from "lucide-react";
 import type {
   CsThread,
@@ -145,6 +149,8 @@ export default function InboxClient() {
   const [reclassifying, setReclassifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -214,8 +220,18 @@ export default function InboxClient() {
     else {
       setDetail(null);
       setContext(null);
+      setMobileContextOpen(false);
     }
   }, [selectedId, loadDetail]);
+
+  // 모바일에서 상세가 열려있을 때 기기 뒤로가기 버튼으로 목록 복귀
+  useEffect(() => {
+    if (!selectedId) return;
+    history.pushState({ csInboxDetail: selectedId }, "");
+    const onPop = () => setSelectedId(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [selectedId]);
 
   const triggerSync = async () => {
     setSyncing(true);
@@ -342,7 +358,148 @@ export default function InboxClient() {
   }, [threads]);
 
   return (
-    <div className="flex h-[calc(100vh-56px)] bg-zinc-50 dark:bg-zinc-950">
+    <>
+      {/* ════════════════════════════════════════════════════════════
+          모바일 (<md): 단일 화면 흐름 (목록 ↔ 상세 전체화면 오버레이)
+          ════════════════════════════════════════════════════════════ */}
+      <div className="md:hidden flex flex-col h-[calc(100dvh-56px)] bg-zinc-50 dark:bg-zinc-950">
+        {/* Top App Bar */}
+        <div className="flex-shrink-0 flex items-center gap-1 px-3 h-12 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800">
+          <button
+            onClick={() => setMobileFilterOpen(true)}
+            className="p-2 -ml-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800"
+            aria-label="필터 열기"
+          >
+            <MenuIcon size={20} className="text-zinc-700 dark:text-zinc-300" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-base font-bold text-zinc-900 dark:text-zinc-100 truncate">
+              CS 인박스
+            </div>
+            <div className="text-[10px] text-zinc-500 -mt-0.5">
+              {threads.length}건 · {formatRelative(lastRefresh)}
+            </div>
+          </div>
+          <button
+            onClick={triggerSync}
+            disabled={syncing}
+            className="p-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800 disabled:opacity-50"
+            aria-label="동기화"
+          >
+            <RefreshCw
+              size={18}
+              className={`text-zinc-700 dark:text-zinc-300 ${syncing ? "animate-spin" : ""}`}
+            />
+          </button>
+        </div>
+
+        {/* 상태 칩 (가로 스크롤) */}
+        <div className="flex-shrink-0 flex gap-2 px-3 py-2.5 overflow-x-auto bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {(
+            [
+              { key: "unanswered", label: "미답변", count: counts.unanswered, accent: "red" },
+              { key: "waiting", label: "대기중", count: counts.waiting, accent: "amber" },
+              { key: "resolved", label: "해결됨", count: counts.resolved, accent: "emerald" },
+              { key: "all", label: "전체", count: counts.all, accent: "zinc" },
+            ] as { key: StatusFilter; label: string; count: number; accent: string }[]
+          ).map(({ key, label, count }) => {
+            const active = statusFilter === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 h-9 rounded-full text-sm font-medium transition ${
+                  active
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                }`}
+              >
+                {label}
+                {count > 0 && (
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      active
+                        ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                        : key === "unanswered"
+                          ? "bg-red-500 text-white"
+                          : "bg-zinc-300 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 스레드 카드 리스트 */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
+          {loading && threads.length === 0 ? (
+            <div className="p-8 text-center text-sm text-zinc-400">로딩 중…</div>
+          ) : threads.length === 0 ? (
+            <div className="p-12 text-center">
+              <InboxIcon size={36} className="text-zinc-300 dark:text-zinc-700 mx-auto mb-2" />
+              <div className="text-sm text-zinc-400">표시할 대화가 없습니다</div>
+            </div>
+          ) : (
+            threads.map((t) => (
+              <MobileThreadCard
+                key={t.id}
+                thread={t}
+                onClick={() => setSelectedId(t.id)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* 필터 드로어 */}
+        {mobileFilterOpen && (
+          <MobileFilterDrawer
+            brandFilter={brandFilter}
+            channelFilter={channelFilter}
+            onBrand={setBrandFilter}
+            onChannel={setChannelFilter}
+            onReclassify={reclassifyAll}
+            reclassifying={reclassifying}
+            onClose={() => setMobileFilterOpen(false)}
+          />
+        )}
+      </div>
+
+      {/* 모바일 상세 오버레이 */}
+      {selectedId && (
+        <div className="md:hidden fixed inset-0 z-40 bg-zinc-50 dark:bg-zinc-950 flex flex-col">
+          {detail ? (
+            <MobileThreadDetailView
+              detail={detail}
+              context={context}
+              contextOpen={mobileContextOpen}
+              onToggleContext={() => setMobileContextOpen((v) => !v)}
+              replyText={replyText}
+              setReplyText={setReplyText}
+              draftLoading={draftLoading}
+              draftNote={draftNote}
+              sending={sending}
+              onBack={() => setSelectedId(null)}
+              onDraft={generateDraft}
+              onSend={sendReply}
+              onResolved={markResolved}
+              onNotCs={() => markNotCs(false)}
+              onBlockSender={() => markNotCs(true)}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-sm text-zinc-400">
+              로딩 중…
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+          데스크톱 (≥md): 기존 3컬럼 레이아웃
+          ════════════════════════════════════════════════════════════ */}
+      <div className="hidden md:flex h-[calc(100vh-56px)] bg-zinc-50 dark:bg-zinc-950">
       {/* ── 좌측 사이드바: 필터 ───────────────────────────────────── */}
       <aside className="w-56 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
         <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
@@ -555,12 +712,14 @@ export default function InboxClient() {
         </aside>
       )}
 
+      </div>
+
       {toast && (
-        <div className="fixed bottom-6 right-6 px-4 py-2.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm rounded-lg shadow-xl z-50 animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 px-4 py-2.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm rounded-lg shadow-xl z-[60] animate-in fade-in slide-in-from-bottom-2">
           {toast}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -1051,4 +1210,471 @@ function formatTime(
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day}일`;
   return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 모바일 전용 컴포넌트
+// ════════════════════════════════════════════════════════════════════
+
+function MobileThreadCard({
+  thread,
+  onClick,
+}: {
+  thread: CsThread;
+  onClick: () => void;
+}) {
+  const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
+  const channelStyle = CHANNEL_STYLE[thread.channel];
+  const name = thread.customer_name || thread.customer_handle || "알 수 없음";
+  const isUnanswered = thread.status === "unanswered";
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-white dark:bg-zinc-900 rounded-2xl p-4 shadow-sm active:scale-[0.99] active:bg-zinc-50 dark:active:bg-zinc-800 transition relative overflow-hidden"
+    >
+      {/* 좌측 브랜드 컬러 스트라이프 */}
+      <span
+        className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${BRAND_COLOR[thread.brand]}`}
+      />
+      <div className="flex gap-3">
+        <Avatar name={name} brand={thread.brand} size={44} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <div className="font-semibold text-[15px] text-zinc-900 dark:text-zinc-100 truncate">
+              {name}
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {isUnanswered && (
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              )}
+              <span className="text-[11px] text-zinc-400">
+                {formatTime(thread.last_message_at)}
+              </span>
+            </div>
+          </div>
+          {thread.subject && (
+            <div className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300 line-clamp-1 mb-0.5">
+              {thread.subject}
+            </div>
+          )}
+          {thread.last_message_preview && (
+            <div className="text-[12px] text-zinc-500 dark:text-zinc-500 line-clamp-2 mb-2">
+              {thread.last_message_preview}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${channelStyle.bg} ${channelStyle.color}`}
+            >
+              <ChannelIcon size={9} />
+              {CHANNEL_LABEL[thread.channel]}
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              · {BRAND_LABEL[thread.brand]}
+            </span>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function MobileFilterDrawer({
+  brandFilter,
+  channelFilter,
+  onBrand,
+  onChannel,
+  onReclassify,
+  reclassifying,
+  onClose,
+}: {
+  brandFilter: BrandFilter;
+  channelFilter: CsChannel | "all";
+  onBrand: (b: BrandFilter) => void;
+  onChannel: (c: CsChannel | "all") => void;
+  onReclassify: () => void;
+  reclassifying: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* 백드롭 */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 animate-in fade-in"
+      />
+      {/* 드로어 */}
+      <div className="relative w-[280px] max-w-[80vw] bg-white dark:bg-zinc-900 flex flex-col animate-in slide-in-from-left-4">
+        <div className="flex items-center justify-between px-4 h-12 border-b border-zinc-100 dark:border-zinc-800">
+          <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+            필터 / 메뉴
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 -mr-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800"
+            aria-label="닫기"
+          >
+            <X size={18} className="text-zinc-700 dark:text-zinc-300" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+          {/* 브랜드 */}
+          <div>
+            <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-2">
+              브랜드
+            </div>
+            {(["all", "paulvice", "harriot"] as BrandFilter[]).map((b) => (
+              <button
+                key={b}
+                onClick={() => {
+                  onBrand(b);
+                  onClose();
+                }}
+                className={`w-full text-left px-3 h-11 rounded-lg text-sm flex items-center gap-2.5 ${
+                  brandFilter === b
+                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-semibold"
+                    : "text-zinc-600 dark:text-zinc-400 active:bg-zinc-50 dark:active:bg-zinc-800/60"
+                }`}
+              >
+                {b !== "all" && (
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full bg-gradient-to-br ${BRAND_COLOR[b as CsBrandId]}`}
+                  />
+                )}
+                {b === "all" ? "전체 브랜드" : BRAND_LABEL[b as CsBrandId]}
+              </button>
+            ))}
+          </div>
+
+          {/* 채널 */}
+          <div>
+            <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-2">
+              채널
+            </div>
+            {(
+              [
+                "all",
+                "gmail",
+                "ig_dm",
+                "threads",
+                "crisp",
+                "cafe24_board",
+                "sixshop_board",
+                "naver_qna",
+              ] as (CsChannel | "all")[]
+            ).map((c) => {
+              const Icon = c !== "all" ? CHANNEL_STYLE[c as CsChannel].icon : Hash;
+              return (
+                <button
+                  key={c}
+                  onClick={() => {
+                    onChannel(c);
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3 h-11 rounded-lg text-sm flex items-center gap-2.5 ${
+                    channelFilter === c
+                      ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-semibold"
+                      : "text-zinc-600 dark:text-zinc-400 active:bg-zinc-50 dark:active:bg-zinc-800/60"
+                  }`}
+                >
+                  <Icon
+                    size={15}
+                    className={
+                      c !== "all"
+                        ? CHANNEL_STYLE[c as CsChannel].color
+                        : "text-zinc-400"
+                    }
+                  />
+                  {c === "all" ? "전체 채널" : CHANNEL_LABEL[c as CsChannel]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 액션 */}
+          <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1">
+            <button
+              onClick={() => {
+                onReclassify();
+                onClose();
+              }}
+              disabled={reclassifying}
+              className="w-full text-left px-3 h-11 rounded-lg text-sm flex items-center gap-2.5 text-zinc-600 dark:text-zinc-400 active:bg-zinc-50 dark:active:bg-zinc-800/60 disabled:opacity-50"
+            >
+              <Filter size={15} className={reclassifying ? "animate-pulse" : ""} />
+              AI 재분류 (현재 목록)
+            </button>
+            <Link
+              href="/inbox/setup"
+              onClick={onClose}
+              className="w-full text-left px-3 h-11 rounded-lg text-sm flex items-center gap-2.5 text-zinc-600 dark:text-zinc-400 active:bg-zinc-50 dark:active:bg-zinc-800/60"
+            >
+              <Settings size={15} />
+              인박스 설정
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileThreadDetailView({
+  detail,
+  context,
+  contextOpen,
+  onToggleContext,
+  replyText,
+  setReplyText,
+  draftLoading,
+  draftNote,
+  sending,
+  onBack,
+  onDraft,
+  onSend,
+  onResolved,
+  onNotCs,
+  onBlockSender,
+}: {
+  detail: ThreadDetail;
+  context: ContextData | null;
+  contextOpen: boolean;
+  onToggleContext: () => void;
+  replyText: string;
+  setReplyText: (v: string) => void;
+  draftLoading: boolean;
+  draftNote: string | null;
+  sending: boolean;
+  onBack: () => void;
+  onDraft: () => void;
+  onSend: () => void;
+  onResolved: () => void;
+  onNotCs: () => void;
+  onBlockSender: () => void;
+}) {
+  const { thread, messages } = detail;
+  const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
+  const channelStyle = CHANNEL_STYLE[thread.channel];
+  const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
+  const [actionsOpen, setActionsOpen] = useState(false);
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center gap-1 px-2 h-12 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800">
+        <button
+          onClick={onBack}
+          className="p-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800"
+          aria-label="뒤로"
+        >
+          <ArrowLeft size={20} className="text-zinc-700 dark:text-zinc-300" />
+        </button>
+        <button
+          onClick={onToggleContext}
+          className="flex-1 min-w-0 flex items-center gap-2 px-1 py-1 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800 text-left"
+        >
+          <Avatar name={customerName} brand={thread.brand} size={32} />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">
+              {customerName}
+            </div>
+            <div className="text-[11px] text-zinc-500 truncate flex items-center gap-1">
+              <ChannelIcon size={10} className={channelStyle.color} />
+              <span>{CHANNEL_LABEL[thread.channel]}</span>
+              <span className="text-zinc-400">·</span>
+              <span>{BRAND_LABEL[thread.brand]}</span>
+              <span
+                className={`ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_STYLE[thread.status]}`}
+              >
+                {STATUS_LABEL[thread.status]}
+              </span>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={() => setActionsOpen((v) => !v)}
+          className="p-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800 relative"
+          aria-label="작업"
+        >
+          <MoreVertical size={20} className="text-zinc-700 dark:text-zinc-300" />
+        </button>
+        {actionsOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setActionsOpen(false)}
+            />
+            <div className="absolute top-12 right-2 z-50 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 py-1 w-48 animate-in fade-in slide-in-from-top-1">
+              <button
+                onClick={() => {
+                  setActionsOpen(false);
+                  onResolved();
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-emerald-700 dark:text-emerald-400 active:bg-emerald-50 dark:active:bg-emerald-900/20"
+              >
+                <Check size={14} />
+                해결됨으로 표시
+              </button>
+              <button
+                onClick={() => {
+                  setActionsOpen(false);
+                  onNotCs();
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
+              >
+                <Ban size={14} />
+                CS 아님 (보관)
+              </button>
+              <button
+                onClick={() => {
+                  setActionsOpen(false);
+                  onBlockSender();
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
+              >
+                <Ban size={14} />
+                송신자 차단
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 컨텍스트 패널 (접힘) */}
+      {contextOpen && (
+        <div className="flex-shrink-0 px-3 py-3 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800">
+          <MobileContextSummary thread={thread} context={context} />
+        </div>
+      )}
+
+      {/* 제목 */}
+      {thread.subject && (
+        <div className="flex-shrink-0 px-4 py-2.5 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-100 dark:border-zinc-800/60">
+          <div className="text-[13px] font-semibold text-zinc-700 dark:text-zinc-300 line-clamp-2">
+            {thread.subject}
+          </div>
+        </div>
+      )}
+
+      {/* 메시지 영역 */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 bg-zinc-50 dark:bg-zinc-950">
+        {messages.map((m) => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            customerName={customerName}
+            brand={thread.brand}
+          />
+        ))}
+      </div>
+
+      {/* 답장 입력 영역 (sticky bottom) */}
+      <div
+        className="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="px-3 py-2 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800/60 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={onDraft}
+            disabled={draftLoading}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white disabled:opacity-50"
+          >
+            <Sparkles size={12} className={draftLoading ? "animate-pulse" : ""} />
+            {draftLoading ? "생성 중…" : "AI 초안"}
+          </button>
+          {draftNote && (
+            <span className="text-[10px] text-zinc-500 truncate flex-1 min-w-0">
+              💡 {draftNote}
+            </span>
+          )}
+        </div>
+        <div className="p-3">
+          <div className="flex items-end gap-2">
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="답장 입력…"
+              rows={1}
+              className="flex-1 px-3.5 py-2.5 text-[15px] rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[44px] max-h-[160px]"
+              style={{ height: "auto" }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 160) + "px";
+              }}
+            />
+            <button
+              onClick={onSend}
+              disabled={sending || !replyText.trim()}
+              className="flex-shrink-0 w-11 h-11 rounded-full bg-violet-600 text-white disabled:opacity-40 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 flex items-center justify-center active:scale-95 transition"
+              aria-label="전송"
+            >
+              <Send size={16} className={sending ? "animate-pulse" : ""} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MobileContextSummary({
+  thread,
+  context,
+}: {
+  thread: CsThread;
+  context: ContextData | null;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500">총 대화</span>
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">
+          {context?.totalThreads ?? 1}건
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500">첫 문의</span>
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">
+          {context?.firstContact
+            ? new Date(context.firstContact).toLocaleDateString("ko-KR")
+            : "—"}
+        </span>
+      </div>
+      {thread.customer_handle && (
+        <div className="flex items-center justify-between text-xs gap-2">
+          <span className="text-zinc-500 flex-shrink-0">연락처</span>
+          <span className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 truncate">
+            {thread.customer_handle}
+          </span>
+        </div>
+      )}
+      {context?.related && context.related.length > 0 && (
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">
+            과거 대화 ({context.related.length})
+          </div>
+          <div className="space-y-1.5">
+            {context.related.slice(0, 3).map((r) => {
+              const RI = CHANNEL_STYLE[r.channel].icon;
+              return (
+                <div
+                  key={r.id}
+                  className="text-xs flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 truncate"
+                >
+                  <RI size={10} className={CHANNEL_STYLE[r.channel].color} />
+                  <span className="truncate">{r.subject || "(제목 없음)"}</span>
+                  <span className="text-zinc-400 ml-auto flex-shrink-0">
+                    {formatTime(r.last_message_at)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
