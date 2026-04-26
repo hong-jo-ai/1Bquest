@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, AlertTriangle, Clock, Package, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Pencil, AlertTriangle, Clock, Package, Trash2, Coins, Check } from "lucide-react";
 import type { InventoryProduct } from "@/lib/inventoryStorage";
 import { AGING_CONFIG } from "@/lib/inventoryStorage";
 
 interface Props {
   product: InventoryProduct;
+  cogs?: number;
   onEdit: (product: InventoryProduct) => void;
   onDelete: (sku: string) => void;
+  onCogsChange?: (sku: string, cost: number) => Promise<void>;
 }
 
 const STOCK_STATUS = (stock: number, pct: number) => {
@@ -18,11 +20,39 @@ const STOCK_STATUS = (stock: number, pct: number) => {
   return             { label: "정상",     barColor: "bg-emerald-400", textColor: "text-emerald-600" };
 };
 
-export default function ProductCard({ product, onEdit, onDelete }: Props) {
+export default function ProductCard({
+  product,
+  cogs,
+  onEdit,
+  onDelete,
+  onCogsChange,
+}: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [cogsDraft, setCogsDraft] = useState<string>(cogs ? String(cogs) : "");
+  const [cogsSaving, setCogsSaving] = useState(false);
+  const [cogsSaved, setCogsSaved] = useState(false);
+
+  useEffect(() => {
+    setCogsDraft(cogs ? String(cogs) : "");
+  }, [cogs]);
+
   const aging = AGING_CONFIG[product.agingStatus];
   const stockSt = STOCK_STATUS(product.currentStock, product.stockPct);
   const isNotSetup = product.entry.initialStock === 0;
+
+  const saveCogs = async () => {
+    if (!onCogsChange) return;
+    const v = parseInt(cogsDraft, 10) || 0;
+    if (v === (cogs ?? 0)) return;
+    setCogsSaving(true);
+    try {
+      await onCogsChange(product.sku, v);
+      setCogsSaved(true);
+      setTimeout(() => setCogsSaved(false), 1500);
+    } finally {
+      setCogsSaving(false);
+    }
+  };
 
   const handleDeleteClick = () => setConfirmDelete(true);
   const handleConfirm = () => { setConfirmDelete(false); onDelete(product.sku); };
@@ -160,6 +190,36 @@ export default function ProductCard({ product, onEdit, onDelete }: Props) {
             <Clock size={11} />
             <span>입고 {product.entry.stockInDate}</span>
             <span className="ml-auto font-medium">{product.daysInStock}일 경과</span>
+          </div>
+        )}
+
+        {/* 매입원가 (COGS) */}
+        {onCogsChange && (
+          <div className="mt-2.5 flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-800/50 rounded-lg px-2 py-1.5">
+            <Coins size={12} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 flex-shrink-0">
+              매입원가
+            </span>
+            <input
+              type="number"
+              value={cogsDraft}
+              onChange={(e) => setCogsDraft(e.target.value)}
+              onBlur={saveCogs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="0"
+              className="flex-1 min-w-0 px-2 h-6 rounded text-xs bg-white dark:bg-zinc-950 border border-amber-200 dark:border-amber-800 text-right tabular-nums focus:outline-none focus:border-amber-500"
+            />
+            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex-shrink-0">
+              원
+            </span>
+            {cogsSaving && (
+              <span className="text-[10px] text-zinc-400 flex-shrink-0">…</span>
+            )}
+            {cogsSaved && !cogsSaving && (
+              <Check size={12} className="text-emerald-500 flex-shrink-0" />
+            )}
           </div>
         )}
 

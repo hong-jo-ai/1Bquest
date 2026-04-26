@@ -9,6 +9,7 @@ const KEYS = {
   fixedCosts: "cost_settings:fixed_costs",
   shipping: "cost_settings:shipping",
   vatRate: "cost_settings:vat_rate",
+  productCogs: "cost_settings:product_cogs",
 } as const;
 
 export interface FixedCost {
@@ -69,6 +70,34 @@ async function writeKv(key: string, value: unknown): Promise<void> {
       { onConflict: "key" }
     );
   if (error) throw new Error(error.message);
+}
+
+// ── 제품별 매입원가 (COGS) ─────────────────────────────────────────────
+
+export type ProductCogsMap = Record<string, number>; // SKU → 원가
+
+export async function getProductCogs(): Promise<ProductCogsMap> {
+  return readKv<ProductCogsMap>(KEYS.productCogs, {});
+}
+
+export async function saveProductCogs(map: ProductCogsMap): Promise<void> {
+  await writeKv(KEYS.productCogs, map);
+}
+
+export async function updateProductCogs(
+  patch: ProductCogsMap
+): Promise<ProductCogsMap> {
+  const current = await getProductCogs();
+  const next: ProductCogsMap = { ...current };
+  for (const [sku, cost] of Object.entries(patch)) {
+    if (cost === 0 || cost === null) {
+      delete next[sku];
+    } else {
+      next[sku] = cost;
+    }
+  }
+  await saveProductCogs(next);
+  return next;
 }
 
 export async function getProfitSettings(): Promise<ProfitSettings> {

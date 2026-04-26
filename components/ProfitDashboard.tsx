@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calendar, Settings as SettingsIcon, X, Plus, Trash2, Check } from "lucide-react";
-import type { DailyData } from "@/lib/cafe24Data";
+import type { DailyData, DailyCost } from "@/lib/cafe24Data";
 import type { ProfitSettings, FixedCost } from "@/lib/profitSettings";
 import { DEFAULT_SETTINGS } from "@/lib/profitSettings";
 
@@ -11,10 +11,12 @@ export interface ProfitChannel {
   name: string;
   color: string;
   daily: DailyData[];
+  cogs?: DailyCost[];
 }
 
 interface Props {
   channels: ProfitChannel[];
+  unmatchedSkus?: string[];
 }
 
 type Preset = "today" | "7d" | "30d" | "60d" | "custom";
@@ -52,7 +54,7 @@ function daysBetween(start: string, end: string): number {
   return Math.max(1, Math.round((e - s) / 86400000) + 1);
 }
 
-export default function ProfitDashboard({ channels }: Props) {
+export default function ProfitDashboard({ channels, unmatchedSkus }: Props) {
   const [preset, setPreset] = useState<Preset>("30d");
   const [customStart, setCustomStart] = useState<string>(daysAgoStr(30));
   const [customEnd, setCustomEnd] = useState<string>(todayStr());
@@ -143,8 +145,16 @@ export default function ProfitDashboard({ channels }: Props) {
     // 택배비 = 주문수 × 단가
     const shipping = totalOrders * settings.shippingPerOrder;
 
-    // 매출총이익 = 순매출 - 수수료 - 택배비 (- COGS, 추후)
-    const grossProfit = revenueExVat - totalFees - shipping;
+    // 매입원가 (COGS) — 채널의 cogs 배열에서 기간 내 합
+    let totalCogs = 0;
+    for (const ch of visibleChannels) {
+      for (const c of ch.cogs ?? []) {
+        if (c.date >= startDate && c.date <= endDate) totalCogs += c.cost;
+      }
+    }
+
+    // 매출총이익 = 순매출 - 수수료 - 택배비 - 매입원가
+    const grossProfit = revenueExVat - totalFees - shipping - totalCogs;
 
     // 고정비 (월 기준 → 일별로 안분 → 기간 일수만큼)
     // 특정 채널 보기일 때는 그 채널의 매출 비중만큼만 안분
@@ -175,6 +185,7 @@ export default function ProfitDashboard({ channels }: Props) {
       let dayRev = 0;
       let dayOrders = 0;
       let dayFee = 0;
+      let dayCogs = 0;
       for (const ch of visibleChannels) {
         const found = ch.daily.find((d) => d.date === date);
         const rev = found?.revenue ?? 0;
@@ -183,11 +194,13 @@ export default function ProfitDashboard({ channels }: Props) {
         dayRev += rev;
         dayOrders += ord;
         dayFee += (rev * feeRate) / 100;
+        const cogsEntry = ch.cogs?.find((c) => c.date === date);
+        if (cogsEntry) dayCogs += cogsEntry.cost;
       }
       const dayVat = (dayRev * settings.vatRate) / (100 + settings.vatRate);
       const dayShipping = dayOrders * settings.shippingPerOrder;
-      const dayNet = dayRev - dayVat - dayFee - dayShipping;
-      return { date, dayRev, dayOrders, dayFee, dayVat, dayShipping, dayNet };
+      const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs;
+      return { date, dayRev, dayOrders, dayFee, dayVat, dayShipping, dayCogs, dayNet };
     });
 
     return {
@@ -198,6 +211,7 @@ export default function ProfitDashboard({ channels }: Props) {
       revenueExVat,
       totalFees,
       shipping,
+      totalCogs,
       grossProfit,
       monthlyFixedTotal,
       fixedAllocated,
@@ -354,8 +368,23 @@ export default function ProfitDashboard({ channels }: Props) {
             sub={`${calc.totalOrders.toLocaleString("ko-KR")}건 × ${fmtKrw(settings.shippingPerOrder)}`}
             amount={-calc.shipping}
           />
+          <PnlRow
+            label="매입원가 (COGS)"
+            sub={
+              calc.totalCogs === 0
+                ? "원가 미설정 — 재고 페이지에서 입력"
+                : "주문 상품의 매입 단가 합산"
+            }
+            amount={-calc.totalCogs}
+          />
           <PnlRow label="매출총이익" amount={calc.grossProfit} bold accent />
         </PnlSection>
+
+        {unmatchedSkus && unmatchedSkus.length > 0 && (
+          <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+            ⚠ 원가 미설정 SKU {unmatchedSkus.length}개 — 재고 페이지에서 매입 단가를 입력하면 영업이익이 더 정확해집니다.
+          </div>
+        )}
 
         {/* 고정비 */}
         <PnlSection
@@ -446,6 +475,9 @@ export default function ProfitDashboard({ channels }: Props) {
                 <th className="px-4 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-400 text-xs whitespace-nowrap">
                   택배비
                 </th>
+                <th className="px-4 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-400 text-xs whitespace-nowrap">
+                  매입원가
+                </th>
                 <th className="px-4 py-2.5 text-right font-bold text-zinc-700 dark:text-zinc-300 text-xs whitespace-nowrap">
                   순이익
                 </th>
@@ -457,7 +489,7 @@ export default function ProfitDashboard({ channels }: Props) {
             <tbody>
               {calc.dailyRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-400">
                     해당 기간의 매출 데이터가 없습니다
                   </td>
                 </tr>
@@ -481,6 +513,9 @@ export default function ProfitDashboard({ channels }: Props) {
                     </td>
                     <td className="px-4 py-2.5 text-right text-zinc-500 tabular-nums whitespace-nowrap">
                       -{fmtKrw(r.dayShipping)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-zinc-500 tabular-nums whitespace-nowrap">
+                      {r.dayCogs > 0 ? `-${fmtKrw(r.dayCogs)}` : "—"}
                     </td>
                     <td
                       className={`px-4 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap ${

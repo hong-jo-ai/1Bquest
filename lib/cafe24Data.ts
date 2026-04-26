@@ -1,4 +1,5 @@
 import { cafe24Get } from "./cafe24Client";
+import { getProductCogs } from "./profitSettings";
 
 // ── 타입 정의 ──────────────────────────────────────────────────────────────
 
@@ -42,6 +43,11 @@ export interface DailyData {
   orders: number;
 }
 
+export interface DailyCost {
+  date: string;
+  cost: number;
+}
+
 export interface InventoryItem {
   name: string;
   sku: string;
@@ -58,6 +64,8 @@ export interface DashboardData {
   hourlyOrders: HourlyData[];
   weeklyRevenue: WeeklyData[];
   dailyRevenue: DailyData[]; // 최근 60일치 일별 매출
+  dailyCogs: DailyCost[];     // 최근 60일치 일별 매입원가
+  unmatchedSkus: string[];   // COGS 미설정 SKU (UI에 경고 표시용)
   inventory: InventoryItem[];
   isReal: true;
 }
@@ -242,6 +250,34 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // ── 일별 매입원가 (COGS) — items 단위로 SKU × 단가 합산 ────────────────
+  const cogsMap = await getProductCogs();
+  const dailyCogsMap = new Map<string, number>();
+  const unmatchedSet = new Set<string>();
+  for (const o of allOrdersForDaily) {
+    const ds = kstDateStr(o.payment_date ?? o.order_date);
+    let dayCost = dailyCogsMap.get(ds) ?? 0;
+    for (const item of (o.items ?? []) as Array<{
+      product_code?: string;
+      actual_quantity?: number;
+      quantity?: number;
+    }>) {
+      const sku = item.product_code ?? "";
+      const qty = item.actual_quantity ?? item.quantity ?? 1;
+      const unitCost = cogsMap[sku];
+      if (unitCost !== undefined) {
+        dayCost += unitCost * qty;
+      } else if (sku) {
+        unmatchedSet.add(sku);
+      }
+    }
+    dailyCogsMap.set(ds, dayCost);
+  }
+  const dailyCogs: DailyCost[] = Array.from(dailyCogsMap.entries())
+    .map(([date, cost]) => ({ date, cost: Math.round(cost) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const unmatchedSkus = Array.from(unmatchedSet);
+
   // ── 재고 현황 ──────────────────────────────────────────────────────────
   const THRESHOLD = 10;
   const inventory: InventoryItem[] = (productsData.products ?? []).map((p: any) => {
@@ -272,6 +308,8 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     hourlyOrders,
     weeklyRevenue,
     dailyRevenue,
+    dailyCogs,
+    unmatchedSkus,
     inventory,
     isReal: true,
   };

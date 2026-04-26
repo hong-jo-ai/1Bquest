@@ -4,6 +4,7 @@ import type {
   HourlyData,
   WeeklyData,
   DailyData,
+  DailyCost,
   InventoryItem,
 } from "./cafe24Data";
 
@@ -30,6 +31,7 @@ export interface MultiChannelData {
   hourlyOrders: HourlyData[];
   weeklyRevenue: WeeklyData[];
   dailyRevenue?: DailyData[]; // 일별 매출 (있는 채널만)
+  dailyCogs?: DailyCost[];     // 일별 매입원가 (있는 채널만)
   inventory: InventoryItem[];
 }
 

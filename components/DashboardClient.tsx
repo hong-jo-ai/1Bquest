@@ -100,6 +100,7 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
     hourlyOrders: cafe24Data?.hourlyOrders ?? dummyHourly,
     weeklyRevenue: cafe24Data?.weeklyRevenue ?? dummyWeekly,
     dailyRevenue: cafe24Data?.dailyRevenue ?? [],
+    dailyCogs:    cafe24Data?.dailyCogs ?? [],
     inventory:    (cafe24Data?.inventory?.length ?? 0) > 0 ? cafe24Data!.inventory : dummyInventory,
   }), [cafe24Data]);
 
@@ -248,7 +249,7 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
           />
         </div>
 
-        {/* 손익 분석 (P&L) — 매출, 수수료, 부가세, 고정비 → 영업이익 */}
+        {/* 손익 분석 (P&L) — 매출, 수수료, 부가세, 매입원가, 고정비 → 영업이익 */}
         <ProfitDashboard
           channels={
             comparisonChannels.map<ProfitChannel>((c) => ({
@@ -256,8 +257,10 @@ export default function DashboardClient({ cafe24Data, isAuthenticated, apiError,
               name: c.name,
               color: c.color,
               daily: c.data.dailyRevenue ?? [],
+              cogs: c.data.dailyCogs ?? [],
             }))
           }
+          unmatchedSkus={cafe24Data?.unmatchedSkus ?? []}
         />
       </main>
 

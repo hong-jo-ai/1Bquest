@@ -69,6 +69,27 @@ export default function InventoryManager() {
   const [lastSyncTime, setLastSyncTime]       = useState<string | null>(null);
   const [showSyncDetail, setShowSyncDetail]   = useState(false);
 
+  // 매입원가 (COGS) 맵
+  const [cogsMap, setCogsMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    fetch("/api/profit/cogs")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) setCogsMap(j.cogs ?? {});
+      })
+      .catch(() => {/* 무시 */});
+  }, []);
+
+  const handleCogsChange = useCallback(async (sku: string, cost: number) => {
+    const res = await fetch("/api/profit/cogs", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [sku]: cost }),
+    });
+    const j = await res.json();
+    if (j.ok) setCogsMap(j.cogs ?? {});
+  }, []);
+
   // Cafe24 API 결과는 state에 캐싱 — 30초 폴링 때 재호출 안 함
   const cafe24Cache = useState<{ list: ProductInfo[]; sales: { sku: string; sold: number }[] }>({
     list: [], sales: [],
@@ -527,8 +548,10 @@ export default function InventoryManager() {
             <ProductCard
               key={product.sku}
               product={product}
+              cogs={cogsMap[product.sku]}
               onEdit={setEditTarget}
               onDelete={handleDelete}
+              onCogsChange={handleCogsChange}
             />
           ))}
         </div>
