@@ -43,11 +43,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const buffer = await file.arrayBuffer();
-    // 공동구매는 집계 형태라 별도 파서 사용
-    const result =
-      channel === "groupbuy"
-        ? parseGroupBuyExcel(buffer)
-        : await parseExcelBuffer(buffer);
+    // 일반 파서로 먼저 시도. 공동구매에서 집계 형식이 들어오면 fallback으로
+    // groupBuyParser 사용.
+    let result;
+    try {
+      result = await parseExcelBuffer(buffer);
+    } catch (e) {
+      if (channel === "groupbuy") {
+        console.warn("[upload] 공동구매 일반 파싱 실패, 집계 형식으로 fallback:",
+          e instanceof Error ? e.message : String(e));
+        result = parseGroupBuyExcel(buffer);
+      } else {
+        throw e;
+      }
+    }
     return Response.json({
       ok: true,
       channel,

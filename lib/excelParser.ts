@@ -5,17 +5,18 @@ import type { ProductRank, HourlyData, WeeklyData } from "./cafe24Data";
 // ── 컬럼 키워드 매핑 ─────────────────────────────────────────────────────────
 // 매칭 순서: (1) 정확 매칭 → (2) 부분 매칭(includes)
 const COL_ALIASES = {
-  date:        ["주문일시", "결제일시", "주문일", "결제일", "날짜"],
+  date:        ["주문일시", "결제일시", "주문일", "결제일", "발주일", "날짜"],
   orderId:     ["주문번호", "주문 번호", "order_no", "order_id", "order no", "order id", "ordersn"],
   name:        ["상품명", "품목명"],
   sku:         ["상품번호", "상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
   qty:         ["수량", "주문수량", "판매수량"], // "현재수량"(재고) 회피
-  revenue:     ["실결제금액", "결제금액", "매출금액", "판매금액", "판매가격", "판매가", "정산금액"],
+  revenue:     ["실결제금액", "결제금액", "매출금액", "판매금액", "판매가격", "판매가", "정산금액", "금액"],
   status:      ["주문상태", "처리상태", "배송상태"],
   claimStatus: ["클레임상태", "환불상태", "반품상태", "claim_status"],
-  // 합배송 그룹핑용
+  // 합배송 그룹핑용 — 운송장번호가 있으면 우선 사용 (가장 정확)
+  shipmentId:  ["운송장번호", "운송장", "송장번호", "송장"],
   buyer:       ["주문자", "구매자", "주문인"],
-  recipient:   ["수령자", "수령인", "받는사람"],
+  recipient:   ["수령자", "수령인", "받는사람", "수취인", "수취인명"],
   phone:       ["연락처", "전화번호", "휴대폰", "수령자전화", "받는사람전화", "휴대전화"],
   address:     ["주소", "배송지", "수령지", "배송정보", "받는주소"],
 };
@@ -34,6 +35,7 @@ interface ParsedRow {
   revenue: number;
   status: string;
   claimStatus: string;
+  shipmentId: string;
   buyer: string;
   recipient: string;
   phone: string;
@@ -54,23 +56,26 @@ function countOrders(rows: ParsedRow[]): number {
 }
 
 /**
- * 합배송 그룹 카운트 — 같은 날 + 같은 (주문자, 수령인, 연락처, 주소) 조합은 1건의 배송.
- * 그룹핑 키 정보가 비어있으면 주문번호 단위로 카운트 (orders와 동일).
+ * 합배송 그룹 카운트.
+ * 우선순위: 운송장번호(가장 정확) > (날짜 + 주문자 + 수령인 + 연락처 + 주소) > 주문번호.
  */
 function countShipments(rows: ParsedRow[], dateFmt: (d: Date) => string): number {
+  const hasShipmentId = rows.some((r) => r.shipmentId);
+  const hasIdentity =
+    !hasShipmentId && rows.some((r) => r.buyer || r.recipient || r.phone || r.address);
+
   const set = new Set<string>();
   for (const r of rows) {
-    if (!r.date) continue;
-    const dateStr = dateFmt(r.date);
-    const buyer = r.buyer.trim();
-    const recipient = r.recipient.trim();
-    const phone = r.phone.trim();
-    const address = r.address.trim();
-    // 그룹 가능한 정보가 부족하면 주문번호 fallback
-    const groupable = buyer || recipient || phone || address;
-    const key = groupable
-      ? `${dateStr}|${buyer}|${recipient}|${phone}|${address}`
-      : `o:${r.orderId || JSON.stringify(r)}`;
+    let key: string;
+    if (hasShipmentId) {
+      // 운송장번호가 있으면 그것만으로 그룹 (가장 신뢰)
+      key = r.shipmentId ? `t:${r.shipmentId}` : `o:${r.orderId || JSON.stringify(r)}`;
+    } else if (hasIdentity && r.date) {
+      const dateStr = dateFmt(r.date);
+      key = `${dateStr}|${r.buyer.trim()}|${r.recipient.trim()}|${r.phone.trim()}|${r.address.trim()}`;
+    } else {
+      key = `o:${r.orderId || JSON.stringify(r)}`;
+    }
     set.add(key);
   }
   return set.size;
@@ -107,8 +112,23 @@ function parseDate(val: unknown): Date | null {
     if (!d) return null;
     return new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
   }
-  const s = String(val).trim().replace(/\./g, "-").replace(/\s+/g, " ");
-  const d = new Date(s);
+  const s = String(val).trim().replace(/\s+/g, " ");
+  if (!s) return null;
+
+  // "4/9", "4-9", "04/09" 같은 짧은 형식 (연도 없음) → 현재 연도(KST) 부여
+  const shortMatch = s.match(/^(\d{1,2})[\/\-.](\d{1,2})$/);
+  if (shortMatch) {
+    const [, mStr, dStr] = shortMatch;
+    const m = parseInt(mStr, 10);
+    const d = parseInt(dStr, 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      const kstYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
+      return new Date(kstYear, m - 1, d);
+    }
+  }
+
+  const cleaned = s.replace(/\./g, "-");
+  const d = new Date(cleaned);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -285,6 +305,7 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
   const revenueCol     = findColIdx(headers, COL_ALIASES.revenue);
   const statusCol      = findColIdx(headers, COL_ALIASES.status);
   const claimStatusCol = findColIdx(headers, COL_ALIASES.claimStatus);
+  const shipmentIdCol  = findColIdx(headers, COL_ALIASES.shipmentId);
   const buyerCol       = findColIdx(headers, COL_ALIASES.buyer);
   const recipientCol   = findColIdx(headers, COL_ALIASES.recipient);
   const phoneCol       = findColIdx(headers, COL_ALIASES.phone);
@@ -318,18 +339,19 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
     if (revenue === 0 && !status && !claimStatus) continue; // 빈 행 제거
 
     rows.push({
-      date:        dateCol >= 0        ? parseDate(row[dateCol])                : null,
-      orderId:     orderIdCol >= 0     ? String(row[orderIdCol] ?? "").trim()   : "",
-      name:        nameCol >= 0        ? String(row[nameCol] ?? "")             : "",
-      sku:         skuCol >= 0         ? String(row[skuCol] ?? "")              : "",
-      qty:         qtyCol >= 0         ? Math.max(1, parseNum(row[qtyCol]))     : 1,
+      date:        dateCol >= 0        ? parseDate(row[dateCol])                  : null,
+      orderId:     orderIdCol >= 0     ? String(row[orderIdCol] ?? "").trim()     : "",
+      name:        nameCol >= 0        ? String(row[nameCol] ?? "")               : "",
+      sku:         skuCol >= 0         ? String(row[skuCol] ?? "")                : "",
+      qty:         qtyCol >= 0         ? Math.max(1, parseNum(row[qtyCol]))       : 1,
       revenue,
       status,
       claimStatus,
-      buyer:       buyerCol >= 0       ? String(row[buyerCol] ?? "").trim()     : "",
-      recipient:   recipientCol >= 0   ? String(row[recipientCol] ?? "").trim() : "",
-      phone:       phoneCol >= 0       ? String(row[phoneCol] ?? "").trim()     : "",
-      address:     addressCol >= 0     ? String(row[addressCol] ?? "").trim()   : "",
+      shipmentId:  shipmentIdCol >= 0  ? String(row[shipmentIdCol] ?? "").trim()  : "",
+      buyer:       buyerCol >= 0       ? String(row[buyerCol] ?? "").trim()       : "",
+      recipient:   recipientCol >= 0   ? String(row[recipientCol] ?? "").trim()   : "",
+      phone:       phoneCol >= 0       ? String(row[phoneCol] ?? "").trim()       : "",
+      address:     addressCol >= 0     ? String(row[addressCol] ?? "").trim()     : "",
     });
   }
 
