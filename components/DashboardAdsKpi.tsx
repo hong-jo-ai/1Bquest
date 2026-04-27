@@ -109,10 +109,10 @@ export default function DashboardAdsKpi({ brand }: Props) {
         </div>
 
         <Link
-          href="/ads/auto"
+          href="/ads"
           className="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 px-3 py-1.5 rounded-full bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
         >
-          광고 자동화
+          MADS
           <ExternalLink size={12} />
         </Link>
       </div>

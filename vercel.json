@@ -53,11 +53,11 @@
       "schedule": "7,17,27,37,47,57 * * * *"
     },
     {
-      "path": "/api/meta/auto-budget/recommend",
+      "path": "/api/cron/mads-evaluate",
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/daily-report",
+      "path": "/api/cron/mads-daily-report",
       "schedule": "30 0 * * *"
     }
   ]
