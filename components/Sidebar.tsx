@@ -248,6 +248,8 @@ export default function Sidebar({
                 <div className="flex items-center gap-1">
                   <Link
                     href={href}
+                    target={isActive ? undefined : "_blank"}
+                    rel={isActive ? undefined : "noopener noreferrer"}
                     className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       isActive
                         ? "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300"
