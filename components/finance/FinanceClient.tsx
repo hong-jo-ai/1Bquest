@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, RefreshCw, ChevronDown, FileSpreadsheet } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Upload, RefreshCw, ChevronDown, ChevronUp, FileSpreadsheet, Link2 } from "lucide-react";
 import { CATEGORY_COLOR, type TxCategory } from "@/lib/finance/categorize";
 
 interface BankTx {
@@ -16,6 +16,26 @@ interface BankTx {
   balance: number | null;
   category: TxCategory | null;
   category_source: string | null;
+}
+
+interface CardMatchItem {
+  approval_no: string | null;
+  use_date: string;
+  merchant: string | null;
+  amount: number;
+  cancel_amount: number;
+  category: string | null;
+  source: string;
+  card_company: string | null;
+}
+interface CardMatch {
+  cardSource: string;
+  isForeign: boolean;
+  windowSince: string;
+  windowUntil: string;
+  matchedTotal: number;
+  matchScore: number;
+  items: CardMatchItem[];
 }
 
 interface AggEntry { withdrawal: number; deposit: number; count: number }
@@ -35,9 +55,62 @@ function fmtDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+const CARD_SOURCE_LABEL: Record<string, string> = {
+  card_hyundai: "현대카드",
+  card_kb: "KB국민카드",
+  npay: "네이버페이",
+};
+
+function CardMatchDetails({ match, withdrawal }: { match: CardMatch; withdrawal: number }) {
+  const diff = match.matchedTotal - withdrawal;
+  const accuracyPct = (match.matchScore * 100).toFixed(0);
+  return (
+    <div className="rounded-xl border border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2 text-[11px] text-zinc-500">
+        <span>
+          {CARD_SOURCE_LABEL[match.cardSource] ?? "카드"}{match.isForeign ? " · 해외" : ""} ·
+          {" "}{match.windowSince} ~ {match.windowUntil}
+        </span>
+        <span>
+          매칭 합계 {fmtKrw(match.matchedTotal)} ·
+          출금 대비 {accuracyPct}% {Math.abs(diff) > 0 && `(차이 ${diff > 0 ? "+" : "-"}${fmtKrw(Math.abs(diff))})`}
+        </span>
+      </div>
+      <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60 max-h-72 overflow-auto">
+        {match.items.map((it, i) => {
+          const net = (Number(it.amount) || 0) - (Number(it.cancel_amount) || 0);
+          return (
+            <li key={`${it.approval_no}-${i}`} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+              <div className="min-w-0 flex-1">
+                <div className="text-zinc-700 dark:text-zinc-300 truncate">{it.merchant || "-"}</div>
+                <div className="text-[10px] text-zinc-400 mt-0.5">
+                  {fmtDate(it.use_date)}
+                  {it.category && (
+                    <>
+                      <span className="mx-1">·</span>
+                      <span style={{ color: CATEGORY_COLOR[it.category as TxCategory] ?? "#a1a1aa" }}>
+                        {it.category}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0 tabular-nums text-zinc-700 dark:text-zinc-300">
+                {fmtKrw(net)}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export default function FinanceClient() {
   const [txs, setTxs] = useState<BankTx[]>([]);
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
+  const [cardMatches, setCardMatches] = useState<Record<string, CardMatch>>({});
+  const [expandedTx, setExpandedTx] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | TxCategory>("all");
   const loadTxs = useCallback(async () => {
@@ -50,6 +123,7 @@ export default function FinanceClient() {
       if (j.ok) {
         setTxs(j.transactions);
         setAggregate(j.aggregate);
+        setCardMatches(j.cardMatches ?? {});
       }
     } finally {
       setLoading(false);
@@ -230,47 +304,64 @@ export default function FinanceClient() {
               {loading ? "로딩 중…" : "거래내역이 없습니다. 위에서 엑셀을 업로드하세요."}
             </div>
           ) : (
-            txs.map((t) => (
-              <div key={t.id} className="px-3 py-3">
-                <div className="flex items-start justify-between gap-3 mb-1.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                      {t.counterparty || "-"}
+            txs.map((t) => {
+              const cm = cardMatches[t.id];
+              const isExpanded = expandedTx === t.id;
+              return (
+                <div key={t.id} className="px-3 py-3">
+                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                        {t.counterparty || "-"}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
+                        <span>{fmtDate(t.tx_date)}</span>
+                        {t.description && (
+                          <>
+                            <span className="text-zinc-300">·</span>
+                            <span className="truncate">{t.description}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
-                      <span>{fmtDate(t.tx_date)}</span>
-                      {t.description && (
-                        <>
-                          <span className="text-zinc-300">·</span>
-                          <span className="truncate">{t.description}</span>
-                        </>
+                    <div className="text-right shrink-0">
+                      {t.withdrawal > 0 && (
+                        <div className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                          -{fmtKrw(t.withdrawal)}
+                        </div>
+                      )}
+                      {t.deposit > 0 && (
+                        <div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                          +{fmtKrw(t.deposit)}
+                        </div>
                       )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    {t.withdrawal > 0 && (
-                      <div className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
-                        -{fmtKrw(t.withdrawal)}
-                      </div>
-                    )}
-                    {t.deposit > 0 && (
-                      <div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                        +{fmtKrw(t.deposit)}
-                      </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CategoryPicker
+                      txId={t.id}
+                      current={t.category}
+                      onChange={(newCat) => {
+                        setTxs((prev) =>
+                          prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
+                        );
+                      }}
+                    />
+                    {cm && (
+                      <button
+                        onClick={() => setExpandedTx(isExpanded ? null : t.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-100"
+                      >
+                        <Link2 size={11} />
+                        카드 사용 {cm.items.length}건
+                        {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                      </button>
                     )}
                   </div>
+                  {isExpanded && cm && <CardMatchDetails match={cm} withdrawal={t.withdrawal} />}
                 </div>
-                <CategoryPicker
-                  txId={t.id}
-                  current={t.category}
-                  onChange={(newCat) => {
-                    setTxs((prev) =>
-                      prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
-                    );
-                  }}
-                />
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -295,39 +386,64 @@ export default function FinanceClient() {
                   </td>
                 </tr>
               ) : (
-                txs.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
-                  >
-                    <td className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
-                      {fmtDate(t.tx_date)}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 max-w-[200px] truncate">
-                      {t.counterparty || "-"}
-                    </td>
-                    <td className="px-3 py-2 text-[11px] text-zinc-500 whitespace-nowrap">
-                      {t.description || "-"}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
-                      {t.withdrawal > 0 ? `-${fmtKrw(t.withdrawal)}` : "-"}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
-                      {t.deposit > 0 ? `+${fmtKrw(t.deposit)}` : "-"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <CategoryPicker
-                        txId={t.id}
-                        current={t.category}
-                        onChange={(newCat) => {
-                          setTxs((prev) =>
-                            prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
-                          );
-                        }}
-                      />
-                    </td>
-                  </tr>
-                ))
+                txs.map((t) => {
+                  const cm = cardMatches[t.id];
+                  const isExpanded = expandedTx === t.id;
+                  return (
+                    <Fragment key={t.id}>
+                      <tr
+                        className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
+                      >
+                        <td className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
+                          {fmtDate(t.tx_date)}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 max-w-[200px] truncate">
+                          {t.counterparty || "-"}
+                        </td>
+                        <td className="px-3 py-2 text-[11px] text-zinc-500 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>{t.description || "-"}</span>
+                            {cm && (
+                              <button
+                                onClick={() => setExpandedTx(isExpanded ? null : t.id)}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-100"
+                                title={`${cm.items.length}건의 카드 사용내역과 매칭`}
+                              >
+                                <Link2 size={10} />
+                                {cm.items.length}건
+                                {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
+                          {t.withdrawal > 0 ? `-${fmtKrw(t.withdrawal)}` : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
+                          {t.deposit > 0 ? `+${fmtKrw(t.deposit)}` : "-"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <CategoryPicker
+                            txId={t.id}
+                            current={t.category}
+                            onChange={(newCat) => {
+                              setTxs((prev) =>
+                                prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
+                              );
+                            }}
+                          />
+                        </td>
+                      </tr>
+                      {isExpanded && cm && (
+                        <tr className="bg-zinc-50/60 dark:bg-zinc-800/30 border-b border-zinc-100 dark:border-zinc-800">
+                          <td colSpan={6} className="px-3 py-3">
+                            <CardMatchDetails match={cm} withdrawal={t.withdrawal} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

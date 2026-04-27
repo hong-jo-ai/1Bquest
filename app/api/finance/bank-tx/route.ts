@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import { parseKbBankExcel } from "@/lib/finance/kbParser";
 import { categorizeTx } from "@/lib/finance/categorize";
+import { enrichBankTxsWithCardMatches } from "@/lib/finance/cardMatcher";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -128,7 +129,7 @@ export async function GET(req: NextRequest) {
 
   let q = db
     .from("finance_bank_tx")
-    .select("id, bank, tx_date, description, counterparty, memo, withdrawal, deposit, balance, category, category_source")
+    .select("id, business_id, bank, tx_date, description, counterparty, memo, withdrawal, deposit, balance, category, category_source")
     .order("tx_date", { ascending: false })
     .limit(limit);
 
@@ -155,7 +156,30 @@ export async function GET(req: NextRequest) {
     agg[c].count += 1;
   }
 
-  return Response.json({ ok: true, transactions: data ?? [], aggregate: agg });
+  // 카드 결제 통합 출금건을 카드 사용내역과 매칭하여 enrichment 추가
+  const txs = data ?? [];
+  const businessId = (txs[0] as { business_id?: string } | undefined)?.business_id;
+  let cardMatches: Record<string, unknown> = {};
+  if (businessId) {
+    cardMatches = await enrichBankTxsWithCardMatches(
+      businessId,
+      txs.map((t) => ({
+        id: t.id as string,
+        tx_date: t.tx_date as string,
+        withdrawal: Number(t.withdrawal) || 0,
+        description: t.description as string | null,
+        counterparty: t.counterparty as string | null,
+        memo: t.memo as string | null,
+      })),
+    );
+  }
+
+  return Response.json({
+    ok: true,
+    transactions: txs,
+    aggregate: agg,
+    cardMatches,
+  });
 }
 
 export async function PATCH(req: NextRequest) {
