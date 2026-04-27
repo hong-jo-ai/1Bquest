@@ -51,6 +51,10 @@
     {
       "path": "/api/cs/notify/email",
       "schedule": "7,17,27,37,47,57 * * * *"
+    },
+    {
+      "path": "/api/meta/auto-budget/recommend",
+      "schedule": "0 0 * * *"
     }
   ]
 }

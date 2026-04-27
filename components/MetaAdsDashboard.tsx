@@ -5,19 +5,20 @@ import {
   TrendingUp, MousePointerClick, Eye, DollarSign,
   BarChart2, Target, AlertCircle, LogIn, LogOut,
   Play, Pause, RefreshCw, ExternalLink, Loader2,
-  Sparkles, Layers, Image, PenTool, ChevronDown, ChevronUp,
+  Sparkles, Layers, Image, PenTool, ChevronDown, ChevronUp, Wallet,
 } from "lucide-react";
 import type {
   MetaAdsData, MetaPeriodInsights, MetaCampaign, Period,
 } from "@/lib/metaData";
 import { OBJECTIVE_KO, PERIOD_LABEL } from "@/lib/metaData";
 import MetaFatigueAlerts from "@/components/MetaFatigueAlerts";
+import MetaAutoBudgetTab from "@/components/MetaAutoBudgetTab";
 import type { MetaAdSet } from "@/app/api/meta/adsets/route";
 import type { MetaAd } from "@/app/api/meta/ads/route";
 
 const ALL_PERIODS: Period[] = ["today", "yesterday", "last3d", "last7d", "week", "month"];
 
-type DashTab = "campaigns" | "ai" | "adsets" | "ads" | "creator";
+type DashTab = "campaigns" | "ai" | "adsets" | "ads" | "creator" | "auto-budget";
 
 interface Props {
   metaData:    MetaAdsData | null;
@@ -934,11 +935,12 @@ export default function MetaAdsDashboard({ metaData, isConnected, error }: Props
     : null;
 
   const DASH_TABS: { id: DashTab; label: string; icon: React.ElementType }[] = [
-    { id: "campaigns", label: "캠페인", icon: Target },
-    { id: "adsets",    label: "광고 세트", icon: Layers },
-    { id: "ads",       label: "광고 소재", icon: Image },
-    { id: "ai",        label: "AI 분석", icon: Sparkles },
-    { id: "creator",   label: "제작 도우미", icon: PenTool },
+    { id: "campaigns",   label: "캠페인", icon: Target },
+    { id: "adsets",      label: "광고 세트", icon: Layers },
+    { id: "ads",         label: "광고 소재", icon: Image },
+    { id: "auto-budget", label: "자동 예산", icon: Wallet },
+    { id: "ai",          label: "AI 분석", icon: Sparkles },
+    { id: "creator",     label: "제작 도우미", icon: PenTool },
   ];
 
   return (
@@ -1265,6 +1267,20 @@ export default function MetaAdsDashboard({ metaData, isConnected, error }: Props
                   <p className="text-xs text-zinc-400">{PERIOD_LABEL[period]} 기준 · ROAS 내림차순</p>
                 </div>
                 <AdsTab accountId={metaData.adAccountId} period={period} />
+              </>
+            )}
+
+            {/* 자동 예산 탭 (dry-run 추천) */}
+            {dashTab === "auto-budget" && (
+              <>
+                <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
+                    <Wallet size={16} className="text-violet-500" />
+                    광고세트 자동 예산 (추천)
+                  </h2>
+                  <p className="text-xs text-zinc-400">7일 ROAS 기준</p>
+                </div>
+                <MetaAutoBudgetTab />
               </>
             )}
 
