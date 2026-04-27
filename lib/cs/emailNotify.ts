@@ -86,7 +86,7 @@ function buildDigestHtml(threads: CsThread[], inboxUrl: string): string {
 </body></html>`;
 }
 
-async function sendGmailNotification(
+export async function sendGmailNotification(
   to: string,
   subject: string,
   html: string
