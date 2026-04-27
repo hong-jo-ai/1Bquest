@@ -1,3 +1,5 @@
+import { getAccessTokenFromStore } from "./cafe24TokenStore";
+
 const MALL_ID = process.env.CAFE24_MALL_ID!;
 const CLIENT_ID = process.env.CAFE24_CLIENT_ID!;
 const CLIENT_SECRET = process.env.CAFE24_CLIENT_SECRET!;
@@ -6,6 +8,43 @@ const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI!;
 export const BASE_URL = `https://${MALL_ID}.cafe24api.com`;
 const API_VERSION = "2026-03-01";
 const SCOPES = "mall.read_order mall.read_product mall.write_product mall.read_analytics mall.read_community mall.write_community";
+
+/**
+ * Cafe24 API fetch + 401 자동 재시도.
+ *
+ * access token이 만료 직전이거나 다른 인스턴스에서 refresh되어 무효화된 경우
+ * 호출자가 들고 있던 토큰으로 401을 받음 → SSOT에서 새 토큰 받아 1회 재시도.
+ *
+ * 재시도도 실패하면 원본 응답을 그대로 반환 → 호출자가 정상적으로 throw.
+ * 재시도가 시도조차 못 된 경우(SSOT에 refresh token도 없음)도 원본 반환.
+ */
+async function cafe24Fetch(
+  path: string,
+  accessToken: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Cafe24-Api-Version": API_VERSION,
+  };
+
+  const doFetch = (token: string) => fetch(`${BASE_URL}${path}`, {
+    cache: "no-store",
+    ...init,
+    headers: { ...baseHeaders, ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
+  });
+
+  const res = await doFetch(accessToken);
+  if (res.status !== 401) return res;
+
+  // 401 → SSOT에서 새 토큰 받아 재시도
+  const newToken = await getAccessTokenFromStore();
+  if (!newToken || newToken === accessToken) return res;
+
+  // body 있는 요청은 stream 한 번 소비 후 재시도 시 다시 사용 가능해야 함
+  // → init.body가 string이면 안전. 우리는 JSON.stringify된 string만 사용.
+  return doFetch(newToken);
+}
 
 // ── OAuth ──────────────────────────────────────────────────────────────────
 
@@ -70,14 +109,7 @@ export interface TokenResponse {
 // ── API 호출 ───────────────────────────────────────────────────────────────
 
 export async function cafe24Get(path: string, accessToken: string) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "X-Cafe24-Api-Version": API_VERSION,
-    },
-    cache: "no-store",
-  });
+  const res = await cafe24Fetch(path, accessToken);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Cafe24 API [${res.status}]: ${body}`);
@@ -90,13 +122,8 @@ export async function cafe24Post(
   accessToken: string,
   body: unknown
 ) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await cafe24Fetch(path, accessToken, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "X-Cafe24-Api-Version": API_VERSION,
-    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -168,13 +195,8 @@ export async function fetchBoardArticles(
 }
 
 export async function cafe24Put(path: string, accessToken: string, body: unknown) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await cafe24Fetch(path, accessToken, {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "X-Cafe24-Api-Version": API_VERSION,
-    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
