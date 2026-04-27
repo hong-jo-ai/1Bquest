@@ -68,6 +68,10 @@ export function detectCardPattern(text: string): {
   return { source, isForeign, isCardPayment };
 }
 
+// 매칭 임계값
+const MIN_MATCH_SCORE = 0.7; // 출금 대비 ±30% 이내만 신뢰
+const MAX_ITEMS = 50;        // 그 이상 묶이면 통합 출금이 아닐 가능성 큼
+
 /**
  * 한 통장 거래에 매칭되는 카드 사용내역 묶음 조회.
  *
@@ -89,41 +93,45 @@ export async function matchCardUsages(
   const detect = detectCardPattern(description);
   if (!detect.isCardPayment) return null;
 
+  // 카드사가 식별 안 되면 매칭 결과를 신뢰할 수 없음 (예: "비자해외승인대금출금"은
+  // 어떤 카드사인지 모름 → 모든 카드 사용내역이 다 잡혀 부정확).
+  // 카드사 패턴이 명확한 경우만 매칭.
+  if (detect.source === "unknown") return null;
+
   // 윈도우: -45 ~ -1일
   const until = new Date(txDate);
   until.setDate(until.getDate() - 1);
   const since = new Date(txDate);
   since.setDate(since.getDate() - 45);
 
-  let q = supabase
+  const { data, error } = await supabase
     .from("finance_card_usage")
     .select("approval_no, use_date, merchant, amount, cancel_amount, category, source, card_company")
     .eq("business_id", businessId)
+    .eq("source", detect.source)
     .gte("use_date", since.toISOString())
     .lte("use_date", until.toISOString())
     .order("use_date", { ascending: true });
 
-  if (detect.source !== "unknown") {
-    q = q.eq("source", detect.source);
-  }
-
-  const { data, error } = await q;
   if (error || !data) return null;
 
   // 정상 항목만 (취소건 제외)
   const items = (data as CardUsageItem[]).filter(
     (r) => (Number(r.amount) || 0) - (Number(r.cancel_amount) || 0) > 0,
   );
-  if (items.length === 0) return null;
+  if (items.length === 0 || items.length > MAX_ITEMS) return null;
 
   const matchedTotal = items.reduce(
     (s, r) => s + ((Number(r.amount) || 0) - (Number(r.cancel_amount) || 0)),
     0,
   );
 
-  // 매칭 정확도: 출금액 대비 합계
+  // 매칭 정확도: 출금액 대비 합계 (1에 가까울수록 좋음)
   const ratio = matchedTotal / withdrawal;
-  const matchScore = ratio >= 1 ? 1 / ratio : ratio; // 1에 가까울수록 좋음
+  const matchScore = ratio >= 1 ? 1 / ratio : ratio;
+
+  // 신뢰도 미달이면 표시 안 함 (잘못된 매칭이 보이는 것보다 안 보이는 게 낫다)
+  if (matchScore < MIN_MATCH_SCORE) return null;
 
   return {
     cardSource: detect.source,
