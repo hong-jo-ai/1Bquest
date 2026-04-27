@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         "daily_budget", "optimization_goal",
         `insights.date_preset(${datePreset}){${INSIGHT_FIELDS}}`,
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+      effective_status: JSON.stringify(["ACTIVE"]),
       limit: "50",
     });
 

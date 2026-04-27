@@ -29,25 +29,6 @@ export interface MetaCampaign {
   createdTime: string;   // ISO 날짜 — 운영 기간 계산용
 }
 
-export type FatigueSeverity = "critical" | "warning" | "info";
-export type FatigueType =
-  | "frequency"
-  | "roas"
-  | "ctr"
-  | "cpm"
-  | "age";
-
-export interface FatigueAlert {
-  campaignId:     string;
-  campaignName:   string;
-  severity:       FatigueSeverity;
-  type:           FatigueType;
-  title:          string;
-  detail:         string;
-  value:          string;
-  recommendation: string;
-}
-
 export type Period = "today" | "yesterday" | "last3d" | "last7d" | "week" | "month";
 
 export const PERIOD_META_PRESET: Record<Period, string> = {
@@ -79,7 +60,6 @@ export interface MetaAdsData {
   week:          MetaPeriodInsights;
   month:         MetaPeriodInsights;
   campaigns:     MetaCampaign[];   // this_month 기준 초기 데이터
-  fatigueAlerts: FatigueAlert[];
   isReal:        true;
 }
 
@@ -138,7 +118,8 @@ async function fetchInsights(
 export async function fetchCampaigns(
   token: string,
   accountId: string,
-  datePreset: string = "this_month"
+  datePreset: string = "this_month",
+  includePaused: boolean = false
 ): Promise<MetaCampaign[]> {
   try {
     const data = await metaGet(`/${accountId}/campaigns`, token, {
@@ -147,7 +128,7 @@ export async function fetchCampaigns(
         "daily_budget", "created_time",
         `insights.date_preset(${datePreset}){${INSIGHT_FIELDS}}`,
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+      effective_status: JSON.stringify(includePaused ? ["ACTIVE", "PAUSED"] : ["ACTIVE"]),
       limit: "25",
     });
 
@@ -174,160 +155,6 @@ export async function fetchCampaigns(
     console.error("[meta] campaigns error:", e);
     return [];
   }
-}
-
-// ── 소재 피로도 감지 ──────────────────────────────────────────────────────
-
-function detectCreativeFatigue(campaigns: MetaCampaign[]): FatigueAlert[] {
-  const alerts: FatigueAlert[] = [];
-  const now = Date.now();
-
-  for (const c of campaigns) {
-    if (c.status !== "ACTIVE") continue;
-    // 이번 달 지출이 없으면 스킵 (데이터 없는 캠페인)
-    if (c.spend === 0 && c.impressions === 0) continue;
-
-    // ── 1. Frequency (노출 빈도) ──────────────────────────────────────
-    if (c.frequency >= 3) {
-      alerts.push({
-        campaignId:     c.id,
-        campaignName:   c.name,
-        severity:       "critical",
-        type:           "frequency",
-        title:          "노출 빈도 초과",
-        detail:         `이번 달 동일 오디언스에게 평균 ${c.frequency.toFixed(1)}회 노출됐습니다.`,
-        value:          `${c.frequency.toFixed(1)}회`,
-        recommendation: "지금 바로 소재를 교체하거나 Lookalike 등 신규 오디언스로 확장하세요.",
-      });
-    } else if (c.frequency >= 2) {
-      alerts.push({
-        campaignId:     c.id,
-        campaignName:   c.name,
-        severity:       "warning",
-        type:           "frequency",
-        title:          "노출 빈도 주의",
-        detail:         `오디언스에게 평균 ${c.frequency.toFixed(1)}회 노출 — 피로도가 축적되고 있습니다.`,
-        value:          `${c.frequency.toFixed(1)}회`,
-        recommendation: "소재 변형(variation)을 준비하고 2~3일 내 교체를 검토하세요.",
-      });
-    }
-
-    // ── 2. ROAS (광고비 대비 매출) ────────────────────────────────────
-    if (c.roas > 0) {
-      if (c.roas < 1.0) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "critical",
-          type:           "roas",
-          title:          "ROAS 위험 수준",
-          detail:         `ROAS ${c.roas.toFixed(2)}x — 광고비보다 매출이 적어 적자 구조입니다.`,
-          value:          `${c.roas.toFixed(2)}x`,
-          recommendation: "소재를 즉시 중단하거나 타겟·입찰 전략을 전면 재검토하세요.",
-        });
-      } else if (c.roas < 1.5) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "warning",
-          type:           "roas",
-          title:          "ROAS 저조",
-          detail:         `ROAS ${c.roas.toFixed(2)}x — 원가·운영비 반영 시 실질적으로 손익분기점 이하일 수 있습니다.`,
-          value:          `${c.roas.toFixed(2)}x`,
-          recommendation: "신규 소재를 병행 테스트하고 성과 개선 추이를 모니터링하세요.",
-        });
-      }
-    }
-
-    // ── 3. CTR (클릭률) — 전환/트래픽 목적 캠페인 위주 ──────────────
-    const isPerformanceCampaign = [
-      "OUTCOME_SALES", "OUTCOME_TRAFFIC", "CONVERSIONS", "LINK_CLICKS",
-    ].includes(c.objective);
-    if (isPerformanceCampaign && c.impressions >= 2000) {
-      if (c.ctr < 0.5) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "critical",
-          type:           "ctr",
-          title:          "CTR 심각",
-          detail:         `CTR ${c.ctr.toFixed(2)}% — 오디언스가 소재에 반응하지 않고 있습니다.`,
-          value:          `${c.ctr.toFixed(2)}%`,
-          recommendation: "썸네일·카피·훅(hook)을 전면 교체한 신규 소재를 즉시 테스트하세요.",
-        });
-      } else if (c.ctr < 1.0) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "warning",
-          type:           "ctr",
-          title:          "CTR 평균 이하",
-          detail:         `CTR ${c.ctr.toFixed(2)}% — 한국 패션·액세서리 평균(1~3%) 대비 낮습니다.`,
-          value:          `${c.ctr.toFixed(2)}%`,
-          recommendation: "썸네일 또는 첫 3초 영상을 교체한 변형 소재를 A/B 테스트하세요.",
-        });
-      }
-    }
-
-    // ── 4. CPM (1,000회 노출 비용) — 비정상적 상승 감지 ─────────────
-    // 한국 패션 평균 CPM ~20,000~40,000 KRW
-    if (c.impressions >= 2000 && c.cpm > 70000) {
-      alerts.push({
-        campaignId:     c.id,
-        campaignName:   c.name,
-        severity:       "warning",
-        type:           "cpm",
-        title:          "CPM 과도 상승",
-        detail:         `CPM ₩${Math.round(c.cpm).toLocaleString("ko-KR")} — 오디언스 경쟁이 심화되거나 소재 관련성 점수가 하락했습니다.`,
-        value:          `₩${Math.round(c.cpm).toLocaleString("ko-KR")}`,
-        recommendation: "오디언스를 확장하거나 소재를 교체해 Meta의 관련성 점수를 높이세요.",
-      });
-    }
-
-    // ── 5. 캠페인 운영 기간 (패션/액세서리 기준) ─────────────────────
-    if (c.createdTime) {
-      const ageDays = (now - new Date(c.createdTime).getTime()) / 86_400_000;
-
-      if (ageDays >= 42) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "critical",
-          type:           "age",
-          title:          "소재 교체 필수",
-          detail:         `${Math.floor(ageDays)}일째 동일 소재 운영 중 (6주 초과). 소재 피로도가 극에 달했을 가능성이 높습니다.`,
-          value:          `${Math.floor(ageDays)}일`,
-          recommendation: "즉시 새 소재로 교체하세요. 기존 소재는 일시 중단 후 4~6주 후 재활용을 검토하세요.",
-        });
-      } else if (ageDays >= 21) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "warning",
-          type:           "age",
-          title:          "소재 교체 권고",
-          detail:         `${Math.floor(ageDays)}일째 운영 중. 패션·액세서리 카테고리 권장 교체 주기(2~3주)를 초과했습니다.`,
-          value:          `${Math.floor(ageDays)}일`,
-          recommendation: "소재 변형(variation) 또는 신규 소재로 교체하세요. 동일 소구점에서 각도만 바꿔도 효과적입니다.",
-        });
-      } else if (ageDays >= 14) {
-        alerts.push({
-          campaignId:     c.id,
-          campaignName:   c.name,
-          severity:       "info",
-          type:           "age",
-          title:          "소재 교체 준비",
-          detail:         `${Math.floor(ageDays)}일째 운영 중. 권장 교체 주기(2~3주)에 근접했습니다.`,
-          value:          `${Math.floor(ageDays)}일`,
-          recommendation: "신규 소재를 준비하고 CTR·ROAS 추이를 주의 깊게 모니터링하세요.",
-        });
-      }
-    }
-  }
-
-  // 심각도 순 정렬 (critical → warning → info)
-  const order: Record<FatigueSeverity, number> = { critical: 0, warning: 1, info: 2 };
-  return alerts.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
 // ── 메인 데이터 조회 ──────────────────────────────────────────────────────
@@ -359,8 +186,6 @@ export async function getMetaAdsData(token: string): Promise<MetaAdsData> {
     fetchCampaigns(token, accountId, "this_month"),
   ]);
 
-  const fatigueAlerts = detectCreativeFatigue(campaigns);
-
   return {
     adAccountId:   accountId,
     adAccountName: account.name ?? "광고 계정",
@@ -372,7 +197,6 @@ export async function getMetaAdsData(token: string): Promise<MetaAdsData> {
     week,
     month,
     campaigns,
-    fatigueAlerts,
     isReal: true,
   };
 }

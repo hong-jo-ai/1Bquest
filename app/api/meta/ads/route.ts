@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         "creative{id,title,body,thumbnail_url,image_url}",
         `insights.date_preset(${datePreset}){${INSIGHT_FIELDS}}`,
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+      effective_status: JSON.stringify(["ACTIVE"]),
       limit: "50",
     });
 
