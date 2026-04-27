@@ -308,7 +308,10 @@ export default function FinanceClient() {
               const cm = cardMatches[t.id];
               const isExpanded = expandedTx === t.id;
               return (
-                <div key={t.id} className="px-3 py-3">
+                <div
+                  key={t.id}
+                  className={`px-3 py-3 ${cm ? "bg-violet-50/40 dark:bg-violet-500/5" : ""}`}
+                >
                   <div className="flex items-start justify-between gap-3 mb-1.5">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
@@ -337,28 +340,32 @@ export default function FinanceClient() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CategoryPicker
-                      txId={t.id}
-                      current={t.category}
-                      onChange={(newCat) => {
-                        setTxs((prev) =>
-                          prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
-                        );
-                      }}
-                    />
-                    {cm && (
-                      <button
-                        onClick={() => setExpandedTx(isExpanded ? null : t.id)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-100"
-                      >
-                        <Link2 size={11} />
-                        카드 사용 {cm.items.length}건
+                  {cm && (
+                    <button
+                      onClick={() => setExpandedTx(isExpanded ? null : t.id)}
+                      className="w-full text-left mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-violet-600 text-white shadow-sm"
+                    >
+                      <Link2 size={11} />
+                      <span className="truncate">
+                        {cm.items.length === 1
+                          ? `매칭: ${cm.items[0].merchant ?? "-"}`
+                          : `카드 사용내역 ${cm.items.length}건 매칭`}
+                      </span>
+                      <span className="ml-auto shrink-0">
                         {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                      </button>
-                    )}
-                  </div>
-                  {isExpanded && cm && <CardMatchDetails match={cm} withdrawal={t.withdrawal} />}
+                      </span>
+                    </button>
+                  )}
+                  <CategoryPicker
+                    txId={t.id}
+                    current={t.category}
+                    onChange={(newCat) => {
+                      setTxs((prev) =>
+                        prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
+                      );
+                    }}
+                  />
+                  {isExpanded && cm && <div className="mt-2"><CardMatchDetails match={cm} withdrawal={t.withdrawal} /></div>}
                 </div>
               );
             })
@@ -392,7 +399,10 @@ export default function FinanceClient() {
                   return (
                     <Fragment key={t.id}>
                       <tr
-                        className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
+                        onClick={() => cm && setExpandedTx(isExpanded ? null : t.id)}
+                        className={`border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 ${
+                          cm ? "cursor-pointer bg-violet-50/30 dark:bg-violet-500/5" : ""
+                        }`}
                       >
                         <td className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
                           {fmtDate(t.tx_date)}
@@ -404,15 +414,16 @@ export default function FinanceClient() {
                           <div className="flex items-center gap-1.5">
                             <span>{t.description || "-"}</span>
                             {cm && (
-                              <button
-                                onClick={() => setExpandedTx(isExpanded ? null : t.id)}
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-100"
-                                title={`${cm.items.length}건의 카드 사용내역과 매칭`}
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-600 text-white shadow-sm"
+                                title={`${cm.items[0]?.merchant ?? ""} (카드 매칭 ${cm.items.length}건)`}
                               >
                                 <Link2 size={10} />
-                                {cm.items.length}건
+                                {cm.items.length === 1
+                                  ? (cm.items[0].merchant?.slice(0, 20) ?? "매칭")
+                                  : `매칭 ${cm.items.length}건`}
                                 {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                              </button>
+                              </span>
                             )}
                           </div>
                         </td>
@@ -422,7 +433,7 @@ export default function FinanceClient() {
                         <td className="px-3 py-2 text-right text-xs text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
                           {t.deposit > 0 ? `+${fmtKrw(t.deposit)}` : "-"}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                           <CategoryPicker
                             txId={t.id}
                             current={t.category}
@@ -435,7 +446,7 @@ export default function FinanceClient() {
                         </td>
                       </tr>
                       {isExpanded && cm && (
-                        <tr className="bg-zinc-50/60 dark:bg-zinc-800/30 border-b border-zinc-100 dark:border-zinc-800">
+                        <tr className="bg-violet-50/40 dark:bg-violet-500/5 border-b border-zinc-100 dark:border-zinc-800">
                           <td colSpan={6} className="px-3 py-3">
                             <CardMatchDetails match={cm} withdrawal={t.withdrawal} />
                           </td>

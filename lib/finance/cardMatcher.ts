@@ -82,6 +82,55 @@ function withdrawalDateRange(txDate: string): { since: Date; until: Date } {
 }
 
 /**
+ * KB카드 해외건은 amount=0(USD만 raw.usdAmount에 보존)이라 일반 매칭에서 빠짐.
+ * 통장 출금(KRW) ÷ 카드 사용 USD = 환율을 역산해 합리적 범위(1300~1550)면 매칭.
+ *
+ * 예: 통장 ₩16,645 출금 → ANTHROPIC USD $11.15 → 환율 1493 → 합리적 → 매칭.
+ */
+async function findForeignUsdMatch(
+  supabase: ReturnType<typeof getDb>,
+  businessId: string,
+  withdrawal: number,
+  since: Date,
+  until: Date,
+): Promise<CardUsageItem[] | null> {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("finance_card_usage")
+    .select("approval_no, use_date, merchant, amount, cancel_amount, category, source, card_company, raw")
+    .eq("business_id", businessId)
+    .gte("use_date", since.toISOString())
+    .lte("use_date", until.toISOString())
+    .eq("amount", 0)
+    .eq("cancel_amount", 0);
+
+  if (error || !data) return null;
+
+  type Row = CardUsageItem & { raw?: { isForeign?: boolean; usdAmount?: number } };
+  const candidates = (data as Row[]).filter((r) => {
+    const usd = Number(r.raw?.usdAmount ?? 0);
+    if (!usd || usd <= 0) return false;
+    const rate = withdrawal / usd;
+    // 합리적 환율 범위 (해외 카드 결제 마진 + 수수료 포함 여유)
+    return rate >= 1250 && rate <= 1600;
+  });
+
+  if (candidates.length !== 1) return null;
+  // 매칭된 건의 amount를 KRW(=출금액)로 채워 표시
+  return candidates.map((r) => ({
+    approval_no: r.approval_no,
+    use_date: r.use_date,
+    merchant: r.merchant,
+    amount: withdrawal,
+    cancel_amount: 0,
+    category: r.category,
+    source: r.source,
+    card_company: r.card_company,
+  }));
+}
+
+/**
  * 단일 건 정확 매칭: 같은 금액(±1원)의 카드 사용건이 윈도우 내 1건이면 매칭.
  * 카드사 식별 못해도 동작. 페이스북 광고비 같은 단일 결제 출금에 효과적.
  */
@@ -211,6 +260,22 @@ export async function matchCardUsages(
       matchScore: 1,
       items: single,
     };
+  }
+
+  // ── 3단계: 해외 출금건 → USD × 환율 역산 매칭 (KB카드 해외건은 amount=0) ──
+  if (detect.isForeign) {
+    const usdMatch = await findForeignUsdMatch(supabase, businessId, withdrawal, since, until);
+    if (usdMatch && usdMatch.length === 1) {
+      return {
+        cardSource: (usdMatch[0].source as CardSource) ?? "card_kb",
+        isForeign: true,
+        windowSince,
+        windowUntil,
+        matchedTotal: withdrawal,
+        matchScore: 1,
+        items: usdMatch,
+      };
+    }
   }
 
   return null;
