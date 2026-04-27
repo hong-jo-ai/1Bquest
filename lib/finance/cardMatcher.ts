@@ -69,14 +69,70 @@ export function detectCardPattern(text: string): {
 }
 
 // 매칭 임계값
-const MIN_MATCH_SCORE = 0.7; // 출금 대비 ±30% 이내만 신뢰
-const MAX_ITEMS = 50;        // 그 이상 묶이면 통합 출금이 아닐 가능성 큼
+const MIN_MATCH_SCORE = 0.7;     // 출금 대비 ±30% 이내만 신뢰 (합계 매칭)
+const MAX_ITEMS = 50;            // 그 이상 묶이면 통합 출금이 아닐 가능성 큼
+const EXACT_AMOUNT_TOLERANCE = 1; // 단일 건 정확 매칭 허용 오차 (원)
+
+function withdrawalDateRange(txDate: string): { since: Date; until: Date } {
+  const until = new Date(txDate);
+  until.setDate(until.getDate() - 1);
+  const since = new Date(txDate);
+  since.setDate(since.getDate() - 45);
+  return { since, until };
+}
+
+/**
+ * 단일 건 정확 매칭: 같은 금액(±1원)의 카드 사용건이 윈도우 내 1건이면 매칭.
+ * 카드사 식별 못해도 동작. 페이스북 광고비 같은 단일 결제 출금에 효과적.
+ */
+async function findSingleExactMatch(
+  supabase: ReturnType<typeof getDb>,
+  businessId: string,
+  withdrawal: number,
+  since: Date,
+  until: Date,
+  isForeignContext: boolean,
+): Promise<CardUsageItem[] | null> {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("finance_card_usage")
+    .select("approval_no, use_date, merchant, amount, cancel_amount, category, source, card_company")
+    .eq("business_id", businessId)
+    .gte("use_date", since.toISOString())
+    .lte("use_date", until.toISOString())
+    .gte("amount", withdrawal - EXACT_AMOUNT_TOLERANCE)
+    .lte("amount", withdrawal + EXACT_AMOUNT_TOLERANCE)
+    .eq("cancel_amount", 0)
+    .order("use_date", { ascending: false });
+
+  if (error || !data || data.length === 0) return null;
+
+  // 해외 출금 컨텍스트면 해외성 단서 가진 항목 우선 (네이버페이 하나(외환))
+  let candidates = data as CardUsageItem[];
+  if (isForeignContext) {
+    const foreignFiltered = candidates.filter((r) =>
+      (r.card_company ?? "").includes("외환") ||
+      (r.card_company ?? "").includes("VISA") ||
+      (r.card_company ?? "").includes("MASTER"),
+    );
+    if (foreignFiltered.length === 1) return foreignFiltered;
+    if (foreignFiltered.length > 1) candidates = foreignFiltered;
+  }
+
+  // 정확히 1건일 때만 매칭 (모호 회피)
+  return candidates.length === 1 ? candidates : null;
+}
 
 /**
  * 한 통장 거래에 매칭되는 카드 사용내역 묶음 조회.
  *
- * @param businessId  현재 사업자 (finance_businesses.id)
- * @param txDate      통장 출금일 (ISO)
+ * 매칭 시도 순서:
+ *   1. 카드사 식별 → 그 카드의 윈도우 내 합계 매칭 (정확도 70%+)
+ *   2. 카드사 미식별 또는 합계 매칭 실패 → 단일 건 정확 금액 매칭
+ *
+ * @param businessId  현재 사업자
+ * @param txDate      통장 출금일
  * @param withdrawal  출금액 (원)
  * @param description description + counterparty + memo 합친 매칭용 텍스트
  */
@@ -93,55 +149,71 @@ export async function matchCardUsages(
   const detect = detectCardPattern(description);
   if (!detect.isCardPayment) return null;
 
-  // 카드사가 식별 안 되면 매칭 결과를 신뢰할 수 없음 (예: "비자해외승인대금출금"은
-  // 어떤 카드사인지 모름 → 모든 카드 사용내역이 다 잡혀 부정확).
-  // 카드사 패턴이 명확한 경우만 매칭.
-  if (detect.source === "unknown") return null;
+  const { since, until } = withdrawalDateRange(txDate);
+  const windowSince = since.toISOString().slice(0, 10);
+  const windowUntil = until.toISOString().slice(0, 10);
 
-  // 윈도우: -45 ~ -1일
-  const until = new Date(txDate);
-  until.setDate(until.getDate() - 1);
-  const since = new Date(txDate);
-  since.setDate(since.getDate() - 45);
+  // ── 1단계: 카드사 식별된 경우 합계 매칭 ────────────────────────────
+  if (detect.source !== "unknown") {
+    const { data, error } = await supabase
+      .from("finance_card_usage")
+      .select("approval_no, use_date, merchant, amount, cancel_amount, category, source, card_company")
+      .eq("business_id", businessId)
+      .eq("source", detect.source)
+      .gte("use_date", since.toISOString())
+      .lte("use_date", until.toISOString())
+      .order("use_date", { ascending: true });
 
-  const { data, error } = await supabase
-    .from("finance_card_usage")
-    .select("approval_no, use_date, merchant, amount, cancel_amount, category, source, card_company")
-    .eq("business_id", businessId)
-    .eq("source", detect.source)
-    .gte("use_date", since.toISOString())
-    .lte("use_date", until.toISOString())
-    .order("use_date", { ascending: true });
+    if (!error && data && data.length > 0 && data.length <= MAX_ITEMS) {
+      const items = (data as CardUsageItem[]).filter(
+        (r) => (Number(r.amount) || 0) - (Number(r.cancel_amount) || 0) > 0,
+      );
+      if (items.length > 0) {
+        const matchedTotal = items.reduce(
+          (s, r) => s + ((Number(r.amount) || 0) - (Number(r.cancel_amount) || 0)),
+          0,
+        );
+        const ratio = matchedTotal / withdrawal;
+        const matchScore = ratio >= 1 ? 1 / ratio : ratio;
+        if (matchScore >= MIN_MATCH_SCORE) {
+          return {
+            cardSource: detect.source,
+            isForeign: detect.isForeign,
+            windowSince,
+            windowUntil,
+            matchedTotal,
+            matchScore,
+            items,
+          };
+        }
+      }
+    }
+  }
 
-  if (error || !data) return null;
-
-  // 정상 항목만 (취소건 제외)
-  const items = (data as CardUsageItem[]).filter(
-    (r) => (Number(r.amount) || 0) - (Number(r.cancel_amount) || 0) > 0,
+  // ── 2단계: 단일 건 정확 금액 매칭 (카드사 무관) ─────────────────────
+  const single = await findSingleExactMatch(
+    supabase,
+    businessId,
+    withdrawal,
+    since,
+    until,
+    detect.isForeign,
   );
-  if (items.length === 0 || items.length > MAX_ITEMS) return null;
+  if (single && single.length === 1) {
+    const item = single[0];
+    const matchedTotal = (Number(item.amount) || 0) - (Number(item.cancel_amount) || 0);
+    return {
+      cardSource: (item.source as CardSource) ?? "unknown",
+      isForeign: detect.isForeign,
+      windowSince,
+      windowUntil,
+      matchedTotal,
+      matchScore: 1,
+      items: single,
+    };
+  }
 
-  const matchedTotal = items.reduce(
-    (s, r) => s + ((Number(r.amount) || 0) - (Number(r.cancel_amount) || 0)),
-    0,
-  );
-
-  // 매칭 정확도: 출금액 대비 합계 (1에 가까울수록 좋음)
-  const ratio = matchedTotal / withdrawal;
-  const matchScore = ratio >= 1 ? 1 / ratio : ratio;
-
-  // 신뢰도 미달이면 표시 안 함 (잘못된 매칭이 보이는 것보다 안 보이는 게 낫다)
-  if (matchScore < MIN_MATCH_SCORE) return null;
-
-  return {
-    cardSource: detect.source,
-    isForeign: detect.isForeign,
-    windowSince: since.toISOString().slice(0, 10),
-    windowUntil: until.toISOString().slice(0, 10),
-    matchedTotal,
-    matchScore,
-    items,
-  };
+  return null;
 }
 
 /**
