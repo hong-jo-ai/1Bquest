@@ -30,7 +30,7 @@ interface Props {
 
 function fmtKRW(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억원";
-  if (n >= 10_000)      return Math.round(n / 10_000) + "만원";
+  if (n >= 10_000)      return (n / 10_000).toFixed(1) + "만원";
   return n.toLocaleString("ko-KR") + "원";
 }
 function fmtCount(n: number) {

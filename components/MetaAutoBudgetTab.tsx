@@ -6,9 +6,9 @@ import type { AutoBudgetLogRow } from "@/app/api/meta/auto-budget/log/route";
 import { ACTION_LABEL_KO, REASON_LABEL_KO, POLICY } from "@/lib/metaAutoBudget";
 
 function fmtKRW(n: number) {
-  if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억";
-  if (n >= 10_000)      return Math.round(n / 10_000) + "만";
-  return n.toLocaleString("ko-KR");
+  if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억원";
+  if (n >= 10_000)      return (n / 10_000).toFixed(1) + "만원";
+  return n.toLocaleString("ko-KR") + "원";
 }
 
 function actionStyle(action: AutoBudgetLogRow["action"]) {
