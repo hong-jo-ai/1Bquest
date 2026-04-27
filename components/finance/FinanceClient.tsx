@@ -38,6 +38,20 @@ interface CardMatch {
   items: CardMatchItem[];
 }
 
+interface InvoiceMatch {
+  invoice: {
+    id: string;
+    issue_date: string;
+    partner_name: string | null;
+    total_amount: number;
+    category: string | null;
+    invoice_type: string;
+  };
+  matchedTerm: string;
+  amountDiff: number;
+  amountScore: number;
+}
+
 interface AggEntry { withdrawal: number; deposit: number; count: number }
 
 const CATEGORIES: TxCategory[] = [
@@ -60,6 +74,51 @@ const CARD_SOURCE_LABEL: Record<string, string> = {
   card_kb: "KB국민카드",
   npay: "네이버페이",
 };
+
+function InvoiceMatchDetails({ match, withdrawal }: { match: InvoiceMatch; withdrawal: number }) {
+  const inv = match.invoice;
+  const date = new Date(inv.issue_date).toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  const accuracy = (match.amountScore * 100).toFixed(0);
+  return (
+    <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <FileSpreadsheet size={13} className="text-amber-700 dark:text-amber-400 shrink-0" />
+        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300">매입세금계산서 매칭</span>
+        <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-auto">정확도 {accuracy}%</span>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+            {inv.partner_name ?? "-"}
+          </div>
+          <div className="text-[10px] text-zinc-500 mt-0.5">
+            {date} 발행
+            {inv.category && (
+              <>
+                <span className="mx-1">·</span>
+                <span style={{ color: CATEGORY_COLOR[inv.category as TxCategory] ?? "#a1a1aa" }}>
+                  {inv.category}
+                </span>
+              </>
+            )}
+            <span className="mx-1">·</span>
+            "{match.matchedTerm}" 일치
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-zinc-700 dark:text-zinc-300 tabular-nums">
+            {fmtKrw(Number(inv.total_amount))}
+          </div>
+          {Math.abs(match.amountDiff) > 0 && (
+            <div className={`text-[10px] mt-0.5 ${match.amountDiff > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+              {match.amountDiff > 0 ? "+" : "-"}{fmtKrw(Math.abs(match.amountDiff))} (출금 대비)
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CardMatchDetails({ match, withdrawal }: { match: CardMatch; withdrawal: number }) {
   const diff = match.matchedTotal - withdrawal;
@@ -110,6 +169,7 @@ export default function FinanceClient() {
   const [txs, setTxs] = useState<BankTx[]>([]);
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
   const [cardMatches, setCardMatches] = useState<Record<string, CardMatch>>({});
+  const [invoiceMatches, setInvoiceMatches] = useState<Record<string, InvoiceMatch>>({});
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | TxCategory>("all");
@@ -124,6 +184,7 @@ export default function FinanceClient() {
         setTxs(j.transactions);
         setAggregate(j.aggregate);
         setCardMatches(j.cardMatches ?? {});
+        setInvoiceMatches(j.invoiceMatches ?? {});
       }
     } finally {
       setLoading(false);
@@ -306,11 +367,13 @@ export default function FinanceClient() {
           ) : (
             txs.map((t) => {
               const cm = cardMatches[t.id];
+              const im = invoiceMatches[t.id];
+              const hasMatch = !!(cm || im);
               const isExpanded = expandedTx === t.id;
               return (
                 <div
                   key={t.id}
-                  className={`px-3 py-3 ${cm ? "bg-violet-50/40 dark:bg-violet-500/5" : ""}`}
+                  className={`px-3 py-3 ${hasMatch ? "bg-violet-50/40 dark:bg-violet-500/5" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-1.5">
                     <div className="min-w-0 flex-1">
@@ -340,20 +403,37 @@ export default function FinanceClient() {
                       )}
                     </div>
                   </div>
-                  {cm && (
+                  {hasMatch && (
                     <button
                       onClick={() => setExpandedTx(isExpanded ? null : t.id)}
-                      className="w-full text-left mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-violet-600 text-white shadow-sm"
+                      className="w-full text-left mb-2 flex flex-col gap-1"
                     >
-                      <Link2 size={11} />
-                      <span className="truncate">
-                        {cm.items.length === 1
-                          ? `매칭: ${cm.items[0].merchant ?? "-"}`
-                          : `카드 사용내역 ${cm.items.length}건 매칭`}
-                      </span>
-                      <span className="ml-auto shrink-0">
-                        {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                      </span>
+                      {cm && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-violet-600 text-white shadow-sm">
+                          <Link2 size={11} />
+                          <span className="truncate flex-1">
+                            카드: {cm.items.length === 1
+                              ? (cm.items[0].merchant ?? "-")
+                              : `${cm.items.length}건`}
+                          </span>
+                          <span className="shrink-0">
+                            {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                          </span>
+                        </span>
+                      )}
+                      {im && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-amber-600 text-white shadow-sm">
+                          <FileSpreadsheet size={11} />
+                          <span className="truncate flex-1">
+                            세금계산서: {im.invoice.partner_name ?? im.matchedTerm}
+                          </span>
+                          {!cm && (
+                            <span className="shrink-0">
+                              {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </button>
                   )}
                   <CategoryPicker
@@ -365,7 +445,12 @@ export default function FinanceClient() {
                       );
                     }}
                   />
-                  {isExpanded && cm && <div className="mt-2"><CardMatchDetails match={cm} withdrawal={t.withdrawal} /></div>}
+                  {isExpanded && hasMatch && (
+                    <div className="mt-2 space-y-2">
+                      {cm && <CardMatchDetails match={cm} withdrawal={t.withdrawal} />}
+                      {im && <InvoiceMatchDetails match={im} withdrawal={t.withdrawal} />}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -395,13 +480,15 @@ export default function FinanceClient() {
               ) : (
                 txs.map((t) => {
                   const cm = cardMatches[t.id];
+                  const im = invoiceMatches[t.id];
+                  const hasMatch = !!(cm || im);
                   const isExpanded = expandedTx === t.id;
                   return (
                     <Fragment key={t.id}>
                       <tr
-                        onClick={() => cm && setExpandedTx(isExpanded ? null : t.id)}
+                        onClick={() => hasMatch && setExpandedTx(isExpanded ? null : t.id)}
                         className={`border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 ${
-                          cm ? "cursor-pointer bg-violet-50/30 dark:bg-violet-500/5" : ""
+                          hasMatch ? "cursor-pointer bg-violet-50/30 dark:bg-violet-500/5" : ""
                         }`}
                       >
                         <td className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
@@ -411,19 +498,30 @@ export default function FinanceClient() {
                           {t.counterparty || "-"}
                         </td>
                         <td className="px-3 py-2 text-[11px] text-zinc-500 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{t.description || "-"}</span>
                             {cm && (
                               <span
                                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-600 text-white shadow-sm"
-                                title={`${cm.items[0]?.merchant ?? ""} (카드 매칭 ${cm.items.length}건)`}
+                                title={`카드 매칭 ${cm.items.length}건`}
                               >
                                 <Link2 size={10} />
-                                {cm.items.length === 1
-                                  ? (cm.items[0].merchant?.slice(0, 20) ?? "매칭")
-                                  : `매칭 ${cm.items.length}건`}
-                                {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                                카드: {cm.items.length === 1
+                                  ? (cm.items[0].merchant?.slice(0, 20) ?? "")
+                                  : `${cm.items.length}건`}
                               </span>
+                            )}
+                            {im && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-600 text-white shadow-sm"
+                                title={`매입세금계산서 매칭 (정확도 ${(im.amountScore * 100).toFixed(0)}%)`}
+                              >
+                                <FileSpreadsheet size={10} />
+                                계산서: {im.invoice.partner_name?.slice(0, 16) ?? im.matchedTerm}
+                              </span>
+                            )}
+                            {hasMatch && (
+                              isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />
                             )}
                           </div>
                         </td>
@@ -445,10 +543,11 @@ export default function FinanceClient() {
                           />
                         </td>
                       </tr>
-                      {isExpanded && cm && (
+                      {isExpanded && hasMatch && (
                         <tr className="bg-violet-50/40 dark:bg-violet-500/5 border-b border-zinc-100 dark:border-zinc-800">
-                          <td colSpan={6} className="px-3 py-3">
-                            <CardMatchDetails match={cm} withdrawal={t.withdrawal} />
+                          <td colSpan={6} className="px-3 py-3 space-y-2">
+                            {cm && <CardMatchDetails match={cm} withdrawal={t.withdrawal} />}
+                            {im && <InvoiceMatchDetails match={im} withdrawal={t.withdrawal} />}
                           </td>
                         </tr>
                       )}

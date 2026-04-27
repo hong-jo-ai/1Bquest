@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { parseKbBankExcel } from "@/lib/finance/kbParser";
 import { categorizeTx } from "@/lib/finance/categorize";
 import { enrichBankTxsWithCardMatches } from "@/lib/finance/cardMatcher";
+import { enrichBankTxsWithInvoiceMatches } from "@/lib/finance/invoiceMatcher";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -156,22 +157,32 @@ export async function GET(req: NextRequest) {
     agg[c].count += 1;
   }
 
-  // 카드 결제 통합 출금건을 카드 사용내역과 매칭하여 enrichment 추가
+  // 카드 결제 통합 출금건 / 매입세금계산서 enrichment 병렬 처리
   const txs = data ?? [];
   const businessId = (txs[0] as { business_id?: string } | undefined)?.business_id;
   let cardMatches: Record<string, unknown> = {};
+  let invoiceMatches: Record<string, unknown> = {};
   if (businessId) {
-    cardMatches = await enrichBankTxsWithCardMatches(
-      businessId,
-      txs.map((t) => ({
-        id: t.id as string,
-        tx_date: t.tx_date as string,
-        withdrawal: Number(t.withdrawal) || 0,
-        description: t.description as string | null,
-        counterparty: t.counterparty as string | null,
-        memo: t.memo as string | null,
-      })),
-    );
+    const txInputs = txs.map((t) => ({
+      id: t.id as string,
+      tx_date: t.tx_date as string,
+      withdrawal: Number(t.withdrawal) || 0,
+      description: t.description as string | null,
+      counterparty: t.counterparty as string | null,
+      memo: t.memo as string | null,
+    }));
+    [cardMatches, invoiceMatches] = await Promise.all([
+      enrichBankTxsWithCardMatches(businessId, txInputs),
+      enrichBankTxsWithInvoiceMatches(
+        businessId,
+        txInputs.map((t) => ({
+          id: t.id,
+          tx_date: t.tx_date,
+          withdrawal: t.withdrawal,
+          counterparty: t.counterparty,
+        })),
+      ),
+    ]);
   }
 
   return Response.json({
@@ -179,6 +190,7 @@ export async function GET(req: NextRequest) {
     transactions: txs,
     aggregate: agg,
     cardMatches,
+    invoiceMatches,
   });
 }
 
