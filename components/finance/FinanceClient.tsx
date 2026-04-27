@@ -136,6 +136,15 @@ export default function FinanceClient() {
             `${j.invoicesUpserted}건 · ₩${(j.totalAmount ?? 0).toLocaleString()}`
           }
         />
+        <UploadCard
+          title="W컨셉 광고 일별 리포트"
+          hint="W컨셉 광고센터 → 일별 성과 → CSV 다운로드"
+          accept=".csv"
+          uploadUrl="/api/finance/ad-spend?source=wconcept"
+          onSuccess={(j) =>
+            `${j.parsed}일치 (신규 ${j.inserted} / 갱신 ${j.updated}) — 누적 ${j.total}일`
+          }
+        />
       </section>
 
       {/* 요약 카드 */}

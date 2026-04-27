@@ -64,6 +64,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
   const [activeChannel, setActiveChannel] = useState<string>("all");
   const [metaDaily, setMetaDaily] = useState<{ date: string; spend: number }[]>([]);
   const [metaLinked, setMetaLinked] = useState(false);
+  const [wconceptAdsDaily, setWconceptAdsDaily] = useState<{ date: string; spend: number }[]>([]);
 
   // 설정 불러오기
   useEffect(() => {
@@ -91,6 +92,16 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       })
       .catch(() => setMetaLinked(false));
   }, [brand]);
+
+  // W컨셉 플랫폼 내 광고비 불러오기 (CSV 업로드 누적분)
+  useEffect(() => {
+    fetch("/api/finance/ad-spend?source=wconcept&days=365")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) setWconceptAdsDaily(j.daily ?? []);
+      })
+      .catch(() => { /* 미업로드 시 0 처리 */ });
+  }, []);
 
   const saveSettings = useCallback(async (patch: Partial<ProfitSettings>) => {
     const res = await fetch("/api/profit/settings", {
@@ -182,7 +193,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
     }
 
     // 메타 광고비 — 기간 내 합 × 채널 안분 비율
-    // (광고는 모든 채널로 트래픽을 보내기 때문에 채널별로 안분)
+    // (메타는 외부 트래픽 → 모든 채널로 분산되므로 매출 비중대로 안분)
     let totalMetaSpend = 0;
     for (const m of metaDaily) {
       if (m.date >= startDate && m.date <= endDate) totalMetaSpend += m.spend;
@@ -194,9 +205,18 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           ? totalMetaSpend * (totalRev / totalRevAllChannels)
           : 0;
 
-    // 매출총이익 = 순매출 - 수수료 - 택배비 - 매입원가 - 광고비
+    // W컨셉 플랫폼 내 광고비 — W컨셉 채널 매출에만 귀속 (다른 채널엔 영향 없음)
+    let totalWconceptAds = 0;
+    for (const w of wconceptAdsDaily) {
+      if (w.date >= startDate && w.date <= endDate) totalWconceptAds += w.spend;
+    }
+    const wconceptVisible = visibleChannels.some((c) => c.id === "wconcept");
+    const totalWconceptAdsForChannel = wconceptVisible ? totalWconceptAds : 0;
+
+    // 매출총이익 = 순매출 - 수수료 - 택배비 - 매입원가 - 광고비(메타+W컨셉)
     const grossProfit =
-      revenueExVat - totalFees - shipping - totalCogs - totalMetaSpendForChannel;
+      revenueExVat - totalFees - shipping - totalCogs
+      - totalMetaSpendForChannel - totalWconceptAdsForChannel;
 
     // 고정비 (월 기준 → 일별로 안분 → 기간 일수만큼)
     // 특정 채널 보기일 때는 그 채널의 매출 비중만큼만 안분
@@ -249,8 +269,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       const dayShipping = dayShipments * settings.shippingPerOrder;
       const metaEntry = metaDaily.find((m) => m.date === date);
       const dayMeta = (metaEntry?.spend ?? 0) * _channelShareForRows;
-      const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs - dayMeta;
-      return { date, dayRev, dayOrders, dayShipments, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayNet };
+      const wconceptEntry = wconceptAdsDaily.find((w) => w.date === date);
+      const dayWconceptAds = wconceptVisible ? (wconceptEntry?.spend ?? 0) : 0;
+      const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs - dayMeta - dayWconceptAds;
+      return { date, dayRev, dayOrders, dayShipments, dayFee, dayVat, dayShipping, dayCogs, dayMeta, dayWconceptAds, dayNet };
     });
 
     return {
@@ -265,6 +287,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       totalCogs,
       totalMetaSpend,
       totalMetaSpendForChannel,
+      totalWconceptAds,
+      totalWconceptAdsForChannel,
+      wconceptVisible,
       grossProfit,
       monthlyFixedTotal,
       fixedAllocated,
@@ -274,7 +299,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily]);
 
   return (
     <section className="space-y-4">
@@ -445,6 +470,19 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
             }
             amount={-calc.totalMetaSpendForChannel}
           />
+          {(calc.totalWconceptAds > 0 || calc.wconceptVisible) && (
+            <PnlRow
+              label="W컨셉 광고비"
+              sub={
+                calc.totalWconceptAds === 0
+                  ? "재무 페이지에서 W컨셉 일별 리포트 CSV 업로드"
+                  : calc.wconceptVisible
+                    ? "W컨셉 플랫폼 내 광고 (W컨셉 채널 귀속)"
+                    : "다른 채널 보기 — W컨셉 광고비는 W컨셉에만 귀속"
+              }
+              amount={-calc.totalWconceptAdsForChannel}
+            />
+          )}
           <PnlRow label="매출총이익" amount={calc.grossProfit} bold accent />
         </PnlSection>
 
@@ -589,7 +627,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
                       {r.dayCogs > 0 ? `-${fmtKrw(r.dayCogs)}` : "—"}
                     </td>
                     <td className="px-4 py-2.5 text-right text-zinc-500 tabular-nums whitespace-nowrap">
-                      {r.dayMeta > 0 ? `-${fmtKrw(r.dayMeta)}` : "—"}
+                      {(r.dayMeta + r.dayWconceptAds) > 0
+                        ? `-${fmtKrw(r.dayMeta + r.dayWconceptAds)}`
+                        : "—"}
                     </td>
                     <td
                       className={`px-4 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap ${
