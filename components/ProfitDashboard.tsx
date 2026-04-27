@@ -334,9 +334,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
   }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend]);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 min-w-0">
       {/* 헤더 + 기간 선택 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-6">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-6 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
           <Calendar size={18} className="text-violet-600" />
           <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
@@ -435,7 +435,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       </div>
 
       {/* P&L 요약 카드 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-6 space-y-3">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-6 space-y-3 min-w-0 overflow-hidden">
         {/* 매출 */}
         <PnlSection title="매출 (VAT 포함)">
           {channels.map((ch) => {
@@ -610,7 +610,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       </div>
 
       {/* 일별 표 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden min-w-0">
         <div className="px-4 sm:px-6 py-3 border-b border-zinc-100 dark:border-zinc-800">
           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
             일별 상세

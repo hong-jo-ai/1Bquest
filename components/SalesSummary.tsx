@@ -152,7 +152,7 @@ export default function SalesSummary({ daily }: { daily: DailyData[] }) {
         return (
           <div
             key={card.label}
-            className={`bg-gradient-to-br ${card.color} rounded-2xl p-3.5 sm:p-5 text-white shadow-lg`}
+            className={`min-w-0 bg-gradient-to-br ${card.color} rounded-2xl p-3 sm:p-5 text-white shadow-lg overflow-hidden`}
           >
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <div className="min-w-0">
@@ -168,7 +168,7 @@ export default function SalesSummary({ daily }: { daily: DailyData[] }) {
               </div>
             </div>
 
-            <div className="text-lg sm:text-2xl font-bold mb-1.5 sm:mb-2 tracking-tight leading-none tabular-nums">
+            <div className="text-base sm:text-2xl font-bold mb-1.5 sm:mb-2 tracking-tight leading-none tabular-nums truncate">
               {fmtKrw(card.current.revenue)}
             </div>
 
