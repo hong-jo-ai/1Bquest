@@ -9,6 +9,7 @@ import SalesSummary from "@/components/SalesSummary";
 import TopProducts from "@/components/TopProducts";
 import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboard";
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
+import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
 
 import {
   UPLOADABLE_CHANNELS,
@@ -330,16 +331,26 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
           />
         </div>
 
-        {/* 엑셀 업로드 패널 (업로드 가능 채널) */}
+        {/* 업로드 패널 — 카카오선물하기는 구글시트 sync, 그 외는 엑셀 업로드 */}
         {isUploadableActive && showUpload && activeChannelMeta && activeUploadable && (
-          <ExcelUploadPanel
-            channel={activeUploadable}
-            channelName={activeChannelMeta.name}
-            channelColor={activeChannelMeta.color}
-            onDataLoaded={handleDataLoaded(activeUploadable)}
-            onClear={handleClear(activeUploadable)}
-            currentMeta={activeMeta}
-          />
+          activeUploadable === "kakao_gift" ? (
+            <KakaoGiftSyncPanel
+              channelName={activeChannelMeta.name}
+              channelColor={activeChannelMeta.color}
+              onDataLoaded={handleDataLoaded(activeUploadable)}
+              onClear={handleClear(activeUploadable)}
+              currentMeta={activeMeta}
+            />
+          ) : (
+            <ExcelUploadPanel
+              channel={activeUploadable}
+              channelName={activeChannelMeta.name}
+              channelColor={activeChannelMeta.color}
+              onDataLoaded={handleDataLoaded(activeUploadable)}
+              onClear={handleClear(activeUploadable)}
+              currentMeta={activeMeta}
+            />
+          )
         )}
 
         {/* 매출 요약 — 4지표 + 비교 % */}

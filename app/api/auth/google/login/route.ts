@@ -11,6 +11,7 @@ export async function GET(_req: NextRequest) {
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",
       "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
       "openid",
       "email",
     ].join(" "),
