@@ -1,16 +1,24 @@
 /**
- * 네이버페이 카드영수증 Excel 파서.
+ * 네이버페이 영수증 Excel 파서 (카드영수증 / 현금영수증 두 형식 통합).
  *
- * 컬럼: 승인번호 / 카드사 / 카드번호(유효기간) / 거래종류/할부 / 결제일자 / 취소일자
- *      / 상품명 / 승인금액 / 취소금액 / 공급가액 / 부가세액 / 봉사료 / 컵보증금 / 합계
+ * 카드영수증 헤더:
+ *   승인번호 / 카드사 / 카드번호(유효기간) / 거래종류/할부 / 결제일자 / 취소일자
+ *   / 상품명 / 승인금액 / 취소금액 / 공급가액 / 부가세액 / 봉사료 / 컵보증금 / 합계
  *
- * 첫 행이 곧 헤더인 단순 형식.
+ * 현금영수증 헤더:
+ *   승인번호 / 주문번호/상품 주문번호 / 구매자 발행번호 / 발행방법 / 신청구분
+ *   / 발행일자 / 상품명 / 공급가액 / 부가세액 / 봉사료 / 합계
+ *
+ * 첫 행이 헤더인 단순 형식. 카드/현금 자동 감지.
  */
 import * as XLSX from "xlsx";
 
+export type NpayReceiptType = "card" | "cash";
+
 export interface ParsedNpayReceipt {
   approvalNo: string;
-  cardCompany: string;
+  receiptType: NpayReceiptType;
+  cardCompany: string;        // 카드영수증=카드사, 현금영수증="현금영수증"
   cardNumber: string;
   useDate: Date;
   cancelDate: Date | null;
@@ -75,20 +83,30 @@ export function parseNpayReceiptExcel(buffer: ArrayBuffer): NpayParseResult {
   const cCard = idx("카드사");
   const cCardNo = idx("카드번호(유효기간)");
   const cKind = idx("거래종류/할부");
-  const cUseDate = idx("결제일자");
+  // 결제일자(카드) 또는 발행일자(현금) — 어느 쪽이든 사용
+  const cUseDate = idx("결제일자") >= 0 ? idx("결제일자") : idx("발행일자");
   const cCancelDate = idx("취소일자");
   const cMerchant = idx("상품명");
+  // 승인금액(카드) 또는 합계(현금) — 결제 금액으로 사용
   const cAmount = idx("승인금액");
   const cCancelAmount = idx("취소금액");
   const cSupply = idx("공급가액");
   const cTax = idx("부가세액");
   const cTotal = idx("합계");
+  // 현금영수증 전용
+  const cIssueMethod = idx("발행방법");
 
-  if (cApproval < 0 || cUseDate < 0 || cAmount < 0) {
+  // 카드 또는 현금 영수증으로 인식 가능한지 검증
+  const hasAmountSource = cAmount >= 0 || cTotal >= 0;
+  if (cApproval < 0 || cUseDate < 0 || !hasAmountSource) {
     throw new Error(
       `네이버페이 영수증 형식이 아닙니다. 감지된 헤더: ${headers.join(" | ")}`
     );
   }
+
+  // 카드영수증인지 현금영수증인지 자동 감지
+  const isCard = cCard >= 0 && cAmount >= 0;
+  const receiptType: NpayReceiptType = isCard ? "card" : "cash";
 
   const rows: ParsedNpayReceipt[] = [];
   for (let i = 1; i < allRows.length; i++) {
@@ -100,14 +118,25 @@ export function parseNpayReceiptExcel(buffer: ArrayBuffer): NpayParseResult {
     const approvalNo = String(r[cApproval] ?? "").trim();
     if (!approvalNo) continue;
 
+    // 결제 금액: 카드는 승인금액, 현금은 합계
+    const amount =
+      cAmount >= 0 ? parseNum(r[cAmount]) :
+      cTotal >= 0 ? parseNum(r[cTotal]) : 0;
+
+    // cardCompany 표시: 카드영수증은 카드사명, 현금영수증은 발행방법(예: "소득공제용")
+    const cardCompany = isCard
+      ? (cCard >= 0 ? String(r[cCard] ?? "").trim() : "")
+      : `현금영수증${cIssueMethod >= 0 && r[cIssueMethod] ? ` (${String(r[cIssueMethod]).trim()})` : ""}`;
+
     rows.push({
       approvalNo,
-      cardCompany: cCard >= 0 ? String(r[cCard] ?? "").trim() : "",
+      receiptType,
+      cardCompany,
       cardNumber: cCardNo >= 0 ? String(r[cCardNo] ?? "").trim() : "",
       useDate,
       cancelDate: cCancelDate >= 0 ? parseDateTime(r[cCancelDate]) : null,
       merchant: cMerchant >= 0 ? String(r[cMerchant] ?? "").trim() : "",
-      amount: cAmount >= 0 ? parseNum(r[cAmount]) : 0,
+      amount,
       cancelAmount: cCancelAmount >= 0 ? parseNum(r[cCancelAmount]) : 0,
       supplyAmount: cSupply >= 0 ? parseNum(r[cSupply]) : 0,
       taxAmount: cTax >= 0 ? parseNum(r[cTax]) : 0,
