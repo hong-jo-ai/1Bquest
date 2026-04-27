@@ -55,6 +55,16 @@ function daysBetween(start: string, end: string): number {
   return Math.max(1, Math.round((e - s) / 86400000) + 1);
 }
 
+/**
+ * 재무 카테고리 → P&L 고정비 자동 반영 대상.
+ * 제외: 광고비(메타에서 자동) / 매입(COGS에서 자동) / 카드결제(통장에 찍힌 카드대금 = 카드 사용내역과 중복) /
+ *      매출·송금·기타(비용 아님 또는 불명확)
+ */
+const AUTO_FIXED_CATEGORIES = [
+  "임대료", "인건비", "통신비", "소프트웨어",
+  "세금", "수수료", "택배비", "식비", "교통/연료",
+] as const;
+
 export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Props) {
   const [preset, setPreset] = useState<Preset>("30d");
   const [customStart, setCustomStart] = useState<string>(daysAgoStr(30));
@@ -65,6 +75,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
   const [metaDaily, setMetaDaily] = useState<{ date: string; spend: number }[]>([]);
   const [metaLinked, setMetaLinked] = useState(false);
   const [wconceptAdsDaily, setWconceptAdsDaily] = useState<{ date: string; spend: number }[]>([]);
+  const [categorySpend, setCategorySpend] = useState<Record<string, { amount: number; count: number }>>({});
 
   // 설정 불러오기
   useEffect(() => {
@@ -121,6 +132,17 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
     if (preset === "60d") return { startDate: daysAgoStr(59), endDate: t };
     return { startDate: customStart, endDate: customEnd };
   }, [preset, customStart, customEnd]);
+
+  // 재무 카테고리별 출금 합계 (P&L 자동 고정비 연동)
+  useEffect(() => {
+    const params = new URLSearchParams({ since: startDate, until: endDate });
+    fetch(`/api/profit/category-spend?${params}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) setCategorySpend(j.perCategory ?? {});
+      })
+      .catch(() => { /* 재무 데이터 없으면 0 처리 */ });
+  }, [startDate, endDate]);
 
   // 채널 필터링 (전체 또는 특정 채널만)
   const visibleChannels = useMemo(
@@ -231,7 +253,14 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           : 0;
     const fixedAllocated = fullPeriodFixed * channelShare;
 
-    const operatingProfit = grossProfit - fixedAllocated;
+    // 재무 자동 고정비 — 기간 내 실제 발생액 (월 환산 안 함, 그대로 안분 적용)
+    const autoFixedItems = AUTO_FIXED_CATEGORIES
+      .map((cat) => ({ cat, amount: categorySpend[cat]?.amount ?? 0, count: categorySpend[cat]?.count ?? 0 }))
+      .filter((x) => x.amount > 0);
+    const autoFixedTotal = autoFixedItems.reduce((s, x) => s + x.amount, 0);
+    const autoFixedAllocated = autoFixedTotal * channelShare;
+
+    const operatingProfit = grossProfit - fixedAllocated - autoFixedAllocated;
     const margin = totalRev > 0 ? (operatingProfit / totalRev) * 100 : 0;
 
     // 일별 행 (표 표시용) — visible 채널만
@@ -293,13 +322,16 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       grossProfit,
       monthlyFixedTotal,
       fixedAllocated,
+      autoFixedItems,
+      autoFixedTotal,
+      autoFixedAllocated,
       channelShare,
       operatingProfit,
       margin,
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend]);
 
   return (
     <section className="space-y-4">
@@ -496,13 +528,34 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
         <PnlSection
           title={
             activeChannel === "all"
-              ? `고정비 (월 환산 → ${calc.days}일치 안분)`
-              : `고정비 (월 환산 × ${calc.days}일 × 매출 비중 ${(calc.channelShare * 100).toFixed(1)}%)`
+              ? "고정비 / 운영비"
+              : `고정비 / 운영비 (매출 비중 ${(calc.channelShare * 100).toFixed(1)}%)`
           }
         >
-          {settings.fixedCosts.length === 0 ? (
+          {/* 재무 자동 연동 (재무 페이지 거래내역 카테고리별 합계) */}
+          {calc.autoFixedItems.length > 0 && (
+            <>
+              {calc.autoFixedItems.map((it) => (
+                <PnlRow
+                  key={`auto-${it.cat}`}
+                  label={`${it.cat}`}
+                  sub={`재무 자동 · ${calc.days}일 ${it.count}건${activeChannel !== "all" ? ` × 비중 ${(calc.channelShare * 100).toFixed(1)}%` : ""}`}
+                  amount={-it.amount * calc.channelShare}
+                />
+              ))}
+              <PnlRow
+                label="재무 자동 합"
+                sub={`기간 합계 ${fmtKrw(calc.autoFixedTotal)}${activeChannel !== "all" ? " (안분 전)" : ""}`}
+                amount={-calc.autoFixedAllocated}
+              />
+            </>
+          )}
+
+          {/* 사용자 수동 고정비 (월 단위, 일별 안분) */}
+          {settings.fixedCosts.length === 0 && calc.autoFixedItems.length === 0 ? (
             <div className="px-4 py-3 text-xs text-zinc-400 text-center">
-              아직 고정비가 설정되지 않았습니다. 우상단 ⚙ 아이콘으로 추가하세요.
+              재무 페이지에 거래내역을 업로드하면 임대료/통신비/소프트웨어 등이 자동 반영됩니다.
+              월 정기 고정비는 우상단 ⚙ 아이콘으로 직접 추가할 수 있어요.
             </div>
           ) : (
             settings.fixedCosts.map((c) => {
@@ -511,7 +564,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
                 <PnlRow
                   key={c.id}
                   label={c.name}
-                  sub={`월 ${fmtKrw(c.monthly)}`}
+                  sub={`수동 · 월 ${fmtKrw(c.monthly)} → ${calc.days}일 안분`}
                   amount={-allocated}
                 />
               );
@@ -519,7 +572,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           )}
           {settings.fixedCosts.length > 0 && (
             <PnlRow
-              label="고정비 합"
+              label="수동 고정비 합"
               sub={`월 합계 ${fmtKrw(calc.monthlyFixedTotal)}`}
               amount={-calc.fixedAllocated}
             />
@@ -534,7 +587,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
                 영업이익 (Net Profit)
               </div>
               <div className="text-[11px] text-zinc-500 mt-0.5">
-                매출 − 변동비 − 고정비 안분
+                매출 − 변동비 − 고정비/운영비
               </div>
             </div>
             <div className="text-right">
