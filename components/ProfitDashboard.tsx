@@ -336,10 +336,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
   return (
     <section className="space-y-4">
       {/* 헤더 + 기간 선택 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 sm:p-6">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-6">
         <div className="flex items-center gap-2 mb-3">
           <Calendar size={18} className="text-violet-600" />
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+          <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
             손익 분석 (P&amp;L)
           </h2>
           <span className="text-xs text-zinc-500 ml-auto hidden sm:inline">
@@ -347,14 +347,15 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           </span>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+            className="ml-auto sm:ml-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
             title="비용 설정"
           >
             <SettingsIcon size={16} />
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* 기간 선택 — 모바일에선 가로 스크롤 */}
+        <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
           {(
             [
               { k: "today" as const, label: "오늘" },
@@ -367,7 +368,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
             <button
               key={k}
               onClick={() => setPreset(k)}
-              className={`px-3 h-8 rounded-full text-xs font-medium transition ${
+              className={`shrink-0 px-3 h-8 rounded-full text-xs font-medium transition ${
                 preset === k
                   ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
                   : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -395,14 +396,14 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           )}
         </div>
 
-        {/* 채널 토글 */}
-        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1">
+        {/* 채널 토글 — 모바일에선 가로 스크롤 */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 overflow-x-auto -mx-1 px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
+          <span className="shrink-0 text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1">
             채널
           </span>
           <button
             onClick={() => setActiveChannel("all")}
-            className={`px-3 h-8 rounded-full text-xs font-medium transition ${
+            className={`shrink-0 px-3 h-8 rounded-full text-xs font-medium transition ${
               activeChannel === "all"
                 ? "bg-violet-600 text-white"
                 : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -414,7 +415,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
             <button
               key={ch.id}
               onClick={() => setActiveChannel(ch.id)}
-              className={`px-3 h-8 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+              className={`shrink-0 px-3 h-8 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
                 activeChannel === ch.id
                   ? "text-white"
                   : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -615,7 +616,58 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
             일별 상세
           </h3>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* 모바일: 카드 리스트 (sm 미만) */}
+        <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
+          {calc.dailyRows.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-zinc-400">
+              해당 기간의 매출 데이터가 없습니다
+            </div>
+          ) : (
+            calc.dailyRows.map((r) => {
+              const totalCost = r.dayVat + r.dayFee + r.dayShipping + r.dayCogs + r.dayMeta + r.dayWconceptAds;
+              return (
+                <div key={r.date} className="px-4 py-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                      {fmtDate(r.date)}
+                    </div>
+                    <div
+                      className={`text-base font-bold tabular-nums ${
+                        r.dayNet >= 0
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-red-600 dark:text-red-400"
+                      }`}
+                    >
+                      {fmtKrwSigned(r.dayNet)}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-zinc-500 tabular-nums">
+                    <div className="flex justify-between">
+                      <span>매출</span>
+                      <span className="text-zinc-700 dark:text-zinc-300 font-medium">{fmtKrw(r.dayRev)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>비용 합</span>
+                      <span>-{fmtKrw(totalCost)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>주문</span>
+                      <span>{r.dayOrders}건</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>광고비</span>
+                      <span>{(r.dayMeta + r.dayWconceptAds) > 0 ? `-${fmtKrw(r.dayMeta + r.dayWconceptAds)}` : "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* 데스크탑: 기존 표 (sm 이상) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800">
@@ -753,20 +805,20 @@ function PnlRow({
 }) {
   return (
     <div
-      className={`flex items-center justify-between px-4 py-2.5 ${
+      className={`flex items-center justify-between gap-3 px-3 sm:px-4 py-2.5 ${
         bold
           ? "bg-zinc-50 dark:bg-zinc-950/50 font-bold"
           : "bg-white dark:bg-zinc-900"
       }`}
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         {color && (
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
             style={{ backgroundColor: color }}
           />
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div
             className={`text-sm ${
               bold
@@ -777,12 +829,12 @@ function PnlRow({
             {label}
           </div>
           {sub && (
-            <div className="text-[10px] text-zinc-400 mt-0.5">{sub}</div>
+            <div className="text-[11px] sm:text-[10px] text-zinc-400 mt-0.5 break-keep">{sub}</div>
           )}
         </div>
       </div>
       <div
-        className={`tabular-nums whitespace-nowrap ${
+        className={`tabular-nums whitespace-nowrap shrink-0 ${
           bold ? "text-base" : "text-sm"
         } ${
           accent

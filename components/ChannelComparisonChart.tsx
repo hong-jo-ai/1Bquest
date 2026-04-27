@@ -80,17 +80,17 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
       </div>
 
       {/* 채널별 비율 요약 */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-5">
         {chartData.map((ch) => {
           const pct = total > 0 ? ((ch.revenue / total) * 100).toFixed(1) : "0";
           return (
-            <div key={ch.name} className="rounded-xl p-2.5 sm:p-3 bg-zinc-50 dark:bg-zinc-800/50">
+            <div key={ch.name} className="rounded-xl p-3 sm:p-3 bg-zinc-50 dark:bg-zinc-800/50">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ch.color }} />
-                <span className="text-[11px] sm:text-xs text-zinc-500">{ch.name}</span>
+                <span className="text-xs sm:text-xs text-zinc-500 truncate">{ch.name}</span>
               </div>
-              <p className="text-sm sm:text-base font-bold text-zinc-800 dark:text-zinc-100">{fmt(ch.revenue)}</p>
-              <p className="text-[10px] sm:text-xs text-zinc-400">{pct}% · {ch.orders}건</p>
+              <p className="text-base sm:text-base font-bold text-zinc-800 dark:text-zinc-100 tabular-nums">{fmt(ch.revenue)}</p>
+              <p className="text-[11px] sm:text-xs text-zinc-400">{pct}% · {ch.orders}건</p>
             </div>
           );
         })}
