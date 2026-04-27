@@ -9,23 +9,15 @@
  *   5. kv_store(channel_upload:kakao_gift)에 저장 (W컨셉 등과 동일 패턴)
  */
 import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
 import { refreshGoogleToken } from "@/lib/ga4Client";
 import { parseKakaoGiftSheet } from "@/lib/finance/kakaoGiftSheet";
+import { saveSheetData, rebuildKakaoGiftChannelData } from "@/lib/finance/kakaoGiftMerger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const SHEET_ID = "1v9BOUCNCDTE1X5rBjza-b_j4Ow6C5613U-OTo3dBL7k";
 const SHEET_GID = 1480649980;
-const KV_KEY = "channel_upload:kakao_gift";
-
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
 
 async function getGoogleAccessToken(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -104,41 +96,34 @@ export async function GET() {
     );
   }
 
-  const meta = {
-    fileName: `${sheetName} (구글시트)`,
-    rowCount: parsed.rowCount,
-    period: { start: "월별 시트", end: "월별 시트" },
-    uploadedAt: new Date().toISOString(),
-  };
+  // 시트 데이터는 별도 키에 저장 → 머지 함수가 정산서와 합쳐 channel_upload 갱신
+  try {
+    await saveSheetData(parsed.data);
+    const merged = await rebuildKakaoGiftChannelData();
 
-  // 채널 업로드 형식으로 KV 저장 (W컨셉/무신사 등과 동일 키 패턴)
-  const supabase = getSupabase();
-  if (supabase) {
-    const { error } = await supabase.from("kv_store").upsert(
-      {
-        key: KV_KEY,
-        data: { data: parsed.data, meta },
-        updated_at: new Date().toISOString(),
+    const totalRevenue = merged.data.topProducts.reduce((s, p) => s + p.revenue, 0);
+    const totalSold = merged.data.topProducts.reduce((s, p) => s + p.sold, 0);
+
+    return Response.json({
+      ok: true,
+      sheetName,
+      rowCount: parsed.rowCount,
+      totalRevenue,
+      totalSold,
+      monthsWithData: merged.data.dailyRevenue?.length ?? 0,
+      settlementCount: merged.settlementCount,
+      data: merged.data,
+      meta: {
+        fileName: `${sheetName} (구글시트)`,
+        rowCount: parsed.rowCount,
+        period: { start: "월별 시트", end: "월별 시트" },
+        uploadedAt: new Date().toISOString(),
       },
-      { onConflict: "key" },
+    });
+  } catch (e) {
+    return Response.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 500 },
     );
-    if (error) {
-      return Response.json({ ok: false, error: `KV 저장 실패: ${error.message}` }, { status: 500 });
-    }
   }
-
-  // 요약 — UI 표시용
-  const totalRevenue = parsed.data.topProducts.reduce((s, p) => s + p.revenue, 0);
-  const totalSold = parsed.data.topProducts.reduce((s, p) => s + p.sold, 0);
-
-  return Response.json({
-    ok: true,
-    sheetName,
-    rowCount: parsed.rowCount,
-    totalRevenue,
-    totalSold,
-    monthsWithData: parsed.data.dailyRevenue?.length ?? 0,
-    data: parsed.data,
-    meta,
-  });
 }
