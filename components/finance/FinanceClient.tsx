@@ -91,31 +91,35 @@ export default function FinanceClient() {
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <UploadCard
           title="KB국민은행 거래내역"
-          hint="인터넷뱅킹 → 거래내역 → 엑셀"
+          hint="인터넷뱅킹 → 거래내역 → 엑셀 (여러 개월 한 번에 가능)"
           accept=".xls,.xlsx,.csv"
           uploadUrl="/api/finance/bank-tx?bank=KB"
+          multiple
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
           onDone={loadTxs}
         />
         <UploadCard
           title="현대카드 이용내역"
-          hint="현대카드 → 이용내역 → 엑셀 다운로드"
+          hint="현대카드 → 이용내역 → 엑셀 (여러 개월 한 번에 가능)"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/card-usage?source=card_hyundai"
+          multiple
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
         />
         <UploadCard
           title="KB국민카드 이용내역"
-          hint="KB국민카드 → 이용내역 → 엑셀 다운로드"
+          hint="KB국민카드 → 이용내역 → 엑셀 (여러 개월 한 번에 가능)"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/card-usage?source=card_kb"
+          multiple
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
         />
         <UploadCard
           title="네이버페이 영수증"
-          hint="네이버페이 → 결제내역 → 엑셀 다운로드"
+          hint="네이버페이는 1개월씩 다운로드 — 여러 개월 한 번에 업로드 가능"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/card-usage?source=npay"
+          multiple
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
         />
         <UploadCard
@@ -123,6 +127,7 @@ export default function FinanceClient() {
           hint="전자세금계산서 → 매입 → 다운로드"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/tax-invoices?type=purchase"
+          multiple
           onSuccess={(j) =>
             `${j.invoicesUpserted}건 (${j.itemsInserted}품목) · ₩${(j.totalAmount ?? 0).toLocaleString()}`
           }
@@ -132,6 +137,7 @@ export default function FinanceClient() {
           hint="전자세금계산서 → 매출 → 다운로드"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/tax-invoices?type=sales"
+          multiple
           onSuccess={(j) =>
             `${j.invoicesUpserted}건 · ₩${(j.totalAmount ?? 0).toLocaleString()}`
           }
@@ -336,6 +342,7 @@ function UploadCard({
   hint,
   accept,
   uploadUrl,
+  multiple = false,
   onSuccess,
   onDone,
 }: {
@@ -343,33 +350,73 @@ function UploadCard({
   hint: string;
   accept: string;
   uploadUrl: string;
+  /** 여러 파일을 한 번에 선택해 순차 업로드 */
+  multiple?: boolean;
   onSuccess: (json: Record<string, unknown> & { [key: string]: any }) => string;
   onDone?: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handle = async (file: File) => {
-    setUploading(true);
-    setStatus(null);
+  const handleOne = async (file: File): Promise<{ ok: true; j: any } | { ok: false; error: string }> => {
     const formData = new FormData();
     formData.append("file", file);
     try {
       const res = await fetch(uploadUrl, { method: "POST", body: formData });
       const j = await res.json();
-      if (res.ok && j.ok !== false) {
-        setStatus({ type: "ok", msg: onSuccess(j) });
-        onDone?.();
-      } else {
-        setStatus({ type: "err", msg: j.error ?? "업로드 실패" });
-      }
+      if (res.ok && j.ok !== false) return { ok: true, j };
+      return { ok: false, error: j.error ?? `HTTP ${res.status}` };
     } catch (e) {
-      setStatus({ type: "err", msg: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
+  };
+
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploading(true);
+    setStatus(null);
+
+    if (files.length === 1) {
+      const r = await handleOne(files[0]);
+      if (r.ok) setStatus({ type: "ok", msg: onSuccess(r.j) });
+      else setStatus({ type: "err", msg: r.error });
+      onDone?.();
+      setUploading(false);
+      setProgress(null);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    // 다중 파일 — 순차 처리, 파일별 onSuccess 결과를 줄로 모음
+    setProgress({ done: 0, total: files.length });
+    let okCount = 0;
+    let errCount = 0;
+    const lines: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const r = await handleOne(f);
+      if (r.ok) {
+        okCount++;
+        lines.push(`✓ ${f.name} — ${onSuccess(r.j)}`);
+      } else {
+        errCount++;
+        lines.push(`✗ ${f.name} — ${r.error}`);
+      }
+      setProgress({ done: i + 1, total: files.length });
+    }
+
+    const header = `${files.length}개 파일 (성공 ${okCount}${errCount ? ` / 실패 ${errCount}` : ""})`;
+    setStatus({
+      type: errCount === 0 ? "ok" : "err",
+      msg: `${header}\n${lines.join("\n")}`,
+    });
+    onDone?.();
+    setUploading(false);
+    setProgress(null);
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
@@ -387,21 +434,28 @@ function UploadCard({
         className="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
       >
         <Upload size={12} />
-        {uploading ? "처리 중…" : "파일 선택"}
+        {uploading
+          ? progress
+            ? `처리 중 ${progress.done}/${progress.total}…`
+            : "처리 중…"
+          : multiple
+            ? "파일 선택 (여러 개)"
+            : "파일 선택"}
       </button>
       <input
         ref={fileRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handle(f);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) handleFiles(files);
         }}
       />
       {status && (
         <div
-          className={`text-[11px] px-2 py-1.5 rounded-md ${
+          className={`text-[11px] px-2 py-1.5 rounded-md whitespace-pre-line max-h-32 overflow-auto ${
             status.type === "ok"
               ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
               : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
