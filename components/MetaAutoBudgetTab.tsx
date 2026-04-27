@@ -182,9 +182,9 @@ export default function MetaAutoBudgetTab() {
                       <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold text-zinc-700 dark:text-zinc-200">
                         {r.roas_7d > 0 ? r.roas_7d.toFixed(2) + "x" : "-"}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300">{fmtKRW(r.current_budget / 100)}</td>
+                      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300">{fmtKRW(r.current_budget)}</td>
                       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${st.text}`}>
-                        {fmtKRW(r.recommended_budget / 100)}
+                        {fmtKRW(r.recommended_budget)}
                         {r.delta_pct !== 0 && (
                           <span className="ml-1 text-[10px] opacity-70">
                             {r.delta_pct > 0 ? "+" : ""}{r.delta_pct}%
@@ -238,12 +238,12 @@ export default function MetaAutoBudgetTab() {
                     </div>
                     <div>
                       <p className="text-[10px] text-zinc-400">현재</p>
-                      <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 tabular-nums mt-0.5">{fmtKRW(r.current_budget / 100)}</p>
+                      <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 tabular-nums mt-0.5">{fmtKRW(r.current_budget)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-zinc-400">추천</p>
                       <p className={`text-xs font-semibold tabular-nums mt-0.5 ${st.text}`}>
-                        {fmtKRW(r.recommended_budget / 100)}
+                        {fmtKRW(r.recommended_budget)}
                       </p>
                     </div>
                   </div>

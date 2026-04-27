@@ -3,6 +3,9 @@
  *
  * Phase 1: 추천만 산출 (실제 변경 X). 매일 cron으로 실행 → DB 기록 → UI 표시.
  *
+ * 단위: KRW는 zero-decimal 통화라 Meta API의 daily_budget이 그대로 원 단위.
+ *       (USD처럼 cents로 ×100 하지 않음.) 내부 계산도 모두 원 단위.
+ *
  * 정책:
  *   - 7일 rolling Meta purchase_roas 기준
  *   - ≥ HIGH(2.5)  → +DELTA(15)% 증액
@@ -23,8 +26,6 @@ export const POLICY = {
   MIN_BUDGET_KRW:   5_000,     // 일 예산 하한
 } as const;
 
-const MINOR = 100; // KRW × 100 = Meta minor unit
-
 export type AutoBudgetAction = "increase" | "decrease" | "maintain" | "skipped";
 export type AutoBudgetReason =
   | "roas_high"
@@ -41,13 +42,13 @@ export interface AdsetSnapshot {
   adsetName:     string;
   campaignName:  string;
   status:        string;
-  currentBudget: number;  // minor unit
-  spend7d:       number;  // 원
+  currentBudget: number;  // KRW (원)
+  spend7d:       number;  // KRW
   roas7d:        number;
 }
 
 export interface BudgetRecommendation extends AdsetSnapshot {
-  recommendedBudget: number; // minor unit
+  recommendedBudget: number; // KRW
   deltaPct:          number; // e.g. 15, -15, 0
   action:            AutoBudgetAction;
   reason:            AutoBudgetReason;
@@ -104,11 +105,11 @@ export function recommendForAdset(snap: AdsetSnapshot): BudgetRecommendation {
     deltaPct = -POLICY.DELTA_PCT;
   }
 
-  // minor unit으로 계산. 100 단위로 반올림 (Meta가 1원 단위 받지만 깔끔하게).
+  // KRW 원 단위. 100원 단위로 반올림 (Meta는 1원 단위 받지만 깔끔하게).
   const raw = Math.round(snap.currentBudget * (1 + deltaPct / 100));
-  let recommended = Math.round(raw / MINOR / 100) * 100 * MINOR;
-  if (recommended < POLICY.MIN_BUDGET_KRW * MINOR) {
-    recommended = POLICY.MIN_BUDGET_KRW * MINOR;
+  let recommended = Math.round(raw / 100) * 100;
+  if (recommended < POLICY.MIN_BUDGET_KRW) {
+    recommended = POLICY.MIN_BUDGET_KRW;
   }
 
   // 클램프 후 변화 없으면 maintain으로 강등

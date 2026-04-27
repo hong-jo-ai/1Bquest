@@ -19,8 +19,8 @@ export interface AutoBudgetLogRow {
   campaign_name:      string | null;
   spend_7d:           number;
   roas_7d:            number;
-  current_budget:     number;     // minor unit (KRW × 100)
-  recommended_budget: number;     // minor unit
+  current_budget:     number;     // KRW (원)
+  recommended_budget: number;     // KRW
   delta_pct:          number;
   action:             "increase" | "decrease" | "maintain" | "skipped";
   reason:             string | null;

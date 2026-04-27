@@ -2,7 +2,7 @@
 -- Phase 1: 추천만 기록 (applied=false)
 -- Phase 2: 실제 적용 시 applied=true, applied_at 채움
 --
--- budget 컬럼은 Meta minor unit (KRW × 100). 표시 시 /100.
+-- budget 컬럼은 KRW 원 단위 (Meta API가 KRW를 zero-decimal 통화로 줌).
 
 create table if not exists meta_auto_budget_log (
   id                 uuid primary key default gen_random_uuid(),
@@ -14,8 +14,8 @@ create table if not exists meta_auto_budget_log (
   campaign_name      text,
   spend_7d           numeric not null default 0,        -- 표시 단위 (원)
   roas_7d            numeric not null default 0,
-  current_budget     bigint  not null default 0,        -- minor unit
-  recommended_budget bigint  not null default 0,        -- minor unit
+  current_budget     bigint  not null default 0,        -- KRW (원)
+  recommended_budget bigint  not null default 0,        -- KRW
   delta_pct          numeric not null default 0,        -- e.g. 15, -15, 0
   action             text    not null,                  -- 'increase' | 'decrease' | 'maintain' | 'skipped'
   reason             text,                              -- 'roas_high' | 'roas_low' | 'roas_neutral' | 'low_spend' | 'min_floor'

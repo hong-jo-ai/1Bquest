@@ -455,7 +455,7 @@ function AdSetsTab({ accountId, period }: { accountId: string; period: Period })
                 </div>
               </td>
               <td className="px-3 py-3.5 text-zinc-500 dark:text-zinc-400 text-xs truncate max-w-[140px] hidden sm:table-cell">{s.campaignName}</td>
-              <td className="px-3 py-3.5 text-right text-zinc-600 dark:text-zinc-300 text-xs">{s.dailyBudget > 0 ? fmtKRW(s.dailyBudget / 100) : "-"}</td>
+              <td className="px-3 py-3.5 text-right text-zinc-600 dark:text-zinc-300 text-xs">{s.dailyBudget > 0 ? fmtKRW(s.dailyBudget) : "-"}</td>
               <td className="px-3 py-3.5 text-right font-medium text-zinc-700 dark:text-zinc-200 text-xs">{fmtKRW(s.spend)}</td>
               <td className="px-3 py-3.5 text-right text-zinc-600 dark:text-zinc-300 text-xs hidden md:table-cell">{fmtPct(s.ctr)}</td>
               <td className="px-5 py-3.5 text-right">
