@@ -68,7 +68,7 @@ export default function FinanceClient() {
   }, [aggregate]);
 
   return (
-    <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
+    <main className="w-full min-w-0 max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">

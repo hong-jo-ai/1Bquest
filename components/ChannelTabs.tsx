@@ -23,7 +23,7 @@ export default function ChannelTabs({
     : CHANNELS;
 
   return (
-    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+    <div className="min-w-0 flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
       {channelsToShow.map((ch) => {
         const isActive = activeChannel === ch.id;
         const isUploadable = UPLOADABLE_CHANNELS.includes(ch.id as UploadableChannel);

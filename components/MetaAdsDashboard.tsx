@@ -942,7 +942,7 @@ export default function MetaAdsDashboard({ metaData, isConnected, error }: Props
   ];
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+    <main className="w-full min-w-0 max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-6">
 
       {/* ── 헤더 카드 ── */}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 px-6 py-5">
