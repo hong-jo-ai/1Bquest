@@ -147,8 +147,8 @@ export default function FinanceClient() {
         />
       </section>
 
-      {/* 요약 카드 */}
-      <section className="grid grid-cols-3 gap-3 sm:gap-4">
+      {/* 요약 카드 — 모바일에선 세로 쌓기 (큰 금액이 잘리지 않도록) */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <SummaryCard label="입금 (전체)" value={fmtKrw(totals.inflow)} accent="emerald" />
         <SummaryCard label="출금 (전체)" value={fmtKrw(totals.outflow)} accent="red" />
         <SummaryCard
@@ -183,14 +183,14 @@ export default function FinanceClient() {
                   <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                     {cat}
                   </span>
-                  <span className="text-[10px] text-zinc-400 ml-auto">{a.count}건</span>
+                  <span className="text-[11px] text-zinc-400 ml-auto">{a.count}건</span>
                 </div>
                 <div className={`text-sm font-bold tabular-nums ${
                   net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                 }`}>
                   {net >= 0 ? "+" : ""}{fmtKrw(Math.abs(net)).replace("₩", net < 0 ? "-₩" : "₩")}
                 </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">
+                <div className="text-[11px] text-zinc-500 mt-0.5">
                   입 {fmtKrw(a.deposit)} / 출 {fmtKrw(a.withdrawal)}
                 </div>
               </button>
@@ -217,7 +217,59 @@ export default function FinanceClient() {
             </button>
           )}
         </div>
-        <div className="overflow-x-auto">
+        {/* 모바일: 카드 리스트 */}
+        <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
+          {txs.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-zinc-400">
+              {loading ? "로딩 중…" : "거래내역이 없습니다. 위에서 엑셀을 업로드하세요."}
+            </div>
+          ) : (
+            txs.map((t) => (
+              <div key={t.id} className="px-3 py-3">
+                <div className="flex items-start justify-between gap-3 mb-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                      {t.counterparty || "-"}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
+                      <span>{fmtDate(t.tx_date)}</span>
+                      {t.description && (
+                        <>
+                          <span className="text-zinc-300">·</span>
+                          <span className="truncate">{t.description}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {t.withdrawal > 0 && (
+                      <div className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                        -{fmtKrw(t.withdrawal)}
+                      </div>
+                    )}
+                    {t.deposit > 0 && (
+                      <div className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        +{fmtKrw(t.deposit)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <CategoryPicker
+                  txId={t.id}
+                  current={t.category}
+                  onChange={(newCat) => {
+                    setTxs((prev) =>
+                      prev.map((x) => (x.id === t.id ? { ...x, category: newCat } : x))
+                    );
+                  }}
+                />
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 데스크탑: 표 */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800">

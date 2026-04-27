@@ -77,40 +77,64 @@ function KpiCard({
 function CampaignRow({ c }: { c: MetaCampaign }) {
   const isActive = c.status === "ACTIVE";
   return (
-    <div className="flex items-center gap-3 py-3 px-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded-xl transition-colors">
-      <div className="shrink-0">
-        {isActive ? (
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full">
-            <Play size={8} fill="currentColor" /> 진행
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
-            <Pause size={8} fill="currentColor" /> 중지
-          </span>
-        )}
+    <div className="py-3 px-3 sm:px-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded-xl transition-colors">
+      <div className="flex items-start sm:items-center gap-3">
+        <div className="shrink-0 mt-0.5 sm:mt-0">
+          {isActive ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+              <Play size={8} fill="currentColor" /> 진행
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+              <Pause size={8} fill="currentColor" /> 중지
+            </span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{c.name}</p>
+          <p className="text-[11px] text-zinc-400 mt-0.5">{OBJECTIVE_KO[c.objective] ?? c.objective}</p>
+        </div>
+        <div className="hidden sm:grid grid-cols-4 gap-4 text-right shrink-0">
+          <div>
+            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtKRW(c.spend)}</p>
+            <p className="text-[10px] text-zinc-400">지출</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtCount(c.impressions)}</p>
+            <p className="text-[10px] text-zinc-400">노출</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtPct(c.ctr)}</p>
+            <p className="text-[10px] text-zinc-400">CTR</p>
+          </div>
+          <div>
+            <p className={`text-xs font-semibold ${c.roas > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
+              {fmtRoas(c.roas)}
+            </p>
+            <p className="text-[10px] text-zinc-400">ROAS</p>
+          </div>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{c.name}</p>
-        <p className="text-[11px] text-zinc-400 mt-0.5">{OBJECTIVE_KO[c.objective] ?? c.objective}</p>
-      </div>
-      <div className="hidden sm:grid grid-cols-4 gap-4 text-right shrink-0">
+
+      {/* 모바일: 4지표 2x2 그리드 (캠페인 이름 아래) */}
+      <div className="grid grid-cols-4 gap-2 mt-2.5 sm:hidden">
         <div>
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtKRW(c.spend)}</p>
-          <p className="text-[10px] text-zinc-400">지출</p>
+          <p className="text-[10px] text-zinc-400 leading-none">지출</p>
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mt-1 tabular-nums">{fmtKRW(c.spend)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtCount(c.impressions)}</p>
-          <p className="text-[10px] text-zinc-400">노출</p>
+          <p className="text-[10px] text-zinc-400 leading-none">노출</p>
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mt-1 tabular-nums">{fmtCount(c.impressions)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{fmtPct(c.ctr)}</p>
-          <p className="text-[10px] text-zinc-400">CTR</p>
+          <p className="text-[10px] text-zinc-400 leading-none">CTR</p>
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mt-1 tabular-nums">{fmtPct(c.ctr)}</p>
         </div>
         <div>
-          <p className={`text-xs font-semibold ${c.roas > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
+          <p className="text-[10px] text-zinc-400 leading-none">ROAS</p>
+          <p className={`text-xs font-semibold mt-1 tabular-nums ${c.roas > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
             {fmtRoas(c.roas)}
           </p>
-          <p className="text-[10px] text-zinc-400">ROAS</p>
         </div>
       </div>
     </div>
