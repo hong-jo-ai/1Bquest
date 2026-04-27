@@ -44,9 +44,9 @@ export default async function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex overflow-x-hidden">
+      <body className="min-h-full flex">
         <Sidebar cafe24Connected={cafe24Connected} metaConnected={metaConnected} />
-        <div className="flex-1 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 pt-12 md:pt-0 overflow-x-hidden">
+        <div className="flex-1 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 pt-12 md:pt-0">
           {children}
         </div>
         <NotificationBell />

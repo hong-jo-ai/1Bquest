@@ -24,3 +24,14 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * 모바일 viewport 보호:
+ * - 자식 컴포넌트가 viewport 너비를 넘어가도 가로 스크롤 안 만들고 잘라냄.
+ * - `clip`은 sticky/fixed가 깨지지 않으면서 가로 overflow만 자른다 (vs `hidden`은
+ *   overflow-y가 자동 auto가 되어 scroll container가 생기는 부작용 있음).
+ * - clip 미지원 구버전 브라우저는 자연스럽게 넘침/스크롤 (현 사용자 환경엔 영향 없음).
+ */
+html {
+  overflow-x: clip;
+}
