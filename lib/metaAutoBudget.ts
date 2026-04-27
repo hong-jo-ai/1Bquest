@@ -1,36 +1,38 @@
 /**
- * 광고세트 자동 예산 조정 — 정책 엔진.
- *
- * Phase 1: 추천만 산출 (실제 변경 X). 매일 cron으로 실행 → DB 기록 → UI 표시.
+ * 광고세트 자동 예산 조정 + 약한 광고 일시중지 추천 — 정책 엔진.
  *
  * 단위: KRW는 zero-decimal 통화라 Meta API의 daily_budget이 그대로 원 단위.
  *       (USD처럼 cents로 ×100 하지 않음.) 내부 계산도 모두 원 단위.
  *
- * 정책:
- *   - 7일 rolling Meta purchase_roas 기준
- *   - ≥ HIGH(2.5)  → +DELTA(15)% 증액
- *   - ≤ LOW(1.5)   → -DELTA(15)% 감액
- *   - 그 사이      → 유지
- *   - 7일 지출 < MIN_SPEND(10만원) → 통계 노이즈로 제외 (skipped)
- *   - 추천 일 예산이 MIN_BUDGET(5천원) 미만이면 5천원으로 클램프
+ * 정책 (7일 rolling Meta purchase_roas 기준):
+ *   - ROAS < PAUSE(1.0)  + 7d 지출 ≥ PAUSE_MIN(5만원) → 일시중지 후보 (action: pause)
+ *                                                         → 사용자가 수동 일괄 적용
+ *   - ROAS ≥ HIGH(2.5)   + 7d 지출 ≥ MIN_SPEND(10만원) → +DELTA(15)% 증액
+ *   - ROAS ≤ LOW(1.5)    + 7d 지출 ≥ MIN_SPEND(10만원) → -DELTA(15)% 감액 (1.0 이상)
+ *   - 그 사이                                          → 유지
+ *   - 7일 지출 < PAUSE_MIN(5만원)                      → 노이즈로 제외 (skipped)
+ *   - 추천 일 예산 < MIN_BUDGET(5천원)                 → 5천원으로 클램프
  *   - 상한 없음 (한 번에 +15%만 오르므로 점진적)
  *   - Meta 20% 룰: 한 번에 ±20% 이내면 학습 단계 리셋 안 됨 → 15%는 안전 마진
  */
 import { metaGet } from "./metaClient";
 
 export const POLICY = {
-  ROAS_HIGH:        2.5,
-  ROAS_LOW:         1.5,
-  DELTA_PCT:        15,
-  MIN_SPEND_KRW:    100_000,   // 7일 누적 지출 하한
-  MIN_BUDGET_KRW:   5_000,     // 일 예산 하한
+  ROAS_HIGH:           2.5,
+  ROAS_LOW:            1.5,
+  ROAS_PAUSE:          1.0,
+  DELTA_PCT:           15,
+  MIN_SPEND_KRW:       100_000,   // 7일 누적 지출 — 예산 변경 추천에 필요
+  PAUSE_MIN_SPEND_KRW: 50_000,    // 7일 누적 지출 — 일시중지 추천에 필요 (더 빠르게 자르기)
+  MIN_BUDGET_KRW:      5_000,     // 일 예산 하한
 } as const;
 
-export type AutoBudgetAction = "increase" | "decrease" | "maintain" | "skipped";
+export type AutoBudgetAction = "increase" | "decrease" | "maintain" | "pause" | "skipped";
 export type AutoBudgetReason =
   | "roas_high"
   | "roas_low"
   | "roas_neutral"
+  | "roas_critical"
   | "low_spend"
   | "no_budget"
   | "no_data";
@@ -60,35 +62,27 @@ export interface BudgetRecommendation extends AdsetSnapshot {
 export function recommendForAdset(snap: AdsetSnapshot): BudgetRecommendation {
   // 광고세트 단위 daily_budget이 없는 경우 (CBO=캠페인 단위 예산) → 손대지 않음
   if (!snap.currentBudget || snap.currentBudget <= 0) {
-    return {
-      ...snap,
-      recommendedBudget: snap.currentBudget,
-      deltaPct: 0,
-      action: "skipped",
-      reason: "no_budget",
-    };
+    return { ...snap, recommendedBudget: snap.currentBudget, deltaPct: 0, action: "skipped", reason: "no_budget" };
   }
 
-  // 7일 지출이 너무 적으면 ROAS 노이즈 큼 → 건너뜀
-  if (snap.spend7d < POLICY.MIN_SPEND_KRW) {
-    return {
-      ...snap,
-      recommendedBudget: snap.currentBudget,
-      deltaPct: 0,
-      action: "skipped",
-      reason: "low_spend",
-    };
+  // 7일 지출이 너무 적으면 ROAS 노이즈 큼 → 건너뜀 (pause 기준 = 가장 낮은 임계)
+  if (snap.spend7d < POLICY.PAUSE_MIN_SPEND_KRW) {
+    return { ...snap, recommendedBudget: snap.currentBudget, deltaPct: 0, action: "skipped", reason: "low_spend" };
   }
 
-  // ROAS=0은 conversion 없음 → 데이터 없음으로 분류 (감액 금지)
+  // ROAS=0은 conversion 없음 → 데이터 없음으로 분류
   if (snap.roas7d <= 0) {
-    return {
-      ...snap,
-      recommendedBudget: snap.currentBudget,
-      deltaPct: 0,
-      action: "skipped",
-      reason: "no_data",
-    };
+    return { ...snap, recommendedBudget: snap.currentBudget, deltaPct: 0, action: "skipped", reason: "no_data" };
+  }
+
+  // 적자 (ROAS < 1.0) → 일시중지 후보. 예산 변경하지 않음.
+  if (snap.roas7d < POLICY.ROAS_PAUSE) {
+    return { ...snap, recommendedBudget: snap.currentBudget, deltaPct: 0, action: "pause", reason: "roas_critical" };
+  }
+
+  // 예산 변경 추천은 더 많은 데이터 필요 (10만원)
+  if (snap.spend7d < POLICY.MIN_SPEND_KRW) {
+    return { ...snap, recommendedBudget: snap.currentBudget, deltaPct: 0, action: "skipped", reason: "low_spend" };
   }
 
   let action: AutoBudgetAction = "maintain";
@@ -119,13 +113,7 @@ export function recommendForAdset(snap: AdsetSnapshot): BudgetRecommendation {
     deltaPct = 0;
   }
 
-  return {
-    ...snap,
-    recommendedBudget: recommended,
-    deltaPct,
-    action,
-    reason,
-  };
+  return { ...snap, recommendedBudget: recommended, deltaPct, action, reason };
 }
 
 /**
@@ -176,14 +164,16 @@ export const ACTION_LABEL_KO: Record<AutoBudgetAction, string> = {
   increase: "증액",
   decrease: "감액",
   maintain: "유지",
+  pause:    "일시중지",
   skipped:  "제외",
 };
 
 export const REASON_LABEL_KO: Record<AutoBudgetReason, string> = {
-  roas_high:    "ROAS ≥ 2.5 → 증액",
-  roas_low:     "ROAS ≤ 1.5 → 감액",
-  roas_neutral: "ROAS 1.5~2.5 → 유지",
-  low_spend:    "7일 지출 < 10만원 (노이즈)",
-  no_budget:    "광고세트 일 예산 없음 (CBO)",
-  no_data:      "구매 데이터 부족",
+  roas_high:     "ROAS ≥ 2.5 → 증액",
+  roas_low:      "ROAS 1.0~1.5 → 감액",
+  roas_neutral:  "ROAS 1.5~2.5 → 유지",
+  roas_critical: "ROAS < 1.0 (적자) → 일시중지 후보",
+  low_spend:     "7일 지출 부족 (노이즈)",
+  no_budget:     "광고세트 일 예산 없음 (CBO)",
+  no_data:       "구매 데이터 부족",
 };

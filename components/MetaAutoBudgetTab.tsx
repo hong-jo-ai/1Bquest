@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Loader2, RefreshCw, AlertCircle, TrendingUp, TrendingDown, Minus, Ban, Info } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Loader2, RefreshCw, AlertCircle, TrendingUp, TrendingDown, Minus, Ban, Info, PauseCircle, Check } from "lucide-react";
 import type { AutoBudgetLogRow } from "@/app/api/meta/auto-budget/log/route";
 import { ACTION_LABEL_KO, REASON_LABEL_KO, POLICY } from "@/lib/metaAutoBudget";
 
@@ -19,6 +19,8 @@ function actionStyle(action: AutoBudgetLogRow["action"]) {
       return { bg: "bg-amber-50 dark:bg-amber-900/30",     text: "text-amber-600  dark:text-amber-400",   icon: TrendingDown };
     case "maintain":
       return { bg: "bg-zinc-100 dark:bg-zinc-800",         text: "text-zinc-600   dark:text-zinc-300",    icon: Minus };
+    case "pause":
+      return { bg: "bg-red-50 dark:bg-red-900/30",         text: "text-red-600    dark:text-red-400",     icon: PauseCircle };
     case "skipped":
     default:
       return { bg: "bg-zinc-50 dark:bg-zinc-900",          text: "text-zinc-400   dark:text-zinc-500",    icon: Ban };
@@ -31,6 +33,9 @@ export default function MetaAutoBudgetTab() {
   const [error,   setError]   = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runMsg,  setRunMsg]  = useState<string | null>(null);
+  const [selectedPause, setSelectedPause] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,7 +64,7 @@ export default function MetaAutoBudgetTab() {
       if (!data.ok) throw new Error(data.error ?? "실행 실패");
       const c = data.counts ?? {};
       setRunMsg(
-        `완료 (${data.runDate}): 총 ${data.recommendations}건 · 증액 ${c.increase ?? 0} / 감액 ${c.decrease ?? 0} / 유지 ${c.maintain ?? 0} / 제외 ${c.skipped ?? 0}`
+        `완료 (${data.runDate}): 총 ${data.recommendations}건 · 일시중지 ${c.pause ?? 0} / 증액 ${c.increase ?? 0} / 감액 ${c.decrease ?? 0} / 유지 ${c.maintain ?? 0} / 제외 ${c.skipped ?? 0}`
       );
       await load();
     } catch (e) {
@@ -69,13 +74,59 @@ export default function MetaAutoBudgetTab() {
     }
   }, [running, load]);
 
-  // 오늘 날짜 group + 이전 날짜
+  // 오늘 날짜 group
   const today = rows && rows.length > 0 ? rows[0].run_date : null;
-  const todayRows = rows?.filter((r) => r.run_date === today) ?? [];
+  const todayRows = useMemo(
+    () => rows?.filter((r) => r.run_date === today) ?? [],
+    [rows, today]
+  );
   const counts = todayRows.reduce(
     (acc, r) => { acc[r.action] = (acc[r.action] ?? 0) + 1; return acc; },
     {} as Record<string, number>
   );
+
+  // 미적용 일시중지 후보 (오늘 추천 중 applied=false)
+  const pauseCandidates = useMemo(
+    () => todayRows.filter((r) => r.action === "pause" && !r.applied),
+    [todayRows]
+  );
+
+  // 후보가 새로 로드되면 기본 전체 선택
+  useEffect(() => {
+    setSelectedPause(new Set(pauseCandidates.map((r) => r.adset_id)));
+  }, [pauseCandidates]);
+
+  const togglePause = (adsetId: string) => {
+    setSelectedPause((prev) => {
+      const next = new Set(prev);
+      if (next.has(adsetId)) next.delete(adsetId);
+      else                   next.add(adsetId);
+      return next;
+    });
+  };
+
+  const applyPause = useCallback(async () => {
+    if (applying || selectedPause.size === 0) return;
+    if (!confirm(`선택한 ${selectedPause.size}개 광고세트를 실제로 일시중지하시겠습니까?\n\nMeta에 즉시 반영됩니다.`)) return;
+
+    setApplying(true);
+    setApplyMsg(null);
+    try {
+      const res  = await fetch("/api/meta/auto-budget/apply-pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adsetIds: Array.from(selectedPause) }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "적용 실패");
+      setApplyMsg(`성공 ${data.succeeded}개 / 실패 ${data.failed}개`);
+      await load();
+    } catch (e) {
+      setApplyMsg(`오류: ${e instanceof Error ? e.message : "적용 실패"}`);
+    } finally {
+      setApplying(false);
+    }
+  }, [applying, selectedPause, load]);
 
   return (
     <div className="px-4 sm:px-6 py-5 space-y-5">
@@ -84,12 +135,78 @@ export default function MetaAutoBudgetTab() {
       <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/50 rounded-xl px-4 py-3 flex items-start gap-2">
         <Info size={14} className="text-violet-500 mt-0.5 shrink-0" />
         <div className="text-xs text-violet-700 dark:text-violet-300 leading-relaxed">
-          <strong>Dry-run (추천만)</strong> · 실제 광고세트 예산은 변경되지 않습니다.
-          7일 ROAS ≥ {POLICY.ROAS_HIGH} → +{POLICY.DELTA_PCT}% / ≤ {POLICY.ROAS_LOW} → -{POLICY.DELTA_PCT}% / 그 외 유지.
-          7일 지출 &lt; {(POLICY.MIN_SPEND_KRW / 10_000)}만원 · 일 예산 하한 {(POLICY.MIN_BUDGET_KRW / 1_000)}천원.
-          매일 KST 09:00 자동 실행.
+          <strong>매일 KST 09:00 자동 추천</strong> · 7일 ROAS 기준
+          <ul className="mt-1 space-y-0.5 ml-3 list-disc">
+            <li><strong>{POLICY.ROAS_PAUSE} 미만</strong> + 7일 지출 ≥ {POLICY.PAUSE_MIN_SPEND_KRW / 10_000}만원 → <span className="text-red-600 dark:text-red-400 font-semibold">일시중지 후보</span> (사용자 승인 시 적용)</li>
+            <li><strong>{POLICY.ROAS_LOW} 이하</strong> + 지출 ≥ {POLICY.MIN_SPEND_KRW / 10_000}만원 → -{POLICY.DELTA_PCT}% 감액 추천</li>
+            <li><strong>{POLICY.ROAS_HIGH} 이상</strong> + 지출 ≥ {POLICY.MIN_SPEND_KRW / 10_000}만원 → +{POLICY.DELTA_PCT}% 증액 추천</li>
+            <li>예산 변경은 추천만 (실제 적용 X) — Meta 학습 단계 보호 위해 ±20% 안전 마진</li>
+          </ul>
         </div>
       </div>
+
+      {/* 일시중지 후보 — 가장 액션 우선순위 높음 */}
+      {pauseCandidates.length > 0 && (
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-red-200 dark:border-red-900/50 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <PauseCircle size={16} className="text-red-500" />
+              <h3 className="text-sm font-semibold text-red-700 dark:text-red-300">
+                일시중지 후보 {pauseCandidates.length}개 (적자 광고세트)
+              </h3>
+            </div>
+            <button
+              onClick={applyPause}
+              disabled={applying || selectedPause.size === 0}
+              className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            >
+              {applying ? <Loader2 size={12} className="animate-spin" /> : <PauseCircle size={12} />}
+              선택 {selectedPause.size}개 일시중지
+            </button>
+          </div>
+
+          <ul className="divide-y divide-red-100 dark:divide-red-900/30">
+            {pauseCandidates.map((r) => {
+              const checked = selectedPause.has(r.adset_id);
+              return (
+                <li
+                  key={r.adset_id}
+                  className="px-4 py-3 flex items-center gap-3 hover:bg-red-100/40 dark:hover:bg-red-900/20 cursor-pointer"
+                  onClick={() => togglePause(r.adset_id)}
+                >
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
+                    checked
+                      ? "bg-red-600 border-red-600 text-white"
+                      : "border-red-300 dark:border-red-700"
+                  }`}>
+                    {checked && <Check size={12} strokeWidth={3} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-zinc-800 dark:text-zinc-100 truncate">{r.adset_name ?? r.adset_id}</p>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{r.campaign_name ?? "-"}</p>
+                  </div>
+                  <div className="text-right shrink-0 grid grid-cols-2 gap-x-4">
+                    <div>
+                      <p className="text-[10px] text-zinc-400">7d 지출</p>
+                      <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 tabular-nums">{fmtKRW(r.spend_7d)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-400">7d ROAS</p>
+                      <p className="text-xs font-bold text-red-600 dark:text-red-400 tabular-nums">{r.roas_7d.toFixed(2)}x</p>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          {applyMsg && (
+            <div className="px-4 py-2 bg-red-100/50 dark:bg-red-900/30 text-xs text-red-700 dark:text-red-300">
+              {applyMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 액션 카운트 + 수동 실행 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -99,10 +216,11 @@ export default function MetaAutoBudgetTab() {
               최근 실행: <strong>{today}</strong>
             </span>
           )}
-          <span className="text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full">증액 {counts.increase ?? 0}</span>
-          <span className="text-xs font-semibold bg-amber-50  dark:bg-amber-900/30  text-amber-600  dark:text-amber-400  px-2 py-1 rounded-full">감액 {counts.decrease ?? 0}</span>
-          <span className="text-xs font-semibold bg-zinc-100  dark:bg-zinc-800       text-zinc-600   dark:text-zinc-300   px-2 py-1 rounded-full">유지 {counts.maintain ?? 0}</span>
-          <span className="text-xs font-semibold bg-zinc-50   dark:bg-zinc-900       text-zinc-400   dark:text-zinc-500   px-2 py-1 rounded-full">제외 {counts.skipped ?? 0}</span>
+          <span className="text-xs font-semibold bg-red-50     dark:bg-red-900/30      text-red-600    dark:text-red-400    px-2 py-1 rounded-full">일시중지 {counts.pause ?? 0}</span>
+          <span className="text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/30  text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full">증액 {counts.increase ?? 0}</span>
+          <span className="text-xs font-semibold bg-amber-50   dark:bg-amber-900/30    text-amber-600   dark:text-amber-400   px-2 py-1 rounded-full">감액 {counts.decrease ?? 0}</span>
+          <span className="text-xs font-semibold bg-zinc-100   dark:bg-zinc-800        text-zinc-600    dark:text-zinc-300    px-2 py-1 rounded-full">유지 {counts.maintain ?? 0}</span>
+          <span className="text-xs font-semibold bg-zinc-50    dark:bg-zinc-900        text-zinc-400    dark:text-zinc-500    px-2 py-1 rounded-full">제외 {counts.skipped ?? 0}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -130,7 +248,7 @@ export default function MetaAutoBudgetTab() {
         </div>
       )}
 
-      {/* 본문 */}
+      {/* 본문 — 전체 추천 이력 */}
       {loading && rows === null && (
         <div className="flex items-center justify-center py-12 gap-2 text-zinc-400">
           <Loader2 size={18} className="animate-spin" />
@@ -172,7 +290,7 @@ export default function MetaAutoBudgetTab() {
                   const st = actionStyle(r.action);
                   const Icon = st.icon;
                   return (
-                    <tr key={`${r.run_date}-${r.adset_id}`} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30">
+                    <tr key={`${r.run_date}-${r.adset_id}`} className={`hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 ${r.applied ? "opacity-60" : ""}`}>
                       <td className="px-3 py-2.5 text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">{r.run_date}</td>
                       <td className="px-3 py-2.5">
                         <p className="text-xs font-medium text-zinc-800 dark:text-zinc-100 truncate max-w-[260px]">{r.adset_name ?? r.adset_id}</p>
@@ -184,7 +302,7 @@ export default function MetaAutoBudgetTab() {
                       </td>
                       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300">{fmtKRW(r.current_budget)}</td>
                       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${st.text}`}>
-                        {fmtKRW(r.recommended_budget)}
+                        {r.action === "pause" ? "—" : fmtKRW(r.recommended_budget)}
                         {r.delta_pct !== 0 && (
                           <span className="ml-1 text-[10px] opacity-70">
                             {r.delta_pct > 0 ? "+" : ""}{r.delta_pct}%
@@ -192,10 +310,17 @@ export default function MetaAutoBudgetTab() {
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${st.bg} ${st.text} px-2 py-0.5 rounded-full`}>
-                          <Icon size={10} />
-                          {ACTION_LABEL_KO[r.action]}
-                        </span>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${st.bg} ${st.text} px-2 py-0.5 rounded-full`}>
+                            <Icon size={10} />
+                            {ACTION_LABEL_KO[r.action]}
+                          </span>
+                          {r.applied && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">
+                              <Check size={10} />적용됨
+                            </span>
+                          )}
+                        </div>
                         {r.reason && (
                           <p className="text-[10px] text-zinc-400 mt-0.5">{REASON_LABEL_KO[r.reason as keyof typeof REASON_LABEL_KO] ?? r.reason}</p>
                         )}
@@ -215,17 +340,24 @@ export default function MetaAutoBudgetTab() {
               return (
                 <div
                   key={`${r.run_date}-${r.adset_id}`}
-                  className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl px-3 py-3"
+                  className={`bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl px-3 py-3 ${r.applied ? "opacity-60" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-zinc-800 dark:text-zinc-100 truncate">{r.adset_name ?? r.adset_id}</p>
                       <p className="text-[10px] text-zinc-400 truncate">{r.campaign_name ?? "-"} · {r.run_date}</p>
                     </div>
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${st.bg} ${st.text} px-2 py-0.5 rounded-full shrink-0`}>
-                      <Icon size={10} />
-                      {ACTION_LABEL_KO[r.action]}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${st.bg} ${st.text} px-2 py-0.5 rounded-full`}>
+                        <Icon size={10} />
+                        {ACTION_LABEL_KO[r.action]}
+                      </span>
+                      {r.applied && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">
+                          <Check size={10} />적용됨
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-center">
                     <div>
@@ -243,7 +375,7 @@ export default function MetaAutoBudgetTab() {
                     <div>
                       <p className="text-[10px] text-zinc-400">추천</p>
                       <p className={`text-xs font-semibold tabular-nums mt-0.5 ${st.text}`}>
-                        {fmtKRW(r.recommended_budget)}
+                        {r.action === "pause" ? "—" : fmtKRW(r.recommended_budget)}
                       </p>
                     </div>
                   </div>

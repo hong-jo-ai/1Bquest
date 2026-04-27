@@ -22,7 +22,7 @@ export interface AutoBudgetLogRow {
   current_budget:     number;     // KRW (원)
   recommended_budget: number;     // KRW
   delta_pct:          number;
-  action:             "increase" | "decrease" | "maintain" | "skipped";
+  action:             "increase" | "decrease" | "maintain" | "pause" | "skipped";
   reason:             string | null;
   applied:            boolean;
   applied_at:         string | null;
