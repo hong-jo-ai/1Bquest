@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { saveWithSync, loadFromServer } from "@/lib/syncStorage";
 import {
   Watch,
   LayoutDashboard,
@@ -130,6 +131,7 @@ export default function Sidebar({
   const [csUnanswered, setCsUnanswered] = useState(0);
 
   useEffect(() => {
+    // 1단계: 로컬 캐시로 즉시 복원
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -137,6 +139,13 @@ export default function Sidebar({
       }
     } catch {}
     setMounted(true);
+
+    // 2단계: 서버에서 최신값 동기화 (다른 기기에서 변경한 진척도 반영)
+    loadFromServer<Record<string, number>>(STORAGE_KEY)
+      .then((server) => {
+        if (server) setProgress((prev) => ({ ...prev, ...server }));
+      })
+      .catch(() => { /* 서버 fetch 실패 시 로컬만 사용 */ });
   }, []);
 
   // CS 미답변 수 폴링
@@ -162,9 +171,7 @@ export default function Sidebar({
   const updateProgress = (page: AppPage, value: number) => {
     setProgress((prev) => {
       const next = { ...prev, [page]: value };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {}
+      saveWithSync(STORAGE_KEY, next);
       return next;
     });
   };

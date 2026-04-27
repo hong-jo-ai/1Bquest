@@ -107,7 +107,15 @@ export function loadTrendCache(): TrendCache | null {
 
 export function saveTrendCache(data: TrendCache) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(TREND_KEY, JSON.stringify(data));
+  saveWithSync(TREND_KEY, data);
+}
+
+export async function syncTrendCacheFromServer(): Promise<TrendCache | null> {
+  const cache = await loadFromServer<TrendCache>(TREND_KEY);
+  if (!cache) return null;
+  // 24시간 지난 서버 캐시도 무효 처리 (loadTrendCache와 동일 정책)
+  if (Date.now() - new Date(cache.generatedAt).getTime() > 24 * 60 * 60 * 1000) return null;
+  return cache;
 }
 
 // ── 스토리지 ──────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import {
 import {
   loadRefs, addRef, deleteRef,
   loadPosts, addPosts, toggleLike, deletePost, updatePostText, updatePostMedia, removePostMedia,
-  loadTrend, saveTrend, migrateOldKeys,
+  loadTrend, saveTrend, syncTrendFromServer, migrateOldKeys,
   type ThreadsRef, type GeneratedPost, type TrendAnalysis,
   type ThreadsCategory, type PostStyle,
 } from "@/lib/threadsStorage";
@@ -90,7 +90,14 @@ function TrendTab({ brand }: { brand: BrandId }) {
   const [keywords, setKeywords] = useState<string[]>(brandConfig.defaultKeywords);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => { setTrend(loadTrend(brand)); }, [brand]);
+  useEffect(() => {
+    // 1단계: 로컬 캐시
+    setTrend(loadTrend(brand));
+    // 2단계: 서버 SSOT (다른 기기에서 분석한 결과 반영)
+    syncTrendFromServer(brand)
+      .then((server) => { if (server) setTrend(server); })
+      .catch(() => { /* 실패 시 로컬만 사용 */ });
+  }, [brand]);
   useEffect(() => { setKeywords(brandConfig.defaultKeywords); }, [brand, brandConfig.defaultKeywords]);
 
   const analyze = async () => {

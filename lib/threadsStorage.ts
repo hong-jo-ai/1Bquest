@@ -149,5 +149,8 @@ export function loadTrend(brand: BrandId = "paulvice"): TrendAnalysis | null {
   try { return JSON.parse(localStorage.getItem(trendKey(brand)) ?? "null"); } catch { return null; }
 }
 export function saveTrend(trend: TrendAnalysis, brand: BrandId = "paulvice") {
-  localStorage.setItem(trendKey(brand), JSON.stringify(trend));
+  saveWithSync(trendKey(brand), trend);
+}
+export async function syncTrendFromServer(brand: BrandId = "paulvice"): Promise<TrendAnalysis | null> {
+  return loadFromServer<TrendAnalysis>(trendKey(brand));
 }

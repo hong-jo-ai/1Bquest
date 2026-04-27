@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import {
   loadBriefs, addBrief, deleteBrief, updateBriefHook, analyzeHistory,
-  loadTrendCache, saveTrendCache, syncBriefsFromServer,
+  loadTrendCache, saveTrendCache, syncTrendCacheFromServer, syncBriefsFromServer,
   type ContentBrief, type ContentType, type Channel, type Emotion, type TrendCache,
   CHANNEL_LABEL, CHANNEL_DURATION, CONTENT_TYPE_COLORS,
 } from "@/lib/contentStorage";
@@ -78,7 +78,14 @@ function GenerateTab({ onSaved }: { onSaved: () => void }) {
   const [trendCache, setTrendCache] = useState<TrendCache | null>(null);
   const { copiedId, copy }          = useCopy();
 
-  useEffect(() => { setTrendCache(loadTrendCache()); }, []);
+  useEffect(() => {
+    // 1단계: 로컬 캐시
+    setTrendCache(loadTrendCache());
+    // 2단계: 서버 SSOT (다른 기기에서 스캔한 결과 반영)
+    syncTrendCacheFromServer()
+      .then((server) => { if (server) setTrendCache(server); })
+      .catch(() => { /* 실패 시 로컬만 사용 */ });
+  }, []);
 
   const toggleChannel = (c: Channel) =>
     setChannels((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
