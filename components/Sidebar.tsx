@@ -18,6 +18,7 @@ import {
   Inbox,
   ShoppingBag,
   Wallet,
+  Zap,
   PanelLeftClose,
   PanelLeft,
   Menu,
@@ -36,6 +37,7 @@ type AppPage =
   | "influencer"
   | "groupbuying"
   | "ads"
+  | "adsauto"
   | "threads"
   | "content"
   | "imagemaker"
@@ -55,7 +57,8 @@ const NAV_ITEMS: {
   { href: "/analytics", label: "방문자", icon: BarChart2, page: "analytics" },
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
   { href: "/tools/group-buying", label: "공동구매", icon: ShoppingBag, page: "groupbuying" },
-  { href: "/ads", label: "광고", icon: Megaphone, page: "ads" },
+  { href: "/ads/auto", label: "광고 자동화", icon: Zap, page: "adsauto" },
+  { href: "/ads", label: "광고 성과", icon: Megaphone, page: "ads" },
   { href: "/tools/threads", label: "쓰레드", icon: AtSign, page: "threads" },
   { href: "/tools/content", label: "콘텐츠", icon: Film, page: "content" },
   { href: "/imagemaker", label: "화보 메이커", icon: ImagePlus, page: "imagemaker" },
@@ -71,6 +74,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/tools/influencer": "influencer",
   "/tools/group-buying": "groupbuying",
   "/ads": "ads",
+  "/ads/auto": "adsauto",
   "/tools/threads": "threads",
   "/tools/content": "content",
   "/imagemaker": "imagemaker",
@@ -121,6 +125,7 @@ export default function Sidebar({
       influencer: 0,
       groupbuying: 0,
       ads: 0,
+      adsauto: 0,
       threads: 0,
       content: 0,
       imagemaker: 0,
