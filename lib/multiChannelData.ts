@@ -15,6 +15,7 @@ export type ChannelId =
   | "musinsa"
   | "29cm"
   | "groupbuy"
+  | "kakao_gift"
   | "sixshop"
   | "naver_smartstore"
   | "sixshop_global";
@@ -24,6 +25,7 @@ export type UploadableChannel =
   | "musinsa"
   | "29cm"
   | "groupbuy"
+  | "kakao_gift"
   | "sixshop"
   | "naver_smartstore"
   | "sixshop_global";
@@ -33,6 +35,7 @@ export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "musinsa",
   "29cm",
   "groupbuy",
+  "kakao_gift",
   "sixshop",
   "naver_smartstore",
   "sixshop_global",
@@ -48,7 +51,7 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
-  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy"],
+  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift"],
   harriot:  ["all", "sixshop", "naver_smartstore", "sixshop_global"],
 };
 
@@ -67,6 +70,7 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "musinsa",  name: "무신사",   color: "#2563eb", bgColor: "bg-blue-600",     textColor: "text-blue-600"    },
   { id: "29cm",     name: "29CM",     color: "#000000", bgColor: "bg-zinc-900",     textColor: "text-zinc-900"    },
   { id: "groupbuy", name: "공동구매", color: "#f59e0b", bgColor: "bg-amber-500",    textColor: "text-amber-600"   },
+  { id: "kakao_gift", name: "카카오선물하기", color: "#fbbf24", bgColor: "bg-yellow-400", textColor: "text-yellow-700"  },
 
   // 해리엇 채널
   { id: "sixshop",          name: "식스샵",         color: "#10b981", bgColor: "bg-emerald-500", textColor: "text-emerald-600" },
@@ -212,6 +216,11 @@ export const groupbuyDummy: MultiChannelData = {
   inventory: [],
 };
 
+export const kakaoGiftDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+
 export const sixshopDummy: MultiChannelData = {
   salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
@@ -230,6 +239,7 @@ export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   musinsa: musinsaDummy,
   "29cm": twentyNineCmDummy,
   groupbuy: groupbuyDummy,
+  kakao_gift: kakaoGiftDummy,
   sixshop: sixshopDummy,
   naver_smartstore: naverSmartstoreDummy,
   sixshop_global: sixshopGlobalDummy,

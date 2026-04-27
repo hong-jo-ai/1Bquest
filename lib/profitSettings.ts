@@ -35,6 +35,7 @@ export const DEFAULT_SETTINGS: ProfitSettings = {
     naver_smartstore: 5.563,
     sixshop_global: 1.85,
     groupbuy: 0,
+    kakao_gift: 10, // 카카오선물하기 일반 카테고리 수수료 추정 — 실제 정산서 보고 ⚙에서 보정
   },
   fixedCosts: [],
   shippingPerOrder: 2500,

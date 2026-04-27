@@ -7,6 +7,7 @@ const ALLOWED_CHANNELS = [
   "musinsa",
   "29cm",
   "groupbuy",
+  "kakao_gift",
   "sixshop",
   "naver_smartstore",
   "sixshop_global",

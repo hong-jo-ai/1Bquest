@@ -37,6 +37,7 @@ const LS_KEY: Record<UploadableChannel, { data: string; meta: string }> = {
   musinsa:          { data: "musinsa_excel_data",          meta: "musinsa_excel_meta"          },
   "29cm":           { data: "29cm_excel_data",             meta: "29cm_excel_meta"             },
   groupbuy:         { data: "groupbuy_excel_data",         meta: "groupbuy_excel_meta"         },
+  kakao_gift:       { data: "kakao_gift_excel_data",       meta: "kakao_gift_excel_meta"       },
   sixshop:          { data: "sixshop_excel_data",          meta: "sixshop_excel_meta"          },
   naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta" },
   sixshop_global:   { data: "sixshop_global_excel_data",   meta: "sixshop_global_excel_meta"   },
@@ -52,11 +53,11 @@ interface UploadMeta {
 type ChannelUploads = Record<UploadableChannel, MultiChannelData | null>;
 type ChannelMetas = Record<UploadableChannel, UploadMeta | null>;
 const EMPTY_UPLOADS: ChannelUploads = {
-  wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+  wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 const EMPTY_METAS: ChannelMetas = {
-  wconcept: null, musinsa: null, "29cm": null, groupbuy: null,
+  wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 
@@ -201,6 +202,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     musinsa:          uploads.musinsa          ?? UPLOADABLE_DUMMIES.musinsa,
     "29cm":           uploads["29cm"]          ?? UPLOADABLE_DUMMIES["29cm"],
     groupbuy:         uploads.groupbuy         ?? UPLOADABLE_DUMMIES.groupbuy,
+    kakao_gift:       uploads.kakao_gift       ?? UPLOADABLE_DUMMIES.kakao_gift,
     sixshop:          uploads.sixshop          ?? UPLOADABLE_DUMMIES.sixshop,
     naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
     sixshop_global:   uploads.sixshop_global   ?? UPLOADABLE_DUMMIES.sixshop_global,

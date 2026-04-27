@@ -20,6 +20,7 @@ interface Props {
     | "musinsa"
     | "29cm"
     | "groupbuy"
+    | "kakao_gift"
     | "sixshop"
     | "naver_smartstore"
     | "sixshop_global";
@@ -158,6 +159,9 @@ export default function ExcelUploadPanel({
             )}
             {channel === "groupbuy" && (
               <p className="mt-0.5">공동구매 캠페인 결과를 정리한 엑셀 (날짜·상품명·수량·매출)</p>
+            )}
+            {channel === "kakao_gift" && (
+              <p className="mt-0.5">카카오선물하기 정산 시트(구글시트) → 파일 → 다운로드 → CSV 또는 엑셀</p>
             )}
             {channel === "sixshop" && (
               <p className="mt-0.5">식스샵 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
