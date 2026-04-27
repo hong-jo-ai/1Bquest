@@ -5,6 +5,7 @@ import { AlertCircle, UploadCloud, ChevronDown, ChevronUp } from "lucide-react";
 
 import ChannelTabs from "@/components/ChannelTabs";
 import ChannelComparisonChart from "@/components/ChannelComparisonChart";
+import DashboardAdsKpi from "@/components/DashboardAdsKpi";
 import SalesSummary from "@/components/SalesSummary";
 import TopProducts from "@/components/TopProducts";
 import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboard";
@@ -358,6 +359,9 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />
+
+        {/* 광고 성과 KPI — 기간별 지출/매출/ROAS/전환수 */}
+        <DashboardAdsKpi brand={brand} />
 
         {/* 손익 분석 (P&L) — 메인 도구: 매출, 수수료, 부가세, 매입원가, 광고비, 고정비 → 영업이익 */}
         <ProfitDashboard

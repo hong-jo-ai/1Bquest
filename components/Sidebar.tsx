@@ -36,7 +36,6 @@ type AppPage =
   | "analytics"
   | "influencer"
   | "groupbuying"
-  | "ads"
   | "adsauto"
   | "threads"
   | "content"
@@ -58,7 +57,6 @@ const NAV_ITEMS: {
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
   { href: "/tools/group-buying", label: "공동구매", icon: ShoppingBag, page: "groupbuying" },
   { href: "/ads/auto", label: "광고 자동화", icon: Zap, page: "adsauto" },
-  { href: "/ads", label: "광고 성과", icon: Megaphone, page: "ads" },
   { href: "/tools/threads", label: "쓰레드", icon: AtSign, page: "threads" },
   { href: "/tools/content", label: "콘텐츠", icon: Film, page: "content" },
   { href: "/imagemaker", label: "화보 메이커", icon: ImagePlus, page: "imagemaker" },
@@ -73,7 +71,6 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/analytics": "analytics",
   "/tools/influencer": "influencer",
   "/tools/group-buying": "groupbuying",
-  "/ads": "ads",
   "/ads/auto": "adsauto",
   "/tools/threads": "threads",
   "/tools/content": "content",
@@ -124,7 +121,6 @@ export default function Sidebar({
       analytics: 0,
       influencer: 0,
       groupbuying: 0,
-      ads: 0,
       adsauto: 0,
       threads: 0,
       content: 0,
