@@ -105,6 +105,13 @@ export default function FinanceClient() {
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
         />
         <UploadCard
+          title="KB국민카드 이용내역"
+          hint="KB국민카드 → 이용내역 → 엑셀 다운로드"
+          accept=".xls,.xlsx"
+          uploadUrl="/api/finance/card-usage?source=card_kb"
+          onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
+        />
+        <UploadCard
           title="네이버페이 영수증"
           hint="네이버페이 → 결제내역 → 엑셀 다운로드"
           accept=".xls,.xlsx"
