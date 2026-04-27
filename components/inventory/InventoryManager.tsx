@@ -181,12 +181,30 @@ export default function InventoryManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skus }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "동기화 실패");
+
+      // JSON이 아닌 응답(타임아웃/서버 HTML 에러 페이지) 안전 처리
+      const ct = res.headers.get("content-type") ?? "";
+      let data: any = null;
+      if (ct.includes("application/json")) {
+        data = await res.json();
+      } else {
+        await res.text(); // body 소비
+        throw new Error(
+          res.status === 504
+            ? "동기화 시간 초과 — 카페24 API 응답이 느립니다. 잠시 후 다시 시도해주세요."
+            : `서버 오류 (HTTP ${res.status})`
+        );
+      }
+
+      if (!res.ok) throw new Error(data?.error ?? `동기화 실패 (HTTP ${res.status})`);
       setSyncResult({ synced: data.synced, failed: data.failed, results: data.results ?? [] });
       setLastSyncTime(new Date().toISOString());
     } catch (e: any) {
-      setSyncResult({ synced: 0, failed: 0, results: [{ sku: "-", quantity: 0, ok: false, error: e.message }] });
+      setSyncResult({
+        synced: 0,
+        failed: 0,
+        results: [{ sku: "-", quantity: 0, ok: false, error: e.message ?? "알 수 없는 오류" }],
+      });
     } finally {
       setSyncing(false);
     }
@@ -476,7 +494,8 @@ export default function InventoryManager() {
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
-            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            type="text" value={search}
+            onChange={(e) => { setSearch(e.target.value); if (syncResult) setSyncResult(null); }}
             placeholder="상품명 또는 SKU 검색..."
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
