@@ -43,16 +43,44 @@ export async function loadInventoryFromStore(): Promise<Record<string, Inventory
   return (data?.data as Record<string, InventoryEntry>) ?? {};
 }
 
-async function fetchProductNo(token: string, sku: string): Promise<number | null> {
-  try {
+/**
+ * 모든 상품의 SKU → product_no 매핑을 한 번에 페이징 조회.
+ * 이전에는 SKU 하나당 fetch 1번 (N=100이면 100번) → timeout 빈발.
+ * 페이징은 보통 한국 셀러 상품 수 기준 수~십 회로 끝남.
+ */
+async function buildSkuProductNoMap(token: string): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const limit = 100;
+  let offset = 0;
+  // 안전 상한: 100 * 30 = 3,000개 상품까지 (그 이상이면 timeout 위험)
+  for (let page = 0; page < 30; page++) {
     const data = await cafe24Get(
-      `/api/v2/admin/products?product_code=${encodeURIComponent(sku)}&fields=product_no`,
+      `/api/v2/admin/products?fields=product_no,product_code&limit=${limit}&offset=${offset}`,
       token,
     );
-    return data.products?.[0]?.product_no ?? null;
-  } catch {
-    return null;
+    const products: Array<{ product_no: number; product_code: string }> = data.products ?? [];
+    for (const p of products) {
+      if (p.product_code) map.set(p.product_code, p.product_no);
+    }
+    if (products.length < limit) break;
+    offset += limit;
   }
+  return map;
+}
+
+/** 청크 단위 병렬 처리 (rate-limit 보호용 concurrency 제한) */
+async function processInChunks<T, R>(
+  items: T[],
+  chunkSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const part = await Promise.all(chunk.map(fn));
+    out.push(...part);
+  }
+  return out;
 }
 
 async function updateVariantStock(token: string, productNo: number, quantity: number) {
@@ -60,18 +88,18 @@ async function updateVariantStock(token: string, productNo: number, quantity: nu
     `/api/v2/admin/products/${productNo}/variants`,
     token,
   );
-  const variants: any[] = variantData.variants ?? [];
-  let updated = 0;
-
-  for (const v of variants) {
-    await cafe24Put(
-      `/api/v2/admin/products/${productNo}/variants/${v.variant_code}`,
-      token,
-      { shop_no: 1, request: { quantity } },
-    );
-    updated++;
-  }
-  return updated;
+  const variants: Array<{ variant_code: string }> = variantData.variants ?? [];
+  // 같은 product 내 variants는 독립 업데이트 — 병렬 안전
+  await Promise.all(
+    variants.map((v) =>
+      cafe24Put(
+        `/api/v2/admin/products/${productNo}/variants/${v.variant_code}`,
+        token,
+        { shop_no: 1, request: { quantity } },
+      ),
+    ),
+  );
+  return variants.length;
 }
 
 async function fetchSalesBySku(token: string): Promise<Record<string, number>> {
@@ -121,26 +149,29 @@ export async function runInventorySync(
     return { synced: 0, failed: 0, results: [] };
   }
 
-  const salesBySku = await fetchSalesBySku(token);
-  const results: SyncResult[] = [];
+  // 사전 일괄 조회 (병렬: salesBySku + SKU→productNo 매핑)
+  const [salesBySku, productNoMap] = await Promise.all([
+    fetchSalesBySku(token),
+    buildSkuProductNoMap(token),
+  ]);
 
-  for (const sku of skus) {
+  // SKU별 처리 — 청크 5개 동시 (카페24 rate-limit 안전선)
+  const results = await processInChunks(skus, 5, async (sku): Promise<SyncResult> => {
     const entry = entries[sku];
     const sold = salesBySku[sku] ?? 0;
     const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - sold);
 
-    try {
-      const productNo = await fetchProductNo(token, sku);
-      if (!productNo) {
-        results.push({ sku, quantity: currentStock, ok: false, error: "상품 없음" });
-        continue;
-      }
-      await updateVariantStock(token, productNo, currentStock);
-      results.push({ sku, quantity: currentStock, ok: true });
-    } catch (e: any) {
-      results.push({ sku, quantity: currentStock, ok: false, error: e.message });
+    const productNo = productNoMap.get(sku);
+    if (!productNo) {
+      return { sku, quantity: currentStock, ok: false, error: "상품 없음" };
     }
-  }
+    try {
+      await updateVariantStock(token, productNo, currentStock);
+      return { sku, quantity: currentStock, ok: true };
+    } catch (e: any) {
+      return { sku, quantity: currentStock, ok: false, error: e.message ?? "업데이트 실패" };
+    }
+  });
 
   const synced = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok).length;
