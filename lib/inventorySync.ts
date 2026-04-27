@@ -128,6 +128,36 @@ async function fetchSalesBySku(token: string): Promise<Record<string, number>> {
 }
 
 /**
+ * 다른 채널(W컨셉/무신사/29CM/공동구매 등)의 업로드 데이터에서 SKU별 판매량 합산.
+ * 사용자가 대시보드에서 엑셀 업로드한 결과는 kv_store에 채널별로 저장됨.
+ *   - 키: `channel_upload:<channelId>`
+ *   - 값: `{ data: { topProducts: [{ sku, sold }, ...], ... }, meta: ... }`
+ */
+async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const supabase = getSupabase();
+  if (!supabase) return out;
+
+  const { data } = await supabase
+    .from("kv_store")
+    .select("key, data")
+    .like("key", "channel_upload:%");
+
+  for (const row of (data ?? []) as Array<{
+    key: string;
+    data: { data?: { topProducts?: Array<{ sku: string; sold: number }> } };
+  }>) {
+    const tp = row.data?.data?.topProducts;
+    if (!tp) continue;
+    for (const p of tp) {
+      if (!p.sku || !p.sold) continue;
+      out[p.sku] = (out[p.sku] ?? 0) + p.sold;
+    }
+  }
+  return out;
+}
+
+/**
  * 재고 동기화 실행
  * @param token - Cafe24 access token
  * @param trigger - "cron" | "manual"
@@ -149,17 +179,20 @@ export async function runInventorySync(
     return { synced: 0, failed: 0, results: [] };
   }
 
-  // 사전 일괄 조회 (병렬: salesBySku + SKU→productNo 매핑)
-  const [salesBySku, productNoMap] = await Promise.all([
+  // 사전 일괄 조회 (병렬: 카페24 판매 + 다른 채널 판매 + SKU→productNo 매핑)
+  const [cafe24SalesBySku, otherChannelsSales, productNoMap] = await Promise.all([
     fetchSalesBySku(token),
+    fetchOtherChannelsSales(),
     buildSkuProductNoMap(token),
   ]);
 
   // SKU별 처리 — 청크 5개 동시 (카페24 rate-limit 안전선)
   const results = await processInChunks(skus, 5, async (sku): Promise<SyncResult> => {
     const entry = entries[sku];
-    const sold = salesBySku[sku] ?? 0;
-    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - sold);
+    const cafe24Sold = cafe24SalesBySku[sku] ?? 0;
+    const otherSold = otherChannelsSales[sku] ?? 0;
+    const totalSold = cafe24Sold + otherSold;
+    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold);
 
     const productNo = productNoMap.get(sku);
     if (!productNo) {

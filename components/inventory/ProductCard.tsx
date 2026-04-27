@@ -4,6 +4,22 @@ import { useState, useEffect } from "react";
 import { Pencil, AlertTriangle, Clock, Package, Trash2, Coins, Check } from "lucide-react";
 import type { InventoryProduct } from "@/lib/inventoryStorage";
 import { AGING_CONFIG } from "@/lib/inventoryStorage";
+import { CHANNELS } from "@/lib/multiChannelData";
+
+const CHANNEL_BADGE: Record<string, string> = {
+  cafe24:           "bg-sky-100 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
+  wconcept:         "bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400",
+  musinsa:          "bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
+  "29cm":           "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  groupbuy:         "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+  sixshop:          "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
+  naver_smartstore: "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400",
+  sixshop_global:   "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400",
+};
+
+function channelLabel(id: string): string {
+  return CHANNELS.find((c) => c.id === id)?.name ?? id;
+}
 
 interface Props {
   product: InventoryProduct;
@@ -170,19 +186,24 @@ export default function ProductCard({
           </div>
         </div>
 
-        {/* 채널별 판매 */}
-        <div className="flex gap-1.5 mb-3">
-          {[
-            { label: "카페24", value: product.soldCafe24,   color: "bg-sky-100 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400" },
-            { label: "W컨셉",  value: product.soldWconcept, color: "bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400" },
-            { label: "무신사", value: product.soldMusinsa,  color: "bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400" },
-          ].map((ch) => (
-            <div key={ch.label} className={`flex-1 text-center rounded-lg py-1 ${ch.color}`}>
-              <p className="text-xs font-bold">{ch.value}</p>
-              <p className="text-[10px]">{ch.label}</p>
+        {/* 채널별 판매 — 판매가 있는 채널만 표시 (없으면 섹션 자체 생략) */}
+        {(() => {
+          const entries = Object.entries(product.soldByChannel).filter(([, n]) => n > 0);
+          if (entries.length === 0) return null;
+          return (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {entries.map(([id, value]) => (
+                <div
+                  key={id}
+                  className={`flex-1 min-w-[60px] text-center rounded-lg py-1 ${CHANNEL_BADGE[id] ?? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}
+                >
+                  <p className="text-xs font-bold">{value}</p>
+                  <p className="text-[10px]">{channelLabel(id)}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* 입고일 / 경과일 */}
         {product.entry.stockInDate && (

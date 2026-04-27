@@ -3,6 +3,22 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Minus, Save, Calendar, Package, StickyNote, Tag } from "lucide-react";
 import type { InventoryProduct } from "@/lib/inventoryStorage";
+import { CHANNELS } from "@/lib/multiChannelData";
+
+const CHANNEL_TEXT: Record<string, string> = {
+  cafe24: "text-sky-500",
+  wconcept: "text-rose-500",
+  musinsa: "text-blue-500",
+  "29cm": "text-zinc-700 dark:text-zinc-300",
+  groupbuy: "text-amber-500",
+  sixshop: "text-emerald-500",
+  naver_smartstore: "text-green-500",
+  sixshop_global: "text-teal-500",
+};
+
+function channelLabel(id: string): string {
+  return CHANNELS.find((c) => c.id === id)?.name ?? id;
+}
 
 interface Props {
   product: InventoryProduct;
@@ -53,19 +69,27 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
           </button>
         </div>
 
-        {/* 채널별 판매 현황 */}
-        <div className="grid grid-cols-3 gap-px bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700">
-          {[
-            { label: "카페24", value: product.soldCafe24,   color: "text-sky-500" },
-            { label: "W컨셉",  value: product.soldWconcept, color: "text-rose-500" },
-            { label: "무신사", value: product.soldMusinsa,  color: "text-blue-500" },
-          ].map((ch) => (
-            <div key={ch.label} className="bg-white dark:bg-zinc-900 px-4 py-3 text-center">
-              <p className={`text-base font-bold ${ch.color}`}>{ch.value}</p>
-              <p className="text-xs text-zinc-400">{ch.label} 판매</p>
+        {/* 채널별 판매 현황 — 판매가 있는 채널만 */}
+        {(() => {
+          const entries = Object.entries(product.soldByChannel).filter(([, n]) => n > 0);
+          if (entries.length === 0) return null;
+          const cols = Math.min(entries.length, 4);
+          return (
+            <div
+              className="grid gap-px bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700"
+              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            >
+              {entries.map(([id, value]) => (
+                <div key={id} className="bg-white dark:bg-zinc-900 px-3 py-3 text-center">
+                  <p className={`text-base font-bold ${CHANNEL_TEXT[id] ?? "text-zinc-700 dark:text-zinc-300"}`}>
+                    {value}
+                  </p>
+                  <p className="text-xs text-zinc-400">{channelLabel(id)} 판매</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* 폼 */}
         <div className="p-6 space-y-5">

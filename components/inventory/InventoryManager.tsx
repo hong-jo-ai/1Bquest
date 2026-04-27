@@ -24,26 +24,31 @@ import {
   type ProductInfo,
   type InventoryProduct,
 } from "@/lib/inventoryStorage";
-import { wconceptDummy, musinsaDummy } from "@/lib/multiChannelData";
 import ProductCard from "./ProductCard";
 import StockEditModal from "./StockEditModal";
 import AddProductModal from "./AddProductModal";
 
 // ── 채널 판매 수량 집계 ────────────────────────────────────────────────────
 
-function buildSoldBySku(cafe24Products: { sku: string; sold: number }[]) {
-  const result: Record<string, { cafe24: number; wconcept: number; musinsa: number }> = {};
-  for (const p of cafe24Products) {
-    if (!result[p.sku]) result[p.sku] = { cafe24: 0, wconcept: 0, musinsa: 0 };
-    result[p.sku].cafe24 += p.sold;
-  }
-  for (const p of wconceptDummy.topProducts) {
-    if (!result[p.sku]) result[p.sku] = { cafe24: 0, wconcept: 0, musinsa: 0 };
-    result[p.sku].wconcept += p.sold;
-  }
-  for (const p of musinsaDummy.topProducts) {
-    if (!result[p.sku]) result[p.sku] = { cafe24: 0, wconcept: 0, musinsa: 0 };
-    result[p.sku].musinsa += p.sold;
+/**
+ * 카페24 판매(API 직접) + 다른 채널 업로드(/api/profit/channel-uploads)의
+ * topProducts를 모두 합산해서 sku → { channelId: sold } 형태로 반환.
+ *
+ * channelUploads: { wconcept: { topProducts: [{sku, sold}, ...] }, musinsa: ..., '29cm': ..., groupbuy: ..., sixshop: ..., naver_smartstore: ..., sixshop_global: ... }
+ */
+function buildSoldBySku(
+  cafe24Products: { sku: string; sold: number }[],
+  channelUploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>,
+): Record<string, Record<string, number>> {
+  const result: Record<string, Record<string, number>> = {};
+  const add = (sku: string, channel: string, sold: number) => {
+    if (!sku || !sold) return;
+    if (!result[sku]) result[sku] = {};
+    result[sku][channel] = (result[sku][channel] ?? 0) + sold;
+  };
+  for (const p of cafe24Products) add(p.sku, "cafe24", p.sold);
+  for (const [channel, data] of Object.entries(channelUploads)) {
+    for (const p of data?.topProducts ?? []) add(p.sku, channel, p.sold);
   }
   return result;
 }
@@ -90,16 +95,20 @@ export default function InventoryManager() {
     if (j.ok) setCogsMap(j.cogs ?? {});
   }, []);
 
-  // Cafe24 API 결과는 state에 캐싱 — 30초 폴링 때 재호출 안 함
+  // Cafe24 API + 다른 채널 업로드 결과를 state에 캐싱 — 30초 폴링 때 재호출 안 함
   const cafe24Cache = useState<{ list: ProductInfo[]; sales: { sku: string; sold: number }[] }>({
     list: [], sales: [],
   });
   const [c24, setC24] = cafe24Cache;
+  const [channelUploads, setChannelUploads] = useState<
+    Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>
+  >({});
 
-  /** 제품 목록 재조합 (Cafe24 캐시 + 최신 서버 데이터) */
+  /** 제품 목록 재조합 (Cafe24 캐시 + 채널 업로드 + 최신 서버 데이터) */
   const rebuildProducts = useCallback((
     cafe24List: ProductInfo[],
     cafe24Sales: { sku: string; sold: number }[],
+    uploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>,
   ) => {
     const manualProducts = loadManualProducts();
     const cafe24Skus = new Set(cafe24List.map((p) => p.sku));
@@ -108,10 +117,10 @@ export default function InventoryManager() {
     const hiddenSkus = loadHiddenSkus();
     setHiddenCount(hiddenSkus.size);
     const visible = allProducts.filter((p) => !hiddenSkus.has(p.sku));
-    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales)));
+    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads)));
   }, []);
 
-  /** 최초 로드 — Cafe24 API + 서버 동기화 */
+  /** 최초 로드 — Cafe24 API + 채널 업로드 + 서버 동기화 */
   const loadProducts = useCallback(async () => {
     setLoading(true);
     await Promise.all([
@@ -124,10 +133,12 @@ export default function InventoryManager() {
 
     let cafe24List: ProductInfo[] = [];
     let cafe24Sales: { sku: string; sold: number }[] = [];
+    let uploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }> = {};
 
-    const [productsRes, salesRes] = await Promise.allSettled([
+    const [productsRes, salesRes, uploadsRes] = await Promise.allSettled([
       fetch("/api/cafe24/products"),
       fetch("/api/cafe24/data"),
+      fetch("/api/profit/channel-uploads"),
     ]);
 
     if (productsRes.status === "fulfilled" && productsRes.value.ok) {
@@ -140,9 +151,18 @@ export default function InventoryManager() {
       const data = await salesRes.value.json();
       cafe24Sales = (data.topProducts ?? []).map((p: any) => ({ sku: p.sku, sold: p.sold }));
     }
+    if (uploadsRes.status === "fulfilled" && uploadsRes.value.ok) {
+      const j = await uploadsRes.value.json();
+      // j.uploads = { wconcept: { data: MultiChannelData, meta: ... }, ... }
+      for (const [channel, entry] of Object.entries((j.uploads ?? {}) as Record<string, { data?: { topProducts?: Array<{ sku: string; sold: number }> } }>)) {
+        const tp = entry?.data?.topProducts;
+        if (tp?.length) uploads[channel] = { topProducts: tp };
+      }
+    }
 
     setC24({ list: cafe24List, sales: cafe24Sales });
-    rebuildProducts(cafe24List, cafe24Sales);
+    setChannelUploads(uploads);
+    rebuildProducts(cafe24List, cafe24Sales, uploads);
     setLoading(false);
   }, [rebuildProducts, setC24]);
 
@@ -155,8 +175,8 @@ export default function InventoryManager() {
         if (arr) localStorage.setItem("paulvice_hidden_skus_v1", JSON.stringify(arr));
       }),
     ]);
-    rebuildProducts(c24.list, c24.sales);
-  }, [c24, rebuildProducts]);
+    rebuildProducts(c24.list, c24.sales, channelUploads);
+  }, [c24, channelUploads, rebuildProducts]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
@@ -250,8 +270,8 @@ export default function InventoryManager() {
   const handleRestoreAll = useCallback(() => {
     clearHiddenSkus();
     setHiddenCount(0);
-    rebuildProducts(c24.list, c24.sales);
-  }, [c24, rebuildProducts]);
+    rebuildProducts(c24.list, c24.sales, channelUploads);
+  }, [c24, channelUploads, rebuildProducts]);
 
   // ── 카테고리 목록 ──────────────────────────────────────────────────────
   const categories = useMemo(() => {

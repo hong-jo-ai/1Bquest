@@ -23,9 +23,8 @@ export type AgingStatus = "normal" | "caution" | "urgent" | "critical";
 
 export interface InventoryProduct extends ProductInfo {
   entry: InventoryEntry;
-  soldCafe24: number;
-  soldWconcept: number;
-  soldMusinsa: number;
+  /** 채널별 판매 수량 — { cafe24: 123, wconcept: 50, musinsa: 20, ... } */
+  soldByChannel: Record<string, number>;
   totalSold: number;
   currentStock: number;
   daysInStock: number;
@@ -172,15 +171,16 @@ export const AGING_CONFIG: Record<AgingStatus, { label: string; color: string; b
 
 export function buildInventoryProducts(
   products: ProductInfo[],
-  soldBySku: Record<string, { cafe24: number; wconcept: number; musinsa: number }>
+  /** sku → { channelId: sold } — 모든 채널의 판매 수량 (cafe24, wconcept, musinsa, "29cm", groupbuy, sixshop, ...) */
+  soldBySku: Record<string, Record<string, number>>
 ): InventoryProduct[] {
   const entries = loadInventory();
   const today = new Date();
 
   return products.map((product) => {
     const entry = entries[product.sku] ?? defaultEntry(product.sku);
-    const sold = soldBySku[product.sku] ?? { cafe24: 0, wconcept: 0, musinsa: 0 };
-    const totalSold = sold.cafe24 + sold.wconcept + sold.musinsa;
+    const soldByChannel = soldBySku[product.sku] ?? {};
+    const totalSold = Object.values(soldByChannel).reduce((s, n) => s + (n || 0), 0);
     const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold);
     const stockInDate = new Date(entry.stockInDate);
     const daysInStock = Math.floor((today.getTime() - stockInDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -195,9 +195,7 @@ export function buildInventoryProducts(
       ...product,
       category,
       entry,
-      soldCafe24: sold.cafe24,
-      soldWconcept: sold.wconcept,
-      soldMusinsa: sold.musinsa,
+      soldByChannel,
       totalSold,
       currentStock,
       daysInStock,
