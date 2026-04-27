@@ -214,18 +214,13 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       }
     }
 
-    // 메타 광고비 — 기간 내 합 × 채널 안분 비율
-    // (메타는 외부 트래픽 → 모든 채널로 분산되므로 매출 비중대로 안분)
+    // 메타 광고비 — 카페24 채널 매출에만 귀속 (메타 광고는 100% 카페24 자사몰 유입용)
     let totalMetaSpend = 0;
     for (const m of metaDaily) {
       if (m.date >= startDate && m.date <= endDate) totalMetaSpend += m.spend;
     }
-    const totalMetaSpendForChannel =
-      activeChannel === "all"
-        ? totalMetaSpend
-        : totalRevAllChannels > 0
-          ? totalMetaSpend * (totalRev / totalRevAllChannels)
-          : 0;
+    const cafe24Visible = visibleChannels.some((c) => c.id === "cafe24");
+    const totalMetaSpendForChannel = cafe24Visible ? totalMetaSpend : 0;
 
     // W컨셉 플랫폼 내 광고비 — W컨셉 채널 매출에만 귀속 (다른 채널엔 영향 없음)
     let totalWconceptAds = 0;
@@ -272,9 +267,6 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
     }
     const dates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
 
-    // 채널 안분 비율 (광고비를 채널별로 나누는 데 사용) — 위에서 정의된 값 사용
-    const _channelShareForRows = activeChannel === "all" ? 1 : (totalRevAllChannels > 0 ? totalRev / totalRevAllChannels : 0);
-
     const dailyRows = dates.map((date) => {
       let dayRev = 0;
       let dayOrders = 0;
@@ -297,7 +289,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       const dayVat = (dayRev * settings.vatRate) / (100 + settings.vatRate);
       const dayShipping = dayShipments * settings.shippingPerOrder;
       const metaEntry = metaDaily.find((m) => m.date === date);
-      const dayMeta = (metaEntry?.spend ?? 0) * _channelShareForRows;
+      // 메타 광고는 카페24 자사몰만 위해 집행 → 카페24 보고일 때만 차감
+      const dayMeta = cafe24Visible ? (metaEntry?.spend ?? 0) : 0;
       const wconceptEntry = wconceptAdsDaily.find((w) => w.date === date);
       const dayWconceptAds = wconceptVisible ? (wconceptEntry?.spend ?? 0) : 0;
       const dayNet = dayRev - dayVat - dayFee - dayShipping - dayCogs - dayMeta - dayWconceptAds;
@@ -316,6 +309,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
       totalCogs,
       totalMetaSpend,
       totalMetaSpendForChannel,
+      cafe24Visible,
       totalWconceptAds,
       totalWconceptAdsForChannel,
       wconceptVisible,
@@ -497,9 +491,9 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
             sub={
               !metaLinked
                 ? "Meta 미연결 — 고정비에 수동 입력 가능"
-                : activeChannel === "all"
-                  ? "Meta API 자동 동기화 (전체 광고 계정 합산)"
-                  : `Meta API · 채널 매출 비중 ${(calc.channelShare * 100).toFixed(1)}%`
+                : calc.cafe24Visible
+                  ? "Meta API 자동 동기화 · 카페24 자사몰 매출에 귀속"
+                  : "다른 채널 보기 — 메타 광고비는 카페24에만 귀속"
             }
             amount={-calc.totalMetaSpendForChannel}
           />
