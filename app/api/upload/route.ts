@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
 import { parseGroupBuyExcel } from "@/lib/groupBuyParser";
+import { convertUsdToKrw, USD_TO_KRW } from "@/lib/finance/forex";
 
 const ALLOWED_CHANNELS = [
   "wconcept",
@@ -58,11 +59,20 @@ export async function POST(req: NextRequest) {
         throw e;
       }
     }
+
+    // 식스샵 글로벌은 USD 결제 → 다른 채널과 합산되도록 KRW로 환산
+    let forex: { rate: number; from: "USD"; to: "KRW" } | undefined;
+    if (channel === "sixshop_global") {
+      result = { ...result, data: convertUsdToKrw(result.data) };
+      forex = { rate: USD_TO_KRW, from: "USD", to: "KRW" };
+    }
+
     return Response.json({
       ok: true,
       channel,
       fileName: file.name,
       ...result,
+      forex,
     });
   } catch (e) {
     const msg =

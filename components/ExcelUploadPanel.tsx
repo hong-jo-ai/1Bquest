@@ -170,7 +170,12 @@ export default function ExcelUploadPanel({
               <p className="mt-0.5">스마트스토어센터 → 판매관리 → 주문통합검색 → 엑셀 다운로드 (API 자동화 예정)</p>
             )}
             {channel === "sixshop_global" && (
-              <p className="mt-0.5">식스샵 글로벌 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
+              <>
+                <p className="mt-0.5">식스샵 글로벌 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
+                <p className="mt-0.5 text-amber-600 dark:text-amber-400">
+                  ⓘ USD 결제 채널 — 업로드 시 자동으로 1USD = ₩1,450 환율 적용해 KRW로 환산
+                </p>
+              </>
             )}
             <p className="mt-1 text-zinc-300 dark:text-zinc-500">지원 형식: .xlsx, .xls, .csv (최대 10MB)</p>
           </div>
