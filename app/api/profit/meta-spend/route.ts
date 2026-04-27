@@ -1,5 +1,5 @@
-import { cookies } from "next/headers";
 import { metaGet } from "@/lib/metaClient";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -31,14 +31,13 @@ function accountMatchesBrand(name: string, brand: string): boolean {
  * 최근 N일치 메타 광고비를 일별로 가져온다 (전체 광고 계정 합산).
  *
  * 응답: { ok, daily: [{ date, spend }, ...], accounts, accountErrors }
- *      - ok=false: meta_at 쿠키 없음 또는 accounts 조회 실패
+ *      - ok=false: 토큰 없음 또는 accounts 조회 실패
  *      - ok=true & daily=[]: 연결은 됐지만 광고비 0 또는 계정 없음
  */
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("meta_at")?.value;
+  const token = await getMetaTokenServer();
   if (!token) {
-    return Response.json({ ok: false, error: "Meta 미연결 (meta_at 쿠키 없음)" });
+    return Response.json({ ok: false, error: "Meta 미연결" });
   }
 
   const days = Math.min(

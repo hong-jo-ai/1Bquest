@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest } from "next/server";
-import { cookies } from "next/headers";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -206,8 +206,7 @@ export async function POST(req: NextRequest) {
   const { keywords = ["패션 시계", "여성 액세서리", "출근룩", "직장인 코디"] } =
     await req.json();
 
-  const cookieStore = await cookies();
-  const metaToken = cookieStore.get("meta_at")?.value ?? "";
+  const metaToken = (await getMetaTokenServer()) ?? "";
 
   // 모든 소스 병렬 수집
   const [youtubeResult, naverResult, googleResult, metaResult, webSearchResult] =

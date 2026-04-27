@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
 import { META_BASE } from "@/lib/metaClient";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("meta_at")?.value;
+  const token = await getMetaTokenServer();
 
   const result: Record<string, any> = {
     hasToken: !!token,
@@ -18,7 +17,7 @@ export async function GET() {
   };
 
   if (!token) {
-    return Response.json({ ...result, error: "meta_at 쿠키 없음 — 재연결 필요" });
+    return Response.json({ ...result, error: "토큰 없음 — 재연결 필요" });
   }
 
   // 1. 토큰 유효성 확인

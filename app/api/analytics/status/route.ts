@@ -3,13 +3,14 @@ import { getValidC24Token } from "@/lib/cafe24Auth";
 import { cafe24Get } from "@/lib/cafe24Client";
 import { refreshGoogleToken } from "@/lib/ga4Client";
 import { META_BASE } from "@/lib/metaClient";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 function kstNow() { return new Date(Date.now() + 9 * 3_600_000); }
 function kstStr(d: Date) { return d.toISOString().slice(0, 10); }
 
 export async function GET() {
   const cookieStore = await cookies();
-  const metaToken = cookieStore.get("meta_at")?.value ?? null;
+  const metaToken = await getMetaTokenServer();
   let   gaToken   = cookieStore.get("ga_at")?.value  ?? null;
   const gaRt      = cookieStore.get("ga_rt")?.value  ?? null;
   const ga4PropId = cookieStore.get("ga4_prop")?.value ?? process.env.GA4_PROPERTY_ID ?? "";

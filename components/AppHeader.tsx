@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { LogIn, RefreshCw, Megaphone, Store } from "lucide-react";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 interface Props {
   isAuthenticated?: boolean; // 카페24. 미지정 시 쿠키 직접 읽음
@@ -12,7 +13,7 @@ export default async function AppHeader({ isAuthenticated, refreshHref }: Props)
     isAuthenticated ?? !!(
       cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
     );
-  const metaConnected = !!cookieStore.get("meta_at")?.value;
+  const metaConnected = !!(await getMetaTokenServer());
 
   return (
     <header className="hidden md:block bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 z-10">

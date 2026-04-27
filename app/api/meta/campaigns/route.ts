@@ -1,10 +1,9 @@
-import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 import { fetchCampaigns, PERIOD_META_PRESET, type Period } from "@/lib/metaData";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("meta_at")?.value;
+  const token = await getMetaTokenServer();
   if (!token) {
     return Response.json({ error: "인증 필요" }, { status: 401 });
   }

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import NotificationBell from "@/components/NotificationBell";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,7 @@ export default async function RootLayout({
   const cafe24Connected = !!(
     cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
   );
-  const metaConnected = !!cookieStore.get("meta_at")?.value;
+  const metaConnected = !!(await getMetaTokenServer());
 
   return (
     <html

@@ -1,12 +1,11 @@
-import { cookies } from "next/headers";
 import { META_BASE } from "@/lib/metaClient";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 function kstNow() { return new Date(Date.now() + 9 * 3_600_000); }
 function kstStr(d: Date) { return d.toISOString().slice(0, 10); }
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const metaToken = cookieStore.get("meta_at")?.value;
+  const metaToken = await getMetaTokenServer();
   if (!metaToken) return Response.json({ error: "Meta 토큰 없음" }, { status: 401 });
 
   const now     = kstNow();

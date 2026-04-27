@@ -1,11 +1,10 @@
-import { cookies } from "next/headers";
 import AppHeader from "@/components/AppHeader";
 import MetaAdsDashboard from "@/components/MetaAdsDashboard";
 import { getMetaAdsData } from "@/lib/metaData";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 
 export default async function AdsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const cookieStore  = await cookies();
-  const metaToken    = cookieStore.get("meta_at")?.value;
+  const metaToken    = await getMetaTokenServer();
   const isConnected  = !!metaToken;
   const urlError     = (await searchParams).error ?? null;
 

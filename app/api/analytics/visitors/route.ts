@@ -3,6 +3,7 @@ import { metaGet, META_BASE } from "@/lib/metaClient";
 import { fetchAllOrders } from "@/lib/cafe24Data";
 import { fetchGa4Data, refreshGoogleToken, type Ga4Data } from "@/lib/ga4Client";
 import { getValidC24Token } from "@/lib/cafe24Auth";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { type NextRequest } from "next/server";
 
 function kstNow() {
@@ -124,7 +125,7 @@ async function getMetaAccountId(token: string): Promise<string> {
 export async function GET(_req: NextRequest) {
   const cookieStore = await cookies();
   const c24Token  = await getValidC24Token();
-  const metaToken = cookieStore.get("meta_at")?.value ?? null;
+  const metaToken = await getMetaTokenServer();
   let   gaToken   = cookieStore.get("ga_at")?.value   ?? null;
   const gaRt      = cookieStore.get("ga_rt")?.value   ?? null;
   const ga4PropId = cookieStore.get("ga4_prop")?.value ?? process.env.GA4_PROPERTY_ID ?? "";

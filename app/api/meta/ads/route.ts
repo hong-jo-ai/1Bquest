@@ -1,6 +1,6 @@
 import { metaGet } from "@/lib/metaClient";
 import { INSIGHT_FIELDS, PERIOD_META_PRESET, type Period } from "@/lib/metaData";
-import { cookies } from "next/headers";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { type NextRequest } from "next/server";
 
 export interface MetaAd {
@@ -25,8 +25,7 @@ export interface MetaAd {
 }
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("meta_at")?.value;
+  const token = await getMetaTokenServer();
   if (!token) return Response.json({ error: "Meta 미연결" }, { status: 401 });
 
   const accountId = req.nextUrl.searchParams.get("accountId");

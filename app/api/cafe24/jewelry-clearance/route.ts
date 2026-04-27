@@ -3,7 +3,7 @@ export const maxDuration = 60; // 최대 60초 (Vercel Pro)
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { runJewelryClearance, getClearanceStatus } from "@/lib/jewelryClearance";
 import { runClearanceAds, getClearanceAdStatus } from "@/lib/clearanceAdEngine";
-import { cookies } from "next/headers";
+import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { NextResponse } from "next/server";
 
 // GET: 현재 상태 및 변경 이력 + 광고 상태
@@ -13,8 +13,7 @@ export async function GET() {
 
     let adStatus = null;
     let metaError: string | null = null;
-    const cookieStore = await cookies();
-    const metaToken = cookieStore.get("meta_at")?.value || process.env.META_SYSTEM_TOKEN;
+    const metaToken = await getMetaTokenServer();
     if (metaToken) {
       try {
         adStatus = await getClearanceAdStatus(metaToken);
@@ -47,8 +46,7 @@ export async function POST() {
 
     // 2. Meta 광고 예산 ROAS 기반 조정
     let adResult: any = null;
-    const cookieStore2 = await cookies();
-    const metaToken = cookieStore2.get("meta_at")?.value || process.env.META_SYSTEM_TOKEN;
+    const metaToken = await getMetaTokenServer();
 
     if (!metaToken) {
       adResult = { skipped: true, reason: "Meta 미연결 — 광고 탭에서 Meta를 연결하세요" };
