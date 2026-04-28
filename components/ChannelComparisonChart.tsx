@@ -30,11 +30,11 @@ function fmt(n: number) {
   return (n / 10_000).toFixed(0) + "만";
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-zinc-900 text-white rounded-xl px-4 py-3 shadow-xl text-sm min-w-[140px]">
-        <p className="font-semibold mb-2">{label}</p>
+        <p className="font-semibold mb-2">{payload[0].payload.name}</p>
         {payload.map((p: any) => (
           <p key={p.dataKey} style={{ color: p.fill }}>
             {(p.value / 10000).toLocaleString("ko-KR")}만원
@@ -51,6 +51,7 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
 
   const chartData = channels.map((ch) => ({
     name: ch.name,
+    shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
     color: ch.color,
     revenue: ch.data.salesSummary[period].revenue,
     orders:  ch.data.salesSummary[period].orders,
@@ -98,9 +99,9 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
 
       {/* 막대 차트 */}
       <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={chartData} margin={{ top: 16, right: 8, left: -20, bottom: 0 }}>
+        <BarChart data={chartData} margin={{ top: 16, right: 16, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#a1a1aa" }} tickLine={false} axisLine={false} />
+          <XAxis dataKey="shortName" interval={0} tick={{ fontSize: 11, fill: "#a1a1aa" }} tickLine={false} axisLine={false} />
           <YAxis
             tick={{ fontSize: 11, fill: "#a1a1aa" }}
             tickLine={false}
