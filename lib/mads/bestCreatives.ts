@@ -141,6 +141,8 @@ function aggregate(rows: MetaAdRow[]): Map<string, { meta: { ad_name: string; ad
   return map;
 }
 
+export type RejectionReason = "no_revenue" | "low_sample" | "decayed" | null;
+
 export interface BestCreative {
   adId:           string;
   adName:         string;
@@ -163,11 +165,26 @@ export interface BestCreative {
   largestRevenueShare: number;  // 90일 매출 중 단일 최대값 비율
   thumbnailUrl:   string | null;
   status:         string;       // 광고 자체 status (ACTIVE/PAUSED)
+  rejectionReason: RejectionReason; // null = 후보 통과, 외 = 떨어진 사유
+  spendShortfall: number;       // MIN_SPEND_KRW - spend90d (양수면 부족분)
+  conversionsShortfall: number; // MIN_CONVERSIONS - conversions90d (양수면 부족분)
+  decayRatio:     number | null; // roas30d / roas90d (30d 데이터 없으면 null)
+}
+
+export interface RejectionStats {
+  totalAds:      number;
+  passed:        number;
+  noRevenue:     number;
+  lowSample:     number;
+  decayed:       number;
 }
 
 export async function findBestCreatives(token: string): Promise<{
   candidates: BestCreative[];
   top: BestCreative[];
+  analyzed: BestCreative[];
+  nearMisses: BestCreative[];
+  stats: RejectionStats;
   errors: Array<{ scope: string; id?: string; error: string }>;
 }> {
   const errors: Array<{ scope: string; id?: string; error: string }> = [];
@@ -228,6 +245,16 @@ export async function findBestCreatives(token: string): Promise<{
       const adjustedRoas = a.insight.spend > 0 ? adjustedRevenue / a.insight.spend : 0;
 
       const meta = adMeta.get(adId) ?? { thumbnail_url: null, status: "UNKNOWN" };
+
+      // 탈락 사유 계산 (우선순위: no_revenue > low_sample > decayed)
+      const sampleOk = a.insight.spend >= POLICY.MIN_SPEND_KRW || a.insight.conversions >= POLICY.MIN_CONVERSIONS;
+      const decayRatio = roas90 > 0 && spend30 > 0 ? roas30 / roas90 : null;
+      const decayed = decayRatio !== null && decayRatio < POLICY.DECAY_THRESHOLD;
+      let rejectionReason: RejectionReason = null;
+      if (adjustedRoas <= 0) rejectionReason = "no_revenue";
+      else if (!sampleOk) rejectionReason = "low_sample";
+      else if (decayed) rejectionReason = "decayed";
+
       all.push({
         adId,
         adName:        a.meta.ad_name,
@@ -250,25 +277,45 @@ export async function findBestCreatives(token: string): Promise<{
         largestRevenueShare: +largestShare.toFixed(3),
         thumbnailUrl:  meta.thumbnail_url,
         status:        meta.status,
+        rejectionReason,
+        spendShortfall: Math.max(0, POLICY.MIN_SPEND_KRW - Math.round(a.insight.spend)),
+        conversionsShortfall: Math.max(0, POLICY.MIN_CONVERSIONS - a.insight.conversions),
+        decayRatio: decayRatio !== null ? +decayRatio.toFixed(3) : null,
       });
     }
   }
 
-  // 후보 필터:
-  //   - 표본 충분: 지출 ≥ MIN_SPEND OR 전환 ≥ MIN_CONV
-  //   - 보정 ROAS > 0
-  //   - decay 안 된 광고: 30d ROAS / 90d ROAS ≥ DECAY_THRESHOLD (단, 30d 데이터 있을 때만)
-  const candidates = all.filter((c) => {
-    if (c.adjustedRoas90d <= 0) return false;
-    if (c.spend90d < POLICY.MIN_SPEND_KRW && c.conversions90d < POLICY.MIN_CONVERSIONS) return false;
-    if (c.spend30d > 0 && c.roas30d < c.roas90d * POLICY.DECAY_THRESHOLD) return false;
-    return true;
-  });
-
+  const candidates = all.filter((c) => c.rejectionReason === null);
   candidates.sort((a, b) => b.adjustedRoas90d - a.adjustedRoas90d);
   const top = candidates.slice(0, POLICY.TOP_N);
 
-  return { candidates, top, errors };
+  // 통계
+  const stats: RejectionStats = {
+    totalAds:  all.length,
+    passed:    candidates.length,
+    noRevenue: all.filter((c) => c.rejectionReason === "no_revenue").length,
+    lowSample: all.filter((c) => c.rejectionReason === "low_sample").length,
+    decayed:   all.filter((c) => c.rejectionReason === "decayed").length,
+  };
+
+  // 가장 근접한 후보 (low_sample 위주):
+  //   - spend90d 또는 conversions90d 비율로 가장 근접한 5개
+  //   - 매출이 있는 광고만 (보정 ROAS > 0)
+  const nearMisses = all
+    .filter((c) => c.rejectionReason === "low_sample" && c.adjustedRoas90d > 0)
+    .map((c) => ({
+      c,
+      // 0~1: 둘 중 더 큰 비율 (어느 쪽이든 임계 100% 가까울수록 1)
+      progress: Math.max(
+        c.spend90d / POLICY.MIN_SPEND_KRW,
+        c.conversions90d / POLICY.MIN_CONVERSIONS,
+      ),
+    }))
+    .sort((a, b) => b.progress - a.progress)
+    .slice(0, 5)
+    .map((x) => x.c);
+
+  return { candidates, top, analyzed: all, nearMisses, stats, errors };
 }
 
 export const BEST_CREATIVE_POLICY = POLICY;

@@ -24,6 +24,18 @@ interface BestCreative {
   largestRevenueShare: number;
   thumbnailUrl:   string | null;
   status:         string;
+  rejectionReason: "no_revenue" | "low_sample" | "decayed" | null;
+  spendShortfall: number;
+  conversionsShortfall: number;
+  decayRatio:     number | null;
+}
+
+interface RejectionStats {
+  totalAds:  number;
+  passed:    number;
+  noRevenue: number;
+  lowSample: number;
+  decayed:   number;
 }
 
 const DEFAULT_BUDGET_KRW = 150_000;
@@ -36,6 +48,8 @@ function fmtKRW(n: number) {
 
 export default function MadsBestCreatives() {
   const [creatives, setCreatives] = useState<BestCreative[] | null>(null);
+  const [nearMisses, setNearMisses] = useState<BestCreative[]>([]);
+  const [stats,     setStats]     = useState<RejectionStats | null>(null);
   const [errors,    setErrors]    = useState<Array<{ scope: string; error: string }>>([]);
   const [loading,   setLoading]   = useState(false);
   const [analyzed,  setAnalyzed]  = useState(false);
@@ -51,6 +65,8 @@ export default function MadsBestCreatives() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? "분석 실패");
       setCreatives(data.top ?? []);
+      setNearMisses(data.nearMisses ?? []);
+      setStats(data.stats ?? null);
       setErrors(data.errors ?? []);
       setAnalyzed(true);
     } catch (e) {
@@ -153,10 +169,63 @@ export default function MadsBestCreatives() {
           </div>
         )}
 
-        {analyzed && creatives && creatives.length === 0 && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center py-8">
-            조건을 만족하는 베스트 소재가 없습니다. 표본 충분한 광고(지출 ≥ 30만원 또는 전환 ≥ 25건)가 더 필요해요.
-          </p>
+        {analyzed && creatives && creatives.length === 0 && stats && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40 px-4 py-3">
+              <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
+                진단 — 분석한 광고 {stats.totalAds}개 중 베스트 후보 {stats.passed}개
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <DiagCell label="매출 0" value={stats.noRevenue} total={stats.totalAds} />
+                <DiagCell label="표본 부족" value={stats.lowSample} total={stats.totalAds} highlight={stats.lowSample > 0} />
+                <DiagCell label="decay" value={stats.decayed} total={stats.totalAds} />
+                <DiagCell label="통과" value={stats.passed} total={stats.totalAds} ok />
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-3 leading-relaxed">
+                표본 부족 = 90일 누적 지출 30만원 미만 AND 전환 25건 미만.
+                광고세트 단위로는 충분해도 광고(ad)를 자주 갈아엎거나 한 세트 안에 광고가 많이 쪼개져 있으면 광고 단위 표본이 안 쌓여요.
+              </p>
+            </div>
+
+            {nearMisses.length > 0 && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/30 px-4 py-3">
+                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                  가장 근접한 광고 {nearMisses.length}개 — 조금 더 운영하거나 임계값 낮추면 후보로 들어옴
+                </p>
+                <ul className="space-y-2">
+                  {nearMisses.map((c) => {
+                    const spendPct = Math.min(100, Math.round((c.spend90d / 300_000) * 100));
+                    const convPct = Math.min(100, Math.round((c.conversions90d / 25) * 100));
+                    return (
+                      <li key={c.adId} className="text-[11px]">
+                        <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate">{c.adName}</p>
+                        <p className="text-zinc-500 truncate">{c.campaignName} · {c.adsetName}</p>
+                        <div className="grid grid-cols-3 gap-2 mt-1 tabular-nums">
+                          <span className="text-zinc-600 dark:text-zinc-400">
+                            지출 <span className="font-semibold text-zinc-800 dark:text-zinc-200">{fmtKRW(c.spend90d)}원</span>
+                            <span className="text-zinc-400"> / 30만 ({spendPct}%)</span>
+                          </span>
+                          <span className="text-zinc-600 dark:text-zinc-400">
+                            전환 <span className="font-semibold text-zinc-800 dark:text-zinc-200">{c.conversions90d}건</span>
+                            <span className="text-zinc-400"> / 25 ({convPct}%)</span>
+                          </span>
+                          <span className="text-zinc-600 dark:text-zinc-400">
+                            보정 ROAS <span className="font-semibold text-zinc-800 dark:text-zinc-200">{c.adjustedRoas90d.toFixed(2)}x</span>
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed px-1">
+              <strong className="text-zinc-700 dark:text-zinc-300">선택지</strong>:
+              (1) 표본 부족 다수면 → 광고를 갈아엎지 말고 90일 누적 쌓기
+              (2) 빠른 결정 필요면 → 임계값 낮추기 (`lib/mads/bestCreatives.ts`의 `MIN_SPEND_KRW` / `MIN_CONVERSIONS`)
+            </p>
+          </div>
         )}
 
         {analyzed && creatives && creatives.length > 0 && (
@@ -240,6 +309,23 @@ export default function MadsBestCreatives() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DiagCell({ label, value, total, highlight, ok }: { label: string; value: number; total: number; highlight?: boolean; ok?: boolean }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  const tone = ok
+    ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+    : highlight
+      ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400"
+      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300";
+  return (
+    <div className={`rounded-lg px-2 py-1.5 border ${tone}`}>
+      <p className="text-[10px] opacity-70">{label}</p>
+      <p className="text-sm font-bold tabular-nums">
+        {value}<span className="text-[10px] font-normal opacity-60"> ({pct}%)</span>
+      </p>
     </div>
   );
 }
