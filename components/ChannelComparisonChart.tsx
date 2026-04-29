@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList,
@@ -15,13 +15,33 @@ interface ChannelEntry {
   data: MultiChannelData;
 }
 
-type Period = "today" | "week" | "month";
+type Period = "today" | "week" | "month" | "custom";
 
 const PERIOD_LABELS: { id: Period; label: string }[] = [
-  { id: "today", label: "오늘" },
-  { id: "week",  label: "이번 주" },
-  { id: "month", label: "이번 달" },
+  { id: "today",  label: "오늘" },
+  { id: "week",   label: "이번 주" },
+  { id: "month",  label: "이번 달" },
+  { id: "custom", label: "직접 지정" },
 ];
+
+function kstDateStr(offsetDays = 0): string {
+  const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function sumRange(daily: { date: string; revenue: number; orders: number }[] | undefined, since: string, until: string) {
+  if (!daily) return { revenue: 0, orders: 0 };
+  let revenue = 0;
+  let orders = 0;
+  for (const row of daily) {
+    if (row.date >= since && row.date <= until) {
+      revenue += row.revenue ?? 0;
+      orders  += row.orders ?? 0;
+    }
+  }
+  return { revenue, orders };
+}
 
 function fmt(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억";
@@ -48,20 +68,34 @@ const CustomTooltip = ({ active, payload }: any) => {
 
 export default function ChannelComparisonChart({ channels }: { channels: ChannelEntry[] }) {
   const [period, setPeriod] = useState<Period>("month");
+  const [since, setSince]   = useState(() => kstDateStr(-29));
+  const [until, setUntil]   = useState(() => kstDateStr(0));
 
-  const chartData = channels.map((ch) => ({
-    name: ch.name,
-    shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
-    color: ch.color,
-    revenue: ch.data.salesSummary[period].revenue,
-    orders:  ch.data.salesSummary[period].orders,
-  }));
+  const chartData = useMemo(() => channels.map((ch) => {
+    if (period === "custom") {
+      const { revenue, orders } = sumRange(ch.data.dailyRevenue, since, until);
+      return {
+        name: ch.name,
+        shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
+        color: ch.color,
+        revenue,
+        orders,
+      };
+    }
+    return {
+      name: ch.name,
+      shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
+      color: ch.color,
+      revenue: ch.data.salesSummary[period].revenue,
+      orders:  ch.data.salesSummary[period].orders,
+    };
+  }), [channels, period, since, until]);
 
   const total = chartData.reduce((s, c) => s + c.revenue, 0);
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-4 sm:p-6 min-w-0 overflow-hidden">
-      <div className="flex items-center justify-between mb-4 sm:mb-5">
+      <div className="flex items-center justify-between mb-4 sm:mb-5 flex-wrap gap-2">
         <h2 className="text-base sm:text-lg font-semibold text-zinc-800 dark:text-zinc-100">채널별 매출 비교</h2>
         <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
           {PERIOD_LABELS.map(({ id, label }) => (
@@ -79,6 +113,27 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
           ))}
         </div>
       </div>
+
+      {period === "custom" && (
+        <div className="flex items-center gap-2 flex-wrap mb-4 sm:mb-5">
+          <input
+            type="date"
+            value={since}
+            max={until}
+            onChange={(e) => setSince(e.target.value)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+          />
+          <span className="text-xs text-zinc-400">~</span>
+          <input
+            type="date"
+            value={until}
+            min={since}
+            max={kstDateStr(0)}
+            onChange={(e) => setUntil(e.target.value)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+          />
+        </div>
+      )}
 
       {/* 채널별 비율 요약 */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-5">
