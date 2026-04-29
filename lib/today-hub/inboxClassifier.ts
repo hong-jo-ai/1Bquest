@@ -219,38 +219,61 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
   const systemPrompt = buildSystemPrompt(negatives);
   const client = getClient();
 
+  // 1회 sync 당 최대치 — Vercel 60초 제한 대비. 나머지는 다음 sync(매시) 에 처리.
+  const MAX_NEW_PER_SYNC = 50;
+  const PARALLEL          = 5;
+
   let newClassified = 0;
+  let pendingCount  = 0;
   const errors: Array<{ messageId: string; error: string }> = [];
   let fatalError: string | null = null;
 
+  // Phase 1: 분류 안 된 신규 / 이미 분류된 needsReply 케이스 분리
+  type PendingMsg = { msg: typeof messages[number] };
+  const toClassify: PendingMsg[] = [];
+  const toCheckSent: typeof messages = [];
+
   for (const msg of messages) {
-    if (fatalError) {
-      // 첫 fatal 에러 이후 나머지는 시도조차 안 함 — 동일 에러 188번 반복 방지
-      errors.push({ messageId: msg.id, error: `이전 fatal 에러로 스킵: ${fatalError}` });
-      continue;
+    if ((msg.labelIds ?? []).includes("SENT")) continue;
+    const existing = await getClassifiedEmail(msg.id);
+    if (!existing) {
+      toClassify.push({ msg });
+    } else if (existing.needsReply && !existing.userReplied && !existing.userMarkedNotNeeded) {
+      toCheckSent.push(msg);
     }
-    try {
-      const existing = await getClassifiedEmail(msg.id);
+  }
 
-      // 분류 안 된 메일만 새로 처리
-      if (!existing) {
-        const fromHeader = header(msg, "From");
-        const { name, email: fromEmail } = parseFrom(fromHeader);
-        const subject = header(msg, "Subject") || "(제목 없음)";
-        const snippet = msg.snippet ?? "";
-        const receivedAt = msg.internalDate
-          ? new Date(parseInt(msg.internalDate)).toISOString()
-          : new Date().toISOString();
+  // 1회 sync 한도 적용 — 나머지는 pendingCount 로 노출 (cron 다음 회차에 처리)
+  if (toClassify.length > MAX_NEW_PER_SYNC) {
+    pendingCount = toClassify.length - MAX_NEW_PER_SYNC;
+    toClassify.length = MAX_NEW_PER_SYNC;
+  }
 
-        // 본인이 보낸 메일은 분류 스킵
-        if ((msg.labelIds ?? []).includes("SENT")) continue;
-        if (!fromEmail) continue;
+  // Phase 2: Claude 병렬 분류 (5개씩 동시)
+  for (let i = 0; i < toClassify.length; i += PARALLEL) {
+    if (fatalError) {
+      for (let k = i; k < toClassify.length; k++) {
+        errors.push({ messageId: toClassify[k].msg.id, error: `이전 fatal 에러로 스킵: ${fatalError}` });
+      }
+      break;
+    }
+    const batch = toClassify.slice(i, i + PARALLEL);
+    await Promise.all(batch.map(async ({ msg }) => {
+      const fromHeader = header(msg, "From");
+      const { name, email: fromEmail } = parseFrom(fromHeader);
+      if (!fromEmail) return;
 
+      const subject = header(msg, "Subject") || "(제목 없음)";
+      const snippet = msg.snippet ?? "";
+      const receivedAt = msg.internalDate
+        ? new Date(parseInt(msg.internalDate)).toISOString()
+        : new Date().toISOString();
+
+      try {
         const cls = await classifyOne(client, systemPrompt, {
           fromEmail, fromName: name, subject, snippet, receivedAt,
         });
-
-        const classified: ClassifiedEmail = {
+        await saveClassifiedEmail({
           messageId:           msg.id,
           threadId:            msg.threadId,
           fromEmail,
@@ -264,33 +287,36 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
           classifiedAt:        new Date().toISOString(),
           userMarkedNotNeeded: false,
           userReplied:         false,
-        };
-        await saveClassifiedEmail(classified);
+        });
         newClassified++;
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        errors.push({ messageId: msg.id, error: errMsg });
+        if (isFatalAnthropicError(e)) fatalError = errMsg;
       }
+    }));
+  }
 
-      // userReplied 자동 감지 — 이미 needsReply=true 이고 userReplied=false 인 항목만
-      const current = existing ?? await getClassifiedEmail(msg.id);
-      if (current && current.needsReply && !current.userReplied && !current.userMarkedNotNeeded) {
+  // Phase 3: 기존 needsReply 항목들 SENT 자동 감지 (병렬, Gmail API 만)
+  for (let i = 0; i < toCheckSent.length; i += PARALLEL) {
+    const batch = toCheckSent.slice(i, i + PARALLEL);
+    await Promise.all(batch.map(async (msg) => {
+      try {
+        const cur = await getClassifiedEmail(msg.id);
+        if (!cur) return;
         const replied = await hasSentInThread(
-          token,
-          current.threadId,
-          new Date(current.receivedAt).getTime(),
+          token, cur.threadId, new Date(cur.receivedAt).getTime(),
         );
         if (replied) {
-          await patchClassifiedEmail(current.messageId, {
+          await patchClassifiedEmail(cur.messageId, {
             userReplied: true,
             dismissedAt: new Date().toISOString(),
           });
         }
+      } catch (e) {
+        errors.push({ messageId: msg.id, error: e instanceof Error ? e.message : String(e) });
       }
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      errors.push({ messageId: msg.id, error: errMsg });
-      if (isFatalAnthropicError(e)) {
-        fatalError = errMsg;
-      }
-    }
+    }));
   }
 
   return {
@@ -300,5 +326,6 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
     errorCount:    errors.length,
     classificationErrors: errors.slice(0, 5),
     fatalError:    fatalError ?? undefined,
+    pendingCount,
   };
 }

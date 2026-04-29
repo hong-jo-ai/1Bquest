@@ -28,6 +28,7 @@ interface SyncStatus {
   errorCount:    number;
   classificationErrors?: Array<{ messageId: string; error: string }>;
   fatalError?:   string;
+  pendingCount?: number;
 }
 
 interface Breakdown {
@@ -70,8 +71,15 @@ export default function InboxActionWidget() {
     setError(null);
     try {
       const res = await fetch("/api/today-hub/inbox/classify", { method: "POST" });
-      const j   = await res.json();
-      if (!j.ok) throw new Error(j.error ?? "분류 실패");
+      // Vercel 타임아웃이나 서버 크래시 시 HTML 에러 페이지가 올 수 있어 안전 파싱
+      const text = await res.text();
+      let j: { ok?: boolean; error?: string; status?: SyncStatus } | null = null;
+      try { j = JSON.parse(text); } catch {
+        throw new Error(
+          `서버 응답 비정상 (HTTP ${res.status}). 함수 타임아웃 가능성 — 다시 시도하면 다음 배치로 진행됩니다. 응답: ${text.slice(0, 200)}`,
+        );
+      }
+      if (!j?.ok) throw new Error(j?.error ?? "분류 실패");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -167,6 +175,9 @@ export default function InboxActionWidget() {
                 {" "}답장 필요로 판단 <span className="font-semibold">{breakdown.needsReplyTotal}건</span>
                 {breakdown.dismissedTotal > 0 && (
                   <> · 처리 완료 <span className="font-semibold">{breakdown.dismissedTotal}건</span></>
+                )}
+                {(status?.pendingCount ?? 0) > 0 && (
+                  <> · <span className="text-amber-600">대기 {status?.pendingCount}건 (다음 sync)</span></>
                 )}
                 {lastSyncLabel && <><br />마지막 분류: {lastSyncLabel}</>}
               </p>

@@ -45,6 +45,8 @@ export interface InboxSyncStatus {
   classificationErrors?: Array<{ messageId: string; error: string }>;
   /** 첫 번째로 만난 fatal 에러 (잔액/자격증명) — 이후 호출 모두 스킵됨 */
   fatalError?:      string;
+  /** 1회 sync 한도 초과로 다음 sync 에서 처리될 메일 수 */
+  pendingCount?:    number;
 }
 
 const MSG_PREFIX  = "today_hub_inbox:msg:";
