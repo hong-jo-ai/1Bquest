@@ -64,12 +64,25 @@ export default function TodayScheduleWidget() {
         {!loading && error && (
           <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 text-xs">
             <AlertCircle size={12} className="shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="break-words">{error}</p>
-              {(error.includes("미연결") || error.includes("권한")) && (
-                <a href="/api/auth/google/login" className="underline font-medium mt-1 inline-block">
-                  Google 재연결 →
-                </a>
+            <div className="min-w-0 flex-1">
+              <p className="whitespace-pre-line break-words font-mono text-[11px] leading-relaxed">
+                {error}
+              </p>
+              {(error.includes("미연결") || error.includes("권한") || error.includes("HTTP 4")) && (
+                <div className="mt-2 flex gap-3 flex-wrap">
+                  <a
+                    href="/api/auth/google/login?hint=shong@harriotwatches.com"
+                    className="underline font-medium"
+                  >
+                    shong@harriotwatches.com 으로 재연결 →
+                  </a>
+                  <a
+                    href="/api/auth/google/login"
+                    className="underline font-medium opacity-70"
+                  >
+                    다른 계정으로 →
+                  </a>
+                </div>
               )}
             </div>
           </div>
