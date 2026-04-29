@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import BackToHubButton from "@/components/BackToHubButton";
 
 export const metadata: Metadata = {
   title:       "인플루언서 — PAULVICE",
@@ -6,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <><BackToHubButton />{children}</>;
 }
