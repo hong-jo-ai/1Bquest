@@ -1,10 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { PartyPopper, Plus, ChevronDown, ChevronUp, Check, Pencil } from "lucide-react";
+import {
+  PartyPopper, Plus, ChevronDown, ChevronUp, Check, Pencil,
+  Megaphone, ExternalLink,
+} from "lucide-react";
 import { daysUntil } from "./dateUtils";
 import EventEditModal from "./EventEditModal";
 import type { BigEvent } from "./types";
+
+/** /api/campaigns 에서 받아온 캠페인을 빅이벤트 카드처럼 노출하기 위한 readonly 미러 */
+export interface MirroredCampaign {
+  id:           string;
+  name:         string;
+  startDate:    string;
+  endDate:      string | null;
+  couponCode:   string | null;
+  /** 클릭 시 점프할 앵커 (예: "#campaigns") */
+  trackerHref:  string;
+}
 
 interface CardProps {
   event: BigEvent;
@@ -130,13 +144,62 @@ function EventCard({ event, onToggleItem, onEdit }: CardProps) {
   );
 }
 
+/** 캠페인 미러 카드 — readonly, 펼침 없음, 트래커로 점프 */
+function MirroredCampaignCard({ campaign }: { campaign: MirroredCampaign }) {
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let statusLabel: string;
+  let accent: string;
+  if (campaign.startDate > today) {
+    const d = daysUntil(campaign.startDate);
+    statusLabel = `D-${d} 시작 예정`;
+    accent = "text-violet-600 dark:text-violet-400";
+  } else if (campaign.endDate && campaign.endDate < today) {
+    statusLabel = "종료";
+    accent = "text-zinc-500";
+  } else {
+    statusLabel = "진행중";
+    accent = "text-emerald-600 dark:text-emerald-400";
+  }
+
+  return (
+    <a
+      href={campaign.trackerHref}
+      className="block rounded-xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/40 dark:bg-violet-950/20 p-3 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition group"
+      title="캠페인 트래커로 이동"
+    >
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-md bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center text-white shrink-0">
+          <Megaphone size={11} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">{campaign.name}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className={`text-[10px] font-bold tabular-nums ${accent}`}>{statusLabel}</span>
+            {campaign.couponCode && (
+              <>
+                <span className="text-[10px] text-zinc-300">·</span>
+                <span className="text-[10px] text-zinc-500">쿠폰 {campaign.couponCode}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <ExternalLink size={11} className="text-zinc-400 group-hover:text-violet-600 shrink-0" />
+      </div>
+    </a>
+  );
+}
+
 interface Props {
   events: BigEvent[];
   setEvents: React.Dispatch<React.SetStateAction<BigEvent[]>>;
   brandLabel: string;
+  /** /api/campaigns 에서 가져온 캠페인 미러 — 활성/예정만. 비어있으면 표시 안 함. */
+  mirroredCampaigns?: MirroredCampaign[];
 }
 
-export default function BigEventsWidget({ events, setEvents, brandLabel }: Props) {
+export default function BigEventsWidget({
+  events, setEvents, brandLabel, mirroredCampaigns = [],
+}: Props) {
   const [editing, setEditing]   = useState<BigEvent | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -181,6 +244,9 @@ export default function BigEventsWidget({ events, setEvents, brandLabel }: Props
       </div>
 
       <div className="p-4 space-y-2">
+        {mirroredCampaigns.map((c) => (
+          <MirroredCampaignCard key={`campaign:${c.id}`} campaign={c} />
+        ))}
         {events.map((e) => (
           <EventCard
             key={e.id}
@@ -189,7 +255,7 @@ export default function BigEventsWidget({ events, setEvents, brandLabel }: Props
             onEdit={() => setEditing(e)}
           />
         ))}
-        {events.length === 0 && (
+        {events.length === 0 && mirroredCampaigns.length === 0 && (
           <p className="text-xs text-zinc-400 text-center py-4">등록된 이벤트가 없습니다.</p>
         )}
       </div>

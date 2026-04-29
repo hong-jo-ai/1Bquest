@@ -6,6 +6,7 @@ import InboxActionWidget      from "./InboxActionWidget";
 import TodayTasksWidget       from "./TodayTasksWidget";
 import RevenueActionsWidget   from "./RevenueActionsWidget";
 import BigEventsWidget        from "./BigEventsWidget";
+import type { MirroredCampaign } from "./BigEventsWidget";
 import {
   SEED_TASKS,
   SEED_ROUTINES_PAULVICE,
@@ -79,11 +80,38 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
   const [routines, setRoutines] = useState<RevenueAction[]>(() => seedRoutines(brand));
   const [goal,     setGoal]     = useState<RevenueGoal>(() => seedGoal(brand));
   const [events,   setEvents]   = useState<BigEvent[]>(() => seedEvents(brand));
+  const [mirroredCampaigns, setMirroredCampaigns] = useState<MirroredCampaign[]>([]);
 
   const lastSaved = useRef({ tasks: "", routines: "", goal: "", events: "" });
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLabel(todayLabel()); }, []);
+
+  // 캠페인 미러 — /api/campaigns 에서 진행중/예정 캠페인만 가져와서 빅이벤트 카드처럼 노출
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/campaigns?brand=${brand}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j.ok) return;
+        const today = kstDateStr(0);
+        type Raw = { id: string; name: string; startDate: string; endDate: string | null; couponCode: string | null };
+        const active = ((j.campaigns ?? []) as Raw[])
+          .filter((c) => !c.endDate || c.endDate >= today) // 종료된 건 노출 안 함
+          .sort((a, b) => a.startDate.localeCompare(b.startDate))
+          .map<MirroredCampaign>((c) => ({
+            id:           c.id,
+            name:         c.name,
+            startDate:    c.startDate,
+            endDate:      c.endDate,
+            couponCode:   c.couponCode,
+            trackerHref:  "#campaigns",
+          }));
+        setMirroredCampaigns(active);
+      })
+      .catch(() => { /* 실패해도 위젯 정상 동작 */ });
+    return () => { cancelled = true; };
+  }, [brand]);
 
   const save = useCallback(
     (type: "tasks" | "routines" | "goal" | "events", payload: unknown) => {
@@ -243,7 +271,12 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
             currentRevenue={monthRevenue}
             brandLabel={BRAND_NAMES[brand]}
           />
-          <BigEventsWidget events={events} setEvents={setEvents} brandLabel={BRAND_NAMES[brand]} />
+          <BigEventsWidget
+            events={events}
+            setEvents={setEvents}
+            brandLabel={BRAND_NAMES[brand]}
+            mirroredCampaigns={mirroredCampaigns}
+          />
         </div>
       </div>
     </section>
