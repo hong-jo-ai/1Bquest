@@ -26,15 +26,24 @@ interface SyncStatus {
   scannedCount:  number;
   newClassified: number;
   errorCount:    number;
+  classificationErrors?: Array<{ messageId: string; error: string }>;
+}
+
+interface Breakdown {
+  totalCached:     number;
+  needsReplyTotal: number;
+  dismissedTotal:  number;
+  visibleCount:    number;
 }
 
 export default function InboxActionWidget() {
-  const [items,     setItems]     = useState<InboxItem[]>([]);
-  const [status,    setStatus]    = useState<SyncStatus | null>(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
+  const [items,      setItems]      = useState<InboxItem[]>([]);
+  const [status,     setStatus]     = useState<SyncStatus | null>(null);
+  const [breakdown,  setBreakdown]  = useState<Breakdown | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
   const [classifying, setClassifying] = useState(false);
-  const [selected,  setSelected]  = useState<InboxItem | null>(null);
+  const [selected,   setSelected]   = useState<InboxItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,6 +54,7 @@ export default function InboxActionWidget() {
       if (!j.ok) throw new Error(j.error ?? "조회 실패");
       setItems(j.items as InboxItem[]);
       setStatus(j.status ?? null);
+      setBreakdown(j.breakdown ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -150,11 +160,30 @@ export default function InboxActionWidget() {
         {!loading && !error && items.length === 0 && (
           <div className="text-center py-6 px-3">
             <p className="text-xs text-zinc-400">답장 필요한 메일이 없습니다.</p>
-            <p className="text-[10px] text-zinc-300 mt-1">
-              {lastSyncLabel
-                ? `마지막 분류: ${lastSyncLabel} · ${status?.scannedCount ?? 0}건 스캔`
-                : "아직 분류 이력 없음 — 위 '재분류' 버튼을 눌러 시작하세요."}
-            </p>
+            {breakdown && breakdown.totalCached > 0 ? (
+              <p className="text-[10px] text-zinc-400 mt-1.5 leading-relaxed">
+                14일치 <span className="font-semibold">{breakdown.totalCached}건</span> 분류 완료 ·
+                {" "}답장 필요로 판단 <span className="font-semibold">{breakdown.needsReplyTotal}건</span>
+                {breakdown.dismissedTotal > 0 && (
+                  <> · 처리 완료 <span className="font-semibold">{breakdown.dismissedTotal}건</span></>
+                )}
+                {lastSyncLabel && <><br />마지막 분류: {lastSyncLabel}</>}
+              </p>
+            ) : (
+              <p className="text-[10px] text-zinc-300 mt-1">
+                {lastSyncLabel
+                  ? `마지막 분류: ${lastSyncLabel} · 스캔 ${status?.scannedCount ?? 0}건`
+                  : "아직 분류 이력 없음 — 위 '재분류' 버튼을 눌러 시작하세요."}
+              </p>
+            )}
+            {(status?.errorCount ?? 0) > 0 && (
+              <div className="mt-2 text-left text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded p-2 mx-auto max-w-[280px]">
+                <p className="font-semibold">⚠ 분류 중 {status?.errorCount}건 실패</p>
+                {status?.classificationErrors?.slice(0, 2).map((e, i) => (
+                  <p key={i} className="opacity-80 mt-0.5 truncate">{e.error.slice(0, 80)}</p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

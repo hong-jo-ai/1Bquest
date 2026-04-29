@@ -30,10 +30,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 목록 + 마지막 sync 상태
+  // 목록 + 마지막 sync 상태 + 캐시 통계
   try {
-    const [items, status] = await Promise.all([listInboxItems(), getStatus()]);
-    return Response.json({ ok: true, items, status });
+    const { listClassifiedEmails } = await import("@/lib/today-hub/inboxStore");
+    const [items, status, allCache] = await Promise.all([
+      listInboxItems(),
+      getStatus(),
+      listClassifiedEmails(),
+    ]);
+    const breakdown = {
+      totalCached:    allCache.length,
+      needsReplyTotal: allCache.filter((e) => e.needsReply).length,
+      dismissedTotal:  allCache.filter((e) => e.userMarkedNotNeeded || e.userReplied).length,
+      visibleCount:    items.length,
+    };
+    return Response.json({ ok: true, items, status, breakdown });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
