@@ -43,6 +43,8 @@ export interface InboxSyncStatus {
   newClassified:    number;     // 이번 sync 에서 새로 분류된 수
   errorCount:       number;
   classificationErrors?: Array<{ messageId: string; error: string }>;
+  /** 첫 번째로 만난 fatal 에러 (잔액/자격증명) — 이후 호출 모두 스킵됨 */
+  fatalError?:      string;
 }
 
 const MSG_PREFIX  = "today_hub_inbox:msg:";

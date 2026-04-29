@@ -27,6 +27,7 @@ interface SyncStatus {
   newClassified: number;
   errorCount:    number;
   classificationErrors?: Array<{ messageId: string; error: string }>;
+  fatalError?:   string;
 }
 
 interface Breakdown {
@@ -176,11 +177,22 @@ export default function InboxActionWidget() {
                   : "아직 분류 이력 없음 — 위 '재분류' 버튼을 눌러 시작하세요."}
               </p>
             )}
-            {(status?.errorCount ?? 0) > 0 && (
-              <div className="mt-2 text-left text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded p-2 mx-auto max-w-[280px]">
+            {status?.fatalError && (
+              <div className="mt-2 text-left text-[11px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 rounded p-2 mx-auto max-w-[320px]">
+                <p className="font-semibold">⛔ Anthropic API 호출 차단 (모든 시도 중단됨)</p>
+                <p className="opacity-90 mt-1 break-words whitespace-pre-wrap font-mono text-[10px]">
+                  {status.fatalError}
+                </p>
+                <p className="mt-1 opacity-80">
+                  → console.anthropic.com 에서 잔액/결제 정보 확인 필요.
+                </p>
+              </div>
+            )}
+            {!status?.fatalError && (status?.errorCount ?? 0) > 0 && (
+              <div className="mt-2 text-left text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded p-2 mx-auto max-w-[320px]">
                 <p className="font-semibold">⚠ 분류 중 {status?.errorCount}건 실패</p>
-                {status?.classificationErrors?.slice(0, 2).map((e, i) => (
-                  <p key={i} className="opacity-80 mt-0.5 truncate">{e.error.slice(0, 80)}</p>
+                {status?.classificationErrors?.slice(0, 3).map((e, i) => (
+                  <p key={i} className="opacity-80 mt-0.5 break-words whitespace-pre-wrap font-mono">{e.error}</p>
                 ))}
               </div>
             )}

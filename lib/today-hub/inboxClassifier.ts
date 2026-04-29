@@ -152,6 +152,21 @@ function getClient(): Anthropic {
   return cachedClient;
 }
 
+/** Anthropic API 의 치명적(전체 sync 중단해야 하는) 에러 — 잔액/자격증명 등 */
+function isFatalAnthropicError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return (
+    /credit balance/i.test(msg) ||
+    /invalid api key/i.test(msg) ||
+    /authentication_error/i.test(msg) ||
+    /api key not found/i.test(msg) ||
+    /401/.test(msg) ||
+    /402/.test(msg) ||
+    /403/.test(msg) ||
+    /quota/i.test(msg)
+  );
+}
+
 async function classifyOne(
   client: Anthropic,
   systemPrompt: string,
@@ -206,8 +221,14 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
 
   let newClassified = 0;
   const errors: Array<{ messageId: string; error: string }> = [];
+  let fatalError: string | null = null;
 
   for (const msg of messages) {
+    if (fatalError) {
+      // 첫 fatal 에러 이후 나머지는 시도조차 안 함 — 동일 에러 188번 반복 방지
+      errors.push({ messageId: msg.id, error: `이전 fatal 에러로 스킵: ${fatalError}` });
+      continue;
+    }
     try {
       const existing = await getClassifiedEmail(msg.id);
 
@@ -264,10 +285,11 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
         }
       }
     } catch (e) {
-      errors.push({
-        messageId: msg.id,
-        error:     e instanceof Error ? e.message : String(e),
-      });
+      const errMsg = e instanceof Error ? e.message : String(e);
+      errors.push({ messageId: msg.id, error: errMsg });
+      if (isFatalAnthropicError(e)) {
+        fatalError = errMsg;
+      }
     }
   }
 
@@ -277,5 +299,6 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
     newClassified,
     errorCount:    errors.length,
     classificationErrors: errors.slice(0, 5),
+    fatalError:    fatalError ?? undefined,
   };
 }
