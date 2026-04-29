@@ -41,17 +41,41 @@ async function fetchUserInfo(accessToken: string): Promise<{ email: string } | n
   } catch { return null; }
 }
 
-/** 접근 가능한 캘린더 ID 목록. null = calendar.readonly 권한 자체가 없음. */
-async function fetchCalendarList(accessToken: string): Promise<string[] | null> {
+/** 토큰에 실제 부여된 스코프 목록 — null = tokeninfo 자체가 실패 */
+async function fetchTokenScopes(accessToken: string): Promise<string[] | null> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${accessToken}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { scope?: string };
+    return (json.scope ?? "").split(" ").filter(Boolean);
+  } catch { return null; }
+}
+
+interface CalListResult {
+  items: string[] | null;  // null = 호출 자체가 거부됨
+  rawError?: string;
+  status?: number;
+}
+
+/** 접근 가능한 캘린더 ID 목록 + 진단 정보 */
+async function fetchCalendarList(accessToken: string): Promise<CalListResult> {
   try {
     const res = await fetch(`${CAL_BASE}/users/me/calendarList`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const text = await res.text();
+      return { items: null, rawError: text, status: res.status };
+    }
     const json = (await res.json()) as { items?: Array<{ id?: string }> };
-    return (json.items ?? []).map((c) => c.id ?? "").filter(Boolean);
-  } catch { return null; }
+    return { items: (json.items ?? []).map((c) => c.id ?? "").filter(Boolean) };
+  } catch (e) {
+    return { items: null, rawError: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 function kstDateStr(offsetDays = 0): string {
@@ -98,42 +122,73 @@ export async function listTodayEvents(): Promise<CalendarEvent[]> {
     cache: "no-store",
   });
   if (!res.ok) {
+    const eventsBody = await res.text();
     if (res.status === 403 || res.status === 401) {
       // 자동 진단 — 어디서 막혔는지 사용자에게 알려줌
-      const [userInfo, calList] = await Promise.all([
+      const [userInfo, calList, scopes] = await Promise.all([
         fetchUserInfo(accessToken),
         fetchCalendarList(accessToken),
+        fetchTokenScopes(accessToken),
       ]);
       const connectedEmail = userInfo?.email ?? "(알 수 없음)";
       const lines: string[] = [`캘린더 접근 실패 (HTTP ${res.status})`];
       lines.push(`연결된 Google 계정: ${connectedEmail}`);
       lines.push(`대상 캘린더: ${TODAY_HUB_CALENDAR_ID}`);
+
+      const hasCalScope = (scopes ?? []).some((s) =>
+        s.includes("calendar")
+      );
+      if (scopes) {
+        lines.push(`부여된 스코프 ${scopes.length}개: ${scopes.map(s => s.replace("https://www.googleapis.com/auth/", "")).join(", ")}`);
+      }
       lines.push("");
 
-      if (calList === null) {
-        lines.push("원인: calendar.readonly 권한이 부여되지 않았습니다.");
-        lines.push("→ '/api/auth/google/login' 으로 재연결 시 동의 화면에서");
-        lines.push("  '캘린더 보기' 권한을 반드시 체크하세요.");
-      } else if (!calList.some((id) => id === TODAY_HUB_CALENDAR_ID)) {
+      // 케이스 1: calendar.readonly 자체가 토큰에 없음 → 동의 누락
+      if (!hasCalScope) {
+        lines.push("원인: calendar.readonly 가 토큰에 부여되지 않았습니다.");
+        lines.push("→ 동의 화면에서 '캘린더 보기' 권한 체크 안 됐거나");
+        lines.push("  Google Workspace(harriotwatches.com) 관리자가 차단했을 수 있습니다.");
+        lines.push("→ '/api/auth/google/login' 으로 재시도. 동의 화면에 캘린더 항목이");
+        lines.push("  안 보이면 admin.google.com 에서 앱 권한 검토 필요.");
+      }
+      // 케이스 2: 스코프는 있는데 calendarList API 가 막힘 → API 미활성화일 가능성 큼
+      else if (calList.items === null) {
+        lines.push("원인: calendar.readonly 스코프는 있지만 Calendar API 호출이 거부됨.");
+        if (calList.rawError && /has not been used|disabled|enable/i.test(calList.rawError)) {
+          lines.push("→ GCP 프로젝트에 Google Calendar API 가 활성화되지 않았습니다.");
+          lines.push("  console.cloud.google.com → APIs & Services → Library →");
+          lines.push("  'Google Calendar API' 검색 후 Enable 클릭.");
+        } else {
+          lines.push("→ Workspace 관리자 정책 또는 GCP API 활성화 문제 의심.");
+        }
+        if (calList.rawError) {
+          lines.push("");
+          lines.push(`Google 응답 (calendarList ${calList.status}):`);
+          lines.push(calList.rawError.slice(0, 400));
+        }
+      }
+      // 케이스 3: calendarList 는 되는데 대상 캘린더가 목록에 없음
+      else if (!calList.items.some((id) => id === TODAY_HUB_CALENDAR_ID)) {
         lines.push(`원인: ${connectedEmail} 계정에 ${TODAY_HUB_CALENDAR_ID} 캘린더가 보이지 않습니다.`);
         lines.push("");
-        lines.push("해결 방법 (둘 중 하나):");
-        lines.push(`  (A) shong@harriotwatches.com 으로 직접 OAuth — 가장 간단`);
-        lines.push(`  (B) shong@harriotwatches.com 캘린더를 ${connectedEmail} 에 공유`);
-        lines.push("      (Google 캘린더 → 해당 캘린더 설정 → 특정 사용자와 공유)");
-        if (calList.length > 0) {
+        lines.push("해결: shong@harriotwatches.com 으로 직접 OAuth 또는 그 캘린더를 공유.");
+        if (calList.items.length > 0) {
           lines.push("");
-          lines.push(`참고 — 현재 접근 가능한 캘린더 (${calList.length}개):`);
-          for (const id of calList.slice(0, 5)) lines.push(`  • ${id}`);
+          lines.push(`접근 가능한 캘린더 (${calList.items.length}개):`);
+          for (const id of calList.items.slice(0, 5)) lines.push(`  • ${id}`);
         }
-      } else {
-        lines.push("원인: 캘린더는 보이지만 이벤트 읽기 권한이 부족합니다.");
-        lines.push("→ 캘린더 공유 설정에서 '모든 일정 세부정보 보기' 이상 부여 필요.");
+      }
+      // 케이스 4: 보이는데 events 읽기만 거부
+      else {
+        lines.push("원인: 캘린더는 보이지만 events 읽기 권한 부족.");
+        lines.push("→ Google 캘린더 공유 설정에서 '모든 일정 세부정보 보기' 이상 부여.");
+        lines.push("");
+        lines.push(`Google 응답 (events ${res.status}):`);
+        lines.push(eventsBody.slice(0, 400));
       }
       throw new Error(lines.join("\n"));
     }
-    const text = await res.text();
-    throw new Error(`Calendar API ${res.status}: ${text}`);
+    throw new Error(`Calendar API ${res.status}: ${eventsBody}`);
   }
   const json = (await res.json()) as { items?: RawEvent[] };
 
