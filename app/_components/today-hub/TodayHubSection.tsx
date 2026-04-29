@@ -210,11 +210,18 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
     save("events", events);
   }, [events, loaded, save]);
 
+  // 빅 이벤트 → 오늘 할일 자동 주입
+  // 포함 대상: 오늘 마감(delta=0) + 지난 미완료(delta<0) + 내일 마감(delta=1)
+  // delta = daysLeft - c.dDay (0 = 오늘, 음수 = 지남, 양수 = 미래)
   const injectedItems = useMemo<InjectedEventItem[]>(() => {
     return events.flatMap((e) => {
       const daysLeft = daysUntil(e.targetDate);
       return e.checklist
-        .filter((c) => !c.done && c.dDay >= daysLeft)
+        .filter((c) => {
+          if (c.done) return false;
+          const delta = daysLeft - c.dDay;
+          return delta <= 1; // 지남(<0) + 오늘(0) + 내일(1)
+        })
         .map((c) => ({
           eventId:        e.id,
           eventTitle:     e.title,

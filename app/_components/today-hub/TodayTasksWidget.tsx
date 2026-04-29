@@ -66,38 +66,65 @@ export default function TodayTasksWidget({
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[280px]">
 
-        {/* 빅 이벤트 마감 자동 주입 */}
+        {/* 빅 이벤트 마감 자동 주입 — 오늘/내일 마감 + 지난 미완료 */}
         {injectedItems.length > 0 && (
           <div>
             <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <AlertTriangle size={10} /> 빅 이벤트 마감 ({injectedItems.length})
+              <AlertTriangle size={10} /> 빅 이벤트 마감 ({injectedItems.length}) · 체크 시 이벤트와 동기화
             </p>
             <ul className="space-y-0.5">
               {injectedItems.map((it) => {
-                const overdue = it.daysLeftDelta < 0;
+                const delta = it.daysLeftDelta;
+                // delta: <0 지남, 0 오늘, 1 내일
+                const isOverdue  = delta < 0;
+                const isToday    = delta === 0;
+                const isTomorrow = delta === 1;
+
+                const rowBg = isTomorrow
+                  ? "bg-amber-50 dark:bg-amber-950/30"
+                  : "bg-rose-50 dark:bg-rose-950/30";
+                const checkboxColor = isTomorrow
+                  ? "border-amber-400 accent-amber-600"
+                  : "border-rose-400 accent-rose-600";
+                const titleColor = isTomorrow
+                  ? "text-amber-800 dark:text-amber-200"
+                  : "text-rose-800 dark:text-rose-200";
+                const eventColor = isTomorrow
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-rose-500 dark:text-rose-400";
+
+                let badgeLabel: string;
+                let badgeStyle: string;
+                if (isOverdue) {
+                  badgeLabel = `${Math.abs(delta)}일 지남`;
+                  badgeStyle = "bg-rose-200 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200";
+                } else if (isToday) {
+                  badgeLabel = "오늘";
+                  badgeStyle = "bg-rose-600 text-white";
+                } else {
+                  badgeLabel = "내일";
+                  badgeStyle = "bg-amber-500 text-white";
+                }
+
                 return (
                   <li
                     key={`${it.eventId}-${it.checklistId}`}
-                    className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-rose-50 dark:bg-rose-950/30"
+                    className={`flex items-center gap-2 py-1.5 px-2 rounded-lg ${rowBg}`}
                   >
                     <input
                       type="checkbox"
                       checked={false}
                       onChange={() => onToggleInjected(it.eventId, it.checklistId)}
-                      className="w-4 h-4 rounded border-rose-400 cursor-pointer accent-rose-600 shrink-0"
+                      className={`w-4 h-4 rounded cursor-pointer shrink-0 ${checkboxColor}`}
                     />
-                    <span className="text-sm flex-1 text-rose-800 dark:text-rose-200 truncate">
+                    <span className={`text-sm flex-1 truncate ${titleColor}`}>
                       {it.title}
                     </span>
-                    <span className="text-[10px] text-rose-500 dark:text-rose-400 shrink-0 truncate max-w-[100px]">
+                    <span className={`text-[10px] shrink-0 truncate max-w-[100px] ${eventColor}`}>
                       {it.eventTitle}
                     </span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                      overdue
-                        ? "bg-rose-200 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
-                        : "bg-rose-600 text-white"
-                    }`}>
-                      {overdue ? `${Math.abs(it.daysLeftDelta)}일 지남` : "오늘"}
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${badgeStyle}`}>
+                      {badgeLabel}
                     </span>
                   </li>
                 );
