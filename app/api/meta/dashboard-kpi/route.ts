@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
   if (preset === "today") {
     since = kstDateStr(0);
     until = kstDateStr(0);
+  } else if (preset === "yesterday") {
+    since = kstDateStr(-1);
+    until = kstDateStr(-1);
   } else if (preset === "last7d") {
     since = kstDateStr(-6);
     until = kstDateStr(0);

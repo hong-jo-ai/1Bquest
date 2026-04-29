@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Megaphone, Loader2, AlertCircle, ExternalLink, DollarSign, ShoppingBag, Target, Hash } from "lucide-react";
 
-type Preset = "today" | "last7d" | "month" | "custom";
+type Preset = "today" | "yesterday" | "last7d" | "month" | "custom";
 
 interface KpiResponse {
   ok:            boolean;
@@ -36,10 +36,11 @@ function kstDateStr(offsetDays = 0): string {
 }
 
 const PRESET_LABEL: Record<Preset, string> = {
-  today:  "오늘",
-  last7d: "최근 7일",
-  month:  "이번 달",
-  custom: "직접 지정",
+  today:     "오늘",
+  yesterday: "어제",
+  last7d:    "최근 7일",
+  month:     "이번 달",
+  custom:    "직접 지정",
 };
 
 interface Props {
