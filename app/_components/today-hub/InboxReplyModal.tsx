@@ -2,35 +2,57 @@
 
 import { useEffect, useState } from "react";
 import { X, Send, ExternalLink, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
-import type { InboxItem, InboxThreadDetail } from "./types";
+
+interface InboxItem {
+  messageId:     string;
+  threadId:      string;
+  sender:        string;
+  senderEmail:   string;
+  subject:       string;
+  receivedLabel: string;
+  reason?:       string;
+  gmailWebUrl:   string;
+}
+
+interface ThreadMessage {
+  from:       string;
+  to:         string;
+  date:       string;
+  bodyText:   string;
+  bodyHtml:   string;
+  isOutgoing: boolean;
+}
+
+interface ThreadDetail {
+  threadId: string;
+  subject:  string;
+  messages: ThreadMessage[];
+}
 
 interface Props {
   item: InboxItem;
   onClose: () => void;
-  onResolved: () => void; // 답장 또는 라벨 제거 성공 시 — 부모에 새로고침 트리거
+  onResolved: () => void;
 }
 
 export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
-  const [detail,  setDetail]  = useState<InboxThreadDetail | null>(null);
+  const [detail,  setDetail]  = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
 
   const [reply,    setReply]    = useState("");
   const [sending,  setSending]  = useState(false);
-  const [unlabeling, setUnlabeling] = useState(false);
+  const [marking,  setMarking]  = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/today-hub/inbox?accountId=${encodeURIComponent(item.accountId)}&threadId=${encodeURIComponent(item.threadId)}`)
+    fetch(`/api/today-hub/inbox?threadId=${encodeURIComponent(item.threadId)}`)
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
-        if (!j.ok) {
-          setError(j.error ?? "스레드 조회 실패");
-        } else {
-          setDetail(j.thread);
-        }
+        if (!j.ok) setError(j.error ?? "스레드 조회 실패");
+        else setDetail(j.thread);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -38,7 +60,7 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [item.accountId, item.threadId]);
+  }, [item.threadId]);
 
   const sendReply = async () => {
     if (!reply.trim() || sending) return;
@@ -48,7 +70,7 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
       const res = await fetch("/api/today-hub/inbox", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ accountId: item.accountId, threadId: item.threadId, body: reply }),
+        body:    JSON.stringify({ threadId: item.threadId, body: reply }),
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error ?? "전송 실패");
@@ -60,23 +82,24 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
     }
   };
 
-  const markDone = async () => {
-    if (unlabeling) return;
-    setUnlabeling(true);
+  // '필요없음' — 다음부터 비슷한 메일 자동 제외 (학습)
+  const markNotNeeded = async () => {
+    if (marking) return;
+    setMarking(true);
     setError(null);
     try {
       const res = await fetch("/api/today-hub/inbox", {
         method:  "DELETE",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ accountId: item.accountId, threadId: item.threadId }),
+        body:    JSON.stringify({ messageId: item.messageId }),
       });
       const j = await res.json();
-      if (!j.ok) throw new Error(j.error ?? "라벨 제거 실패");
+      if (!j.ok) throw new Error(j.error ?? "처리 실패");
       onResolved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setUnlabeling(false);
+      setMarking(false);
     }
   };
 
@@ -89,7 +112,6 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
         className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 헤더 */}
         <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs text-zinc-500 mb-1">{item.sender}{item.senderEmail && ` · ${item.senderEmail}`}</p>
@@ -97,6 +119,11 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
               {item.subject}
             </h3>
             <p className="text-[10px] text-zinc-400 mt-1 tabular-nums">{item.receivedLabel}</p>
+            {item.reason && (
+              <p className="text-[11px] text-violet-600 dark:text-violet-400 mt-1 italic">
+                AI: {item.reason}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -107,7 +134,6 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
           </button>
         </div>
 
-        {/* 본문 — 스레드 내용 */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-[200px]">
           {loading && (
             <div className="flex items-center justify-center py-10 gap-2 text-zinc-400">
@@ -155,7 +181,6 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
           )}
         </div>
 
-        {/* 답장 입력 */}
         <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
           <textarea
             value={reply}
@@ -169,7 +194,6 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
           )}
         </div>
 
-        {/* 푸터 — 액션 */}
         <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center gap-2 flex-wrap">
           <a
             href={item.gmailWebUrl}
@@ -180,13 +204,13 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
             <ExternalLink size={12} /> Gmail에서 열기
           </a>
           <button
-            onClick={markDone}
-            disabled={unlabeling || sending}
-            className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/30 disabled:opacity-50 flex items-center gap-1.5"
-            title="답장 작성 없이 '답장필요' 라벨만 제거"
+            onClick={markNotNeeded}
+            disabled={marking || sending}
+            className="text-xs font-semibold text-amber-700 dark:text-amber-400 px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-50 flex items-center gap-1.5"
+            title="다음부터 비슷한 메일 자동 제외 (AI 학습)"
           >
-            {unlabeling ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-            답장 완료로 표시
+            {marking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            필요없음 (학습)
           </button>
           <div className="flex-1" />
           <button
@@ -197,7 +221,7 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
           </button>
           <button
             onClick={sendReply}
-            disabled={!reply.trim() || sending || unlabeling}
+            disabled={!reply.trim() || sending || marking}
             className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 transition flex items-center gap-1.5"
           >
             {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}

@@ -1,96 +1,91 @@
 /**
- * 오늘의 운영 허브 — 답장 필요 인박스 Gmail 연동.
- * 기존 CS용 Gmail OAuth(cs_accounts) 자격 증명을 그대로 재활용.
+ * 답장 필요 인박스 — 분류된 메일 list/상세/답장/피드백.
+ * 라벨 기반 → AI 분류 기반으로 v2 전환.
  *
- * 모든 CS Gmail 계정의 '답장필요' 라벨이 붙은 스레드를 통합 조회.
- * 답장 전송 + 라벨 제거 + 딥링크 URL 생성을 담당.
+ * 데이터 소스: today_hub_inbox:msg:* (inboxStore)
+ *  - needsReply=true && !userMarkedNotNeeded && !userReplied 만 위젯에 노출
+ *  - 답장 보내면 userReplied=true 로 자동 마킹
+ *  - 사용자가 '필요없음' 누르면 userMarkedNotNeeded=true + 부정 사례 누적
  */
+import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 import {
-  listGmailAccounts,
-  getGmailAccessToken,
-  extractHeader,
-  parseFrom,
-  extractBody,
-  type GmailAccount,
-} from "@/lib/cs/gmailClient";
+  listClassifiedEmails, getClassifiedEmail, patchClassifiedEmail,
+  addNegativeExample, type ClassifiedEmail,
+} from "./inboxStore";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const REPLY_NEEDED_LABEL = "답장필요";
 
-export interface InboxItem {
-  id:            string; // composite: accountId:threadId
-  accountId:     string;
-  accountBrand:  string;
-  threadId:      string;
-  sender:        string;
-  senderEmail:   string | null;
-  subject:       string;
-  snippet:       string;
-  receivedAt:    string; // ISO
-  receivedLabel: string;
-  overdue:       boolean;
-  gmailWebUrl:   string;
-}
-
-export interface ThreadMessage {
-  from:     string;
-  to:       string;
-  date:     string;
-  bodyText: string;
-  bodyHtml: string;
-  isOutgoing: boolean;
-}
-
-export interface ThreadDetail {
-  threadId:  string;
-  accountId: string;
-  subject:   string;
-  messages:  ThreadMessage[];
-}
-
-interface GmailHeader { name: string; value: string }
 interface GmailMessageRaw {
-  id:            string;
-  threadId:      string;
-  internalDate:  string;
-  snippet?:      string;
-  labelIds?:     string[];
+  id:           string;
+  threadId:     string;
+  internalDate: string;
+  snippet?:     string;
+  labelIds?:    string[];
   payload?: {
-    headers?:  GmailHeader[];
+    headers?:  Array<{ name: string; value: string }>;
     mimeType?: string;
     body?:     { data?: string };
     parts?:    GmailMessageRaw["payload"][];
   };
 }
 
+export interface InboxItem {
+  id:            string;            // composite: threadId (위젯 React key)
+  messageId:     string;
+  threadId:      string;
+  sender:        string;
+  senderEmail:   string;
+  subject:       string;
+  snippet:       string;
+  receivedAt:    string;
+  receivedLabel: string;
+  overdue:       boolean;
+  /** AI 분류 사유 — UI tooltip */
+  reason:        string;
+  confidence:    number;
+  gmailWebUrl:   string;
+}
+
+export interface ThreadMessage {
+  from:       string;
+  to:         string;
+  date:       string;
+  bodyText:   string;
+  bodyHtml:   string;
+  isOutgoing: boolean;
+}
+
+export interface ThreadDetail {
+  threadId: string;
+  subject:  string;
+  messages: ThreadMessage[];
+}
+
 async function gmailFetch<T>(
-  accessToken: string,
-  path: string,
+  token: string,
+  path:  string,
   init?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${GMAIL_BASE}${path}`, {
     ...init,
     headers: {
-      Authorization:  `Bearer ${accessToken}`,
+      Authorization:  `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Gmail ${path}: ${res.status} ${await res.text()}`);
+    const body = await res.text();
+    if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE/i.test(body)) {
+      throw new Error(
+        "Gmail 스코프 부족 (gmail.modify). " +
+        "/api/auth/google/login?hint=shong@harriotwatches.com 으로 재연결 후 동의 화면에서 Gmail 권한 체크.",
+      );
+    }
+    throw new Error(`Gmail ${path}: ${res.status} ${body}`);
   }
   return res.json() as Promise<T>;
-}
-
-async function findLabelId(
-  accessToken: string,
-  labelName: string,
-): Promise<string | null> {
-  const res = await gmailFetch<{ labels?: Array<{ id: string; name: string }> }>(
-    accessToken,
-    "/labels",
-  );
-  return res.labels?.find((l) => l.name === labelName)?.id ?? null;
 }
 
 function relativeKr(iso: string): { label: string; overdue: boolean } {
@@ -107,172 +102,118 @@ function relativeKr(iso: string): { label: string; overdue: boolean } {
   return { label, overdue: hours >= 24 };
 }
 
-/** 모든 CS Gmail 계정에서 '답장필요' 라벨이 붙은 스레드를 통합 조회 */
-export async function listReplyNeededThreads(): Promise<InboxItem[]> {
-  const accounts: GmailAccount[] = await listGmailAccounts();
-  const out: InboxItem[] = [];
-
-  await Promise.all(accounts.map(async (account) => {
-    let accessToken: string;
-    try {
-      accessToken = await getGmailAccessToken(account);
-    } catch (e) {
-      console.error(`[today-hub:inbox] ${account.displayName} 토큰 갱신 실패:`, e);
-      return;
-    }
-
-    let list: { messages?: Array<{ id: string; threadId: string }> };
-    try {
-      list = await gmailFetch(
-        accessToken,
-        `/messages?q=${encodeURIComponent(`label:${REPLY_NEEDED_LABEL}`)}&maxResults=50`,
-      );
-    } catch (e) {
-      console.error(`[today-hub:inbox] ${account.displayName} 리스트 실패:`, e);
-      return;
-    }
-
-    // 같은 스레드 중복 제거 — 가장 첫 매치(=최신) 만 유지
-    const seen = new Set<string>();
-    const messages = (list.messages ?? []).filter((m) => {
-      if (seen.has(m.threadId)) return false;
-      seen.add(m.threadId);
-      return true;
+/** 위젯에 노출할 메일 목록 — 분류 결과 중 needsReply 인 것만, 사용자 처리된 건 제외 */
+export async function listInboxItems(): Promise<InboxItem[]> {
+  const all = await listClassifiedEmails();
+  const visible = all.filter(
+    (e) => e.needsReply && !e.userMarkedNotNeeded && !e.userReplied,
+  );
+  return visible
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+    .map((e) => {
+      const { label, overdue } = relativeKr(e.receivedAt);
+      return {
+        id:            e.threadId,
+        messageId:     e.messageId,
+        threadId:      e.threadId,
+        sender:        e.fromName || e.fromEmail,
+        senderEmail:   e.fromEmail,
+        subject:       e.subject,
+        snippet:       e.snippet,
+        receivedAt:    e.receivedAt,
+        receivedLabel: label,
+        overdue,
+        reason:        e.reason,
+        confidence:    e.confidence,
+        gmailWebUrl:   `https://mail.google.com/mail/u/0/#all/${e.threadId}`,
+      };
     });
-
-    for (const m of messages) {
-      try {
-        const msg = await gmailFetch<GmailMessageRaw>(
-          accessToken,
-          `/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-        );
-        const fromHeader    = extractHeader(msg, "From");
-        const subjectHeader = extractHeader(msg, "Subject") ?? "(제목 없음)";
-        const dateHeader    = extractHeader(msg, "Date");
-        const internalDate  = msg.internalDate
-          ? new Date(parseInt(msg.internalDate)).toISOString()
-          : dateHeader
-            ? new Date(dateHeader).toISOString()
-            : new Date().toISOString();
-        const { name, email } = parseFrom(fromHeader);
-        const { label, overdue } = relativeKr(internalDate);
-        out.push({
-          id:            `${account.id}:${m.threadId}`,
-          accountId:     account.id,
-          accountBrand:  account.brand,
-          threadId:      m.threadId,
-          sender:        name || email || "(보낸이 없음)",
-          senderEmail:   email,
-          subject:       subjectHeader,
-          snippet:       msg.snippet ?? "",
-          receivedAt:    internalDate,
-          receivedLabel: label,
-          overdue,
-          gmailWebUrl:   `https://mail.google.com/mail/u/0/#all/${m.threadId}`,
-        });
-      } catch (e) {
-        console.warn(`[today-hub:inbox] 메시지 ${m.id} 메타 조회 실패:`, e);
-      }
-    }
-  }));
-
-  // 최신순
-  out.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  return out;
 }
 
-/** 스레드 본문(받은+보낸 모두) 시간순으로 가져옴 */
-export async function getThreadDetail(
-  accountId: string,
-  threadId:  string,
-): Promise<ThreadDetail | null> {
-  const accounts = await listGmailAccounts();
-  const account  = accounts.find((a) => a.id === accountId);
-  if (!account) return null;
+/** 스레드 본문 — 모달용 */
+export async function getThreadDetail(threadId: string): Promise<ThreadDetail | null> {
+  const token = await getGoogleAccessTokenFromStore();
+  if (!token) throw new Error("Google 미연결");
 
-  const accessToken = await getGmailAccessToken(account);
   const res = await gmailFetch<{ messages?: GmailMessageRaw[] }>(
-    accessToken,
+    token,
     `/threads/${threadId}?format=full`,
   );
   const msgs = res.messages ?? [];
   if (msgs.length === 0) return null;
 
-  const subject = extractHeader(msgs[0], "Subject") ?? "(제목 없음)";
+  function getHeader(msg: GmailMessageRaw, name: string): string {
+    return (msg.payload?.headers ?? [])
+      .find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
+  }
+
+  function decodeBase64Url(data: string): string {
+    const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+    return Buffer.from(b64, "base64").toString("utf-8");
+  }
+
+  function extractBody(msg: GmailMessageRaw): { text: string; html: string } {
+    let text = "", html = "";
+    function walk(part?: GmailMessageRaw["payload"]): void {
+      if (!part) return;
+      const mime = part.mimeType ?? "";
+      const data = part.body?.data;
+      if (data) {
+        const decoded = decodeBase64Url(data);
+        if (mime === "text/plain") text += decoded;
+        else if (mime === "text/html") html += decoded;
+      }
+      for (const child of part.parts ?? []) walk(child);
+    }
+    walk(msg.payload);
+    if (!text && msg.snippet) text = msg.snippet;
+    return { text, html };
+  }
+
+  const subject = getHeader(msgs[0], "Subject") || "(제목 없음)";
   const messages: ThreadMessage[] = msgs.map((m) => {
     const { text, html } = extractBody(m);
     return {
-      from: extractHeader(m, "From") ?? "",
-      to:   extractHeader(m, "To") ?? "",
-      date: extractHeader(m, "Date") ?? "",
-      bodyText: text,
-      bodyHtml: html,
+      from:       getHeader(m, "From"),
+      to:         getHeader(m, "To"),
+      date:       getHeader(m, "Date"),
+      bodyText:   text,
+      bodyHtml:   html,
       isOutgoing: (m.labelIds ?? []).includes("SENT"),
     };
   });
 
-  return { threadId, accountId, subject, messages };
+  return { threadId, subject, messages };
 }
 
-/** '답장필요' 라벨만 제거 (답장 작성 없이 완료 표시할 때) */
-export async function unlabelThread(
-  accountId: string,
-  threadId:  string,
-): Promise<void> {
-  const accounts = await listGmailAccounts();
-  const account  = accounts.find((a) => a.id === accountId);
-  if (!account) throw new Error("Gmail 계정 미등록");
-
-  const accessToken = await getGmailAccessToken(account);
-  const labelId     = await findLabelId(accessToken, REPLY_NEEDED_LABEL);
-  if (!labelId) return; // 라벨 자체가 없으면 할 일 없음
-
-  await gmailFetch(accessToken, `/threads/${threadId}/modify`, {
-    method: "POST",
-    body:   JSON.stringify({ removeLabelIds: [labelId] }),
-  });
-}
-
-/** 답장 전송 + '답장필요' 라벨 자동 제거 */
-export async function sendReplyAndUnlabel(
-  accountId: string,
-  threadId:  string,
-  body:      string,
+/** 답장 전송 — 성공 시 ClassifiedEmail.userReplied=true 자동 마킹 */
+export async function sendReplyToThread(
+  threadId: string,
+  body:     string,
 ): Promise<{ ok: boolean; error?: string; messageId?: string }> {
-  const accounts = await listGmailAccounts();
-  const account  = accounts.find((a) => a.id === accountId);
-  if (!account) return { ok: false, error: "Gmail 계정 미등록" };
+  const token = await getGoogleAccessTokenFromStore();
+  if (!token) return { ok: false, error: "Google 미연결" };
 
-  let accessToken: string;
-  try {
-    accessToken = await getGmailAccessToken(account);
-  } catch (e) {
-    return { ok: false, error: `토큰 갱신 실패: ${e instanceof Error ? e.message : String(e)}` };
-  }
-
-  // 답장 헤더 구성을 위해 스레드 메타 조회
-  let thread: { messages?: GmailMessageRaw[] };
-  try {
-    thread = await gmailFetch(
-      accessToken,
-      `/threads/${threadId}?format=metadata&metadataHeaders=From&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=Subject`,
-    );
-  } catch (e) {
-    return { ok: false, error: `스레드 조회 실패: ${e instanceof Error ? e.message : String(e)}` };
-  }
+  // 답장 헤더 구성
+  const thread = await gmailFetch<{ messages?: GmailMessageRaw[] }>(
+    token,
+    `/threads/${threadId}?format=metadata&metadataHeaders=From&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=Subject`,
+  );
   const msgs = thread.messages ?? [];
-  if (msgs.length === 0) return { ok: false, error: "스레드에 메시지 없음" };
+  if (msgs.length === 0) return { ok: false, error: "스레드 비어있음" };
 
-  // 가장 최근 수신 메시지 (SENT 라벨 없는 마지막) — 없으면 마지막 메시지
-  const last =
-    [...msgs].reverse().find((m) => !(m.labelIds ?? []).includes("SENT")) ??
-    msgs[msgs.length - 1];
+  const last = [...msgs].reverse().find((m) => !(m.labelIds ?? []).includes("SENT")) ?? msgs[msgs.length - 1];
 
-  const fromHeader = extractHeader(last, "From") ?? "";
-  const messageId  = extractHeader(last, "Message-ID");
-  const references = extractHeader(last, "References");
-  const subjectRaw = extractHeader(last, "Subject") ?? "(답장)";
-  const { email: toAddress } = parseFrom(fromHeader);
+  const getHeader = (m: GmailMessageRaw, n: string): string =>
+    (m.payload?.headers ?? []).find((h) => h.name.toLowerCase() === n.toLowerCase())?.value ?? "";
+
+  const fromHeader = getHeader(last, "From");
+  const messageId  = getHeader(last, "Message-ID");
+  const references = getHeader(last, "References");
+  const subjectRaw = getHeader(last, "Subject") || "(답장)";
+
+  const m = fromHeader.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  const toAddress = m ? m[2].trim() : (fromHeader.includes("@") ? fromHeader.trim() : "");
   if (!toAddress) return { ok: false, error: "수신자 주소 추출 실패" };
 
   const subject = subjectRaw.startsWith("Re:") ? subjectRaw : `Re: ${subjectRaw}`;
@@ -284,8 +225,7 @@ export async function sendReplyAndUnlabel(
   ];
   if (messageId) headerLines.push(`In-Reply-To: ${messageId}`);
   if (messageId || references) {
-    const refs = [references, messageId].filter(Boolean).join(" ");
-    headerLines.push(`References: ${refs}`);
+    headerLines.push(`References: ${[references, messageId].filter(Boolean).join(" ")}`);
   }
 
   const rfc822 = headerLines.join("\r\n") + "\r\n\r\n" + body;
@@ -297,25 +237,44 @@ export async function sendReplyAndUnlabel(
 
   const sendRes = await fetch(`${GMAIL_BASE}/messages/send`, {
     method:  "POST",
-    headers: {
-      Authorization:  `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw, threadId }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body:    JSON.stringify({ raw, threadId }),
   });
-  if (!sendRes.ok) {
-    return { ok: false, error: `Gmail 전송 실패: ${await sendRes.text()}` };
-  }
+  if (!sendRes.ok) return { ok: false, error: `Gmail 전송 실패: ${await sendRes.text()}` };
   const json = (await sendRes.json()) as { id: string };
 
-  // 라벨 제거 — 답장은 성공했으므로 실패해도 경고만
-  try {
-    await unlabelThread(accountId, threadId);
-  } catch (e) {
-    console.warn("[today-hub:inbox] 답장 후 라벨 제거 실패:", e);
+  // 분류 캐시에서 같은 threadId 의 모든 항목을 userReplied=true 처리 (한 스레드에 여러 messageId 가 있을 수 있음)
+  const all = await listClassifiedEmails();
+  for (const e of all) {
+    if (e.threadId === threadId && !e.userReplied) {
+      await patchClassifiedEmail(e.messageId, {
+        userReplied: true,
+        dismissedAt: new Date().toISOString(),
+      });
+    }
   }
 
   return { ok: true, messageId: json.id };
+}
+
+/** '필요없음' 처리 — 위젯에서 숨김 + 부정 사례로 누적해 다음 분류에 영향 */
+export async function markNotNeeded(messageId: string, userReason?: string): Promise<{ ok: boolean; error?: string }> {
+  const email = await getClassifiedEmail(messageId);
+  if (!email) return { ok: false, error: "분류 결과 없음" };
+
+  await patchClassifiedEmail(messageId, {
+    userMarkedNotNeeded: true,
+    dismissedAt:         new Date().toISOString(),
+  });
+
+  await addNegativeExample({
+    fromEmail:     email.fromEmail,
+    subjectSample: email.subject,
+    reason:        userReason || `사용자가 '${email.fromName ?? email.fromEmail}'의 메일을 답장 불필요로 분류`,
+    createdAt:     new Date().toISOString(),
+  });
+
+  return { ok: true };
 }
 
 function encodeMimeHeader(text: string): string {
@@ -323,3 +282,6 @@ function encodeMimeHeader(text: string): string {
   const b64 = Buffer.from(text, "utf-8").toString("base64");
   return `=?UTF-8?B?${b64}?=`;
 }
+
+// 기존 파일이 export 하던 타입과의 호환을 위해 re-export
+export type { ClassifiedEmail };

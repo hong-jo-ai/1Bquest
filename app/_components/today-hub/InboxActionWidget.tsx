@@ -1,21 +1,40 @@
-// v3: Gmail '답장필요' 라벨 메일 자동 표시 — 클릭 시 답장 모달
+// v3+: AI 자동 분류 인박스 — 라벨 기반 필터링 → Claude 분류 + 사용자 피드백 학습
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Mail, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Mail, Loader2, AlertCircle, RefreshCw, Sparkles, X } from "lucide-react";
 import InboxReplyModal from "./InboxReplyModal";
-import type { InboxItem } from "./types";
 
-const BRAND_DOT: Record<string, string> = {
-  paulvice: "bg-violet-500",
-  harriot:  "bg-amber-600",
-};
+interface InboxItem {
+  id:            string;
+  messageId:     string;
+  threadId:      string;
+  sender:        string;
+  senderEmail:   string;
+  subject:       string;
+  snippet:       string;
+  receivedAt:    string;
+  receivedLabel: string;
+  overdue:       boolean;
+  reason:        string;
+  confidence:    number;
+  gmailWebUrl:   string;
+}
+
+interface SyncStatus {
+  lastSyncAt:    string;
+  scannedCount:  number;
+  newClassified: number;
+  errorCount:    number;
+}
 
 export default function InboxActionWidget() {
-  const [items,    setItems]    = useState<InboxItem[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [selected, setSelected] = useState<InboxItem | null>(null);
+  const [items,     setItems]     = useState<InboxItem[]>([]);
+  const [status,    setStatus]    = useState<SyncStatus | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [classifying, setClassifying] = useState(false);
+  const [selected,  setSelected]  = useState<InboxItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -25,6 +44,7 @@ export default function InboxActionWidget() {
       const j   = await res.json();
       if (!j.ok) throw new Error(j.error ?? "조회 실패");
       setItems(j.items as InboxItem[]);
+      setStatus(j.status ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -34,10 +54,40 @@ export default function InboxActionWidget() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleResolved = () => {
-    setSelected(null);
-    load();
+  const triggerClassify = async () => {
+    setClassifying(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/today-hub/inbox/classify", { method: "POST" });
+      const j   = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "분류 실패");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClassifying(false);
+    }
   };
+
+  const handleNotNeeded = async (it: InboxItem) => {
+    try {
+      const res = await fetch("/api/today-hub/inbox", {
+        method:  "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ messageId: it.messageId }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "처리 실패");
+      // 옵티미스틱 업데이트
+      setItems((prev) => prev.filter((x) => x.messageId !== it.messageId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const lastSyncLabel = status?.lastSyncAt
+    ? new Date(status.lastSyncAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })
+    : null;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden h-full">
@@ -49,6 +99,15 @@ export default function InboxActionWidget() {
         <span className="text-[11px] font-semibold bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded-full tabular-nums">
           {items.length}
         </span>
+        <button
+          onClick={triggerClassify}
+          disabled={classifying}
+          className="text-[10px] font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 inline-flex items-center gap-0.5 disabled:opacity-50"
+          title="새 메일 즉시 분류"
+        >
+          <Sparkles size={11} className={classifying ? "animate-pulse" : ""} />
+          {classifying ? "분류중" : "재분류"}
+        </button>
         <button
           onClick={load}
           disabled={loading}
@@ -71,56 +130,88 @@ export default function InboxActionWidget() {
         {!loading && error && (
           <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 text-xs m-2">
             <AlertCircle size={12} className="shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p>{error}</p>
-              {error.includes("미연결") || error.includes("미등록") ? (
-                <a href="/inbox/setup" className="underline font-medium">Gmail 연결하기 →</a>
-              ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="break-words">{error}</p>
+              {(error.includes("미연결") ||
+                error.includes("스코프") ||
+                error.includes("ANTHROPIC") ||
+                error.includes("403")) && (
+                <a
+                  href="/api/auth/google/login?hint=shong@harriotwatches.com"
+                  className="underline font-medium mt-1 inline-block"
+                >
+                  Google 재연결 →
+                </a>
+              )}
             </div>
           </div>
         )}
 
         {!loading && !error && items.length === 0 && (
-          <p className="text-xs text-zinc-400 text-center py-6">
-            답장 필요한 메일이 없습니다.
-            <br />
-            <span className="text-[10px] text-zinc-300">Gmail에서 메일에 &lsquo;답장필요&rsquo; 라벨을 붙이면 여기 표시됩니다.</span>
-          </p>
+          <div className="text-center py-6 px-3">
+            <p className="text-xs text-zinc-400">답장 필요한 메일이 없습니다.</p>
+            <p className="text-[10px] text-zinc-300 mt-1">
+              {lastSyncLabel
+                ? `마지막 분류: ${lastSyncLabel} · ${status?.scannedCount ?? 0}건 스캔`
+                : "아직 분류 이력 없음 — 위 '재분류' 버튼을 눌러 시작하세요."}
+            </p>
+          </div>
         )}
 
         <ul className="space-y-0.5">
           {items.map((it) => (
-            <li key={it.id}>
-              <button
-                onClick={() => setSelected(it)}
-                className="w-full text-left flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                    it.overdue ? "bg-rose-500" : (BRAND_DOT[it.accountBrand] ?? "bg-zinc-300")
-                  }`}
-                  aria-label={it.overdue ? "24시간 초과" : it.accountBrand}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200 truncate">{it.sender}</p>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{it.subject}</p>
-                </div>
+            <li key={it.id} className="group">
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                <button
+                  onClick={() => setSelected(it)}
+                  className="flex items-start gap-2 flex-1 min-w-0 text-left"
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                      it.overdue ? "bg-rose-500" : "bg-zinc-300 dark:bg-zinc-600"
+                    }`}
+                    aria-label={it.overdue ? "24시간 초과" : ""}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200 truncate">{it.sender}</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{it.subject}</p>
+                    {it.reason && (
+                      <p className="text-[10px] text-violet-600 dark:text-violet-400 truncate mt-0.5 italic">
+                        ⓘ {it.reason}
+                      </p>
+                    )}
+                  </div>
+                </button>
                 <span className={`text-[10px] shrink-0 mt-0.5 ${
                   it.overdue ? "text-rose-600 font-semibold" : "text-zinc-400"
                 }`}>
                   {it.receivedLabel}
                 </span>
-              </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleNotNeeded(it); }}
+                  className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition shrink-0"
+                  aria-label="답장 불필요로 표시 (다음부터 비슷한 메일 자동 제외)"
+                  title="필요없음 — 다음부터 자동 학습"
+                >
+                  <X size={12} />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
+
+        {lastSyncLabel && items.length > 0 && (
+          <p className="text-[10px] text-zinc-400 text-center mt-2">
+            마지막 분류: {lastSyncLabel} · 매시 자동 분류
+          </p>
+        )}
       </div>
 
       {selected && (
         <InboxReplyModal
           item={selected}
           onClose={() => setSelected(null)}
-          onResolved={handleResolved}
+          onResolved={() => { setSelected(null); load(); }}
         />
       )}
     </div>
