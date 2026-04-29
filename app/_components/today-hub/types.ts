@@ -28,11 +28,34 @@ export interface ScheduleItem {
 }
 
 export interface InboxItem {
-  id: string;
-  sender: string;
-  subject: string;
+  id:            string; // composite: accountId:threadId
+  accountId:     string;
+  accountBrand:  string;
+  threadId:      string;
+  sender:        string;
+  senderEmail:   string | null;
+  subject:       string;
+  snippet:       string;
+  receivedAt:    string; // ISO
   receivedLabel: string;
-  overdue: boolean;
+  overdue:       boolean;
+  gmailWebUrl:   string;
+}
+
+export interface InboxThreadMessage {
+  from:       string;
+  to:         string;
+  date:       string;
+  bodyText:   string;
+  bodyHtml:   string;
+  isOutgoing: boolean;
+}
+
+export interface InboxThreadDetail {
+  threadId:  string;
+  accountId: string;
+  subject:   string;
+  messages:  InboxThreadMessage[];
 }
 
 export interface Task {

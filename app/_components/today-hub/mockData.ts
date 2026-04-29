@@ -1,20 +1,13 @@
 import type {
-  ScheduleItem, InboxItem, Task, RevenueAction, RevenueGoal, BigEvent,
+  ScheduleItem, Task, RevenueAction, RevenueGoal, BigEvent,
 } from "./types";
 import { kstDateStr, kstMonthStr, kstWeekStartStr } from "./dateUtils";
 
-// ── 외부 약속 / 답장 필요는 v3에서 외부 연동, v2에선 여전히 로컬 mock ──
+// ── 외부 약속은 v3 캘린더 연동 전까지 로컬 mock 유지. 답장 필요는 Gmail 실연동. ──
 
 export const MOCK_SCHEDULE: ScheduleItem[] = [
   { id: "s1", time: "14:00", title: "W컨셉 MD 미팅",        location: "강남 W컨셉 본사" },
   { id: "s2", time: "16:30", title: "패키지 디자이너 통화", location: "전화" },
-];
-
-export const MOCK_INBOX: InboxItem[] = [
-  { id: "i1", sender: "W컨셉 MD",  subject: "5월 가정의달 기획전 입점 제안", receivedLabel: "2시간 전", overdue: false },
-  { id: "i2", sender: "무신사 PD", subject: "신상 컬러 이미지 누락 안내",     receivedLabel: "어제",     overdue: false },
-  { id: "i3", sender: "@example",  subject: "인플루언서 협업 문의",           receivedLabel: "어제",     overdue: false },
-  { id: "i4", sender: "고객",       subject: "주문 변경 요청",                receivedLabel: "3일 전",   overdue: true  },
 ];
 
 // ── seed: 서버에 데이터 없을 때 첫 진입에 보여줄 초기값 ──
