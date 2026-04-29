@@ -152,6 +152,31 @@ export async function getThreadDetail(threadId: string): Promise<ThreadDetail | 
     return Buffer.from(b64, "base64").toString("utf-8");
   }
 
+  function htmlToText(html: string): string {
+    if (!html) return "";
+    return html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   function extractBody(msg: GmailMessageRaw): { text: string; html: string } {
     let text = "", html = "";
     function walk(part?: GmailMessageRaw["payload"]): void {
@@ -166,6 +191,11 @@ export async function getThreadDetail(threadId: string): Promise<ThreadDetail | 
       for (const child of part.parts ?? []) walk(child);
     }
     walk(msg.payload);
+    // text 가 없거나 너무 짧으면 html 에서 추출 — HTML-only 메일 대응
+    if (!text.trim() || text.trim().length < 50) {
+      const fromHtml = htmlToText(html);
+      if (fromHtml.length > text.length) text = fromHtml;
+    }
     if (!text && msg.snippet) text = msg.snippet;
     return { text, html };
   }

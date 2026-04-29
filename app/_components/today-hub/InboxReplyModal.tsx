@@ -152,24 +152,26 @@ export default function InboxReplyModal({ item, onClose, onResolved }: Props) {
               {detail.messages.slice(-3).map((m, i) => (
                 <div
                   key={i}
-                  className={`rounded-lg px-3 py-2 ${
+                  className={`rounded-lg px-4 py-3 ${
                     m.isOutgoing
-                      ? "bg-violet-50 dark:bg-violet-950/30 ml-6"
-                      : "bg-zinc-50 dark:bg-zinc-800/50 mr-6"
+                      ? "bg-violet-50 dark:bg-violet-950/30"
+                      : "bg-zinc-50 dark:bg-zinc-800/50"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-[10px] font-semibold ${
-                      m.isOutgoing ? "text-violet-600 dark:text-violet-400" : "text-zinc-500"
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                    <span className={`text-[11px] font-semibold ${
+                      m.isOutgoing ? "text-violet-600 dark:text-violet-400" : "text-zinc-600 dark:text-zinc-400"
                     }`}>
-                      {m.isOutgoing ? "내가 보냄" : "받음"} · {m.from.replace(/<[^>]+>/g, "").trim() || m.from}
+                      {m.isOutgoing ? "→ 내가 보냄" : "← 받음"} · {m.from.replace(/<[^>]+>/g, "").trim() || m.from}
                     </span>
                     <span className="text-[10px] text-zinc-400">{m.date}</span>
                   </div>
-                  <pre className="text-xs text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap font-sans break-words">
-                    {m.bodyText.slice(0, 1500) || "(본문 없음)"}
-                    {m.bodyText.length > 1500 && "\n…"}
-                  </pre>
+                  <div className="text-sm text-zinc-700 dark:text-zinc-200 whitespace-pre-line break-words leading-relaxed">
+                    {m.bodyText.slice(0, 5000) || "(본문 없음)"}
+                    {m.bodyText.length > 5000 && (
+                      <span className="text-zinc-400 italic">{"\n\n… (이하 생략, 전체는 Gmail에서)"}</span>
+                    )}
+                  </div>
                 </div>
               ))}
               {detail.messages.length > 3 && (
