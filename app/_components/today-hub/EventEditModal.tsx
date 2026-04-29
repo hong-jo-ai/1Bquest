@@ -5,6 +5,21 @@ import { X, Trash2, Plus } from "lucide-react";
 import { kstDateStr } from "./dateUtils";
 import type { BigEvent, EventChecklistItem } from "./types";
 
+/** YYYY-MM-DD 차이 (일수) */
+function daysBetween(later: string, earlier: string): number {
+  const a = Date.UTC(+later.slice(0, 4),   +later.slice(5, 7) - 1,   +later.slice(8, 10));
+  const b = Date.UTC(+earlier.slice(0, 4), +earlier.slice(5, 7) - 1, +earlier.slice(8, 10));
+  return Math.round((a - b) / 86400000);
+}
+
+/** target 으로부터 dDay 만큼 앞 날짜 → YYYY-MM-DD */
+function dateForDDay(targetDate: string, dDay: number): string {
+  if (!targetDate || targetDate.length !== 10) return "";
+  const d = new Date(`${targetDate}T00:00:00+09:00`);
+  d.setUTCDate(d.getUTCDate() - dDay);
+  return d.toISOString().slice(0, 10);
+}
+
 interface Props {
   event: BigEvent | null; // null = 신규
   onClose: () => void;
@@ -21,11 +36,17 @@ export default function EventEditModal({ event, onClose, onSave, onDelete }: Pro
   const [targetDate, setTargetDate] = useState(event?.targetDate  ?? kstDateStr(7));
   const [checklist, setChecklist]   = useState<EventChecklistItem[]>(event?.checklist ?? []);
 
-  const addItem = () =>
+  const addItem = () => {
+    // 새 항목 기본 dDay: targetDate 와 오늘 사이 거리 (즉 오늘 마감) — 사용자가 바로 인식
+    const today = kstDateStr(0);
+    const defaultDDay = targetDate && targetDate >= today
+      ? Math.max(0, daysBetween(targetDate, today))
+      : 7;
     setChecklist((prev) => [
       ...prev,
-      { id: newId("c"), dDay: 7, title: "", done: false },
+      { id: newId("c"), dDay: defaultDDay, title: "", done: false },
     ]);
+  };
 
   const updateItem = (id: string, patch: Partial<EventChecklistItem>) =>
     setChecklist((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -105,33 +126,51 @@ export default function EventEditModal({ event, onClose, onSave, onDelete }: Pro
               </button>
             </div>
             <ul className="space-y-1.5">
-              {checklist.map((c) => (
-                <li key={c.id} className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-zinc-400 shrink-0">D-</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={c.dDay}
-                    onChange={(e) => updateItem(c.id, { dDay: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="w-14 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 tabular-nums"
-                  />
-                  <input
-                    value={c.title}
-                    onChange={(e) => updateItem(c.id, { title: e.target.value })}
-                    placeholder="할 일"
-                    className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
-                  />
-                  <button
-                    onClick={() => removeItem(c.id)}
-                    className="text-zinc-400 hover:text-rose-500 shrink-0"
-                    aria-label="삭제"
-                  >
-                    <X size={14} />
-                  </button>
-                </li>
-              ))}
+              {checklist.map((c) => {
+                const itemDate = dateForDDay(targetDate, c.dDay);
+                const dateInvalid = targetDate.length !== 10;
+                return (
+                  <li key={c.id} className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={itemDate}
+                      max={targetDate || undefined}
+                      disabled={dateInvalid}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v || v.length !== 10) return;
+                        const newDDay = Math.max(0, daysBetween(targetDate, v));
+                        updateItem(c.id, { dDay: newDDay });
+                      }}
+                      className="w-32 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 disabled:opacity-50"
+                      title={dateInvalid ? "먼저 이벤트 목표 날짜를 지정하세요" : ""}
+                    />
+                    <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 tabular-nums shrink-0 w-10 text-center">
+                      D-{c.dDay}
+                    </span>
+                    <input
+                      value={c.title}
+                      onChange={(e) => updateItem(c.id, { title: e.target.value })}
+                      placeholder="할 일"
+                      className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+                    />
+                    <button
+                      onClick={() => removeItem(c.id)}
+                      className="text-zinc-400 hover:text-rose-500 shrink-0"
+                      aria-label="삭제"
+                    >
+                      <X size={14} />
+                    </button>
+                  </li>
+                );
+              })}
               {checklist.length === 0 && (
                 <p className="text-xs text-zinc-400 text-center py-4">체크리스트 항목을 추가해 주세요.</p>
+              )}
+              {checklist.length > 0 && targetDate && (
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  날짜 입력 시 D-day 자동 계산 · 이벤트 목표 날짜를 옮기면 체크리스트도 같이 따라옴
+                </p>
               )}
             </ul>
           </div>
