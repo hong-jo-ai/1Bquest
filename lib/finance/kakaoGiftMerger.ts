@@ -1,16 +1,16 @@
 /**
- * 카카오선물하기 채널 데이터 머지 — 시트 fetch + 월별 정산서를 합쳐 단일
+ * 카카오선물하기 채널 데이터 머지 — 월별 정산서 + 일일 발주서(PO) 합쳐
  * channel_upload:kakao_gift 갱신.
  *
  * 정책:
- *   - 정산서가 있는 달은 정산서 데이터 우선 (단일 진실 source)
- *   - 정산서가 없는 달은 시트 데이터 fallback
- *   - topProducts는 모든 정산서 합산 (시트는 12개월 누적이라 월별 분리 불가)
+ *   - 정산서가 있는 달 → 정산서 월합계 1행 (가장 정확)
+ *   - 정산서 없고 PO 있는 달 → PO 일별 데이터 (이번 달 등 — 단가맵으로 매출 추정)
+ *   - topProducts 는 모든 정산서 합산
  *
  * KV 키:
- *   - kakao_gift_sheet:data            = 시트 fetch 결과 (MultiChannelData)
- *   - channel_settlement:kakao_gift:YYYY-MM = 월별 정산서 raw (KakaoSettlement)
- *   - channel_upload:kakao_gift        = 머지 결과 (UI에서 사용)
+ *   - channel_settlement:kakao_gift:YYYY-MM = 월별 정산서 raw
+ *   - kakao_gift_po:YYYY-MM-DD              = 일일 발주서 (Gmail 동기화)
+ *   - channel_upload:kakao_gift             = 머지 결과 (대시보드에서 사용)
  */
 import { createClient } from "@supabase/supabase-js";
 import type {
@@ -33,7 +33,6 @@ const WEEK_EMPTY: WeeklyData[] = ["월", "화", "수", "목", "금", "토", "일
   (day) => ({ day, orders: 0, revenue: 0 }),
 );
 
-const SHEET_KEY = "kakao_gift_sheet:data";
 const SETTLEMENT_PREFIX = "channel_settlement:kakao_gift:";
 const CHANNEL_KEY = "channel_upload:kakao_gift";
 const PO_PREFIX = "kakao_gift_po:";
@@ -49,15 +48,6 @@ export function settlementKey(year: number, month: number): string {
   return `${SETTLEMENT_PREFIX}${year}-${String(month).padStart(2, "0")}`;
 }
 
-export async function saveSheetData(data: MultiChannelData): Promise<void> {
-  const supabase = getSupabase();
-  if (!supabase) return;
-  await supabase.from("kv_store").upsert(
-    { key: SHEET_KEY, data, updated_at: new Date().toISOString() },
-    { onConflict: "key" },
-  );
-}
-
 export async function saveSettlement(s: KakaoSettlement): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) return;
@@ -71,23 +61,14 @@ export async function saveSettlement(s: KakaoSettlement): Promise<void> {
   );
 }
 
-/** 시트 + 모든 정산서 + 일일 PO → MultiChannelData 빌드 → channel_upload에 저장 */
+/** 정산서 + 일일 PO → MultiChannelData 빌드 → channel_upload 에 저장 */
 export async function rebuildKakaoGiftChannelData(): Promise<{
   data: MultiChannelData;
   settlementCount: number;
   poCount: number;
-  hasSheet: boolean;
 }> {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase 미설정");
-
-  // 1. 시트 데이터 로드
-  const { data: sheetRow } = await supabase
-    .from("kv_store")
-    .select("data")
-    .eq("key", SHEET_KEY)
-    .maybeSingle();
-  const sheetData: MultiChannelData | null = (sheetRow?.data as MultiChannelData) ?? null;
 
   // 2. 모든 정산서 로드
   const { data: settlementRows } = await supabase
@@ -163,14 +144,9 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
     poByDate.set(po.date, ex);
   }
 
-  // PO 가 있는 달 set
-  const poMonths = new Set<string>();
-  for (const date of poByDate.keys()) poMonths.add(date.slice(0, 7));
-
   // 3. dailyRevenue 우선순위:
   //    (a) 정산서가 있는 달 → 정산서 월 합계 1행 (YYYY-MM-01)
   //    (b) 정산서 없고 PO 있는 달 → PO 일별 entries (이번 달 등)
-  //    (c) 정산서/PO 둘 다 없고 시트만 있는 달 → 시트 데이터
   const dailyRevenue: DailyData[] = [];
 
   for (const s of settlements) {
@@ -191,14 +167,6 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
       orders:    agg.orders,
       shipments: agg.qty,
     });
-  }
-
-  if (sheetData?.dailyRevenue) {
-    for (const d of sheetData.dailyRevenue) {
-      const ym = d.date.slice(0, 7);
-      if (settlementMonths.has(ym) || poMonths.has(ym)) continue; // 더 신선한 소스 우선
-      dailyRevenue.push(d);
-    }
   }
   dailyRevenue.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -225,13 +193,9 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
       }
     }
   }
-  // 정산서가 하나도 없으면 시트 topProducts 사용 (1년 누적 추정치)
-  const topProducts: ProductRank[] =
-    productMap.size > 0
-      ? Array.from(productMap.values())
-          .sort((a, b) => b.revenue - a.revenue)
-          .map((p, i) => ({ ...p, rank: i + 1, image: "" }))
-      : sheetData?.topProducts ?? [];
+  const topProducts: ProductRank[] = Array.from(productMap.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .map((p, i) => ({ ...p, rank: i + 1, image: "" }));
 
   // 5. salesSummary
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -275,7 +239,6 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
   const sources: string[] = [];
   if (settlements.length > 0) sources.push(`정산서 ${settlements.length}개월`);
   if (pos.length > 0)         sources.push(`일일발주서 ${pos.length}일`);
-  if (sheetData)              sources.push("시트");
   const meta = {
     fileName: sources.length > 0 ? sources.join(" + ") : "데이터 없음",
     rowCount: topProducts.length,
@@ -295,6 +258,5 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
     data,
     settlementCount: settlements.length,
     poCount:         pos.length,
-    hasSheet:        !!sheetData,
   };
 }
