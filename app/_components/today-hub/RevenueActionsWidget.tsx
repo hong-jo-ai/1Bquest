@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { TrendingUp, Check } from "lucide-react";
-import { MOCK_REVENUE_ACTIONS, MOCK_REVENUE_GOAL } from "./mockData";
-import type { RevenueAction } from "./types";
+import type { RevenueAction, RevenueGoal } from "./types";
 
 function fmtKRW(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억원";
@@ -11,13 +9,17 @@ function fmtKRW(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
 
-export default function RevenueActionsWidget() {
-  const [actions, setActions] = useState<RevenueAction[]>(MOCK_REVENUE_ACTIONS);
+interface Props {
+  routines: RevenueAction[];
+  setRoutines: React.Dispatch<React.SetStateAction<RevenueAction[]>>;
+  goal: RevenueGoal;
+}
 
-  const pct = Math.min(100, Math.round((MOCK_REVENUE_GOAL.current / MOCK_REVENUE_GOAL.target) * 100));
+export default function RevenueActionsWidget({ routines, setRoutines, goal }: Props) {
+  const pct = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
 
   const tick = (id: string) =>
-    setActions((prev) =>
+    setRoutines((prev) =>
       prev.map((a) => {
         if (a.id !== id) return a;
         const next = a.done < a.target ? a.done + 1 : 0;
@@ -41,8 +43,8 @@ export default function RevenueActionsWidget() {
             <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{pct}%</span>
           </div>
           <p className="text-sm font-bold text-zinc-800 dark:text-zinc-100 tabular-nums">
-            {fmtKRW(MOCK_REVENUE_GOAL.current)}
-            <span className="text-zinc-400 font-medium"> / {fmtKRW(MOCK_REVENUE_GOAL.target)}</span>
+            {fmtKRW(goal.current)}
+            <span className="text-zinc-400 font-medium"> / {fmtKRW(goal.target)}</span>
           </p>
           <div className="mt-2 h-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-full overflow-hidden">
             <div
@@ -57,7 +59,7 @@ export default function RevenueActionsWidget() {
             꾸준히 굴려야 하는 주간 루틴
           </p>
           <ul className="space-y-1">
-            {actions.map((a) => {
+            {routines.map((a) => {
               const completed = a.done >= a.target;
               return (
                 <li key={a.id} className="flex items-center gap-2 py-1">
@@ -84,10 +86,15 @@ export default function RevenueActionsWidget() {
                 </li>
               );
             })}
+            {routines.length === 0 && (
+              <p className="text-xs text-zinc-400 text-center py-2">루틴이 없습니다.</p>
+            )}
           </ul>
         </div>
 
-        <p className="text-[10px] text-zinc-400">매주 일요일 자동 리셋 (v2에서 구현)</p>
+        <p className="text-[10px] text-zinc-400">
+          매주 일요일 / 매월 1일에 자동 리셋 · 카운트가 가득 찬 항목 클릭 시 즉시 리셋
+        </p>
       </div>
     </div>
   );

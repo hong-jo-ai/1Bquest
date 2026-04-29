@@ -1,19 +1,31 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { CheckSquare, X } from "lucide-react";
-import { MOCK_TASKS } from "./mockData";
+import { CheckSquare, X, AlertTriangle } from "lucide-react";
 import {
   CATEGORY_LABEL, CATEGORY_BADGE, CATEGORY_ORDER,
-  type Task, type TaskCategory,
+  type Task, type TaskCategory, type InjectedEventItem,
 } from "./types";
+import { kstDateStr } from "./dateUtils";
 
-export default function TodayTasksWidget() {
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-  const [draftTitle, setDraftTitle] = useState("");
+interface Props {
+  tasks: Task[];
+  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  injectedItems: InjectedEventItem[];
+  onToggleInjected: (eventId: string, checklistId: string) => void;
+}
+
+function newId() {
+  return `n${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export default function TodayTasksWidget({
+  tasks, setTasks, injectedItems, onToggleInjected,
+}: Props) {
+  const [draftTitle, setDraftTitle]       = useState("");
   const [draftCategory, setDraftCategory] = useState<TaskCategory>("etc");
 
-  const total = tasks.length;
+  const total = tasks.length + injectedItems.length;
   const done  = tasks.filter((t) => t.done).length;
 
   const grouped = useMemo(() => {
@@ -35,7 +47,7 @@ export default function TodayTasksWidget() {
     if (!title) return;
     setTasks((prev) => [
       ...prev,
-      { id: `n${Date.now()}`, title, category: draftCategory, done: false },
+      { id: newId(), title, category: draftCategory, done: false, date: kstDateStr(0) },
     ]);
     setDraftTitle("");
   };
@@ -53,6 +65,48 @@ export default function TodayTasksWidget() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[280px]">
+
+        {/* 빅 이벤트 마감 자동 주입 */}
+        {injectedItems.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <AlertTriangle size={10} /> 빅 이벤트 마감 ({injectedItems.length})
+            </p>
+            <ul className="space-y-0.5">
+              {injectedItems.map((it) => {
+                const overdue = it.daysLeftDelta < 0;
+                return (
+                  <li
+                    key={`${it.eventId}-${it.checklistId}`}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-rose-50 dark:bg-rose-950/30"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={() => onToggleInjected(it.eventId, it.checklistId)}
+                      className="w-4 h-4 rounded border-rose-400 cursor-pointer accent-rose-600 shrink-0"
+                    />
+                    <span className="text-sm flex-1 text-rose-800 dark:text-rose-200 truncate">
+                      {it.title}
+                    </span>
+                    <span className="text-[10px] text-rose-500 dark:text-rose-400 shrink-0 truncate max-w-[100px]">
+                      {it.eventTitle}
+                    </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      overdue
+                        ? "bg-rose-200 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
+                        : "bg-rose-600 text-white"
+                    }`}>
+                      {overdue ? `${Math.abs(it.daysLeftDelta)}일 지남` : "오늘"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* 카테고리별 일반 할일 */}
         {CATEGORY_ORDER.map((cat) => {
           const list = grouped[cat];
           if (list.length === 0) return null;
@@ -98,7 +152,8 @@ export default function TodayTasksWidget() {
             </div>
           );
         })}
-        {total === 0 && (
+
+        {tasks.length === 0 && injectedItems.length === 0 && (
           <p className="text-xs text-zinc-400 text-center py-8">할일이 없습니다.</p>
         )}
       </div>
@@ -129,7 +184,9 @@ export default function TodayTasksWidget() {
             추가
           </button>
         </div>
-        <p className="text-[10px] text-zinc-400 mt-2">미완료 항목은 다음날 자동 이월 (v2에서 구현)</p>
+        <p className="text-[10px] text-zinc-400 mt-2">
+          미완료 항목은 다음날 자동 이월 · 빅이벤트 마감일 도달 시 상단에 자동 노출
+        </p>
       </div>
     </div>
   );

@@ -40,33 +40,54 @@ export interface Task {
   title: string;
   category: TaskCategory;
   done: boolean;
+  /** YYYY-MM-DD KST. 어제 미완료면 오늘 날짜로 자동 이월. */
+  date: string;
 }
+
+export type CadenceType = "weekly" | "monthly";
 
 export interface RevenueAction {
   id: string;
   title: string;
   cadence: string;
   scope: string;
+  cadenceType: CadenceType;
   target: number;
   done: number;
+  /** weekly: YYYY-MM-DD (해당 주 일요일) · monthly: YYYY-MM. period 변경 시 done 리셋. */
+  periodKey: string;
 }
 
 export interface RevenueGoal {
   target: number;
   current: number;
+  /** YYYY-MM. 월 변경 시 current 0 리셋. */
+  monthKey: string;
 }
 
 export interface EventChecklistItem {
   id: string;
+  /** 이벤트 D-day로부터 며칠 전이 마감인지 */
   dDay: number;
   title: string;
   done: boolean;
-  isToday?: boolean;
 }
 
 export interface BigEvent {
   id: string;
   title: string;
-  daysLeft: number;
+  /** YYYY-MM-DD KST. 오늘 기준 daysLeft = daysUntil(targetDate) */
+  targetDate: string;
   checklist: EventChecklistItem[];
+}
+
+/** TodayTasksWidget 에 빅 이벤트 마감을 시각적으로 주입할 때 쓰는 형태 */
+export interface InjectedEventItem {
+  eventId: string;
+  eventTitle: string;
+  checklistId: string;
+  dDay: number;
+  /** 0 = 오늘 마감, 음수 = 지남 */
+  daysLeftDelta: number;
+  title: string;
 }
