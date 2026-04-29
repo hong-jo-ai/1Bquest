@@ -12,6 +12,7 @@ import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboar
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
 import TodayHubSection from "@/app/_components/today-hub/TodayHubSection";
+import CampaignTracker from "@/components/CampaignTracker";
 
 import {
   UPLOADABLE_CHANNELS,
@@ -384,6 +385,9 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 
         {/* 광고 성과 KPI — 기간별 지출/매출/ROAS/전환수 */}
         <DashboardAdsKpi brand={brand} />
+
+        {/* 캠페인 트래킹 — 인플루언서 컬랩 등, Cafe24 쿠폰 코드 매칭. 폴바이스 한정(v1). */}
+        {brand === "paulvice" && <CampaignTracker brand={brand} />}
 
         {/* 손익 분석 (P&L) — 메인 도구: 매출, 수수료, 부가세, 매입원가, 광고비, 고정비 → 영업이익 */}
         <ProfitDashboard
