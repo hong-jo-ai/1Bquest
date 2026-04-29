@@ -22,6 +22,7 @@ import type {
 } from "@/lib/cafe24Data";
 import type { MultiChannelData } from "@/lib/multiChannelData";
 import type { KakaoSettlement } from "@/lib/finance/kakaoGiftSettlement";
+import type { KakaoGiftPo } from "@/lib/finance/kakaoGiftPo";
 
 const HOURS_EMPTY: HourlyData[] = Array.from({ length: 24 }, (_, h) => ({
   hour: String(h),
@@ -35,6 +36,7 @@ const WEEK_EMPTY: WeeklyData[] = ["월", "화", "수", "목", "금", "토", "일
 const SHEET_KEY = "kakao_gift_sheet:data";
 const SETTLEMENT_PREFIX = "channel_settlement:kakao_gift:";
 const CHANNEL_KEY = "channel_upload:kakao_gift";
+const PO_PREFIX = "kakao_gift_po:";
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -69,10 +71,11 @@ export async function saveSettlement(s: KakaoSettlement): Promise<void> {
   );
 }
 
-/** 시트 + 모든 정산서 → MultiChannelData 빌드 → channel_upload에 저장 */
+/** 시트 + 모든 정산서 + 일일 PO → MultiChannelData 빌드 → channel_upload에 저장 */
 export async function rebuildKakaoGiftChannelData(): Promise<{
   data: MultiChannelData;
   settlementCount: number;
+  poCount: number;
   hasSheet: boolean;
 }> {
   const supabase = getSupabase();
@@ -95,25 +98,106 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
     data: KakaoSettlement;
   }>).map((r) => r.data);
 
+  // 2-b. 모든 일일 PO 로드 (Gmail 동기화 결과)
+  const { data: poRows } = await supabase
+    .from("kv_store")
+    .select("data")
+    .like("key", `${PO_PREFIX}%`);
+  const pos: KakaoGiftPo[] = ((poRows ?? []) as Array<{
+    data: KakaoGiftPo;
+  }>).map((r) => r.data);
+
   // 정산서가 있는 달 set ("YYYY-MM")
   const settlementMonths = new Set(
     settlements.map((s) => `${s.year}-${String(s.month).padStart(2, "0")}`),
   );
 
-  // 3. dailyRevenue: 정산서 우선, 없는 달은 시트 데이터
+  // 단가맵 — 모든 정산서 합산해서 product 별 평균 단가
+  // PO 의 매출 추정에 사용. PO 에 가격 정보가 없기 때문.
+  const priceMap = new Map<string, number>(); // key=상품명, value=평균 단가
+  let channelAvgPrice = 0;
+  {
+    let totalRev = 0;
+    let totalQty = 0;
+    const perName = new Map<string, { rev: number; qty: number }>();
+    for (const s of settlements) {
+      for (const p of s.products) {
+        const ex = perName.get(p.name) ?? { rev: 0, qty: 0 };
+        ex.rev += p.revenue;
+        ex.qty += p.sold;
+        perName.set(p.name, ex);
+        totalRev += p.revenue;
+        totalQty += p.sold;
+      }
+    }
+    for (const [name, { rev, qty }] of perName) {
+      if (qty > 0) priceMap.set(name, rev / qty);
+    }
+    if (totalQty > 0) channelAvgPrice = totalRev / totalQty;
+  }
+
+  // PO 상품 fuzzy 매칭 — 정확 매칭 실패 시 키워드 substring 매칭, 그래도 없으면 채널 평균
+  function resolvePoUnitPrice(productName: string): number {
+    const exact = priceMap.get(productName);
+    if (exact != null) return exact;
+    // 부분 일치 — 정산서 상품명이 PO 상품명에 포함되거나 그 반대
+    for (const [name, price] of priceMap) {
+      if (productName.includes(name) || name.includes(productName)) return price;
+    }
+    return channelAvgPrice; // fallback
+  }
+
+  // PO 일별 합산 — 같은 날짜에 여러 PO 들어올 수 있어 합산. 단가맵 적용해서 매출 추정.
+  const poByDate = new Map<string, { revenue: number; orders: number; qty: number }>();
+  for (const po of pos) {
+    let rev = 0, qty = 0;
+    for (const o of po.orders) {
+      const unit = resolvePoUnitPrice(o.product);
+      rev += unit * o.qty;
+      qty += o.qty;
+    }
+    const ex = poByDate.get(po.date) ?? { revenue: 0, orders: 0, qty: 0 };
+    ex.revenue += rev;
+    ex.orders  += po.orders.length;
+    ex.qty     += qty;
+    poByDate.set(po.date, ex);
+  }
+
+  // PO 가 있는 달 set
+  const poMonths = new Set<string>();
+  for (const date of poByDate.keys()) poMonths.add(date.slice(0, 7));
+
+  // 3. dailyRevenue 우선순위:
+  //    (a) 정산서가 있는 달 → 정산서 월 합계 1행 (YYYY-MM-01)
+  //    (b) 정산서 없고 PO 있는 달 → PO 일별 entries (이번 달 등)
+  //    (c) 정산서/PO 둘 다 없고 시트만 있는 달 → 시트 데이터
   const dailyRevenue: DailyData[] = [];
+
   for (const s of settlements) {
     dailyRevenue.push({
-      date: `${s.year}-${String(s.month).padStart(2, "0")}-01`,
-      revenue: s.totalRevenue,
-      orders: s.totalSold,
+      date:      `${s.year}-${String(s.month).padStart(2, "0")}-01`,
+      revenue:   s.totalRevenue,
+      orders:    s.totalSold,
       shipments: s.totalSold,
     });
   }
+
+  for (const [date, agg] of poByDate) {
+    const ym = date.slice(0, 7);
+    if (settlementMonths.has(ym)) continue; // 정산서 우선
+    dailyRevenue.push({
+      date,
+      revenue:   Math.round(agg.revenue),
+      orders:    agg.orders,
+      shipments: agg.qty,
+    });
+  }
+
   if (sheetData?.dailyRevenue) {
     for (const d of sheetData.dailyRevenue) {
       const ym = d.date.slice(0, 7);
-      if (!settlementMonths.has(ym)) dailyRevenue.push(d);
+      if (settlementMonths.has(ym) || poMonths.has(ym)) continue; // 더 신선한 소스 우선
+      dailyRevenue.push(d);
     }
   }
   dailyRevenue.sort((a, b) => a.date.localeCompare(b.date));
@@ -149,27 +233,33 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
           .map((p, i) => ({ ...p, rank: i + 1, image: "" }))
       : sheetData?.topProducts ?? [];
 
-  // 5. salesSummary: dailyRevenue 기반 이번달 / 직전달
+  // 5. salesSummary
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  const curYM = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const todayStr = now.toISOString().slice(0, 10);
+  const curYM    = todayStr.slice(0, 7);
   const prev = new Date(now);
   prev.setUTCMonth(prev.getUTCMonth() - 1);
   const prevYM = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
-  const monthAgg = (ym: string) => {
-    const m = dailyRevenue.find((d) => d.date.startsWith(ym));
-    if (!m) return { revenue: 0, orders: 0, avgOrder: 0 };
-    return {
-      revenue: m.revenue,
-      orders: m.orders,
-      avgOrder: m.orders > 0 ? Math.round(m.revenue / m.orders) : 0,
-    };
+
+  // 7일 전 (포함) — KST 기준
+  const weekAgo = new Date(now);
+  weekAgo.setUTCDate(weekAgo.getUTCDate() - 6);
+  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+
+  const aggRange = (predicate: (date: string) => boolean) => {
+    let revenue = 0, orders = 0;
+    for (const d of dailyRevenue) {
+      if (predicate(d.date)) { revenue += d.revenue; orders += d.orders; }
+    }
+    return { revenue, orders, avgOrder: orders > 0 ? Math.round(revenue / orders) : 0 };
   };
 
+  // PO 가 있어 일별 데이터가 있으면 today/week 계산. 정산서만 있는 달은 월합 1행이라 today/week 0.
   const salesSummary: SalesSummaryData = {
-    today: { revenue: 0, orders: 0, avgOrder: 0 },
-    week: { revenue: 0, orders: 0, avgOrder: 0 },
-    month: monthAgg(curYM),
-    prevMonth: monthAgg(prevYM),
+    today:     aggRange((d) => d === todayStr),
+    week:      aggRange((d) => d >= weekAgoStr && d <= todayStr),
+    month:     aggRange((d) => d.startsWith(curYM)),
+    prevMonth: aggRange((d) => d.startsWith(prevYM)),
   };
 
   const data: MultiChannelData = {
@@ -182,10 +272,12 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
   };
 
   // 6. channel_upload:kakao_gift에 저장 (다른 채널과 동일 형식: { data, meta })
+  const sources: string[] = [];
+  if (settlements.length > 0) sources.push(`정산서 ${settlements.length}개월`);
+  if (pos.length > 0)         sources.push(`일일발주서 ${pos.length}일`);
+  if (sheetData)              sources.push("시트");
   const meta = {
-    fileName: settlements.length > 0
-      ? `정산서 ${settlements.length}개월 + 시트`
-      : "구글시트",
+    fileName: sources.length > 0 ? sources.join(" + ") : "데이터 없음",
     rowCount: topProducts.length,
     period: { start: dailyRevenue[0]?.date ?? "", end: dailyRevenue.at(-1)?.date ?? "" },
     uploadedAt: new Date().toISOString(),
@@ -202,6 +294,7 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
   return {
     data,
     settlementCount: settlements.length,
-    hasSheet: !!sheetData,
+    poCount:         pos.length,
+    hasSheet:        !!sheetData,
   };
 }

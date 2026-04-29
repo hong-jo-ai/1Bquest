@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Cloud, RefreshCw, Trash2, Check, AlertCircle, Upload, FileSpreadsheet } from "lucide-react";
+import { useRef, useState, useEffect, useCallback } from "react";
+import { Cloud, RefreshCw, Trash2, Check, AlertCircle, Upload, FileSpreadsheet, Mail } from "lucide-react";
 import type { MultiChannelData } from "@/lib/multiChannelData";
 
 interface UploadMeta {
@@ -67,6 +67,44 @@ export default function KakaoGiftSyncPanel({
     }
   };
 
+  // ── Gmail 일일 발주서 동기화 ──────────────────────────────────────────
+  const [poStatus, setPoStatus] = useState<{
+    syncedAt?: string;
+    triggeredBy?: string;
+    processed?: number;
+    totalAttachments?: number;
+    poDates?: string[];
+    errorCount?: number;
+    errors?: Array<{ messageId: string; error: string }>;
+  } | null>(null);
+  const [poSyncing, setPoSyncing] = useState(false);
+  const [poError, setPoError] = useState<string | null>(null);
+
+  const loadPoStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/finance/kakao-gift-po-sync", { cache: "no-store" });
+      const j = await res.json();
+      if (j.ok) setPoStatus(j.status);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadPoStatus(); }, [loadPoStatus]);
+
+  const triggerPoSync = async () => {
+    setPoSyncing(true);
+    setPoError(null);
+    try {
+      const res = await fetch("/api/finance/kakao-gift-po-sync", { method: "POST" });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "동기화 실패");
+      await loadPoStatus();
+    } catch (e) {
+      setPoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPoSyncing(false);
+    }
+  };
+
   // ── 정산서 업로드 ─────────────────────────────────────────────────────
   const settleFileRef = useRef<HTMLInputElement>(null);
   const [settling, setSettling] = useState(false);
@@ -119,6 +157,76 @@ export default function KakaoGiftSyncPanel({
       className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-5 min-w-0"
       style={{ borderLeft: `4px solid ${channelColor}` }}
     >
+      {/* ── Gmail 일일 발주서 자동 동기화 (신규 v3) ─────────────────────── */}
+      <div className="mb-5 pb-5 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-2 mb-2">
+          <Mail size={16} style={{ color: channelColor }} />
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+            Gmail 일일 발주서 자동 동기화
+          </h3>
+          <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">자동</span>
+        </div>
+        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
+          매일 오후 3시(KST) 자동 — shong@harriotwatches.com 의 song@fjord.kr 발주서 메일
+          첨부 엑셀을 파싱해 일별 매출에 반영. 처리된 메일은 &lsquo;카카오선물_처리완료&rsquo; 라벨로
+          중복 방지.
+        </p>
+
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <button
+            onClick={triggerPoSync}
+            disabled={poSyncing}
+            className="inline-flex items-center gap-2 px-3 h-9 rounded-lg text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+            style={{ backgroundColor: channelColor }}
+          >
+            <RefreshCw size={12} className={poSyncing ? "animate-spin" : ""} />
+            {poSyncing ? "동기화 중…" : "지금 동기화"}
+          </button>
+          {poStatus?.syncedAt && (
+            <span className="text-[11px] text-zinc-500">
+              마지막 동기화: {new Date(poStatus.syncedAt).toLocaleString("ko-KR")}
+              {poStatus.triggeredBy === "cron" ? " (자동)" : " (수동)"}
+            </span>
+          )}
+        </div>
+
+        {poStatus && (poStatus.processed ?? 0) > 0 && (
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+            메일 {poStatus.processed}통 처리 · 발주서 {poStatus.totalAttachments}건
+            {poStatus.poDates && poStatus.poDates.length > 0 && (
+              <> · {poStatus.poDates.slice(-3).join(", ")}{poStatus.poDates.length > 3 ? "…" : ""}</>
+            )}
+          </p>
+        )}
+        {poStatus && (poStatus.processed ?? 0) === 0 && poStatus.syncedAt && (
+          <p className="text-[11px] text-zinc-400">새 발주서 메일 없음</p>
+        )}
+        {(poStatus?.errorCount ?? 0) > 0 && (
+          <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded p-2">
+            <p className="font-semibold">처리 중 오류 {poStatus?.errorCount}건</p>
+            {poStatus?.errors?.slice(0, 3).map((e, i) => (
+              <p key={i} className="opacity-80 mt-0.5 truncate">{e.messageId}: {e.error}</p>
+            ))}
+          </div>
+        )}
+        {poError && (
+          <div className="mt-2 flex items-start gap-2 text-[11px] text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded p-2">
+            <AlertCircle size={11} className="shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="break-words">{poError}</p>
+              {poError.includes("Google 미연결") && (
+                <a
+                  href="/api/auth/google/login?hint=shong@harriotwatches.com"
+                  className="underline font-semibold mt-1 inline-block"
+                >
+                  Google 재연결 →
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-2 mb-3">
         <Cloud size={18} style={{ color: channelColor }} />
         <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
