@@ -11,6 +11,7 @@ import TopProducts from "@/components/TopProducts";
 import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboard";
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
+import TodayHubSection from "@/app/_components/today-hub/TodayHubSection";
 
 import {
   UPLOADABLE_CHANNELS,
@@ -356,6 +357,9 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 
         {/* 매출 요약 — 4지표 + 비교 % */}
         <SalesSummary daily={displayData.dailyRevenue ?? []} />
+
+        {/* 오늘의 운영 허브 — 폴바이스 한정 (할일/외부약속/이메일/매출액션/빅이벤트) */}
+        {brand === "paulvice" && <TodayHubSection />}
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />
