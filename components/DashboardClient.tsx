@@ -247,6 +247,23 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     return list;
   }, [cafe24Channel, channelDataMap, brandChannelIds]);
 
+  // 이번 달(KST) prefix — 마운트 시점 한 번 결정. 월 경계 즉시 반영은 안 되지만 새로고침이면 OK.
+  const [monthPrefix] = useState(() => {
+    const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return d.toISOString().slice(0, 7);
+  });
+
+  // 이번 달 누적 매출 — TodayHubSection 의 매출 목표 진척도용
+  const monthRevenue = useMemo(() => {
+    let total = 0;
+    for (const ch of comparisonChannels) {
+      for (const day of ch.data.dailyRevenue ?? []) {
+        if (day.date.startsWith(monthPrefix)) total += day.revenue;
+      }
+    }
+    return total;
+  }, [comparisonChannels, monthPrefix]);
+
   return (
     <>
       {/* API 오류 배너 (폴바이스 카페24만) */}
@@ -358,8 +375,9 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
         {/* 매출 요약 — 4지표 + 비교 % */}
         <SalesSummary daily={displayData.dailyRevenue ?? []} />
 
-        {/* 오늘의 운영 허브 — 폴바이스 한정 (할일/외부약속/이메일/매출액션/빅이벤트) */}
-        {brand === "paulvice" && <TodayHubSection />}
+        {/* 오늘의 운영 허브 — 양 브랜드 공통 (할일/외부약속/이메일은 전사 공통, 매출액션/빅이벤트는 브랜드별) */}
+        {/* key={brand} 로 브랜드 전환 시 인스턴스 재생성 → 브랜드별 데이터 새로 로드 */}
+        <TodayHubSection key={brand} brand={brand} monthRevenue={monthRevenue} />
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />

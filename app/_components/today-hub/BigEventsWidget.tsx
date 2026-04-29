@@ -133,9 +133,10 @@ function EventCard({ event, onToggleItem, onEdit }: CardProps) {
 interface Props {
   events: BigEvent[];
   setEvents: React.Dispatch<React.SetStateAction<BigEvent[]>>;
+  brandLabel: string;
 }
 
-export default function BigEventsWidget({ events, setEvents }: Props) {
+export default function BigEventsWidget({ events, setEvents, brandLabel }: Props) {
   const [editing, setEditing]   = useState<BigEvent | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -170,6 +171,7 @@ export default function BigEventsWidget({ events, setEvents }: Props) {
           <PartyPopper size={13} />
         </div>
         <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex-1">다가오는 빅 이벤트</h3>
+        <span className="text-[10px] font-medium text-zinc-400">{brandLabel}</span>
         <button
           onClick={() => setCreating(true)}
           className="flex items-center gap-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 dark:hover:bg-violet-900/50 transition"

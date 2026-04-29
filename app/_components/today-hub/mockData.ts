@@ -1,7 +1,7 @@
 import type {
   Task, RevenueAction, RevenueGoal, BigEvent,
 } from "./types";
-import { kstDateStr, kstMonthStr, kstWeekStartStr } from "./dateUtils";
+import { kstDateStr, kstWeekStartStr } from "./dateUtils";
 
 // ── 외부 약속(구글 캘린더), 답장 필요(Gmail) 모두 v3 실연동 — mock 없음 ──
 
@@ -22,24 +22,23 @@ export const SEED_TASKS: Task[] = (() => {
   ];
 })();
 
-export const SEED_ROUTINES: RevenueAction[] = (() => {
+/** paulvice 브랜드 초기 시드. harriot 은 빈 배열에서 시작. */
+export const SEED_ROUTINES_PAULVICE: RevenueAction[] = (() => {
   const week  = kstWeekStartStr();
-  const month = kstMonthStr();
+  const month = kstDateStr(0).slice(0, 7);
   return [
-    { id: "r1", title: "Meta 신규 크리에이티브 1개 업로드", cadence: "주 3회", scope: "이번주", cadenceType: "weekly",  target: 3, done: 1, periodKey: week  },
-    { id: "r2", title: "인스타 릴스 1개 게시",              cadence: "주 2회", scope: "이번주", cadenceType: "weekly",  target: 2, done: 1, periodKey: week  },
+    { id: "r1", title: "Meta 신규 크리에이티브 1개 업로드", cadence: "주 3회", scope: "이번주", cadenceType: "weekly",  target: 3, done: 0, periodKey: week  },
+    { id: "r2", title: "인스타 릴스 1개 게시",              cadence: "주 2회", scope: "이번주", cadenceType: "weekly",  target: 2, done: 0, periodKey: week  },
     { id: "r3", title: "카카오선물하기 신상품 1개 등록",      cadence: "주 1회", scope: "이번주", cadenceType: "weekly",  target: 1, done: 0, periodKey: week  },
-    { id: "r4", title: "W컨셉 메인배너 노출 신청",            cadence: "월 2회", scope: "이번달", cadenceType: "monthly", target: 2, done: 1, periodKey: month },
+    { id: "r4", title: "W컨셉 메인배너 노출 신청",            cadence: "월 2회", scope: "이번달", cadenceType: "monthly", target: 2, done: 0, periodKey: month },
   ];
 })();
 
-export const SEED_GOAL: RevenueGoal = {
-  target:   50_000_000,
-  current:  28_000_000,
-  monthKey: kstMonthStr(),
-};
+export const SEED_GOAL_PAULVICE: RevenueGoal = { target: 50_000_000 };
+export const SEED_GOAL_HARRIOT:  RevenueGoal = { target:  5_000_000 };
 
-export const SEED_EVENTS: BigEvent[] = (() => {
+/** paulvice 브랜드 초기 시드. harriot 은 빈 배열에서 시작. */
+export const SEED_EVENTS_PAULVICE: BigEvent[] = (() => {
   // 가정의달 공구: D-18 항목이 오늘 마감되도록 targetDate = today + 18d
   const targetGB      = kstDateStr(18);
   const targetCapsule = kstDateStr(45);
