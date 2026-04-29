@@ -214,12 +214,15 @@ export default function KakaoGiftSyncPanel({
             <AlertCircle size={11} className="shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="break-words">{poError}</p>
-              {poError.includes("Google 미연결") && (
+              {(poError.includes("Google 미연결") ||
+                poError.includes("스코프") ||
+                poError.includes("insufficient") ||
+                poError.includes("403")) && (
                 <a
                   href="/api/auth/google/login?hint=shong@harriotwatches.com"
                   className="underline font-semibold mt-1 inline-block"
                 >
-                  Google 재연결 →
+                  Google 재연결 (gmail.modify 동의) →
                 </a>
               )}
             </div>

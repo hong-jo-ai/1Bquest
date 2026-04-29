@@ -72,7 +72,19 @@ async function gmailFetch<T>(
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Gmail ${path}: ${res.status} ${await res.text()}`);
+    const body = await res.text();
+    if (
+      res.status === 403 &&
+      /insufficient|ACCESS_TOKEN_SCOPE/i.test(body)
+    ) {
+      throw new Error(
+        "Gmail 스코프 부족 (gmail.modify 미부여). " +
+        "/api/auth/google/login?hint=shong@harriotwatches.com 으로 재연결 후 " +
+        "동의 화면에서 Gmail 메일 읽기/수정 권한을 체크해 주세요. " +
+        `상세: ${body.slice(0, 200)}`,
+      );
+    }
+    throw new Error(`Gmail ${path}: ${res.status} ${body}`);
   }
   return res.json() as Promise<T>;
 }
