@@ -20,13 +20,6 @@ export const CATEGORY_BADGE: Record<TaskCategory, string> = {
 
 export const CATEGORY_ORDER: TaskCategory[] = ["design", "ads", "cs", "content", "ops", "etc"];
 
-export interface ScheduleItem {
-  id: string;
-  time: string;
-  title: string;
-  location: string;
-}
-
 export interface InboxItem {
   id:            string; // composite: accountId:threadId
   accountId:     string;

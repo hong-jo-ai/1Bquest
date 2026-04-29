@@ -1,14 +1,9 @@
 import type {
-  ScheduleItem, Task, RevenueAction, RevenueGoal, BigEvent,
+  Task, RevenueAction, RevenueGoal, BigEvent,
 } from "./types";
 import { kstDateStr, kstMonthStr, kstWeekStartStr } from "./dateUtils";
 
-// ── 외부 약속은 v3 캘린더 연동 전까지 로컬 mock 유지. 답장 필요는 Gmail 실연동. ──
-
-export const MOCK_SCHEDULE: ScheduleItem[] = [
-  { id: "s1", time: "14:00", title: "W컨셉 MD 미팅",        location: "강남 W컨셉 본사" },
-  { id: "s2", time: "16:30", title: "패키지 디자이너 통화", location: "전화" },
-];
+// ── 외부 약속(구글 캘린더), 답장 필요(Gmail) 모두 v3 실연동 — mock 없음 ──
 
 // ── seed: 서버에 데이터 없을 때 첫 진입에 보여줄 초기값 ──
 

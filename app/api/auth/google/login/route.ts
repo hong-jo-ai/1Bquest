@@ -12,6 +12,7 @@ export async function GET(_req: NextRequest) {
       "https://www.googleapis.com/auth/analytics.readonly",
       "https://www.googleapis.com/auth/gmail.send",
       "https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/calendar.readonly",
       "openid",
       "email",
     ].join(" "),
