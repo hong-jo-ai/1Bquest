@@ -97,12 +97,34 @@ interface RawProduct {
 
 // ── 원본 상품 검색 ─────────────────────────────────────────────────────────
 
-/** 상품코드로 정확 매칭 (가장 신뢰도 높음) */
+/** 모든 상품 한 번에 페치 후 in-memory 매핑 — Cafe24 API 가 product_code 검색 파라미터를
+ *  안 받아서 전체 list 받아 client side 매칭이 가장 안정적. 단일 sync 내 캐시. */
+let allProductsCache: Map<string, RawProduct> | null = null;
+
+async function buildProductCodeMap(token: string): Promise<Map<string, RawProduct>> {
+  if (allProductsCache) return allProductsCache;
+  const map = new Map<string, RawProduct>();
+  let offset = 0;
+  const LIMIT = 100;
+  while (true) {
+    const qs = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
+    const data = await cafe24Get(`/api/v2/admin/products?${qs}`, token);
+    const batch = (data.products ?? []) as RawProduct[];
+    for (const p of batch) {
+      const code = (p.product_code ?? "").trim();
+      if (code) map.set(code, p);
+    }
+    if (batch.length < LIMIT) break;
+    offset += LIMIT;
+    if (offset > 2000) break; // 안전장치 (paulvice 제품 수 가정)
+  }
+  allProductsCache = map;
+  return map;
+}
+
 async function findByCode(token: string, code: string): Promise<RawProduct | null> {
-  const qs = new URLSearchParams({ product_code: code, limit: "5" });
-  const data = await cafe24Get(`/api/v2/admin/products?${qs}`, token);
-  const list = (data.products ?? []) as RawProduct[];
-  return list.find((p) => (p.product_code ?? "").trim() === code.trim()) ?? null;
+  const map = await buildProductCodeMap(token);
+  return map.get(code.trim()) ?? null;
 }
 
 /** 정확 이름 우선, 부분일치 fallback. 이미 -BYSOY 인 건 제외. */
