@@ -184,10 +184,9 @@ async function createPrivateCategory(token: string, name: string): Promise<numbe
   const res = await cafe24Post(`/api/v2/admin/categories`, token, {
     shop_no: 1,
     request: {
-      category_name: name,
-      parent_category_no: 1, // 최상위
-      use_display: "F",       // 비공개
-      display_type: "1",
+      category_name:      name,
+      parent_category_no: 1,    // 최상위
+      use_display:        "F",  // 비공개 (몰에 노출 안 함)
     },
   });
   const no = res?.category?.category_no;
