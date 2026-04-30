@@ -498,10 +498,10 @@ export async function POST(req: NextRequest) {
   catch { return Response.json({ ok: false, error: "잘못된 본문" }, { status: 400 }); }
 
   const action = body.action ?? "";
-  if (!["preview", "test", "remaining"].includes(action)) {
+  if (!["preview", "test", "remaining", "discover"].includes(action)) {
     return Response.json({
       ok: false,
-      error: "action 필수 (preview / test / remaining)",
+      error: "action 필수 (discover / preview / test / remaining)",
     }, { status: 400 });
   }
 
@@ -511,6 +511,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (action === "discover")  return Response.json(await discover(token));
     if (action === "preview")   return Response.json(await preview(token));
     if (action === "test")      return Response.json(await testClone(token));
     if (action === "remaining") return Response.json(await remainingClone(token));
@@ -520,4 +521,68 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+// ── discover: 라인별 키워드 검색 → 통합 상품 v2 용 ────────────────────────
+
+async function searchByKeyword(token: string, keyword: string, limit = 50): Promise<RawProduct[]> {
+  const qs = new URLSearchParams({ product_name: keyword, limit: String(limit) });
+  const data = await cafe24Get(`/api/v2/admin/products?${qs}`, token);
+  return ((data.products ?? []) as RawProduct[]).filter(
+    (p) => !(p.product_code ?? "").includes(CODE_SUFFIX) && !(p.product_name ?? "").includes(NAME_SUFFIX),
+  );
+}
+
+async function discover(token: string) {
+  // 라인별 키워드 + 포함조건 (negative filter 후처리)
+  const queries = [
+    { line: "에끌라 오벌",       keyword: "에끌라",   priceLineNew: 78000  },
+    { line: "오드리",           keyword: "오드리",   priceLineNew: 78000  },
+    { line: "미니엘 쁘띠 가죽",  keyword: "미니엘",   priceLineNew: 99000, mustIncludeAny: ["가죽"] },
+    { line: "미니엘 쁘띠 메탈",  keyword: "미니엘",   priceLineNew: 109000, mustIncludeAny: ["메탈"] },
+  ];
+
+  // 같은 키워드 반복 호출 절약 — 결과 캐시
+  const cache = new Map<string, RawProduct[]>();
+  async function getCandidates(keyword: string): Promise<RawProduct[]> {
+    if (cache.has(keyword)) return cache.get(keyword)!;
+    const r = await searchByKeyword(token, keyword);
+    cache.set(keyword, r);
+    return r;
+  }
+
+  const lines = [];
+  for (const q of queries) {
+    const all = await getCandidates(q.keyword);
+    let filtered = all;
+    if (q.mustIncludeAny) {
+      filtered = filtered.filter((p) =>
+        q.mustIncludeAny!.some((kw) => (p.product_name ?? "").includes(kw)),
+      );
+    }
+    // 미니엘은 가죽/메탈로 가르는데, 이름에 둘 다 안 나오면 둘에 모두 후보로 들어가지 않게
+    lines.push({
+      line:           q.line,
+      keyword:        q.keyword,
+      priceLineNew:   q.priceLineNew,
+      candidateCount: filtered.length,
+      candidates:     filtered.map((p) => ({
+        product_no:    p.product_no,
+        product_code:  p.product_code,
+        product_name:  p.product_name,
+        price:         p.price,
+        list_image:    p.list_image,
+        display:       p.display,
+        selling:       p.selling,
+      })),
+    });
+  }
+
+  const totalCandidates = lines.reduce((s, l) => s + l.candidateCount, 0);
+  return {
+    ok: true,
+    note: "각 라인의 후보 상품 list. v2 통합 상품 만들 때 이 중 어떤 product_no 를 옵션으로 쓸지 확인 필요. 옵션 분기형 단일 SKU 라면 1라인 1개만 쓰고 그 안 옵션을 그대로 가져옴. 컬러별 분리 SKU 라면 16개 모두 옵션값으로 사용.",
+    totalCandidates,
+    lines,
+  };
 }
