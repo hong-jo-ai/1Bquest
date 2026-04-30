@@ -189,8 +189,11 @@ export async function syncKakaoGiftPos(): Promise<SyncResult> {
       const msg = await gmailFetch<GmailMessageFull>(accessToken, `/messages/${messageId}?format=full`);
       const attachments = extractAttachments(msg);
       if (attachments.length === 0) {
-        // 첨부 없으면 라벨만 붙여서 재처리 방지
-        await addLabel(accessToken, messageId, labelId);
+        // 첨부 없으면 라벨 안 붙이고 skip — 다음 sync 에서 재시도 가능 (Gmail nested part 미스 케이스 대비)
+        errors.push({
+          messageId,
+          error: "첨부 .xlsx 못 찾음 — 메일에는 첨부 있을 수 있으나 우리 파서가 못 잡음",
+        });
         continue;
       }
 
