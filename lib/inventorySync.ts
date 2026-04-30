@@ -75,37 +75,56 @@ async function buildSkuProductNoMap(token: string): Promise<Map<string, number>>
   return map;
 }
 
-/** 청크 단위 병렬 처리 (rate-limit 보호용 concurrency 제한) */
+/** 청크 단위 병렬 처리 + 청크 간 지연으로 Cafe24 40req/sec rate limit 보호 */
 async function processInChunks<T, R>(
   items: T[],
   chunkSize: number,
   fn: (item: T) => Promise<R>,
+  delayMs = 300,
 ): Promise<R[]> {
   const out: R[] = [];
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunk = items.slice(i, i + chunkSize);
     const part = await Promise.all(chunk.map(fn));
     out.push(...part);
+    if (i + chunkSize < items.length) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
   return out;
 }
 
+/** 429 자동 재시도 wrapper — 1s/2s/4s 백오프 */
+async function withRateLimitRetry<T>(fn: () => Promise<T>, attempt = 0): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const isRateLimit = /\b429\b|Too much requests/i.test(msg);
+    if (isRateLimit && attempt < 3) {
+      const delay = 1000 * Math.pow(2, attempt);
+      await new Promise((r) => setTimeout(r, delay));
+      return withRateLimitRetry(fn, attempt + 1);
+    }
+    throw e;
+  }
+}
+
 async function updateVariantStock(token: string, productNo: number, quantity: number) {
-  const variantData = await cafe24Get(
-    `/api/v2/admin/products/${productNo}/variants`,
-    token,
+  const variantData = await withRateLimitRetry(() =>
+    cafe24Get(`/api/v2/admin/products/${productNo}/variants`, token),
   );
   const variants: Array<{ variant_code: string }> = variantData.variants ?? [];
-  // 같은 product 내 variants는 독립 업데이트 — 병렬 안전
-  await Promise.all(
-    variants.map((v) =>
+  // 같은 product 내 variants 도 sequential — rate limit 안전 우선
+  for (const v of variants) {
+    await withRateLimitRetry(() =>
       cafe24Put(
         `/api/v2/admin/products/${productNo}/variants/${v.variant_code}`,
         token,
         { shop_no: 1, request: { quantity } },
       ),
-    ),
-  );
+    );
+  }
   return variants.length;
 }
 
@@ -256,8 +275,8 @@ export async function runInventorySync(
     buildSkuProductNoMap(token),
   ]);
 
-  // SKU별 처리 — 청크 5개 동시 (카페24 rate-limit 안전선)
-  const results = await processInChunks(skus, 5, async (sku): Promise<SyncResult> => {
+  // SKU별 처리 — 청크 2개 동시 + 청크 간 300ms 지연 (카페24 40 req/sec 보수적 운영)
+  const results = await processInChunks(skus, 2, async (sku): Promise<SyncResult> => {
     const entry = entries[sku];
     const cafe24Sold = cafe24SalesBySku[sku] ?? 0;
     const otherSold = otherChannelsSales[sku] ?? 0;
