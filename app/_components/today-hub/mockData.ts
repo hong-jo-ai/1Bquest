@@ -24,13 +24,13 @@ export const SEED_TASKS: Task[] = (() => {
 
 /** paulvice 브랜드 초기 시드. harriot 은 빈 배열에서 시작. */
 export const SEED_ROUTINES_PAULVICE: RevenueAction[] = (() => {
-  const week  = kstWeekStartStr();
-  const month = kstDateStr(0).slice(0, 7);
+  const week = kstWeekStartStr();
   return [
-    { id: "r1", title: "Meta 신규 크리에이티브 1개 업로드", cadence: "주 3회", scope: "이번주", cadenceType: "weekly",  target: 3, done: 0, periodKey: week  },
-    { id: "r2", title: "인스타 릴스 1개 게시",              cadence: "주 2회", scope: "이번주", cadenceType: "weekly",  target: 2, done: 0, periodKey: week  },
-    { id: "r3", title: "카카오선물하기 신상품 1개 등록",      cadence: "주 1회", scope: "이번주", cadenceType: "weekly",  target: 1, done: 0, periodKey: week  },
-    { id: "r4", title: "W컨셉 메인배너 노출 신청",            cadence: "월 2회", scope: "이번달", cadenceType: "monthly", target: 2, done: 0, periodKey: month },
+    { id: "r1", title: "Meta 광고 소재 1개 업로드",             cadence: "주 2회", scope: "이번주", cadenceType: "weekly", target: 2, done: 0, periodKey: week },
+    { id: "r2", title: "폴바이스 브랜드 콘텐츠 게시 (인스타)",    cadence: "주 1회", scope: "이번주", cadenceType: "weekly", target: 1, done: 0, periodKey: week },
+    { id: "r3", title: "협찬 인플루언서 컨택",                   cadence: "주 1명", scope: "이번주", cadenceType: "weekly", target: 1, done: 0, periodKey: week },
+    { id: "r4", title: "공동구매 파트너 파이프라인",              cadence: "주 1회", scope: "이번주", cadenceType: "weekly", target: 1, done: 0, periodKey: week },
+    { id: "r5", title: "카카오선물하기 노출 관리",                cadence: "주 1회", scope: "이번주", cadenceType: "weekly", target: 1, done: 0, periodKey: week },
   ];
 })();
 
