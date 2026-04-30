@@ -25,9 +25,62 @@ function fmtKRW(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
 
+interface SkuMapEntry {
+  kakaoSku:    string;
+  kakaoName?:  string;
+  cafe24Code:  string;
+}
+
 export default function KakaoGiftSyncPanel({
   channelName, channelColor, onDataLoaded, onClear, currentMeta,
 }: Props) {
+  // ── SKU 매핑 (재고 차감용) ──────────────────────────────────────────
+  const [skuMap, setSkuMap] = useState<SkuMapEntry[]>([]);
+  const [skuMapDirty, setSkuMapDirty] = useState(false);
+  const [skuMapSaving, setSkuMapSaving] = useState(false);
+
+  const loadSkuMap = useCallback(async () => {
+    try {
+      const res = await fetch("/api/finance/kakao-gift-sku-map", { cache: "no-store" });
+      const j = await res.json();
+      if (j.ok) {
+        setSkuMap(j.mappings ?? []);
+        setSkuMapDirty(false);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadSkuMap(); }, [loadSkuMap]);
+
+  const updateMapEntry = (idx: number, patch: Partial<SkuMapEntry>) => {
+    setSkuMap((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+    setSkuMapDirty(true);
+  };
+  const addMapEntry = () => {
+    setSkuMap((prev) => [...prev, { kakaoSku: "", kakaoName: "", cafe24Code: "" }]);
+    setSkuMapDirty(true);
+  };
+  const removeMapEntry = (idx: number) => {
+    setSkuMap((prev) => prev.filter((_, i) => i !== idx));
+    setSkuMapDirty(true);
+  };
+  const saveSkuMap = async () => {
+    setSkuMapSaving(true);
+    try {
+      const res = await fetch("/api/finance/kakao-gift-sku-map", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ mappings: skuMap }),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        setSkuMapDirty(false);
+        loadSkuMap();
+      }
+    } catch { /* ignore */ }
+    finally { setSkuMapSaving(false); }
+  };
+
   // ── Gmail 일일 발주서 동기화 ──────────────────────────────────────────
   const [poStatus, setPoStatus] = useState<{
     syncedAt?: string;
@@ -207,6 +260,77 @@ export default function KakaoGiftSyncPanel({
           </button>
         </div>
       )}
+
+      {/* ── SKU 매핑 (재고 차감용) ─────────────────────────────────────── */}
+      <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-2 mb-2">
+          <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+            SKU 매핑 (재고 차감용)
+          </h4>
+          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">선택</span>
+        </div>
+        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
+          카카오 정산서의 내부 sku 를 본 SKU 코드(P00000XX) 로 매핑하면 재고 sync 시
+          자동 차감됩니다. 매핑 없는 카카오 sku 는 차감 대상에서 제외 (잘못된 매칭 방지).
+        </p>
+
+        <ul className="space-y-1.5 mb-2">
+          {skuMap.map((m, idx) => (
+            <li key={idx} className="flex items-center gap-1.5">
+              <input
+                value={m.kakaoSku}
+                onChange={(e) => updateMapEntry(idx, { kakaoSku: e.target.value })}
+                placeholder="카카오 sku"
+                className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+              />
+              <input
+                value={m.kakaoName ?? ""}
+                onChange={(e) => updateMapEntry(idx, { kakaoName: e.target.value })}
+                placeholder="상품명 (선택)"
+                className="flex-[1.5] min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+              />
+              <span className="text-[10px] text-zinc-400 shrink-0">→</span>
+              <input
+                value={m.cafe24Code}
+                onChange={(e) => updateMapEntry(idx, { cafe24Code: e.target.value })}
+                placeholder="P00000XX"
+                className="w-24 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 tabular-nums"
+              />
+              <button
+                onClick={() => removeMapEntry(idx)}
+                className="text-zinc-400 hover:text-rose-500 shrink-0"
+                aria-label="삭제"
+              >
+                <Trash2 size={13} />
+              </button>
+            </li>
+          ))}
+          {skuMap.length === 0 && (
+            <p className="text-[11px] text-zinc-400 italic">매핑이 없습니다 — 정산서 발행 후 sku 확인하고 추가하세요.</p>
+          )}
+        </ul>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={addMapEntry}
+            className="text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700"
+          >
+            + 매핑 추가
+          </button>
+          {skuMapDirty && (
+            <button
+              onClick={saveSkuMap}
+              disabled={skuMapSaving}
+              className="text-[11px] font-semibold bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1 rounded disabled:opacity-50"
+            >
+              {skuMapSaving ? "저장 중…" : "저장"}
+            </button>
+          )}
+          {!skuMapDirty && skuMap.length > 0 && (
+            <span className="text-[10px] text-emerald-600">{skuMap.length}건 저장됨</span>
+          )}
+        </div>
+      </div>
 
       {/* ── 월별 정산서 업로드 ───────────────────────────────────────────── */}
       <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800">

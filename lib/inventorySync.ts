@@ -4,6 +4,7 @@
  */
 import { cafe24Get, cafe24Put } from "@/lib/cafe24Client";
 import { fetchAllOrders } from "@/lib/cafe24Data";
+import { buildKakaoToCafe24Map } from "@/lib/finance/kakaoGiftSkuMap";
 import { createClient } from "@supabase/supabase-js";
 import type { InventoryEntry } from "@/lib/inventoryStorage";
 
@@ -141,6 +142,9 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
   const supabase = getSupabase();
   if (!supabase) return out;
 
+  // 카카오 SKU 매핑 (kakao 내부 sku → Cafe24 product_code)
+  const kakaoToCafe24 = await buildKakaoToCafe24Map();
+
   const { data } = await supabase
     .from("kv_store")
     .select("key, data")
@@ -152,9 +156,17 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
   }>) {
     const tp = row.data?.data?.topProducts;
     if (!tp) continue;
+    const isKakao = row.key === "channel_upload:kakao_gift";
     for (const p of tp) {
       if (!p.sku || !p.sold) continue;
-      out[p.sku] = (out[p.sku] ?? 0) + p.sold;
+      // 카카오 채널은 매핑 적용해서 Cafe24 코드로 변환 — 매핑 없으면 누적 안 함
+      let targetSku = p.sku;
+      if (isKakao) {
+        const mapped = kakaoToCafe24.get(p.sku);
+        if (!mapped) continue; // 매핑 없는 카카오 SKU 는 무시 (잘못된 매칭 방지)
+        targetSku = mapped;
+      }
+      out[targetSku] = (out[targetSku] ?? 0) + p.sold;
     }
   }
   return out;
