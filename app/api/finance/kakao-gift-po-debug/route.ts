@@ -100,12 +100,50 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: { action?: string };
+  let body: { action?: string; messageId?: string };
   try { body = await req.json(); }
   catch { return Response.json({ ok: false, error: "잘못된 본문" }, { status: 400 }); }
 
+  if (body.action === "inspect" && body.messageId) {
+    const accessToken = await getKakaoGiftGmailAccessToken();
+    if (!accessToken) return Response.json({ ok: false, error: "plvekorea Gmail 미연결" });
+    const full = await fetch(
+      `${GMAIL_BASE}/messages/${body.messageId}?format=full`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
+    ).then((r) => r.json()) as MetaResponse;
+    const subject = full.payload?.headers?.find((h) => h.name.toLowerCase() === "subject")?.value;
+    const from    = full.payload?.headers?.find((h) => h.name.toLowerCase() === "from")?.value;
+    const date    = full.payload?.headers?.find((h) => h.name.toLowerCase() === "date")?.value;
+    const flat    = flattenParts(full.payload, 0);
+    return Response.json({
+      ok: true,
+      messageId: body.messageId,
+      from, subject, date,
+      labels: full.labelIds ?? [],
+      partsTree: flat,
+      attachmentParts: flat.filter((p) => p.hasAttachmentId),
+    });
+  }
+
+  if (body.action === "skip_message" && body.messageId) {
+    // 처리 못 하는 메일에 라벨 붙여서 영구 제외
+    const accessToken = await getKakaoGiftGmailAccessToken();
+    if (!accessToken) return Response.json({ ok: false, error: "plvekorea Gmail 미연결" });
+    const labels = await fetch(`${GMAIL_BASE}/labels`, {
+      headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store",
+    }).then((r) => r.json()) as { labels?: Array<{ id: string; name: string }> };
+    const labelId = labels.labels?.find((l) => l.name === PROCESSED_LABEL)?.id;
+    if (!labelId) return Response.json({ ok: false, error: "처리완료 라벨 ID 못 찾음" });
+    const res = await fetch(`${GMAIL_BASE}/messages/${body.messageId}/modify`, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body:    JSON.stringify({ addLabelIds: [labelId] }),
+    });
+    return Response.json({ ok: res.ok, status: res.status, body: res.ok ? null : await res.text() });
+  }
+
   if (body.action !== "reset_labels") {
-    return Response.json({ ok: false, error: "action=reset_labels 만 지원" }, { status: 400 });
+    return Response.json({ ok: false, error: "action=reset_labels / inspect / skip_message 지원" }, { status: 400 });
   }
 
   const accessToken = await getKakaoGiftGmailAccessToken();
