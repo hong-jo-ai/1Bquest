@@ -4,9 +4,14 @@
  */
 import { cafe24Get, cafe24Put } from "@/lib/cafe24Client";
 import { fetchAllOrders } from "@/lib/cafe24Data";
-import { buildKakaoToCafe24Map } from "@/lib/finance/kakaoGiftSkuMap";
+import {
+  buildKakaoToCafe24Map,
+  buildKakaoOptionToCafe24Map,
+  loadKakaoGiftSkuMap,
+} from "@/lib/finance/kakaoGiftSkuMap";
 import { createClient } from "@supabase/supabase-js";
 import type { InventoryEntry } from "@/lib/inventoryStorage";
+import type { KakaoGiftPo } from "@/lib/finance/kakaoGiftPo";
 
 const INVENTORY_KEY = "paulvice_inventory_v1";
 const SYNC_LOG_KEY = "inventory_sync_log";
@@ -142,8 +147,18 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
   const supabase = getSupabase();
   if (!supabase) return out;
 
-  // 카카오 SKU 매핑 (kakao 내부 sku → Cafe24 product_code)
-  const kakaoToCafe24 = await buildKakaoToCafe24Map();
+  // 카카오 매핑 사전 로드 (single-SKU + option-aware 둘 다)
+  const [kakaoSkuToCafe24, kakaoOptionMap, fullMap] = await Promise.all([
+    buildKakaoToCafe24Map(),
+    buildKakaoOptionToCafe24Map(),
+    loadKakaoGiftSkuMap(),
+  ]);
+
+  // 카카오 상품명 → 부모 sku Map (PO product 매칭용)
+  const kakaoNameToSku = new Map<string, string>();
+  for (const m of fullMap) {
+    if (m.kakaoName) kakaoNameToSku.set(m.kakaoName, m.kakaoSku);
+  }
 
   const { data } = await supabase
     .from("kv_store")
@@ -159,16 +174,47 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
     const isKakao = row.key === "channel_upload:kakao_gift";
     for (const p of tp) {
       if (!p.sku || !p.sold) continue;
-      // 카카오 채널은 매핑 적용해서 Cafe24 코드로 변환 — 매핑 없으면 누적 안 함
       let targetSku = p.sku;
       if (isKakao) {
-        const mapped = kakaoToCafe24.get(p.sku);
-        if (!mapped) continue; // 매핑 없는 카카오 SKU 는 무시 (잘못된 매칭 방지)
+        // 카카오 정산서 topProducts: 부모 SKU 만 들어옴 → 1:1 매핑만 적용. 1:N(시계) 은 PO 로 처리.
+        const mapped = kakaoSkuToCafe24.get(p.sku);
+        if (!mapped) continue;
         targetSku = mapped;
       }
       out[targetSku] = (out[targetSku] ?? 0) + p.sold;
     }
   }
+
+  // 카카오 PO 데이터에서 옵션-aware 차감 — 시계처럼 부모 SKU + 옵션 → 색상별 Cafe24 코드
+  const { data: poRows } = await supabase
+    .from("kv_store")
+    .select("data")
+    .like("key", "kakao_gift_po:%");
+  const pos: KakaoGiftPo[] = ((poRows ?? []) as Array<{ data: unknown }>)
+    .map((r) => r.data)
+    .filter((d): d is KakaoGiftPo =>
+      !!d && typeof d === "object" && Array.isArray((d as { orders?: unknown }).orders),
+    );
+  for (const po of pos) {
+    for (const o of po.orders) {
+      const cleanedOption = (o.option ?? "").replace(/^[^:：]+[:：]\s*/, "").trim();
+      const sku = kakaoNameToSku.get(o.product);
+      if (!sku || !cleanedOption) continue;
+      // 1차: 정확
+      let code = kakaoOptionMap.get(`${sku}|${cleanedOption}`);
+      // 2차: substring fallback
+      if (!code) {
+        for (const [key, val] of kakaoOptionMap) {
+          const [keySku, keyOption] = key.split("|");
+          if (keySku !== sku) continue;
+          if (keyOption.includes(cleanedOption) || cleanedOption.includes(keyOption)) { code = val; break; }
+        }
+      }
+      if (!code) continue;
+      out[code] = (out[code] ?? 0) + (o.qty ?? 1);
+    }
+  }
+
   return out;
 }
 

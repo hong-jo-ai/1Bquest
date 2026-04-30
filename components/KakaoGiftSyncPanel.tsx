@@ -27,6 +27,7 @@ function fmtKRW(n: number) {
 
 interface SkuMapEntry {
   kakaoSku:    string;
+  optionText?: string;
   kakaoName?:  string;
   cafe24Code:  string;
 }
@@ -57,7 +58,7 @@ export default function KakaoGiftSyncPanel({
     setSkuMapDirty(true);
   };
   const addMapEntry = () => {
-    setSkuMap((prev) => [...prev, { kakaoSku: "", kakaoName: "", cafe24Code: "" }]);
+    setSkuMap((prev) => [...prev, { kakaoSku: "", optionText: "", kakaoName: "", cafe24Code: "" }]);
     setSkuMapDirty(true);
   };
   const removeMapEntry = (idx: number) => {
@@ -270,8 +271,9 @@ export default function KakaoGiftSyncPanel({
           <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">선택</span>
         </div>
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
-          카카오 정산서의 내부 sku 를 본 SKU 코드(P00000XX) 로 매핑하면 재고 sync 시
-          자동 차감됩니다. 매핑 없는 카카오 sku 는 차감 대상에서 제외 (잘못된 매칭 방지).
+          카카오 sku → 본 SKU 코드(P00000XX) 매핑. <b>시계처럼 부모 SKU 가 색상별로
+          분기되는 경우</b> 옵션명 컬럼에 색상(예: &lsquo;화이트 브라운&rsquo;) 입력 — 발주서 옵션과 매칭됩니다.
+          매핑 없는 카카오 sku 는 차감 대상에서 제외 (오매칭 방지).
         </p>
 
         <ul className="space-y-1.5 mb-2">
@@ -281,13 +283,19 @@ export default function KakaoGiftSyncPanel({
                 value={m.kakaoSku}
                 onChange={(e) => updateMapEntry(idx, { kakaoSku: e.target.value })}
                 placeholder="카카오 sku"
-                className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+                className="w-24 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 tabular-nums"
               />
               <input
                 value={m.kakaoName ?? ""}
                 onChange={(e) => updateMapEntry(idx, { kakaoName: e.target.value })}
-                placeholder="상품명 (선택)"
-                className="flex-[1.5] min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+                placeholder="상품명 (PO 매칭용)"
+                className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+              />
+              <input
+                value={m.optionText ?? ""}
+                onChange={(e) => updateMapEntry(idx, { optionText: e.target.value })}
+                placeholder="옵션 (시계만)"
+                className="w-28 text-xs px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
               />
               <span className="text-[10px] text-zinc-400 shrink-0">→</span>
               <input
