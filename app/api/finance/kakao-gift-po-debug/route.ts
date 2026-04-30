@@ -26,7 +26,7 @@ interface MetaResponse {
   payload?:     { headers?: RawHeader[]; parts?: PayloadPart[]; mimeType?: string; filename?: string; body?: { attachmentId?: string } };
 }
 
-function flattenParts(part: PayloadPart | undefined, depth = 0): Array<{ depth: number; mimeType: string; filename: string; hasAttachmentId: boolean; size?: number }> {
+function flattenParts(part: PayloadPart | undefined, depth = 0): Array<{ depth: number; mimeType: string; filename: string; hasAttachmentId: boolean; size: number | undefined }> {
   if (!part) return [];
   const out = [{
     depth,
