@@ -1,12 +1,40 @@
 import {
   fetchBoardArticles,
   fetchBoards,
+  fetchProduct,
   type Cafe24Article,
   type Cafe24Board,
+  type Cafe24Product,
 } from "../cafe24Client";
 import { getAccessTokenFromStore } from "../cafe24TokenStore";
 import { ingestMessage } from "./store";
 import type { IngestPayload } from "./types";
+
+/** 한 sync 내에서 상품 정보 캐시 (같은 product_no 가 여러 글에 반복되는 케이스 흔함) */
+type ProductCache = Map<number, Cafe24Product | null>;
+
+async function getProductCached(
+  accessToken: string,
+  productNo: number,
+  cache: ProductCache,
+): Promise<Cafe24Product | null> {
+  if (cache.has(productNo)) return cache.get(productNo) ?? null;
+  const p = await fetchProduct(accessToken, productNo);
+  cache.set(productNo, p);
+  return p;
+}
+
+/** 메시지 raw 에 첨부할 카페24 상품 카드 정보 — UI 에서 사용. */
+interface CsCafe24ProductRef {
+  productNo:   number;
+  name?:       string;
+  imageUrl?:   string | null;
+  productCode?: string;
+}
+
+function pickProductImage(p: Cafe24Product): string | null {
+  return p.list_image ?? p.tiny_image ?? p.detail_image ?? null;
+}
 
 /**
  * CS 관련 게시판 판별. 이름에 아래 키워드가 포함되면 CS 대상으로 간주.
@@ -98,6 +126,7 @@ export async function syncCafe24Boards(): Promise<{
   let inserted = 0;
   let skipped = 0;
   const boardNames = csBoards.map((b) => b.board_name);
+  const productCache: ProductCache = new Map();
 
   for (const board of csBoards) {
     let articles: Cafe24Article[] = [];
@@ -124,6 +153,28 @@ export async function syncCafe24Boards(): Promise<{
       const preview = articlePreview(article).slice(0, 500);
       const writerName = article.writer ?? "(익명)";
 
+      // 글에 product_no 있으면 상품 정보 가져옴 (캐시 활용)
+      let productRef: CsCafe24ProductRef | undefined;
+      let subjectPrefix = `[${board.board_name}]`;
+      if (article.product_no && article.product_no > 0) {
+        const product = await getProductCached(accessToken, article.product_no, productCache);
+        if (product) {
+          productRef = {
+            productNo:   product.product_no,
+            name:        product.product_name,
+            imageUrl:    pickProductImage(product),
+            productCode: product.product_code,
+          };
+          // 상품명을 제목 앞에 — 목록에서도 어떤 상품인지 즉시 보임
+          if (product.product_name) {
+            const shortName = product.product_name.length > 25
+              ? product.product_name.slice(0, 25) + "…"
+              : product.product_name;
+            subjectPrefix = `[${board.board_name} · ${shortName}]`;
+          }
+        }
+      }
+
       // 1) 고객 글 (수신)
       const inPayload: IngestPayload = {
         brand: "paulvice",
@@ -132,7 +183,7 @@ export async function syncCafe24Boards(): Promise<{
         externalMessageId: `cafe24_${board.board_no}_${article.article_no}_article`,
         customerHandle: article.writer_email ?? article.member_id ?? undefined,
         customerName: writerName,
-        subject: `[${board.board_name}] ${article.title}`,
+        subject: `${subjectPrefix} ${article.title}`,
         bodyText: preview || article.title,
         sentAt: new Date(article.created_date),
         direction: "in",
@@ -140,6 +191,7 @@ export async function syncCafe24Boards(): Promise<{
           board_no: board.board_no,
           board_name: board.board_name,
           article,
+          ...(productRef ? { cafe24Product: productRef } : {}),
         },
       };
 
@@ -156,7 +208,7 @@ export async function syncCafe24Boards(): Promise<{
           externalMessageId: `cafe24_${board.board_no}_${article.article_no}_adminreply`,
           customerHandle: article.writer_email ?? article.member_id ?? undefined,
           customerName: writerName,
-          subject: `[${board.board_name}] ${article.title}`,
+          subject: `${subjectPrefix} ${article.title}`,
           bodyText: "(운영자 답변 완료 — 카페24 관리자 페이지에서 확인)",
           sentAt: new Date(article.created_date),
           direction: "out",

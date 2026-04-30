@@ -942,6 +942,32 @@ function ThreadDetailView({
 }
 
 // ── 메시지 버블 ──────────────────────────────────────────────
+/** 메시지 raw 에서 카페24 상품 정보 추출 (cafe24_board 채널의 게시판 글에 첨부됨) */
+function extractCafe24Product(raw: unknown): {
+  productNo: number;
+  name?: string;
+  imageUrl?: string | null;
+  productCode?: string;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as { cafe24Product?: unknown };
+  const p = obj.cafe24Product;
+  if (!p || typeof p !== "object") return null;
+  const ref = p as {
+    productNo?: number;
+    name?: string;
+    imageUrl?: string | null;
+    productCode?: string;
+  };
+  if (typeof ref.productNo !== "number" || ref.productNo <= 0) return null;
+  return {
+    productNo:   ref.productNo,
+    name:        ref.name,
+    imageUrl:    ref.imageUrl,
+    productCode: ref.productCode,
+  };
+}
+
 function MessageBubble({
   message,
   customerName,
@@ -953,6 +979,7 @@ function MessageBubble({
 }) {
   const isOut = message.direction === "out";
   const senderName = isOut ? BRAND_LABEL[brand] : customerName;
+  const product = !isOut ? extractCafe24Product(message.raw) : null;
 
   return (
     <div className={`flex gap-3 ${isOut ? "flex-row-reverse" : ""}`}>
@@ -973,6 +1000,34 @@ function MessageBubble({
             {formatTime(message.sent_at, { verbose: true })}
           </span>
         </div>
+
+        {/* 카페24 상품 문의의 경우 — 어떤 상품에 대한 문의인지 즉시 식별 */}
+        {product && (
+          <div className="mb-1.5 inline-flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-2.5 py-1.5 max-w-full">
+            {product.imageUrl ? (
+              <img
+                src={product.imageUrl}
+                alt={product.name ?? `상품 ${product.productNo}`}
+                className="w-10 h-10 rounded-md object-cover bg-zinc-100 dark:bg-zinc-800 shrink-0"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-md bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-[9px] text-zinc-400 shrink-0">
+                IMG
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 leading-none mb-0.5">상품 문의</p>
+              <p className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                {product.name ?? `상품 #${product.productNo}`}
+              </p>
+              {product.productCode && (
+                <p className="text-[10px] text-zinc-500 truncate tabular-nums">{product.productCode}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div
           className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words shadow-sm ${
             isOut

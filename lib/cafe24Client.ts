@@ -161,6 +161,38 @@ export interface Cafe24Article {
   rating?: number;
   sales_channel?: string | null;
   deleted?: "T" | "F";
+  /** 상품 게시판인 경우 — 어떤 상품에 대한 문의/리뷰인지 */
+  product_no?: number | null;
+}
+
+export interface Cafe24Product {
+  product_no:    number;
+  product_name?: string;
+  product_code?: string;
+  /** 상세 이미지 URL */
+  detail_image?: string | null;
+  /** 목록 이미지 URL */
+  list_image?:   string | null;
+  /** 작은 이미지 URL */
+  tiny_image?:   string | null;
+  price?:        string;
+  retail_price?: string;
+}
+
+/** 상품 단건 조회 — 게시판 문의에 product_no 가 있으면 부가 정보 채울 때 사용. */
+export async function fetchProduct(
+  accessToken: string,
+  productNo: number,
+): Promise<Cafe24Product | null> {
+  try {
+    const json = (await cafe24Get(
+      `/api/v2/admin/products/${productNo}`,
+      accessToken,
+    )) as { product?: Cafe24Product };
+    return json.product ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchBoards(accessToken: string): Promise<Cafe24Board[]> {
