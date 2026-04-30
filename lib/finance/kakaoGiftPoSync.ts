@@ -204,6 +204,7 @@ export async function syncKakaoGiftPos(): Promise<SyncResult> {
             .slice(0, 10)
         : undefined;
 
+      let attachmentsProcessed = 0;
       for (const att of attachments) {
         try {
           const buf = await downloadAttachment(accessToken, messageId, att.attachmentId);
@@ -211,6 +212,7 @@ export async function syncKakaoGiftPos(): Promise<SyncResult> {
           await savePo(po);
           poDates.push(po.date);
           totalAttachments++;
+          attachmentsProcessed++;
         } catch (e) {
           errors.push({
             messageId: `${messageId}/${att.filename}`,
@@ -219,9 +221,11 @@ export async function syncKakaoGiftPos(): Promise<SyncResult> {
         }
       }
 
-      // 모든 첨부 처리 후 라벨 추가 (실패해도 다음 동기화 때 재시도되도록)
-      await addLabel(accessToken, messageId, labelId);
-      processed++;
+      // 최소 1개 이상 성공한 경우에만 라벨 추가 — 실패한 메일은 다음 sync 에서 재시도 가능
+      if (attachmentsProcessed > 0) {
+        await addLabel(accessToken, messageId, labelId);
+        processed++;
+      }
     } catch (e) {
       errors.push({ messageId, error: e instanceof Error ? e.message : String(e) });
     }
