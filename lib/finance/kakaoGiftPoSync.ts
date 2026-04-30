@@ -22,7 +22,6 @@ const GMAIL_BASE          = "https://gmail.googleapis.com/gmail/v1/users/me";
 const SENDER              = "song@fjord.kr";
 const PROCESSED_LABEL     = "카카오선물_처리완료";
 const PO_KEY_PREFIX       = "kakao_gift_po:";
-const SUBJECT_FILE_GLOB   = "카카오선물하기"; // 첨부 파일명 매칭
 
 interface GmailMessageMeta {
   id: string;
@@ -116,17 +115,13 @@ async function findCandidateMessages(accessToken: string): Promise<GmailMessageM
   return json.messages ?? [];
 }
 
-/** 메일 1통의 첨부들 중 '카카오선물하기' 키워드 들어간 .xlsx 추출 */
+/** 메일 1통의 .xlsx 첨부 모두 추출 (sender 필터로 이미 카카오선물 메일임을 확인했기 때문에 파일명 매칭 불필요) */
 function extractAttachments(msg: GmailMessageFull): Array<{ filename: string; attachmentId: string }> {
   const out: Array<{ filename: string; attachmentId: string }> = [];
   const walk = (part?: GmailMessageFull["payload"]): void => {
     if (!part) return;
     const fname = part.filename ?? "";
-    if (
-      fname.toLowerCase().endsWith(".xlsx") &&
-      fname.includes(SUBJECT_FILE_GLOB) &&
-      part.body?.attachmentId
-    ) {
+    if (fname.toLowerCase().endsWith(".xlsx") && part.body?.attachmentId) {
       out.push({ filename: fname, attachmentId: part.body.attachmentId });
     }
     for (const child of part.parts ?? []) walk(child);
