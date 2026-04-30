@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import BackToHubButton from "@/components/BackToHubButton";
 import {
   Mail,
   AtSign,
@@ -719,6 +720,12 @@ export default function InboxClient() {
           {toast}
         </div>
       )}
+
+      {/* 대시보드 복귀 버튼: 모바일 상세 오버레이가 열린 동안에는 답장 입력창과
+          겹치지 않도록 숨기고, 그 외에는 항상 노출한다. */}
+      <div className={selectedId ? "hidden md:contents" : "contents"}>
+        <BackToHubButton />
+      </div>
     </>
   );
 }
@@ -1651,13 +1658,13 @@ function MobileThreadDetailView({
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="답장 입력…"
-              rows={1}
-              className="flex-1 px-3.5 py-2.5 text-[15px] rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[44px] max-h-[160px]"
-              style={{ height: "auto" }}
+              rows={4}
+              className="flex-1 px-3.5 py-2.5 text-[15px] leading-snug rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[112px] max-h-[50dvh]"
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = "auto";
-                el.style.height = Math.min(el.scrollHeight, 160) + "px";
+                const cap = Math.round(window.innerHeight * 0.5);
+                el.style.height = Math.min(el.scrollHeight, cap) + "px";
               }}
             />
             <button
