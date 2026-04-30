@@ -1,6 +1,6 @@
-import { cookies } from "next/headers";
 import { getDashboardData } from "@/lib/cafe24Data";
 import { getValidC24Token } from "@/lib/cafe24Auth";
+import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
 import AppHeader from "@/components/AppHeader";
 import DashboardClient from "@/components/DashboardClient";
 import type { Brand } from "@/lib/multiChannelData";
@@ -13,15 +13,14 @@ export default async function Dashboard({ searchParams }: PageProps) {
   const params = await searchParams;
   const brand: Brand = params.brand === "harriot" ? "harriot" : "paulvice";
 
-  const cookieStore   = await cookies();
-  const hasAnyToken   = !!(cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value);
+  const hasAnyToken     = !!(await readRefreshTokenFromStore());
   const isAuthenticated = hasAnyToken;
 
   let data      = null;
   let apiError: string | null = null;
 
   // 카페24 데이터는 폴바이스 브랜드일 때만 의미가 있음
-  if (hasAnyToken && brand === "paulvice") {
+  if (isAuthenticated && brand === "paulvice") {
     const token = await getValidC24Token();
     if (token) {
       try {

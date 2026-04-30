@@ -1,18 +1,25 @@
 /**
- * Cafe24 refresh token 영속 저장소 (Supabase kv_store 기반).
+ * Cafe24 토큰 영속 저장소 (Supabase kv_store).
  *
- * 설계 원칙: Supabase가 refresh token의 단일 진실 공급원(SSOT).
- *   - 모든 refresh 결과는 즉시 Supabase에 저장
- *   - 쿠키는 빠른 access를 위한 캐시 역할만
- *   - 두 저장소 간 race로 토큰이 서로 무효화되는 문제 방지
+ * v2 설계 — Vercel serverless rotation race 방지:
+ *   - access_token + refresh_token + expires_at 을 통째로 Supabase 단일 row 에 저장
+ *   - 모든 lambda 인스턴스가 같은 access_token 공유 → 만료 전엔 refresh 호출 X
+ *   - refresh 실패 시 Supabase 다시 읽어서 다른 lambda 가 이미 refresh 한 결과 활용 (재시도)
  *
- * 동시 refresh 방지: 모듈 레벨 inflight Promise로 같은 인스턴스 내
- * 중복 refresh 합침 (refresh token rotation 시 race로 둘 다 죽는 것 방지).
+ * 레거시 호환: 기존엔 refresh_token 만 string 으로 저장. 첫 마이그레이션 시 자동 보정.
  */
 import { createClient } from "@supabase/supabase-js";
 import { doRefresh, type TokenResponse } from "./cafe24Client";
 
-const KV_KEY = "cafe24_refresh_token";
+const KV_KEY = "cafe24_refresh_token"; // 키는 그대로 — 데이터 형식만 string → 객체로 마이그레이션
+const TOKEN_BUFFER_SEC = 90; // 만료 임박 버퍼 (90초 전부터는 refresh)
+
+interface CachedToken {
+  access_token:  string;
+  refresh_token: string;
+  /** epoch ms — 이 시간 이후엔 만료된 것으로 간주 */
+  expires_at:    number;
+}
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -21,22 +28,16 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-/** refresh token을 Supabase에 저장 */
-export async function saveCafe24Token(refreshToken: string): Promise<void> {
-  const supabase = getSupabase();
-  if (!supabase) return;
-
-  const { error } = await supabase
-    .from("kv_store")
-    .upsert(
-      { key: KV_KEY, data: refreshToken, updated_at: new Date().toISOString() },
-      { onConflict: "key" }
-    );
-  if (error) throw error;
+function tokenFromResponse(t: TokenResponse): CachedToken {
+  const ttl = (t.expires_in ?? 7200) - TOKEN_BUFFER_SEC;
+  return {
+    access_token:  t.access_token,
+    refresh_token: t.refresh_token,
+    expires_at:    Date.now() + ttl * 1000,
+  };
 }
 
-/** Supabase에서 현재 저장된 refresh token 읽기 (refresh 안 함) */
-export async function readRefreshTokenFromStore(): Promise<string | null> {
+async function readRaw(): Promise<unknown> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -44,41 +45,132 @@ export async function readRefreshTokenFromStore(): Promise<string | null> {
     .select("data")
     .eq("key", KV_KEY)
     .maybeSingle();
-  if (error || !data?.data) return null;
-  return data.data as string;
+  if (error) return null;
+  return data?.data ?? null;
 }
 
-// ── 동시 refresh 방지 (in-flight dedup) ───────────────────────────────
-let inflightRefresh: Promise<TokenResponse> | null = null;
+async function readToken(): Promise<CachedToken | null> {
+  const raw = await readRaw();
+  if (!raw) return null;
+  // 레거시: 그냥 string (refresh_token 단일)
+  if (typeof raw === "string") {
+    return {
+      access_token:  "",       // 비어있음 — 즉시 refresh 강제
+      refresh_token: raw,
+      expires_at:    0,
+    };
+  }
+  // v2: 객체
+  if (typeof raw === "object" && raw !== null) {
+    const o = raw as Partial<CachedToken>;
+    if (o.refresh_token && typeof o.expires_at === "number") {
+      return {
+        access_token:  o.access_token ?? "",
+        refresh_token: o.refresh_token,
+        expires_at:    o.expires_at,
+      };
+    }
+  }
+  return null;
+}
 
-/**
- * refresh token으로 access token 획득.
- * - 같은 인스턴스 내 동시 호출은 1회로 합쳐짐
- * - 결과는 자동으로 Supabase에 영속화됨
- * - 호출자가 받은 TokenResponse는 추가로 쿠키 등에 반영 가능
- */
-export async function refreshCafe24Token(refreshToken: string): Promise<TokenResponse> {
+async function writeToken(t: CachedToken): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  await supabase.from("kv_store").upsert(
+    { key: KV_KEY, data: t, updated_at: new Date().toISOString() },
+    { onConflict: "key" },
+  );
+}
+
+/** 외부 호환 — 콜백에서 saveCafe24Token(refreshToken) 으로만 호출됨. 새 refresh + 즉시 refresh 1회로 풀 토큰 채움. */
+export async function saveCafe24Token(refreshToken: string): Promise<void> {
+  // 콜백 직후엔 access_token 도 같이 받았지만 호출자 시그니처가 string 만 받음.
+  // 즉시 refresh 한 번 돌려서 풀 객체 만들어 저장 (cafe24 의 refresh 는 access+refresh 같이 새로 줌).
+  try {
+    const tr = await doRefresh(refreshToken);
+    await writeToken(tokenFromResponse(tr));
+  } catch (e) {
+    console.error("[Cafe24] saveCafe24Token: 즉시 refresh 실패 (refresh_token 만 raw 저장):", e);
+    const supabase = getSupabase();
+    if (supabase) {
+      await supabase.from("kv_store").upsert(
+        { key: KV_KEY, data: refreshToken, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    }
+  }
+}
+
+/** 콜백에서 access + refresh 둘 다 받은 직후 — 즉시 풀 객체 저장 (refresh 한 번 더 돌리지 않음). */
+export async function saveCafe24TokenFull(t: TokenResponse): Promise<void> {
+  await writeToken(tokenFromResponse(t));
+}
+
+export async function readRefreshTokenFromStore(): Promise<string | null> {
+  const t = await readToken();
+  return t?.refresh_token ?? null;
+}
+
+// ── 동시 refresh 방지 (in-flight dedup, 단일 lambda 안에서만) ─────────────
+let inflightRefresh: Promise<CachedToken> | null = null;
+
+/** Supabase + Cafe24 호출로 토큰 갱신, race 시 재시도. */
+async function refreshAndSave(currentRt: string): Promise<CachedToken> {
   if (inflightRefresh) return inflightRefresh;
   inflightRefresh = (async () => {
-    const tokenResponse = await doRefresh(refreshToken);
-    // 항상 즉시 SSOT 갱신 — 다음 호출이 새 토큰 사용
-    await saveCafe24Token(tokenResponse.refresh_token);
-    return tokenResponse;
-  })().finally(() => {
-    inflightRefresh = null;
-  });
+    try {
+      const tr = await doRefresh(currentRt);
+      const cached = tokenFromResponse(tr);
+      await writeToken(cached);
+      return cached;
+    } catch (e) {
+      // race: 다른 lambda 가 이미 refresh 해서 currentRt 가 무효일 수 있음
+      // → Supabase 에서 한 번 더 읽어 살아있는 access_token 이 있으면 그걸 사용
+      const fresh = await readToken();
+      if (fresh && fresh.access_token && Date.now() < fresh.expires_at) {
+        return fresh;
+      }
+      throw e;
+    }
+  })().finally(() => { inflightRefresh = null; });
   return inflightRefresh;
 }
 
-/** Supabase의 refresh token으로 access token 획득 (cron 등 쿠키 없는 환경용) */
+/**
+ * 유효한 access_token 반환.
+ * - Supabase 에 살아있는 access_token 있으면 그대로 반환 (refresh 호출 X)
+ * - 만료/없음 → refresh + 저장
+ */
 export async function getAccessTokenFromStore(): Promise<string | null> {
-  const refreshToken = await readRefreshTokenFromStore();
-  if (!refreshToken) return null;
+  const t = await readToken();
+  if (!t) return null;
+
+  if (t.access_token && Date.now() < t.expires_at) {
+    return t.access_token;
+  }
+
+  if (!t.refresh_token) return null;
+
   try {
-    const tokenResponse = await refreshCafe24Token(refreshToken);
-    return tokenResponse.access_token;
+    const fresh = await refreshAndSave(t.refresh_token);
+    return fresh.access_token;
   } catch (e) {
-    console.error("[Cafe24] Supabase 경로 refresh 실패:", e);
+    console.error("[Cafe24] refresh 실패:", e);
     return null;
   }
+}
+
+/** 외부 호환 — refresh 직접 호출 (race 안전 버전). */
+export async function refreshCafe24Token(refreshToken: string): Promise<TokenResponse> {
+  const cached = await refreshAndSave(refreshToken);
+  return {
+    access_token:  cached.access_token,
+    refresh_token: cached.refresh_token,
+    expires_in:    Math.max(60, Math.floor((cached.expires_at - Date.now()) / 1000)),
+    token_type:    "Bearer",
+    scope:         "",
+    mall_id:       process.env.CAFE24_MALL_ID ?? "",
+    shop_no:       1,
+  };
 }

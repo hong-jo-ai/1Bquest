@@ -1,6 +1,5 @@
-import { cafe24Get, doRefresh } from "@/lib/cafe24Client";
+import { cafe24Get } from "@/lib/cafe24Client";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 async function fetchAllProducts(token: string) {
@@ -40,34 +39,7 @@ async function fetchCategoryMap(token: string): Promise<Record<number, string>> 
 }
 
 export async function GET() {
-  const cookieStore = await cookies();
-  let accessToken = cookieStore.get("c24_at")?.value;
-  const refreshToken = cookieStore.get("c24_rt")?.value;
-
-  if (!accessToken && refreshToken) {
-    try {
-      const newToken = await doRefresh(refreshToken);
-      accessToken = newToken.access_token;
-      cookieStore.set("c24_at", newToken.access_token, {
-        httpOnly: true, secure: true,
-        maxAge: newToken.expires_in ?? 7200,
-        path: "/", sameSite: "lax",
-      });
-      cookieStore.set("c24_rt", newToken.refresh_token, {
-        httpOnly: true, secure: true,
-        maxAge: 60 * 60 * 24 * 14,
-        path: "/", sameSite: "lax",
-      });
-    } catch {
-      return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
-    }
-  }
-
-  // 쿠키에 토큰이 없으면 kv_store에서 가져오기 (cron과 동일 경로)
-  if (!accessToken) {
-    accessToken = await getAccessTokenFromStore() ?? undefined;
-  }
-
+  const accessToken = await getAccessTokenFromStore();
   if (!accessToken) {
     return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   }

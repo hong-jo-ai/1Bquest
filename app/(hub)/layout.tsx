@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import Sidebar from "@/components/Sidebar";
 import NotificationBell from "@/components/NotificationBell";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
+import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
 
 export const metadata: Metadata = {
   title:       "Harriot Watches · 운영 허브",
@@ -14,11 +14,8 @@ export default async function HubLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const cafe24Connected = !!(
-    cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
-  );
-  const metaConnected = !!(await getMetaTokenServer());
+  const cafe24Connected = !!(await readRefreshTokenFromStore());
+  const metaConnected   = !!(await getMetaTokenServer());
 
   return (
     <div className="min-h-screen flex">

@@ -1,18 +1,15 @@
-import { cookies } from "next/headers";
-import { LogIn, RefreshCw, Megaphone, Store } from "lucide-react";
+import { RefreshCw, Megaphone, Store } from "lucide-react";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
+import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
 
 interface Props {
-  isAuthenticated?: boolean; // 카페24. 미지정 시 쿠키 직접 읽음
+  isAuthenticated?: boolean; // 카페24. 미지정 시 Supabase 직접 읽음
   refreshHref?: string;
 }
 
 export default async function AppHeader({ isAuthenticated, refreshHref }: Props) {
-  const cookieStore = await cookies();
   const cafe24Connected =
-    isAuthenticated ?? !!(
-      cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
-    );
+    isAuthenticated ?? !!(await readRefreshTokenFromStore());
   const metaConnected = !!(await getMetaTokenServer());
 
   return (

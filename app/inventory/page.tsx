@@ -1,12 +1,9 @@
-import { cookies } from "next/headers";
 import AppHeader from "@/components/AppHeader";
 import InventoryManager from "@/components/inventory/InventoryManager";
+import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
 
 export default async function InventoryPage() {
-  const cookieStore = await cookies();
-  const isAuthenticated = !!(
-    cookieStore.get("c24_at")?.value || cookieStore.get("c24_rt")?.value
-  );
+  const isAuthenticated = !!(await readRefreshTokenFromStore());
 
   return (
     <>
