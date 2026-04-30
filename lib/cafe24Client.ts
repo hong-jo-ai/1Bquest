@@ -7,7 +7,7 @@ const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI!;
 
 export const BASE_URL = `https://${MALL_ID}.cafe24api.com`;
 const API_VERSION = "2026-03-01";
-const SCOPES = "mall.read_order mall.read_product mall.write_product mall.read_analytics mall.read_community mall.write_community";
+const SCOPES = "mall.read_order mall.read_product mall.write_product mall.read_category mall.write_category mall.read_analytics mall.read_community mall.write_community";
 
 /**
  * Cafe24 API fetch + 401 자동 재시도.
