@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Check, X, Clock, AlertTriangle, TrendingUp, TrendingDown, PauseCircle, Copy, Sparkles, Pause } from "lucide-react";
+import { Loader2, Check, X, Clock, AlertTriangle, TrendingUp, TrendingDown, PauseCircle, Copy, Sparkles, Pause, Bug } from "lucide-react";
 import type { ActionType } from "@/lib/mads/types";
 import { ACTION_LABEL_KO } from "@/lib/mads/ruleEngine";
 import MadsTrustBadge from "./MadsTrustBadge";
@@ -111,9 +111,21 @@ export default function MadsRecCard({ rec, onDecided }: RecCardProps) {
       </div>
 
       <div className="px-4 pb-3">
-        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-          {rec.adset?.name ?? rec.metaAdsetId}
-        </p>
+        <div className="flex items-start gap-2">
+          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">
+            {rec.adset?.name ?? rec.metaAdsetId}
+          </p>
+          <a
+            href={`/api/mads/debug/adset?id=${encodeURIComponent(rec.metaAdsetId)}&days=14`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 shrink-0"
+            title="원본 attribution 데이터 + Cafe24 주문 비교 (디버그)"
+            aria-label="디버그"
+          >
+            <Bug size={12} />
+          </a>
+        </div>
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
           {rec.adset?.campaignName ?? "-"}{rec.adset?.accountName ? ` · ${rec.adset.accountName}` : ""}
         </p>
