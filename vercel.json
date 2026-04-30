@@ -67,6 +67,10 @@
     {
       "path": "/api/cron/inbox-classify",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/revenue-snapshot",
+      "schedule": "30 18 * * *"
     }
   ]
 }

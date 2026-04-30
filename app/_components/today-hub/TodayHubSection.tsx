@@ -5,6 +5,7 @@ import TodayScheduleWidget    from "./TodayScheduleWidget";
 import InboxActionWidget      from "./InboxActionWidget";
 import TodayTasksWidget       from "./TodayTasksWidget";
 import RevenueActionsWidget   from "./RevenueActionsWidget";
+import RevenueTrendWidget     from "./RevenueTrendWidget";
 import BigEventsWidget        from "./BigEventsWidget";
 import type { MirroredCampaign } from "./BigEventsWidget";
 import {
@@ -259,13 +260,20 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
-        <div className="lg:col-span-7">
-          <TodayTasksWidget
-            tasks={tasks}
-            setTasks={setTasks}
-            injectedItems={injectedItems}
-            onToggleInjected={toggleEventChecklist}
-          />
+        <div className="lg:col-span-7 flex flex-col gap-3 sm:gap-4">
+          {/* 매출 추이 그래프 — 위쪽 절반 */}
+          <div className="h-[320px] sm:h-[360px] shrink-0">
+            <RevenueTrendWidget brand={brand} brandLabel={BRAND_NAMES[brand]} />
+          </div>
+          {/* 오늘 할 일 — 아래쪽 절반 (남은 영역 채움) */}
+          <div className="flex-1 min-h-0">
+            <TodayTasksWidget
+              tasks={tasks}
+              setTasks={setTasks}
+              injectedItems={injectedItems}
+              onToggleInjected={toggleEventChecklist}
+            />
+          </div>
         </div>
         <div className="lg:col-span-5 grid grid-cols-1 gap-3 sm:gap-4">
           <TodayScheduleWidget />
