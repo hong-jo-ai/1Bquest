@@ -57,10 +57,10 @@ export function evaluateTrust(
   const revenue3d = sum(last3.map((m) => m.revenue));
   const roas3d    = safeRoas(revenue3d, spend3d);
 
-  // 큰 주문 보정 ROAS
+  // 큰 주문 보정 ROAS — 전환 2건 이상일 때만 의미 있음 (1건이면 빼면 0이 됨)
   const largestOrder = Math.max(0, ...last7.map((m) => m.largestOrderValue));
   const largestShare = revenue7d > 0 ? largestOrder / revenue7d : 0;
-  const adjustedRevenue7d = largestShare >= o.largeOrderShareThreshold
+  const adjustedRevenue7d = (conv7d >= 2 && largestShare >= o.largeOrderShareThreshold)
     ? Math.max(0, revenue7d - largestOrder)
     : revenue7d;
   const adjustedRoas7d = safeRoas(adjustedRevenue7d, spend7d);

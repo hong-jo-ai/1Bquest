@@ -64,13 +64,14 @@ export function buildWarnings(input: WarningInput): Warning[] {
     });
   }
 
-  // 2. 큰 주문 왜곡
+  // 2. 큰 주문 왜곡 — 전환이 2건 이상일 때만 의미 있음 (1건이면 무조건 100% 라 안내가 무의미)
   const last7 = [...input.metrics]
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-7);
-  const totalRev = last7.reduce((s, m) => s + m.revenue, 0);
-  const largest  = Math.max(0, ...last7.map((m) => m.largestOrderValue));
-  if (totalRev > 0 && largest / totalRev >= input.largeOrderShareThreshold) {
+  const totalRev  = last7.reduce((s, m) => s + m.revenue, 0);
+  const totalConv = last7.reduce((s, m) => s + m.conversions, 0);
+  const largest   = Math.max(0, ...last7.map((m) => m.largestOrderValue));
+  if (totalConv >= 2 && totalRev > 0 && largest / totalRev >= input.largeOrderShareThreshold) {
     const pct = Math.round((largest / totalRev) * 100);
     warnings.push({
       code: "large_order_distortion",

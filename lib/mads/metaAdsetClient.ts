@@ -133,11 +133,14 @@ export async function fetchDailyMetrics(
     const ctr           = parseFloat(r.ctr ?? "0");
     const revenue       = sumPurchase(r.action_values);
     const conversions   = Math.round(sumPurchase(r.actions));
-    // 일별 가장 큰 주문 추정 — action_values의 가장 큰 단일 값.
-    // (Meta는 같은 attribution에서 합산한 값이라 단일 주문가는 아님,
-    //  하지만 평균객단가 8만원 기준 1건 매출이 30만원+이면 큰 주문으로 간주 가능)
+    // 일별 가장 큰 주문 추정 — purchase 계열 action_values 중 max.
+    // ⚠️ 반드시 PURCHASE_ACTIONS 필터링 — 그렇지 않으면 view_content 같은 비-구매 액션의 value
+    //   (해당 일에 본 상품 가격 합 — 시계 30만원 × 100명 = 3000만원 같은 값)이 '큰 주문' 으로 둔갑함.
+    const purchaseValues = (r.action_values ?? [])
+      .filter((a) => PURCHASE_ACTIONS.has(a.action_type))
+      .map((a) => parseFloat(a.value ?? "0"));
     const largestOrderValue = revenue > 0 && conversions > 0
-      ? Math.max(revenue / conversions, ...((r.action_values ?? []).map((a) => parseFloat(a.value ?? "0"))))
+      ? Math.max(revenue / conversions, ...purchaseValues, 0)
       : 0;
 
     return {
