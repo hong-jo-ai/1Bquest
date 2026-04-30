@@ -24,29 +24,31 @@ interface PlannedClone {
   sourceName:    string;
   line:          string;
   priceNew:      number;
+  productCode?:  string; // Excel 기반 정확 매핑 (있으면 코드로 직접 fetch)
 }
 
+// 출처: 공구 제품 SKU.xlsx (사용자 제공)
 const PLAN: PlannedClone[] = [
   // 에끌라 오벌 — 78,000원
-  { idx: 1,  sourceName: "폴바이스 에끌라 오벌 워치 골드",                  line: "에끌라 오벌",        priceNew: 78000  },
-  { idx: 2,  sourceName: "폴바이스 에끌라 오벌 워치 실버",                  line: "에끌라 오벌",        priceNew: 78000  },
+  { idx: 1,  sourceName: "폴바이스 에끌라 오벌 워치 - 골드",                  line: "에끌라 오벌",        priceNew: 78000,  productCode: "P00000HO" },
+  { idx: 2,  sourceName: "폴바이스 에끌라 오벌 워치 - 실버",                  line: "에끌라 오벌",        priceNew: 78000,  productCode: "P00000HN" },
   // 오드리 — 78,000원
-  { idx: 3,  sourceName: "폴바이스 오드리 스퀘어 워치 화이트 브라운",       line: "오드리",            priceNew: 78000  },
-  { idx: 4,  sourceName: "폴바이스 오드리 스퀘어 워치 핑크 브라운",         line: "오드리",            priceNew: 78000  },
-  { idx: 5,  sourceName: "폴바이스 오드리 스퀘어 워치 블랙 블랙",           line: "오드리",            priceNew: 78000  },
-  { idx: 6,  sourceName: "폴바이스 오드리 스퀘어 워치 핑크 그레이",         line: "오드리",            priceNew: 78000  },
-  { idx: 7,  sourceName: "폴바이스 오드리 스퀘어 워치 네이비 화이트",       line: "오드리",            priceNew: 78000  },
+  { idx: 3,  sourceName: "오드리 화이트 브라운 가죽 시계",                    line: "오드리",            priceNew: 78000,  productCode: "P00000GA" },
+  { idx: 4,  sourceName: "오드리 핑크 브라운 가죽 시계",                      line: "오드리",            priceNew: 78000,  productCode: "P00000FZ" },
+  { idx: 5,  sourceName: "오드리 블랙 블랙 가죽 시계",                        line: "오드리",            priceNew: 78000,  productCode: "P00000GC" },
+  { idx: 6,  sourceName: "오드리 핑크 그레이 가죽 시계",                      line: "오드리",            priceNew: 78000,  productCode: "P00000GB" },
+  { idx: 7,  sourceName: "오드리 네이비 화이트 가죽 시계",                    line: "오드리",            priceNew: 78000,  productCode: "P00000GD" },
   // 미니엘 쁘띠 가죽 — 99,000원
-  { idx: 8,  sourceName: "폴바이스 미니엘 쁘띠 핑크 챠콜 (가죽 스트랩)",     line: "미니엘 쁘띠 가죽",    priceNew: 99000  },
-  { idx: 9,  sourceName: "폴바이스 미니엘 쁘띠 블랙 브라운 (가죽 스트랩)",   line: "미니엘 쁘띠 가죽",    priceNew: 99000  },
-  { idx: 10, sourceName: "폴바이스 미니엘 쁘띠 아쿠아 화이트 (가죽 스트랩)", line: "미니엘 쁘띠 가죽",    priceNew: 99000  },
-  { idx: 11, sourceName: "폴바이스 미니엘 쁘띠 선셋 올리브 (가죽 스트랩)",   line: "미니엘 쁘띠 가죽",    priceNew: 99000  },
+  { idx: 8,  sourceName: "미니엘 쁘띠 핑크 챠콜 가죽 여성시계",                line: "미니엘 쁘띠 가죽",    priceNew: 99000,  productCode: "P00000CX" },
+  { idx: 9,  sourceName: "미니엘 쁘띠 블랙 브라운 가죽 여성시계",              line: "미니엘 쁘띠 가죽",    priceNew: 99000,  productCode: "P00000CR" },
+  { idx: 10, sourceName: "미니엘 쁘띠 아쿠아 화이트",                          line: "미니엘 쁘띠 가죽",    priceNew: 99000,  productCode: "P00000CY" },
+  { idx: 11, sourceName: "미니엘 쁘띠 선셋 올리브 가죽 여성시계",              line: "미니엘 쁘띠 가죽",    priceNew: 99000,  productCode: "P00000GM" },
   // 미니엘 쁘띠 메탈 — 109,000원
-  { idx: 12, sourceName: "폴바이스 미니엘 쁘띠 화이트 로즈골드 (메탈)",      line: "미니엘 쁘띠 메탈",    priceNew: 109000 },
-  { idx: 13, sourceName: "폴바이스 미니엘 쁘띠 핑크 로즈골드 (메탈)",        line: "미니엘 쁘띠 메탈",    priceNew: 109000 },
-  { idx: 14, sourceName: "폴바이스 미니엘 쁘띠 선셋 로즈골드 (메탈)",        line: "미니엘 쁘띠 메탈",    priceNew: 109000 },
-  { idx: 15, sourceName: "폴바이스 미니엘 쁘띠 아쿠아 로즈골드 (메탈)",      line: "미니엘 쁘띠 메탈",    priceNew: 109000 },
-  { idx: 16, sourceName: "폴바이스 미니엘 쁘띠 블랙 로즈골드 (메탈)",        line: "미니엘 쁘띠 메탈",    priceNew: 109000 },
+  { idx: 12, sourceName: "미니엘 쁘띠 화이트 로즈골드",                        line: "미니엘 쁘띠 메탈",    priceNew: 109000, productCode: "P00000CT" },
+  { idx: 13, sourceName: "미니엘 쁘띠 핑크 로즈골드 메탈 여성시계",             line: "미니엘 쁘띠 메탈",    priceNew: 109000, productCode: "P00000FT" },
+  { idx: 14, sourceName: "미니엘 쁘띠 선셋 로즈골드",                          line: "미니엘 쁘띠 메탈",    priceNew: 109000, productCode: "P00000IK" },
+  { idx: 15, sourceName: "미니엘 쁘띠 아쿠아 로즈골드",                        line: "미니엘 쁘띠 메탈",    priceNew: 109000, productCode: "P00000CV" },
+  { idx: 16, sourceName: "미니엘 쁘띠 블랙 로즈골드",                          line: "미니엘 쁘띠 메탈",    priceNew: 109000, productCode: "P00000CU" },
 ];
 
 const CATEGORY_NAME = "바이소이 공구";
@@ -94,6 +96,14 @@ interface RawProduct {
 }
 
 // ── 원본 상품 검색 ─────────────────────────────────────────────────────────
+
+/** 상품코드로 정확 매칭 (가장 신뢰도 높음) */
+async function findByCode(token: string, code: string): Promise<RawProduct | null> {
+  const qs = new URLSearchParams({ product_code: code, limit: "5" });
+  const data = await cafe24Get(`/api/v2/admin/products?${qs}`, token);
+  const list = (data.products ?? []) as RawProduct[];
+  return list.find((p) => (p.product_code ?? "").trim() === code.trim()) ?? null;
+}
 
 /** 정확 이름 우선, 부분일치 fallback. 이미 -BYSOY 인 건 제외. */
 async function findSourceProduct(token: string, name: string): Promise<RawProduct | null> {
@@ -302,10 +312,20 @@ async function cloneProduct(
 
 // ── 핸들러 ────────────────────────────────────────────────────────────────
 
+async function findPlanned(token: string, p: PlannedClone): Promise<RawProduct | null> {
+  // 1순위: productCode (Excel 정확 매핑)
+  if (p.productCode) {
+    const byCode = await findByCode(token, p.productCode);
+    if (byCode) return byCode;
+  }
+  // 2순위: 이름 fuzzy
+  return findSourceProduct(token, p.sourceName);
+}
+
 async function preview(token: string) {
   const found: Array<{ plan: PlannedClone; product: RawProduct | null }> = [];
   for (const p of PLAN) {
-    const src = await findSourceProduct(token, p.sourceName);
+    const src = await findPlanned(token, p);
     found.push({ plan: p, product: src });
   }
   const missing = found.filter((f) => !f.product).map((f) => f.plan.sourceName);
@@ -386,11 +406,11 @@ async function testClone(token: string) {
   // 1. 16개 모두 찾고 검증
   const sourceProducts: Array<{ plan: PlannedClone; product: RawProduct }> = [];
   for (const p of PLAN) {
-    const src = await findSourceProduct(token, p.sourceName);
+    const src = await findPlanned(token, p);
     if (!src) {
       return {
         ok: false,
-        error: `원본 못 찾음: ${p.sourceName} — preview 단계 다시 확인 필요`,
+        error: `원본 못 찾음: ${p.sourceName} (코드 ${p.productCode ?? "없음"}) — preview 단계 다시 확인 필요`,
         stage: "find",
       };
     }
