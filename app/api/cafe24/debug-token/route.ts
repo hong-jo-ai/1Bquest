@@ -1,8 +1,8 @@
 /**
- * Cafe24 토큰 진단 — 현재 발급받은 access_token 의 scope 확인.
+ * Cafe24 토큰 진단 — 저장된 토큰의 scope 확인 (refresh 자동 처리, race-safe).
  */
 import { createClient } from "@supabase/supabase-js";
-import { doRefresh } from "@/lib/cafe24Client";
+import { refreshCafe24Token, getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 
 export const dynamic = "force-dynamic";
 
@@ -17,27 +17,38 @@ export async function GET() {
 
   if (!stored) return Response.json({ ok: false, error: "토큰 없음 — Cafe24 미연결" });
 
-  const refreshToken = typeof stored === "string" ? stored : (stored as { refresh_token?: string }).refresh_token;
-  if (!refreshToken) return Response.json({ ok: false, error: "refresh_token 없음" });
+  // 캐시 객체 형태인지 확인
+  const isObject = typeof stored === "object" && stored !== null;
+  const refreshToken = isObject
+    ? (stored as { refresh_token?: string }).refresh_token
+    : (typeof stored === "string" ? stored : null);
+
+  if (!refreshToken) return Response.json({ ok: false, error: "refresh_token 없음", stored });
 
   try {
-    // 강제 refresh 해서 새 토큰 + scope 확인
-    const tr = await doRefresh(refreshToken);
+    // refreshCafe24Token 은 자동으로 새 토큰 저장 (race-safe)
+    const tr = await refreshCafe24Token(refreshToken);
     const scope = String(tr.scope ?? "");
     return Response.json({
       ok:               true,
       scopeRaw:         scope,
-      scopeLength:      scope.length,
       scopeArray:       scope.split(/[\s,]+/).filter(Boolean),
       hasWrite:         /mall\.write_product/.test(scope),
       hasWriteCat:      /mall\.write_category/.test(scope),
       mall_id:          tr.mall_id,
-      shop_no:          tr.shop_no,
       expires_in:       tr.expires_in,
-      // 전체 응답 (디버그)
-      fullResponse:     Object.keys(tr),
     });
   } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    return Response.json(
+      {
+        ok: false,
+        error: msg,
+        hint: msg.includes("invalid_grant")
+          ? "refresh_token 만료/무효 — /api/auth/login 으로 재연결 필요"
+          : undefined,
+      },
+      { status: 500 },
+    );
   }
 }
