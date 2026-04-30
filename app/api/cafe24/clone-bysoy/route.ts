@@ -164,14 +164,20 @@ async function getProductDetail(token: string, productNo: number): Promise<RawPr
 // ── 카테고리 ─────────────────────────────────────────────────────────────
 
 async function findCategoryByName(token: string, name: string): Promise<number | null> {
-  const data = await cafe24Get(
-    `/api/v2/admin/categories?limit=200&shop_no=1`,
-    token,
-  );
-  const cat = (data.categories ?? []).find(
-    (c: { category_no: number; category_name: string }) => c.category_name === name,
-  );
-  return cat?.category_no ?? null;
+  // Cafe24 categories limit max=100. 페이징으로 누적 검색.
+  let offset = 0;
+  while (offset < 1000) {
+    const data = await cafe24Get(
+      `/api/v2/admin/categories?limit=100&offset=${offset}&shop_no=1`,
+      token,
+    );
+    const list = (data.categories ?? []) as Array<{ category_no: number; category_name: string }>;
+    const cat = list.find((c) => c.category_name === name);
+    if (cat) return cat.category_no;
+    if (list.length < 100) return null;
+    offset += 100;
+  }
+  return null;
 }
 
 async function createPrivateCategory(token: string, name: string): Promise<number> {
