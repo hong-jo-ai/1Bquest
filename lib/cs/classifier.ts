@@ -3,6 +3,8 @@ import { getCsSupabase } from "./store";
 
 const MODEL = "gemini-2.5-flash";
 const BLACKLIST_KEY = "cs_sender_blacklist";
+const NEGATIVES_KEY = "cs_classifier_negatives";
+const MAX_NEGATIVES = 30; // 프롬프트 길이/예시 가치 균형
 
 /**
  * CS가 절대 아닌 발신자 패턴 — LLM 호출 전에 즉시 차단.
@@ -125,6 +127,47 @@ export function isBlacklisted(
   return false;
 }
 
+/**
+ * 사용자가 "CS 아님" 으로 마킹한 메일 사례 — 분류기 프롬프트에 주입해 학습.
+ * 같은/유사한 메일이 다음에 들어오면 LLM 이 패턴 매칭으로 false 를 반환하게 한다.
+ */
+export interface ClassifierNegative {
+  brand:     "paulvice" | "harriot";
+  fromEmail: string | null;
+  fromName:  string | null;
+  subject:   string;
+  snippet:   string;  // 본문 앞부분 (~200자)
+  ts:        string;  // ISO
+}
+
+export async function getClassifierNegatives(): Promise<ClassifierNegative[]> {
+  const db = getCsSupabase();
+  const { data } = await db
+    .from("kv_store")
+    .select("data")
+    .eq("key", NEGATIVES_KEY)
+    .maybeSingle();
+  if (!data?.data || !Array.isArray(data.data)) return [];
+  return data.data as ClassifierNegative[];
+}
+
+export async function addClassifierNegative(neg: ClassifierNegative): Promise<void> {
+  const db = getCsSupabase();
+  const current = await getClassifierNegatives();
+  // 신규 항목을 맨 앞에. 같은 (brand, fromEmail, subject) 조합은 중복 제거.
+  const dedupKey = (n: ClassifierNegative) =>
+    `${n.brand}|${(n.fromEmail ?? "").toLowerCase()}|${n.subject.trim().slice(0, 80)}`;
+  const targetKey = dedupKey(neg);
+  const filtered = current.filter((c) => dedupKey(c) !== targetKey);
+  const next = [neg, ...filtered].slice(0, MAX_NEGATIVES);
+  await db
+    .from("kv_store")
+    .upsert(
+      { key: NEGATIVES_KEY, data: next, updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+}
+
 let cachedClient: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI | null {
   if (cachedClient) return cachedClient;
@@ -154,6 +197,17 @@ export async function classifyEmail(
 
   const brandLabel = input.brand === "paulvice" ? "폴바이스 (PAULVICE) - 여성 시계 브랜드" : "해리엇 (HARRIOT) - 한국 프리미엄 시계 브랜드";
 
+  // 사용자가 과거에 "CS 아님" 으로 분류한 사례 — 같은 브랜드 것만 추려서 주입
+  const allNegatives = await getClassifierNegatives();
+  const brandNegatives = allNegatives.filter((n) => n.brand === input.brand).slice(0, 12);
+  const negativesBlock = brandNegatives.length === 0
+    ? ""
+    : `\n\n중요 — 사용자가 과거에 "CS 아님"으로 학습시킨 사례들이다. 발신자/제목/본문 톤이 아래와 비슷하면 is_cs=false 로 분류하라:\n${
+        brandNegatives.map((n, i) =>
+          `${i + 1}. From: ${n.fromName ?? ""} <${n.fromEmail ?? ""}>\n   Subject: ${n.subject}\n   Body: ${n.snippet.slice(0, 200)}`
+        ).join("\n")
+      }`;
+
   const prompt = `너는 ${brandLabel}의 고객 CS 인박스 분류기다. 받은 이메일이 "내가 응답해야 할 고객 문의"인지 판별하라.
 
 고객 문의 (is_cs=true) 예시:
@@ -170,7 +224,7 @@ export async function classifyEmail(
 - 채용 문의, 협업·제휴·광고 제안 (CS 아님)
 - 재고 알림, 가격 비교 사이트 알림, 정산 알림
 
-핵심 구분 기준: "내가 직접 답을 보내야 하는 사람의 메시지인가?" 자동발송 트랜잭션 알림은 답할 대상이 없으므로 모두 false.
+핵심 구분 기준: "내가 직접 답을 보내야 하는 사람의 메시지인가?" 자동발송 트랜잭션 알림은 답할 대상이 없으므로 모두 false.${negativesBlock}
 
 응답은 반드시 아래 JSON 형식만:
 {
