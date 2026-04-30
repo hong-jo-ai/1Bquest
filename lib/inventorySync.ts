@@ -3,6 +3,7 @@
  * 크론 + 수동 동기화에서 공유
  */
 import { cafe24Get, cafe24Put } from "@/lib/cafe24Client";
+import { fetchAllOrders } from "@/lib/cafe24Data";
 import { createClient } from "@supabase/supabase-js";
 import type { InventoryEntry } from "@/lib/inventoryStorage";
 
@@ -102,18 +103,20 @@ async function updateVariantStock(token: string, productNo: number, quantity: nu
   return variants.length;
 }
 
-async function fetchSalesBySku(token: string): Promise<Record<string, number>> {
+/**
+ * Cafe24 주문에서 SKU별 판매 수량 합산.
+ * @param startDate YYYY-MM-DD — 등록된 재고 기준일 중 가장 이른 날짜. 그 이후 주문만 합산.
+ *
+ * v2: fetchAllOrders 로 페이징 (이전엔 limit=100 한 페이지만 → 누락 발생).
+ */
+async function fetchSalesBySku(token: string, startDate: string): Promise<Record<string, number>> {
   const salesBySku: Record<string, number> = {};
   try {
-    const salesRes = await cafe24Get(
-      "/api/v2/admin/orders?start_date=" +
-        new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10) +
-        "&end_date=" +
-        new Date().toISOString().slice(0, 10) +
-        "&limit=100&fields=items",
-      token,
-    );
-    for (const order of salesRes.orders ?? []) {
+    const endDate = new Date().toISOString().slice(0, 10);
+    const orders = (await fetchAllOrders(token, startDate, endDate, true)) as Array<{
+      items?: Array<{ product_code?: string; quantity?: number }>;
+    }>;
+    for (const order of orders) {
       for (const item of order.items ?? []) {
         const sku = item.product_code;
         if (sku) {
@@ -179,9 +182,18 @@ export async function runInventorySync(
     return { synced: 0, failed: 0, results: [] };
   }
 
-  // 사전 일괄 조회 (병렬: 카페24 판매 + 다른 채널 판매 + SKU→productNo 매핑)
+  // 가장 이른 stockInDate 부터만 주문 fetch — 그 이전 매출은 initialStock 등록 시점 이전이라 무관.
+  // stockInDate 가 비어있거나 미래면 365일 전부터 (안전장치).
+  const today = new Date().toISOString().slice(0, 10);
+  const earliestStockDate = skus
+    .map((sku) => entries[sku].stockInDate)
+    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
+    .sort()[0];
+  const startDate = earliestStockDate ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+
+  // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
   const [cafe24SalesBySku, otherChannelsSales, productNoMap] = await Promise.all([
-    fetchSalesBySku(token),
+    fetchSalesBySku(token, startDate),
     fetchOtherChannelsSales(),
     buildSkuProductNoMap(token),
   ]);
