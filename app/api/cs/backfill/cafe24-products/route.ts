@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   // cafe24_board 의 in 메시지만 가져옴
   const { data: messages, error: mErr } = await db
     .from("cs_messages")
-    .select("id, thread_id, raw, external_thread_id")
+    .select("id, thread_id, raw")
     .eq("channel", "cafe24_board")
     .eq("direction", "in")
     .order("sent_at", { ascending: false })
