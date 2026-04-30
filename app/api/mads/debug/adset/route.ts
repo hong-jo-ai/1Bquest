@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     })) as { data?: InsightRow[] };
 
     const adsetMeta = (await metaGet(`/${adsetId}`, metaToken, {
-      fields: "id,name,status,daily_budget,campaign{name},account{name}",
+      fields: "id,name,status,daily_budget,account_id,campaign{name}",
     })) as Record<string, unknown>;
 
     let totalSpend = 0;
