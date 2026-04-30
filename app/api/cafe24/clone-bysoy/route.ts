@@ -540,10 +540,10 @@ export async function POST(req: NextRequest) {
   catch { return Response.json({ ok: false, error: "잘못된 본문" }, { status: 400 }); }
 
   const action = body.action ?? "";
-  if (!["preview", "test", "remaining", "discover"].includes(action)) {
+  if (!["preview", "test", "remaining", "discover", "create_consolidated"].includes(action)) {
     return Response.json({
       ok: false,
-      error: "action 필수 (discover / preview / test / remaining)",
+      error: "action 필수 (discover / preview / test / remaining / create_consolidated)",
     }, { status: 400 });
   }
 
@@ -553,16 +553,202 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (action === "discover")  return Response.json(await discover(token));
-    if (action === "preview")   return Response.json(await preview(token));
-    if (action === "test")      return Response.json(await testClone(token));
-    if (action === "remaining") return Response.json(await remainingClone(token));
+    if (action === "discover")           return Response.json(await discover(token));
+    if (action === "preview")            return Response.json(await preview(token));
+    if (action === "test")               return Response.json(await testClone(token));
+    if (action === "remaining")          return Response.json(await remainingClone(token));
+    if (action === "create_consolidated") return Response.json(await createConsolidated(token));
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : String(e), stage: action },
       { status: 500 },
     );
   }
+}
+
+// ── create_consolidated: 16종 옵션 가진 단일 통합 상품 생성 ──────────────────
+
+const CONSOLIDATED_PRODUCT_KEY = "bysoy_consolidated:product";
+const CONSOLIDATED_PRODUCT_NAME = "폴바이스 × @_bysoy 공동구매";
+const CONSOLIDATED_PRODUCT_CODE = "BYSOY-2026-05";
+const BASE_PRICE = 78000;
+
+interface ConsolidatedResult {
+  ok:           boolean;
+  productNo?:   number;
+  productCode?: string;
+  productName?: string;
+  categoryNo?:  number;
+  optionsApplied: boolean;
+  bagOptionApplied: boolean;
+  optionsError?: string;
+  bagError?:    string;
+  adminUrl?:    string;
+  next: string[];
+}
+
+async function createConsolidated(token: string): Promise<ConsolidatedResult> {
+  // 1. 16개 원본 모두 찾기 (productCode 우선)
+  const sources: Array<{ plan: PlannedClone; product: RawProduct }> = [];
+  for (const p of PLAN) {
+    const src = await findPlanned(token, p);
+    if (!src) {
+      throw new Error(`원본 못 찾음: ${p.sourceName} (${p.productCode}) — preview 단계 다시 확인 필요`);
+    }
+    sources.push({ plan: p, product: src });
+  }
+
+  // 2. 백업
+  await saveBackup(sources.map((s) => ({ idx: s.plan.idx, product: s.product })));
+
+  // 3. 카테고리
+  const categoryNo = await ensureCategory(token);
+
+  // 4. 이미 같은 코드 존재하면 abort (중복 방지)
+  if (await checkCodeExists(token, CONSOLIDATED_PRODUCT_CODE)) {
+    return {
+      ok: false,
+      optionsApplied: false,
+      bagOptionApplied: false,
+      optionsError: `상품코드 ${CONSOLIDATED_PRODUCT_CODE} 이미 존재 — 중복 방지 abort. 기존 상품 삭제 후 재시도하거나 어드민에서 직접 수정 사용.`,
+      next: [],
+    };
+  }
+
+  // 5. 상세 정보 (description 등) 첫 SKU 에서 가져옴 — 사용자가 어드민에서 교체 예정
+  const firstDetail = (await getProductDetail(token, sources[0].product.product_no)) ?? sources[0].product;
+
+  // 옵션 1: 모델 — 16값 (option_text + additional_amount)
+  const modelOptionValues = sources.map((s) => ({
+    option_text:       s.plan.sourceName,
+    additional_amount: String(s.plan.priceNew - BASE_PRICE),
+  }));
+
+  // 옵션 2: 쇼핑백 — 선택 (+1,000원)
+  const bagOptionValues = [
+    { option_text: "필요 없음",                 additional_amount: "0" },
+    { option_text: "쇼핑백 추가 (+1,000원)",     additional_amount: "1000" },
+  ];
+
+  const body = {
+    shop_no: 1,
+    request: {
+      product_name:        CONSOLIDATED_PRODUCT_NAME,
+      product_code:        CONSOLIDATED_PRODUCT_CODE,
+      price:               String(BASE_PRICE),
+      retail_price:        String(BASE_PRICE),
+      supply_price:        String(BASE_PRICE),
+      selling:             "T",
+      display:             "F", // 비공개 — 5/19 진열 예약 어드민에서 별도 설정
+      list_image:          firstDetail.list_image  ?? "",
+      detail_image:        firstDetail.detail_image ?? "",
+      tiny_image:          firstDetail.tiny_image  ?? "",
+      small_image:         firstDetail.small_image ?? "",
+      summary_description: "폴바이스 × @_bysoy 인플루언서 공동구매 (2026.05.19~22 · 4일 한정)",
+      description:         firstDetail.description ?? "",
+      mobile_description:  firstDetail.mobile_description ?? "",
+      add_category_no:     [{ category_no: categoryNo }],
+      // 옵션 inline (Cafe24 API 지원 시)
+      options: [
+        {
+          option_name:         "모델",
+          option_value:        modelOptionValues,
+          required_option:     "T",
+          option_display_type: "S",
+        },
+        {
+          option_name:         "쇼핑백",
+          option_value:        bagOptionValues,
+          required_option:     "F",
+          option_display_type: "S",
+        },
+      ],
+    },
+  };
+
+  let createdProduct: RawProduct | null = null;
+  let optionsApplied = false;
+  let bagApplied = false;
+  let optionsErr: string | undefined;
+  let bagErr: string | undefined;
+
+  // 1차 시도: 옵션 inline 포함 POST
+  try {
+    const res = await cafe24Post(`/api/v2/admin/products`, token, body);
+    createdProduct = res?.product ?? null;
+    optionsApplied = true;
+    bagApplied     = true;
+  } catch (e) {
+    optionsErr = e instanceof Error ? e.message : String(e);
+    // fallback: 옵션 빼고 기본 상품만 생성
+    const fallbackBody = {
+      ...body,
+      request: { ...body.request, options: undefined as never },
+    };
+    delete (fallbackBody.request as Record<string, unknown>).options;
+    try {
+      const res2 = await cafe24Post(`/api/v2/admin/products`, token, fallbackBody);
+      createdProduct = res2?.product ?? null;
+    } catch (e2) {
+      throw new Error(
+        `상품 생성 실패. 옵션 포함 1차: ${optionsErr}. 옵션 제외 2차: ${e2 instanceof Error ? e2.message : String(e2)}`,
+      );
+    }
+  }
+
+  if (!createdProduct?.product_no) {
+    throw new Error("상품 생성 응답에 product_no 없음");
+  }
+
+  // 매핑 저장
+  const db = getDb();
+  if (db) {
+    await db.from("kv_store").upsert(
+      {
+        key: CONSOLIDATED_PRODUCT_KEY,
+        data: {
+          createdAt:      new Date().toISOString(),
+          productNo:      createdProduct.product_no,
+          productCode:    createdProduct.product_code,
+          productName:    createdProduct.product_name,
+          categoryNo,
+          sources:        sources.map((s) => ({ idx: s.plan.idx, name: s.plan.sourceName, productNo: s.product.product_no, productCode: s.product.product_code })),
+          optionsApplied,
+          bagOptionApplied: bagApplied,
+        },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+  }
+
+  const adminUrl = `https://eclogin.cafe24.com/Shop/?sub=mkt&page=front_shop1_modify&product_no=${createdProduct.product_no}`;
+
+  const next: string[] = [];
+  next.push(`1. 카페24 어드민 들어가서 ${createdProduct.product_no}번 상품 확인`);
+  if (!optionsApplied) {
+    next.push("2. ⚠️ 옵션 자동 등록 실패 — 어드민 옵션 탭에서 16개 모델 + 쇼핑백 직접 추가 (가격 추가금 +0/+21000/+31000 / 쇼핑백 +1000)");
+  } else {
+    next.push("2. 16개 모델 옵션 + 쇼핑백 옵션 등록 확인 (옵션별 썸네일은 어드민에서 직접 업로드 — 본 SKU 이미지 URL 참고)");
+  }
+  next.push("3. 메인 이미지를 사용자가 따로 작업한 이미지로 교체 (현재는 1번 SKU 이미지로 임시)");
+  next.push("4. 상세 페이지(description) 공구 전용으로 작성/교체");
+  next.push("5. 진열 예약: 5/19 00:00 자동 노출 — 어드민 → 진열관리 → 진열기간 설정");
+  next.push("6. 옵션별 재고 확인 — 본 SKU 재고와 별개로 통합 상품 재고는 새로 잡혀있음, 필요 시 조정");
+
+  return {
+    ok:               true,
+    productNo:        createdProduct.product_no,
+    productCode:      createdProduct.product_code,
+    productName:      createdProduct.product_name,
+    categoryNo,
+    optionsApplied,
+    bagOptionApplied: bagApplied,
+    optionsError:     optionsErr,
+    bagError:         bagErr,
+    adminUrl,
+    next,
+  };
 }
 
 // ── discover: 라인별 키워드 검색 → 통합 상품 v2 용 ────────────────────────
