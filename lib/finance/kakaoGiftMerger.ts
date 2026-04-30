@@ -80,13 +80,16 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
   }>).map((r) => r.data);
 
   // 2-b. 모든 일일 PO 로드 (Gmail 동기화 결과)
+  // 같은 prefix(kakao_gift_po:) 의 status 키도 잡히므로 orders 배열 보유한 row 만 필터.
   const { data: poRows } = await supabase
     .from("kv_store")
     .select("data")
     .like("key", `${PO_PREFIX}%`);
-  const pos: KakaoGiftPo[] = ((poRows ?? []) as Array<{
-    data: KakaoGiftPo;
-  }>).map((r) => r.data);
+  const pos: KakaoGiftPo[] = ((poRows ?? []) as Array<{ data: unknown }>)
+    .map((r) => r.data)
+    .filter((d): d is KakaoGiftPo =>
+      !!d && typeof d === "object" && Array.isArray((d as { orders?: unknown }).orders),
+    );
 
   // 정산서가 있는 달 set ("YYYY-MM")
   const settlementMonths = new Set(
