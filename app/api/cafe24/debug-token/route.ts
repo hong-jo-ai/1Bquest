@@ -23,14 +23,19 @@ export async function GET() {
   try {
     // 강제 refresh 해서 새 토큰 + scope 확인
     const tr = await doRefresh(refreshToken);
+    const scope = String(tr.scope ?? "");
     return Response.json({
-      ok:           true,
-      scope:        tr.scope,                              // 실제 부여된 scope
-      hasWrite:     /mall\.write_product/.test(tr.scope),
-      hasWriteCat:  /mall\.write_category/.test(tr.scope),
-      mall_id:      tr.mall_id,
-      shop_no:      tr.shop_no,
-      expires_in:   tr.expires_in,
+      ok:               true,
+      scopeRaw:         scope,
+      scopeLength:      scope.length,
+      scopeArray:       scope.split(/[\s,]+/).filter(Boolean),
+      hasWrite:         /mall\.write_product/.test(scope),
+      hasWriteCat:      /mall\.write_category/.test(scope),
+      mall_id:          tr.mall_id,
+      shop_no:          tr.shop_no,
+      expires_in:       tr.expires_in,
+      // 전체 응답 (디버그)
+      fullResponse:     Object.keys(tr),
     });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
