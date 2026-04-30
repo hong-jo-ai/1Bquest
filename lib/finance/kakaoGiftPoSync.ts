@@ -9,10 +9,11 @@
  *  4. 처리 완료 메일에 '카카오선물_처리완료' 라벨 추가
  *  5. 마지막에 rebuildKakaoGiftChannelData() 호출해 머지 다시 구성
  *
- * 인증: getGoogleAccessTokenFromStore() — shong@harriotwatches.com OAuth (gmail.modify 스코프 필요)
+ * 인증: getKakaoGiftGmailAccessToken() — plvekorea@gmail.com 전용 OAuth (gmail.modify 필요)
+ *       (캘린더/인박스 분류용 shong@harriotwatches.com 토큰과 분리)
  */
 import { createClient } from "@supabase/supabase-js";
-import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
+import { getKakaoGiftGmailAccessToken } from "./kakaoGiftGmailToken";
 import { parseKakaoGiftPo } from "./kakaoGiftPo";
 import { rebuildKakaoGiftChannelData } from "./kakaoGiftMerger";
 import type { KakaoGiftPo } from "./kakaoGiftPo";
@@ -175,9 +176,9 @@ export interface SyncResult {
 }
 
 export async function syncKakaoGiftPos(): Promise<SyncResult> {
-  const accessToken = await getGoogleAccessTokenFromStore();
+  const accessToken = await getKakaoGiftGmailAccessToken();
   if (!accessToken) {
-    throw new Error("Google 미연결 — /api/auth/google/login 으로 OAuth 후 재시도");
+    throw new Error("plvekorea@gmail.com Gmail 미연결 — /api/auth/kakao-gift-gmail/login 으로 OAuth 후 재시도");
   }
 
   const labelId = await ensureLabel(accessToken);

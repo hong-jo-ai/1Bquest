@@ -128,7 +128,7 @@ export default function KakaoGiftSyncPanel({
           <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">자동</span>
         </div>
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
-          매일 오후 3시(KST) 자동 — shong@harriotwatches.com 의 song@fjord.kr 발주서 메일
+          매일 오후 3시(KST) 자동 — <b>plvekorea@gmail.com</b> 의 song@fjord.kr 발주서 메일
           첨부 엑셀을 파싱해 일별 매출에 반영. 처리된 메일은 &lsquo;카카오선물_처리완료&rsquo; 라벨로
           중복 방지.
         </p>
@@ -175,15 +175,15 @@ export default function KakaoGiftSyncPanel({
             <AlertCircle size={11} className="shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="break-words">{poError}</p>
-              {(poError.includes("Google 미연결") ||
+              {(poError.includes("미연결") ||
                 poError.includes("스코프") ||
                 poError.includes("insufficient") ||
                 poError.includes("403")) && (
                 <a
-                  href="/api/auth/google/login?hint=shong@harriotwatches.com"
+                  href="/api/auth/kakao-gift-gmail/login"
                   className="underline font-semibold mt-1 inline-block"
                 >
-                  Google 재연결 (gmail.modify 동의) →
+                  plvekorea@gmail.com 으로 Gmail 연결 →
                 </a>
               )}
             </div>
