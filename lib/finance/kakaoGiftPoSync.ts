@@ -106,10 +106,9 @@ async function ensureLabel(accessToken: string): Promise<string> {
   return created.id;
 }
 
-/** 발주서 첨부가 있을 만한 미처리 메일 검색 */
+/** 발주서 첨부가 있을 만한 미처리 메일 검색 — 제목에 '발주서' 포함된 것만 (반품/문의 메일 제외). */
 async function findCandidateMessages(accessToken: string): Promise<GmailMessageMeta[]> {
-  // q: from + has:attachment + 처리완료 라벨 미적용. 최근 30일로 한정.
-  const q = `from:${SENDER} has:attachment -label:${PROCESSED_LABEL} newer_than:30d`;
+  const q = `from:${SENDER} subject:발주서 has:attachment -label:${PROCESSED_LABEL} newer_than:30d`;
   const url = `/messages?q=${encodeURIComponent(q)}&maxResults=50`;
   const json = await gmailFetch<{ messages?: GmailMessageMeta[] }>(accessToken, url);
   return json.messages ?? [];
