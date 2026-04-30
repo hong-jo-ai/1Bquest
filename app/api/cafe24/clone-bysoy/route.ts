@@ -635,6 +635,8 @@ async function createConsolidated(token: string): Promise<ConsolidatedResult> {
     { option_text: "쇼핑백 추가 (+1,000원)",     additional_amount: "1000" },
   ];
 
+  // Cafe24 product POST 는 임의 이미지 URL 거부 — 이미지 필드 일단 빼고 어드민에서 업로드 유도.
+  // 옵션 필드명: name / value (option_name 아님)
   const body = {
     shop_no: 1,
     request: {
@@ -645,27 +647,19 @@ async function createConsolidated(token: string): Promise<ConsolidatedResult> {
       supply_price:        String(BASE_PRICE),
       selling:             "T",
       display:             "F", // 비공개 — 5/19 진열 예약 어드민에서 별도 설정
-      list_image:          firstDetail.list_image  ?? "",
-      detail_image:        firstDetail.detail_image ?? "",
-      tiny_image:          firstDetail.tiny_image  ?? "",
-      small_image:         firstDetail.small_image ?? "",
       summary_description: "폴바이스 × @_bysoy 인플루언서 공동구매 (2026.05.19~22 · 4일 한정)",
-      description:         firstDetail.description ?? "",
-      mobile_description:  firstDetail.mobile_description ?? "",
       add_category_no:     [{ category_no: categoryNo }],
-      // 옵션 inline (Cafe24 API 지원 시)
+      // 옵션 inline — Cafe24 필드명: name / value
       options: [
         {
-          option_name:         "모델",
-          option_value:        modelOptionValues,
-          required_option:     "T",
-          option_display_type: "S",
+          name:            "모델",
+          value:           modelOptionValues,
+          required_option: "T",
         },
         {
-          option_name:         "쇼핑백",
-          option_value:        bagOptionValues,
-          required_option:     "F",
-          option_display_type: "S",
+          name:            "쇼핑백",
+          value:           bagOptionValues,
+          required_option: "F",
         },
       ],
     },
