@@ -45,17 +45,36 @@ export async function GET(req: NextRequest) {
 
   const db = getCsSupabase();
 
-  // cafe24_board 의 in 메시지만 가져옴
+  // 1) cafe24_board 채널의 thread id 조회
+  const { data: threads, error: tErr } = await db
+    .from("cs_threads")
+    .select("id, subject")
+    .eq("channel", "cafe24_board")
+    .order("last_message_at", { ascending: false })
+    .limit(limit);
+
+  if (tErr) {
+    return Response.json({ ok: false, error: `threads fetch: ${tErr.message}` }, { status: 500 });
+  }
+  const threadIds = (threads ?? []).map((t) => t.id as string);
+  const subjectByThread = new Map<string, string | null>(
+    (threads ?? []).map((t) => [t.id as string, (t.subject as string | null) ?? null]),
+  );
+  if (threadIds.length === 0) {
+    return Response.json({ ok: true, dryRun, message: "cafe24_board 스레드가 없습니다.", scanned: 0 });
+  }
+
+  // 2) 해당 스레드들의 in 메시지 조회
   const { data: messages, error: mErr } = await db
     .from("cs_messages")
     .select("id, thread_id, raw")
-    .eq("channel", "cafe24_board")
+    .in("thread_id", threadIds)
     .eq("direction", "in")
     .order("sent_at", { ascending: false })
     .limit(limit);
 
   if (mErr) {
-    return Response.json({ ok: false, error: mErr.message }, { status: 500 });
+    return Response.json({ ok: false, error: `messages fetch: ${mErr.message}` }, { status: 500 });
   }
 
   let scanned = 0;
@@ -122,21 +141,15 @@ export async function GET(req: NextRequest) {
         : product.product_name;
       const newPrefix = `[${raw.board_name} · ${shortName}]`;
 
-      const { data: thread } = await db
-        .from("cs_threads")
-        .select("subject")
-        .eq("id", msg.thread_id)
-        .maybeSingle();
-      const oldSubject = (thread?.subject as string | null) ?? "";
-      // 이미 새 prefix 면 skip
+      const oldSubject = subjectByThread.get(msg.thread_id as string) ?? "";
       if (oldSubject && !oldSubject.startsWith(newPrefix)) {
-        // 기존 prefix `[게시판명]` 만 자르고 새 prefix 로 교체
         const stripped = oldSubject.replace(new RegExp(`^\\[${raw.board_name}\\]\\s*`), "");
         const newSubject = `${newPrefix} ${stripped}`;
         await db
           .from("cs_threads")
           .update({ subject: newSubject })
           .eq("id", msg.thread_id);
+        subjectByThread.set(msg.thread_id as string, newSubject); // 같은 스레드에 다른 메시지 있을 때 중복 update 방지
       }
     }
 
