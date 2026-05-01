@@ -17,27 +17,54 @@ const MOBILE_UA =
 
 async function resolveInstagramAvatar(handle: string): Promise<string | null> {
   const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": MOBILE_UA, "Accept-Language": "en-US,en;q=0.9" },
-    redirect: "follow",
-  });
-  if (!res.ok) return null;
-  const html = await res.text();
-  // og:image (또는 og:image:secure_url) 둘 다 시도
-  const match =
-    html.match(
-      /<meta\s+property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/i,
-    ) ||
-    html.match(
-      /<meta\s+content=["']([^"']+)["']\s+property=["']og:image(?::secure_url)?["']/i,
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": MOBILE_UA,
+        "Accept-Language": "en-US,en;q=0.9",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) {
+      console.log(
+        `[avatar] instagram(${handle}) page fetch failed status=${res.status}`,
+      );
+      return null;
+    }
+    const html = await res.text();
+    // og:image (또는 og:image:secure_url) 둘 다 시도
+    const match =
+      html.match(
+        /<meta\s+property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/i,
+      ) ||
+      html.match(
+        /<meta\s+content=["']([^"']+)["']\s+property=["']og:image(?::secure_url)?["']/i,
+      );
+    if (!match) {
+      const hasLogin = html.includes("loginForm") || html.includes("Log in");
+      const hasOg = html.includes("og:image");
+      console.log(
+        `[avatar] instagram(${handle}) og:image not found (htmlLen=${html.length} hasLogin=${hasLogin} hasOg=${hasOg})`,
+      );
+      return null;
+    }
+    return match[1].replace(/&amp;/g, "&").replace(/&#x2F;/g, "/");
+  } catch (e) {
+    console.log(
+      `[avatar] instagram(${handle}) threw: ${e instanceof Error ? e.message : "?"}`,
     );
-  if (!match) return null;
-  // HTML entity decode (& → &)
-  return match[1].replace(/&amp;/g, "&").replace(/&#x2F;/g, "/");
+    return null;
+  }
 }
 
-function unavatarUrl(platform: "youtube" | "tiktok", handle: string): string {
-  return `https://unavatar.io/${platform}/${encodeURIComponent(handle)}`;
+function unavatarUrl(
+  platform: "instagram" | "youtube" | "tiktok",
+  handle: string,
+): string {
+  // ?fallback=false 로 하면 unavatar가 못 찾았을 때 image 대신 404 에러 반환 (우리 fallback 로직 작동 가능)
+  return `https://unavatar.io/${platform}/${encodeURIComponent(handle)}?fallback=false`;
 }
 
 export async function GET(req: NextRequest) {
@@ -56,6 +83,8 @@ export async function GET(req: NextRequest) {
   try {
     if (platform === "instagram") {
       imgUrl = await resolveInstagramAvatar(handle);
+      // 인스타가 Vercel egress IP를 막을 수도 있으니 unavatar 폴백
+      if (!imgUrl) imgUrl = unavatarUrl("instagram", handle);
     } else if (platform === "youtube" || platform === "tiktok") {
       imgUrl = unavatarUrl(platform, handle);
     } else {
