@@ -111,13 +111,37 @@ export default function InfluencerManager() {
     }
   }, [importSeedData, reload]);
 
-  // 필터링
-  const filtered = influencers.filter((inf) => {
-    const matchTab    = activeTab === "all" || inf.status === activeTab;
-    const matchSearch = !search || [inf.name, inf.handle, ...inf.categories]
-      .some((s) => s.toLowerCase().includes(search.toLowerCase()));
-    return matchTab && matchSearch;
-  });
+  // 전체 탭 정렬 순서: 발굴됨이 가장 위, 거절/보류가 가장 아래.
+  // 같은 status 안에서는 최근 업데이트 순.
+  const STATUS_ORDER: Record<InfluencerStatus, number> = {
+    discovered: 0,
+    reviewing: 1,
+    approved: 2,
+    dm_sent: 3,
+    replied: 4,
+    negotiating: 5,
+    confirmed: 6,
+    shipped: 7,
+    posted: 8,
+    rejected: 9,
+  };
+
+  // 필터링 + 정렬
+  const filtered = influencers
+    .filter((inf) => {
+      const matchTab    = activeTab === "all" || inf.status === activeTab;
+      const matchSearch = !search || [inf.name, inf.handle, ...inf.categories]
+        .some((s) => s.toLowerCase().includes(search.toLowerCase()));
+      return matchTab && matchSearch;
+    })
+    .sort((a, b) => {
+      if (activeTab === "all") {
+        const diff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        if (diff !== 0) return diff;
+      }
+      // 동일 status 또는 특정 탭: 최근 업데이트 우선
+      return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+    });
 
   // 탭별 개수
   const tabCount = (id: TabId) =>
