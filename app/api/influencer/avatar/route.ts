@@ -16,8 +16,41 @@ const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
 async function resolveInstagramAvatar(handle: string): Promise<string | null> {
-  const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
+  // 1차: 비공식 web_profile_info API (JSON, 안정적)
   try {
+    const apiUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`;
+    const res = await fetch(apiUrl, {
+      headers: {
+        "User-Agent": MOBILE_UA,
+        "x-ig-app-id": "936619743392459",
+        Accept: "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        data?: { user?: { profile_pic_url_hd?: string; profile_pic_url?: string } };
+      };
+      const pic =
+        json?.data?.user?.profile_pic_url_hd ||
+        json?.data?.user?.profile_pic_url;
+      if (pic) return pic;
+      console.log(`[avatar] instagram(${handle}) api responded but no pic`);
+    } else {
+      console.log(
+        `[avatar] instagram(${handle}) api status=${res.status}`,
+      );
+    }
+  } catch (e) {
+    console.log(
+      `[avatar] instagram(${handle}) api threw: ${e instanceof Error ? e.message : "?"}`,
+    );
+  }
+
+  // 2차: 프로필 페이지 HTML에서 og:image
+  try {
+    const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
     const res = await fetch(url, {
       headers: {
         "User-Agent": MOBILE_UA,
@@ -29,12 +62,11 @@ async function resolveInstagramAvatar(handle: string): Promise<string | null> {
     });
     if (!res.ok) {
       console.log(
-        `[avatar] instagram(${handle}) page fetch failed status=${res.status}`,
+        `[avatar] instagram(${handle}) html status=${res.status}`,
       );
       return null;
     }
     const html = await res.text();
-    // og:image (또는 og:image:secure_url) 둘 다 시도
     const match =
       html.match(
         /<meta\s+property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/i,
@@ -43,17 +75,15 @@ async function resolveInstagramAvatar(handle: string): Promise<string | null> {
         /<meta\s+content=["']([^"']+)["']\s+property=["']og:image(?::secure_url)?["']/i,
       );
     if (!match) {
-      const hasLogin = html.includes("loginForm") || html.includes("Log in");
-      const hasOg = html.includes("og:image");
       console.log(
-        `[avatar] instagram(${handle}) og:image not found (htmlLen=${html.length} hasLogin=${hasLogin} hasOg=${hasOg})`,
+        `[avatar] instagram(${handle}) html no og:image (len=${html.length})`,
       );
       return null;
     }
     return match[1].replace(/&amp;/g, "&").replace(/&#x2F;/g, "/");
   } catch (e) {
     console.log(
-      `[avatar] instagram(${handle}) threw: ${e instanceof Error ? e.message : "?"}`,
+      `[avatar] instagram(${handle}) html threw: ${e instanceof Error ? e.message : "?"}`,
     );
     return null;
   }
@@ -83,8 +113,7 @@ export async function GET(req: NextRequest) {
   try {
     if (platform === "instagram") {
       imgUrl = await resolveInstagramAvatar(handle);
-      // 인스타가 Vercel egress IP를 막을 수도 있으니 unavatar 폴백
-      if (!imgUrl) imgUrl = unavatarUrl("instagram", handle);
+      // 인스타가 Vercel egress IP를 막으면 null 반환 → 카드에서 이니셜 fallback
     } else if (platform === "youtube" || platform === "tiktok") {
       imgUrl = unavatarUrl(platform, handle);
     } else {
