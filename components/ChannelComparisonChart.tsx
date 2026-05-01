@@ -43,6 +43,23 @@ function sumRange(daily: { date: string; revenue: number; orders: number }[] | u
   return { revenue, orders };
 }
 
+/**
+ * 현재 KST 기준 today/week/month 범위.
+ * salesSummary[period] 의 정적 값은 업로드 시점 기준이라 시간이 흐르면 stale —
+ * dailyRevenue + 실제 오늘 날짜로 매번 계산해야 정확.
+ */
+function currentPeriodRange(period: "today" | "week" | "month"): { since: string; until: string } {
+  const today = kstDateStr(0);
+  if (period === "today") return { since: today, until: today };
+  if (period === "month") return { since: today.slice(0, 7) + "-01", until: today };
+  // week: 한국 주간 (월요일 시작)
+  const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const dayOfWeek = d.getUTCDay(); // 0=일 ... 6=토
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  d.setUTCDate(d.getUTCDate() - daysFromMonday);
+  return { since: d.toISOString().slice(0, 10), until: today };
+}
+
 function fmt(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억";
   if (n >= 10_000_000)  return (n / 10_000_000).toFixed(1) + "천만";
@@ -72,22 +89,16 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
   const [until, setUntil]   = useState(() => kstDateStr(0));
 
   const chartData = useMemo(() => channels.map((ch) => {
-    if (period === "custom") {
-      const { revenue, orders } = sumRange(ch.data.dailyRevenue, since, until);
-      return {
-        name: ch.name,
-        shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
-        color: ch.color,
-        revenue,
-        orders,
-      };
-    }
+    const range = period === "custom"
+      ? { since, until }
+      : currentPeriodRange(period);
+    const { revenue, orders } = sumRange(ch.data.dailyRevenue, range.since, range.until);
     return {
       name: ch.name,
       shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
       color: ch.color,
-      revenue: ch.data.salesSummary[period].revenue,
-      orders:  ch.data.salesSummary[period].orders,
+      revenue,
+      orders,
     };
   }), [channels, period, since, until]);
 
