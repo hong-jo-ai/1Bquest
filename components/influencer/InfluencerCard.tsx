@@ -80,6 +80,14 @@ export default function InfluencerCard({
 
   const initials = (inf.name || inf.handle).slice(0, 1).toUpperCase();
 
+  // 프로필 사진: inf.profileImage가 있으면 그걸 쓰고,
+  // 없으면 서버 프록시(/api/influencer/avatar)로 핸들 기반 자동 fetch.
+  // 실패 시 onError로 그라디언트 이니셜 fallback.
+  const [imgFailed, setImgFailed] = useState(false);
+  const proxiedAvatarUrl = `/api/influencer/avatar?platform=${inf.platform}&handle=${encodeURIComponent(inf.handle)}`;
+  const avatarSrc = inf.profileImage || proxiedAvatarUrl;
+  const showAvatar = !!avatarSrc && !imgFailed;
+
   return (
     <div
       className={`relative bg-white dark:bg-zinc-900 rounded-2xl border ${status.border} overflow-hidden transition-all hover:shadow-md`}
@@ -98,11 +106,13 @@ export default function InfluencerCard({
         >
           <div className="rounded-full p-[2.5px] bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
             <div className="rounded-full bg-white dark:bg-zinc-900 p-[2px]">
-              {inf.profileImage ? (
+              {showAvatar ? (
                 <img
-                  src={inf.profileImage}
-                  alt={inf.name}
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover"
+                  src={avatarSrc}
+                  alt={inf.name || inf.handle}
+                  loading="lazy"
+                  onError={() => setImgFailed(true)}
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover bg-zinc-100 dark:bg-zinc-800"
                 />
               ) : (
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 flex items-center justify-center text-white font-bold text-lg sm:text-xl">
