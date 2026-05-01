@@ -217,8 +217,16 @@ export async function POST(req: NextRequest) {
 
   // 사장님 본인 chat만 응답 (다른 사람이 봇 발견해서 쓰는 거 차단)
   const allowedChatId = process.env.TELEGRAM_CHAT_ID;
+  // 디버그 로그: 들어온 chat_id를 항상 찍어서 잘못된 env 값 잡기
+  console.log(
+    `[telegram-webhook] incoming chat_id=${message.chat.id} (type=${message.chat.type}) from=${message.from?.first_name ?? "?"} text="${(message.text || message.caption || "").slice(0, 40)}" allowed=${allowedChatId}`,
+  );
   if (!allowedChatId || String(message.chat.id) !== allowedChatId) {
-    return Response.json({ ok: true, ignored: "unauthorized chat" });
+    return Response.json({
+      ok: true,
+      ignored: "unauthorized chat",
+      received_chat_id: message.chat.id,
+    });
   }
 
   const text = message.text || message.caption;
