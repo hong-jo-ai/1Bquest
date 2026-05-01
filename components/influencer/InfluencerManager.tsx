@@ -39,13 +39,14 @@ function StatCard({ label, value, icon: Icon, color }: {
   label: string; value: number; icon: React.ElementType; color: string;
 }) {
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 px-5 py-4 flex items-center gap-4">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-        <Icon size={18} className="text-white" />
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 px-3 py-3 sm:px-5 sm:py-4 flex items-center gap-2.5 sm:gap-4">
+      <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+        <Icon size={16} className="text-white sm:hidden" />
+        <Icon size={18} className="text-white hidden sm:block" />
       </div>
-      <div>
-        <p className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">{value}</p>
-        <p className="text-xs text-zinc-400">{label}</p>
+      <div className="min-w-0">
+        <p className="text-lg sm:text-2xl font-bold text-zinc-800 dark:text-zinc-100">{value}</p>
+        <p className="text-[10px] sm:text-xs text-zinc-400 truncate">{label}</p>
       </div>
     </div>
   );
@@ -144,23 +145,26 @@ export default function InfluencerManager() {
   const confirmedCount = influencers.filter((i) => i.status === "confirmed" && i.shippingInfo).length;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-3 sm:p-6">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
         {/* 페이지 헤더 */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">인플루언서 마케팅</h1>
-            <p className="text-sm text-zinc-400 mt-0.5">협찬 인플루언서 파이프라인 관리</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-zinc-800 dark:text-zinc-100">인플루언서 마케팅</h1>
+            <p className="text-xs sm:text-sm text-zinc-400 mt-0.5">협찬 인플루언서 파이프라인 관리</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {confirmedCount > 0 && (
               <button
                 onClick={handleBulkDownloadCSV}
-                className="flex items-center gap-1.5 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl transition-colors"
+                className="flex items-center gap-1.5 text-xs sm:text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-colors"
               >
-                <Download size={15} />
-                CSV 전체 다운 ({confirmedCount})
+                <Download size={14} className="sm:hidden" />
+                <Download size={15} className="hidden sm:inline" />
+                <span className="hidden sm:inline">CSV 전체 다운 </span>
+                <span className="sm:hidden">CSV </span>
+                ({confirmedCount})
               </button>
             )}
             <button
@@ -169,37 +173,42 @@ export default function InfluencerManager() {
                   importSeedData(false);
                 }
               }}
-              className="flex items-center gap-1.5 text-sm font-medium border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 px-3 py-2.5 rounded-xl transition-colors"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-medium border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 px-3 py-2 sm:py-2.5 rounded-xl transition-colors"
               title="트래킹 시트 데이터 불러오기"
             >
-              <FileSpreadsheet size={15} />
-              시트 불러오기
+              <FileSpreadsheet size={14} className="sm:hidden" />
+              <FileSpreadsheet size={15} className="hidden sm:inline" />
+              <span className="hidden sm:inline">시트 불러오기</span>
+              <span className="sm:hidden">시트</span>
             </button>
             <button
               onClick={reload}
-              className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              className="p-2 sm:p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="새로고침"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={15} />
             </button>
             <button
               onClick={() => setShowDiscover(true)}
-              className="flex items-center gap-1.5 text-sm font-semibold bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-700 hover:to-pink-700 text-white px-4 py-2.5 rounded-xl transition-all"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-700 hover:to-pink-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-all"
             >
-              <Sparkles size={16} />
-              AI 발굴
+              <Sparkles size={15} />
+              <span className="hidden sm:inline">AI 발굴</span>
+              <span className="sm:hidden">발굴</span>
             </button>
             <button
               onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-4 py-2.5 rounded-xl transition-colors"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-colors"
             >
-              <Plus size={16} />
-              직접 추가
+              <Plus size={15} />
+              <span className="hidden sm:inline">직접 추가</span>
+              <span className="sm:hidden">추가</span>
             </button>
           </div>
         </div>
 
         {/* 통계 카드 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
           <StatCard label="전체 인플루언서" value={stats.total}     icon={Users}        color="bg-violet-500" />
           <StatCard label="DM 발송 완료"    value={stats.dmSent}    icon={Send}         color="bg-sky-500"    />
           <StatCard label="답장 수신"        value={stats.replied}   icon={MessageSquare} color="bg-amber-500" />
@@ -207,7 +216,7 @@ export default function InfluencerManager() {
         </div>
 
         {/* 파이프라인 탭 + 검색 */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-3 sm:p-4">
           {/* 탭 */}
           <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3">
             {TABS.map((tab) => {
@@ -284,7 +293,7 @@ export default function InfluencerManager() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
             {filtered.map((inf) => (
               <InfluencerCard
                 key={inf.id}
