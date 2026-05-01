@@ -1,8 +1,58 @@
+/**
+ * Next.js proxy (구 middleware) — 모든 요청에 대해 실행.
+ *
+ * 두 가지 일을 함:
+ *  1) 앱 자체 로그인 게이트키퍼 — paulwise_session 쿠키 검증, 미인증 시 /login 으로 리다이렉트.
+ *     ALLOW_PREFIX 의 외부 통합 라우트는 우회.
+ *  2) Cafe24 액세스 토큰 자동 갱신 — c24_at 만료 시 c24_rt로 재발급.
+ */
 import { NextRequest, NextResponse } from "next/server";
+import { verifySession, SESSION_COOKIE } from "@/lib/appAuth";
+
+// 앱 자체 로그인 우회 (자체 토큰 인증 또는 익명 접근 필요)
+const ALLOW_PREFIX = [
+  "/login",
+  "/api/auth/",        // 모든 OAuth 흐름 (sign-in, callback, share-token, kakao 등)
+  "/api/cron/",        // Vercel cron (CRON_SECRET 헤더로 인증)
+  "/api/telegram/",    // Telegram webhook (secret_token 헤더)
+  "/api/mcp",          // MCP server (PAULWISE_MCP_TOKEN)
+  "/api/threads/webhook/", // Threads webhook
+  "/api/cs/ingest/",   // CS 인박스 외부 ingestion
+  "/api/cafe24/",      // Cafe24 webhook
+  "/api/meta/webhook", // Meta webhook
+  "/_next/",
+];
+
+function isAllowed(pathname: string): boolean {
+  return ALLOW_PREFIX.some((p) => pathname.startsWith(p));
+}
 
 export async function proxy(req: NextRequest) {
-  // API / 정적 파일은 통과
-  if (req.nextUrl.pathname.startsWith("/api/") || req.nextUrl.pathname.startsWith("/_next/")) {
+  const { pathname } = req.nextUrl;
+
+  // ── (1) 앱 자체 로그인 검증 ────────────────────────────────────────
+  const authBypass = isAllowed(pathname);
+  const secret = process.env.APP_AUTH_SECRET;
+
+  if (!authBypass && secret) {
+    const cookie = req.cookies.get(SESSION_COOKIE)?.value;
+    let sessionOk = false;
+    if (cookie) {
+      const session = await verifySession(cookie, secret);
+      if (session) sessionOk = true;
+    }
+
+    if (!sessionOk) {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.search = `?next=${encodeURIComponent(pathname + req.nextUrl.search)}`;
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
+  // ── (2) Cafe24 토큰 자동 갱신 ─────────────────────────────────────
+  // API / 정적 파일은 토큰 갱신 대상 아님
+  if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) {
     return NextResponse.next();
   }
 
@@ -57,5 +107,8 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    // 정적 파일 + Next 내부 자원 제외
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)).*)",
+  ],
 };
