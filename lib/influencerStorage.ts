@@ -12,7 +12,8 @@ export type InfluencerStatus =
   | "replied"      // 답장수신
   | "negotiating"  // 협의중
   | "confirmed"    // 협찬확정
-  | "shipped"      // 발송완료
+  | "shipped"      // 제품발송 (협찬 제품 배송 완료)
+  | "posted"       // 포스팅완료 (제품 수령 후 게시물 업로드 완료)
   | "rejected";    // 거절/보류
 
 export type Priority = "high" | "medium" | "low";
@@ -63,15 +64,16 @@ export const STATUS_CONFIG: Record<InfluencerStatus, {
   border: string;
   next: InfluencerStatus | null;
 }> = {
-  discovered:  { label: "발굴됨",    color: "text-zinc-500",    bg: "bg-zinc-100",    border: "border-zinc-200",   next: "reviewing"   },
-  reviewing:   { label: "검토중",    color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200",   next: "approved"    },
-  approved:    { label: "승인됨",    color: "text-violet-600",  bg: "bg-violet-50",   border: "border-violet-200", next: "dm_sent"     },
-  dm_sent:     { label: "DM발송",    color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200",  next: "replied"     },
-  replied:     { label: "답장수신",  color: "text-sky-600",     bg: "bg-sky-50",      border: "border-sky-200",    next: "negotiating" },
-  negotiating: { label: "협의중",    color: "text-orange-600",  bg: "bg-orange-50",   border: "border-orange-200", next: "confirmed"   },
-  confirmed:   { label: "협찬확정",  color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200",next: "shipped"     },
-  shipped:     { label: "발송완료",  color: "text-teal-600",    bg: "bg-teal-50",     border: "border-teal-200",   next: null          },
-  rejected:    { label: "거절/보류", color: "text-red-500",     bg: "bg-red-50",      border: "border-red-200",    next: null          },
+  discovered:  { label: "발굴됨",     color: "text-zinc-500",    bg: "bg-zinc-100",    border: "border-zinc-200",   next: "reviewing"   },
+  reviewing:   { label: "검토중",     color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200",   next: "approved"    },
+  approved:    { label: "승인됨",     color: "text-violet-600",  bg: "bg-violet-50",   border: "border-violet-200", next: "dm_sent"     },
+  dm_sent:     { label: "DM발송",     color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200",  next: "replied"     },
+  replied:     { label: "답장수신",   color: "text-sky-600",     bg: "bg-sky-50",      border: "border-sky-200",    next: "negotiating" },
+  negotiating: { label: "협의중",     color: "text-orange-600",  bg: "bg-orange-50",   border: "border-orange-200", next: "confirmed"   },
+  confirmed:   { label: "협찬확정",   color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200",next: "shipped"     },
+  shipped:     { label: "제품발송",   color: "text-teal-600",    bg: "bg-teal-50",     border: "border-teal-200",   next: "posted"      },
+  posted:      { label: "포스팅완료", color: "text-fuchsia-600", bg: "bg-fuchsia-50",  border: "border-fuchsia-200",next: null          },
+  rejected:    { label: "거절/보류",  color: "text-red-500",     bg: "bg-red-50",      border: "border-red-200",    next: null          },
 };
 
 export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: string }> = {

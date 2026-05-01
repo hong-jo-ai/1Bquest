@@ -7,12 +7,15 @@ import {
   MessageSquare,
   Package,
   Trash2,
+  Check,
 } from "lucide-react";
 import {
   STATUS_CONFIG,
   PLATFORM_CONFIG,
   formatFollowers,
+  updateInfluencer,
   type Influencer,
+  type InfluencerStatus,
 } from "@/lib/influencerStorage";
 
 interface Props {
@@ -20,7 +23,21 @@ interface Props {
   onConversation: (inf: Influencer) => void;
   onShipping: (inf: Influencer) => void;
   onDelete: (id: string) => void;
+  onChange?: () => void; // 상태 변경 후 부모 reload
 }
+
+const ALL_STATUSES: InfluencerStatus[] = [
+  "discovered",
+  "reviewing",
+  "approved",
+  "dm_sent",
+  "replied",
+  "negotiating",
+  "confirmed",
+  "shipped",
+  "posted",
+  "rejected",
+];
 
 function getProfileUrl(
   platform: Influencer["platform"],
@@ -62,6 +79,7 @@ export default function InfluencerCard({
   onConversation,
   onShipping,
   onDelete,
+  onChange,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -72,11 +90,20 @@ export default function InfluencerCard({
   const showShipping =
     inf.status === "negotiating" ||
     inf.status === "confirmed" ||
-    inf.status === "shipped";
+    inf.status === "shipped" ||
+    inf.status === "posted";
   const canDM =
-    inf.status !== "shipped" &&
-    inf.status !== "rejected" &&
-    inf.status !== "discovered";
+    inf.status !== "rejected" && inf.status !== "discovered";
+
+  const handleStatusChange = (newStatus: InfluencerStatus) => {
+    if (newStatus === inf.status) {
+      setMenuOpen(false);
+      return;
+    }
+    updateInfluencer(inf.id, { status: newStatus });
+    setMenuOpen(false);
+    onChange?.();
+  };
 
   const initials = (inf.name || inf.handle).slice(0, 1).toUpperCase();
 
@@ -208,7 +235,7 @@ export default function InfluencerCard({
                   aria-label="메뉴 닫기"
                   tabIndex={-1}
                 />
-                <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden w-[200px]">
                   <a
                     href={profileUrl}
                     target="_blank"
@@ -240,6 +267,35 @@ export default function InfluencerCard({
                       <Package size={14} /> 배송
                     </button>
                   )}
+
+                  {/* 상태 변경 섹션 */}
+                  <div className="border-t border-zinc-100 dark:border-zinc-800 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 bg-zinc-50 dark:bg-zinc-950/50">
+                    상태 변경
+                  </div>
+                  {ALL_STATUSES.map((s) => {
+                    const cfg = STATUS_CONFIG[s];
+                    const isCurrent = s === inf.status;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => handleStatusChange(s)}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors ${
+                          isCurrent
+                            ? `${cfg.bg} ${cfg.color} font-semibold`
+                            : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`inline-block w-2 h-2 rounded-full ${cfg.bg.replace("bg-", "bg-").replace("-50", "-400").replace("-100", "-400")}`}
+                          />
+                          {cfg.label}
+                        </span>
+                        {isCurrent && <Check size={14} />}
+                      </button>
+                    );
+                  })}
+
                   <button
                     onClick={() => {
                       onDelete(inf.id);

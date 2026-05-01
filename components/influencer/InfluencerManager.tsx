@@ -30,7 +30,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "replied", label: "답장수신" },
   { id: "negotiating", label: "협의중" },
   { id: "confirmed", label: "협찬확정" },
-  { id: "shipped", label: "발송완료" },
+  { id: "shipped", label: "제품발송" },
+  { id: "posted", label: "포스팅완료" },
   { id: "rejected", label: "거절" },
 ];
 
@@ -125,9 +126,9 @@ export default function InfluencerManager() {
   // 통계
   const stats = {
     total:     influencers.length,
-    dmSent:    influencers.filter((i) => ["dm_sent", "replied", "negotiating", "confirmed", "shipped"].includes(i.status)).length,
-    replied:   influencers.filter((i) => ["replied", "negotiating", "confirmed", "shipped"].includes(i.status)).length,
-    confirmed: influencers.filter((i) => i.status === "confirmed" || i.status === "shipped").length,
+    dmSent:    influencers.filter((i) => ["dm_sent", "replied", "negotiating", "confirmed", "shipped", "posted"].includes(i.status)).length,
+    replied:   influencers.filter((i) => ["replied", "negotiating", "confirmed", "shipped", "posted"].includes(i.status)).length,
+    posted:    influencers.filter((i) => i.status === "posted").length,
   };
 
   const handleDelete = (id: string) => {
@@ -209,10 +210,10 @@ export default function InfluencerManager() {
 
         {/* 통계 카드 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
-          <StatCard label="전체 인플루언서" value={stats.total}     icon={Users}        color="bg-violet-500" />
-          <StatCard label="DM 발송 완료"    value={stats.dmSent}    icon={Send}         color="bg-sky-500"    />
-          <StatCard label="답장 수신"        value={stats.replied}   icon={MessageSquare} color="bg-amber-500" />
-          <StatCard label="협찬 확정"        value={stats.confirmed} icon={Package}      color="bg-teal-500"   />
+          <StatCard label="전체 인플루언서" value={stats.total}   icon={Users}        color="bg-violet-500" />
+          <StatCard label="DM 발송 완료"    value={stats.dmSent}  icon={Send}         color="bg-sky-500"    />
+          <StatCard label="답장 수신"        value={stats.replied} icon={MessageSquare} color="bg-amber-500" />
+          <StatCard label="포스팅 완료"      value={stats.posted}  icon={Package}      color="bg-fuchsia-500" />
         </div>
 
         {/* 파이프라인 탭 + 검색 */}
@@ -301,6 +302,7 @@ export default function InfluencerManager() {
                 onConversation={(i) => setConversationTarget(i)}
                 onShipping={(i) => setShippingTarget(i)}
                 onDelete={handleDelete}
+                onChange={reload}
               />
             ))}
           </div>
