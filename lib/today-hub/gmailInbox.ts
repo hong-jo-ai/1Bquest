@@ -102,12 +102,78 @@ function relativeKr(iso: string): { label: string; overdue: boolean } {
   return { label, overdue: hours >= 24 };
 }
 
+/**
+ * Gmail 스레드에서 이미 답장이 나갔는지 자동 감지.
+ * 사용자가 CS 인박스, Gmail 웹/모바일 어디서든 보냈으면 SENT 메시지가 스레드에 추가됨.
+ * 받은 시각보다 새로운 SENT 메시지가 있으면 userReplied=true 로 캐시 갱신 + 위젯에서 제외.
+ */
+async function dismissAlreadyReplied(
+  items: ClassifiedEmail[],
+): Promise<ClassifiedEmail[]> {
+  if (items.length === 0) return items;
+  let token: string | null;
+  try {
+    token = await getGoogleAccessTokenFromStore();
+  } catch {
+    return items; // 토큰 못 가져오면 그냥 통과 (위젯은 정상 표시)
+  }
+  if (!token) return items;
+
+  const checks = await Promise.allSettled(
+    items.map(async (item) => {
+      try {
+        const thread = await gmailFetch<{
+          messages?: Array<{
+            labelIds?: string[];
+            internalDate?: string;
+          }>;
+        }>(token, `/threads/${item.threadId}?format=minimal`);
+        const msgs = thread.messages ?? [];
+
+        let latestReceived = 0;
+        let latestSent = 0;
+        for (const m of msgs) {
+          const ts = parseInt(m.internalDate || "0", 10);
+          if ((m.labelIds ?? []).includes("SENT")) {
+            if (ts > latestSent) latestSent = ts;
+          } else {
+            if (ts > latestReceived) latestReceived = ts;
+          }
+        }
+        // 받은 메시지 이후에 보낸 메시지가 있으면 답장 완료로 간주
+        const replied = latestSent > 0 && latestSent >= latestReceived;
+        return { item, replied };
+      } catch {
+        return { item, replied: false };
+      }
+    }),
+  );
+
+  const remaining: ClassifiedEmail[] = [];
+  for (const r of checks) {
+    if (r.status !== "fulfilled") continue;
+    const { item, replied } = r.value;
+    if (replied) {
+      // 캐시 갱신 — 다음 호출부터는 Gmail 재조회 없이 빠르게 제외됨
+      await patchClassifiedEmail(item.messageId, {
+        userReplied: true,
+        dismissedAt: new Date().toISOString(),
+      }).catch(() => {});
+    } else {
+      remaining.push(item);
+    }
+  }
+  return remaining;
+}
+
 /** 위젯에 노출할 메일 목록 — 분류 결과 중 needsReply 인 것만, 사용자 처리된 건 제외 */
 export async function listInboxItems(): Promise<InboxItem[]> {
   const all = await listClassifiedEmails();
-  const visible = all.filter(
+  const candidates = all.filter(
     (e) => e.needsReply && !e.userMarkedNotNeeded && !e.userReplied,
   );
+  // CS 인박스 / Gmail 웹 / 모바일 어디서든 답장했으면 자동 감지 후 제외
+  const visible = await dismissAlreadyReplied(candidates);
   return visible
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
     .map((e) => {
@@ -285,6 +351,26 @@ export async function sendReplyToThread(
   }
 
   return { ok: true, messageId: json.id };
+}
+
+/**
+ * 수동 '답변 완료' 마킹 — 위젯에서 숨김.
+ * markNotNeeded 와 다른 점: 부정 사례로 학습시키지 않음 (분류는 정확했고, 단지 이미 답장한 상태).
+ */
+export async function markReplied(messageId: string): Promise<{ ok: boolean; error?: string }> {
+  const email = await getClassifiedEmail(messageId);
+  if (!email) return { ok: false, error: "분류 결과 없음" };
+  // 같은 threadId 의 모든 항목을 함께 마킹 (스레드 내 여러 메시지가 분류돼있을 수 있음)
+  const all = await listClassifiedEmails();
+  for (const e of all) {
+    if (e.threadId === email.threadId && !e.userReplied) {
+      await patchClassifiedEmail(e.messageId, {
+        userReplied: true,
+        dismissedAt: new Date().toISOString(),
+      });
+    }
+  }
+  return { ok: true };
 }
 
 /** '필요없음' 처리 — 위젯에서 숨김 + 부정 사례로 누적해 다음 분류에 영향 */

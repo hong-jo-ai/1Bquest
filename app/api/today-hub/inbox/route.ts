@@ -3,10 +3,11 @@
  *   GET                                → AI 가 needsReply=true 로 분류한 메일 목록 (사용자 처리된 건 제외)
  *   GET ?threadId=                     → 단일 스레드 상세 (모달용)
  *   POST { threadId, body }            → 답장 전송 (userReplied 자동 마킹)
+ *   PATCH { messageId, replied: true } → 수동 '답변 완료' (부정 사례 X)
  *   DELETE { messageId, reason? }      → '필요없음' 처리 (부정 사례 누적)
  */
 import {
-  listInboxItems, getThreadDetail, sendReplyToThread, markNotNeeded,
+  listInboxItems, getThreadDetail, sendReplyToThread, markNotNeeded, markReplied,
 } from "@/lib/today-hub/gmailInbox";
 import { getStatus } from "@/lib/today-hub/inboxStore";
 import type { NextRequest } from "next/server";
@@ -67,6 +68,25 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: result.error ?? "전송 실패" }, { status: 500 });
   }
   return Response.json({ ok: true, messageId: result.messageId });
+}
+
+export async function PATCH(req: NextRequest) {
+  let body: { messageId?: string; replied?: boolean };
+  try { body = await req.json(); }
+  catch { return Response.json({ ok: false, error: "잘못된 본문" }, { status: 400 }); }
+
+  if (!body.messageId) {
+    return Response.json({ ok: false, error: "messageId 필수" }, { status: 400 });
+  }
+  if (body.replied !== true) {
+    return Response.json({ ok: false, error: "replied: true 만 지원" }, { status: 400 });
+  }
+
+  const result = await markReplied(body.messageId);
+  if (!result.ok) {
+    return Response.json({ ok: false, error: result.error }, { status: 500 });
+  }
+  return Response.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest) {

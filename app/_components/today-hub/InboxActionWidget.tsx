@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Mail, Loader2, AlertCircle, RefreshCw, Sparkles, X } from "lucide-react";
+import { Mail, Loader2, AlertCircle, RefreshCw, Sparkles, X, Check } from "lucide-react";
 import InboxReplyModal from "./InboxReplyModal";
 
 interface InboxItem {
@@ -101,6 +101,24 @@ export default function InboxActionWidget() {
       setItems((prev) => prev.filter((x) => x.messageId !== it.messageId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleMarkReplied = async (it: InboxItem) => {
+    // 옵티미스틱 — UI 즉시 제거
+    setItems((prev) => prev.filter((x) => x.messageId !== it.messageId));
+    try {
+      const res = await fetch("/api/today-hub/inbox", {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ messageId: it.messageId, replied: true }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "처리 실패");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      // 실패 시 다시 불러와서 복원
+      load();
     }
   };
 
@@ -239,14 +257,24 @@ export default function InboxActionWidget() {
                 }`}>
                   {it.receivedLabel}
                 </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleNotNeeded(it); }}
-                  className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition shrink-0"
-                  aria-label="답장 불필요로 표시 (다음부터 비슷한 메일 자동 제외)"
-                  title="필요없음 — 다음부터 자동 학습"
-                >
-                  <X size={12} />
-                </button>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleMarkReplied(it); }}
+                    className="text-zinc-300 hover:text-emerald-600 transition p-0.5 sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label="답변 완료로 표시"
+                    title="답변 완료 — 위젯에서 숨김"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleNotNeeded(it); }}
+                    className="text-zinc-300 hover:text-rose-500 transition p-0.5 sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label="답장 불필요로 표시 (다음부터 비슷한 메일 자동 제외)"
+                    title="필요없음 — 다음부터 자동 학습"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
             </li>
           ))}
