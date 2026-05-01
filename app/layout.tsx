@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title:       "PAULVICE",
-  description: "폴바이스 운영 도구",
+  title:       "Harriotwatches Dashboard",
+  description: "해리엇워치스 / 폴바이스 운영 도구",
 };
 
 export const viewport: Viewport = {
