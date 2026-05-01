@@ -90,11 +90,13 @@ export default function InfluencerCard({
 
   return (
     <div
-      className={`relative bg-white dark:bg-zinc-900 rounded-2xl border ${status.border} overflow-hidden transition-all hover:shadow-md`}
+      className={`relative bg-white dark:bg-zinc-900 rounded-2xl border ${status.border} transition-all hover:shadow-md ${
+        menuOpen ? "z-30" : ""
+      }`}
     >
-      {/* 우선순위 = high → 좌측 강조 라인 */}
+      {/* 우선순위 = high → 좌측 강조 라인 (카드 둥근 모서리에 맞춰 rounded-l) */}
       {inf.priority === "high" && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-400" />
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-400 rounded-l-2xl" />
       )}
 
       <div className="flex items-center gap-3 p-3 sm:p-4">
