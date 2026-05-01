@@ -502,7 +502,7 @@ export default function InboxClient() {
           ════════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex h-[calc(100vh-56px)] bg-zinc-50 dark:bg-zinc-950">
       {/* ── 좌측 사이드바: 필터 ───────────────────────────────────── */}
-      <aside className="w-56 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
+      <aside className="w-48 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
         <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -646,7 +646,7 @@ export default function InboxClient() {
       </aside>
 
       {/* ── 가운데: 대화 목록 ───────────────────────────────────── */}
-      <section className="w-[380px] flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
+      <section className="w-[340px] flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
         <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 z-10">
           <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
             {statusFilter === "all"
@@ -834,61 +834,65 @@ function ThreadDetailView({
 
   return (
     <>
-      <header className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Avatar name={customerName} brand={thread.brand} size={44} />
-            <div className="min-w-0">
-              <div className="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">
+      <header className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <Avatar name={customerName} brand={thread.brand} size={40} />
+            <div className="min-w-0 flex-1">
+              <div className="text-base font-bold text-zinc-900 dark:text-zinc-100 truncate leading-snug">
                 {thread.subject || customerName}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs">
+              {/* 배지/메타 정보 — flex-wrap 으로 좁은 화면에서 줄바꿈 */}
+              <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1 text-xs">
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border font-medium ${channelStyle.bg} ${channelStyle.color}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium ${channelStyle.bg} ${channelStyle.color}`}
                 >
                   <ChannelIcon size={10} />
                   {CHANNEL_LABEL[thread.channel]}
                 </span>
-                <span className="text-zinc-500">·</span>
-                <span className="text-zinc-600 dark:text-zinc-400">
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[thread.status]}`}
+                >
+                  {STATUS_LABEL[thread.status]}
+                </span>
+                <span className="text-zinc-600 dark:text-zinc-400 truncate max-w-[160px]">
                   {customerName}
                 </span>
                 {thread.customer_handle &&
                   thread.customer_handle !== customerName && (
-                    <span className="text-zinc-400 truncate max-w-[200px]">
+                    <span className="text-zinc-400 truncate max-w-[180px]">
                       ({thread.customer_handle})
                     </span>
                   )}
-                <span
-                  className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[thread.status]}`}
-                >
-                  {STATUS_LABEL[thread.status]}
-                </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* 액션 버튼 — 좁은 폭에서는 아이콘만 보이도록 (lg 이상에서 라벨 표시) */}
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={onNotCs}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
+              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
               title="이 스레드 보관"
             >
               <Ban size={12} />
-              CS 아님
+              <span className="hidden lg:inline">CS 아님</span>
             </button>
             <button
               onClick={onBlockSender}
-              className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800"
+              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800"
               title="보관 + 송신자 자동 차단"
+              aria-label="송신자 차단"
             >
-              송신자 차단
+              <Ban size={12} className="lg:hidden" />
+              <span className="hidden lg:inline">송신자 차단</span>
             </button>
             <button
               onClick={onResolved}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
+              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
+              title="해결됨으로 표시"
             >
               <Check size={12} />
-              해결됨
+              <span className="hidden lg:inline">해결됨</span>
             </button>
           </div>
         </div>
