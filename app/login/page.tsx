@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "로그인 — Paulwise" };
+export const metadata = { title: "로그인 — Harriotwatches Dashboard" };
 
 interface SearchParams {
   next?: string;
@@ -29,11 +29,11 @@ export default async function LoginPage({
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-8 shadow-sm">
         <div className="text-center mb-6">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold">
-            P
+          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center text-white text-2xl font-bold">
+            H
           </div>
           <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">
-            Paulwise Dashboard
+            Harriotwatches Dashboard
           </h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             Google 계정으로 로그인하세요
