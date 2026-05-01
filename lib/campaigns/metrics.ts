@@ -44,7 +44,10 @@ interface RawOrder {
   payment_amount?: string;
   total_amount?: string;
   order_price_amount?: string;
+  actual_order_amount?: string;
+  actual_payment_amount?: string;
   paid_amount?: string;
+  naverpay_pay_amount?: string;
   ordered_date?: string;
   order_date?: string;
   buyer_name?:  string;
@@ -53,6 +56,12 @@ interface RawOrder {
   member_email?: string;
   email?: string;
   cellphone?: string;
+  items?: Array<{
+    actual_quantity?: number | string;
+    quantity?: number | string;
+    order_price?: string | number;
+    product_price?: string | number;
+  }>;
   /** embed=coupons 시 채워짐 */
   coupons?: Array<{
     coupon_code?: string;
@@ -71,14 +80,10 @@ function orderHasCoupon(order: RawOrder, couponCode: string): boolean {
   return false;
 }
 
+// cafe24Data 의 orderRevenue 와 동일 로직 — 네이버페이 전액 결제 포함.
+import { orderRevenue as cafe24OrderRevenue } from "@/lib/cafe24Data";
 function orderRevenue(order: RawOrder): number {
-  return parseFloat(
-    order.payment_amount ??
-    order.paid_amount ??
-    order.total_amount ??
-    order.order_price_amount ??
-    "0"
-  );
+  return cafe24OrderRevenue(order);
 }
 
 function orderToBuyer(order: RawOrder): CampaignBuyer {

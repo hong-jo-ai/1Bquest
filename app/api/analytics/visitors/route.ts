@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { metaGet, META_BASE } from "@/lib/metaClient";
-import { fetchAllOrders } from "@/lib/cafe24Data";
+import { fetchAllOrders, orderRevenue } from "@/lib/cafe24Data";
 import { fetchGa4Data, refreshGoogleToken, type Ga4Data } from "@/lib/ga4Client";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
@@ -248,9 +248,7 @@ export async function GET(_req: NextRequest) {
         const ds = kstDateStr(o.payment_date ?? o.order_date);
         if (dateMap[ds]) {
           dateMap[ds].orders  += 1;
-          dateMap[ds].revenue += parseFloat(
-            o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0"
-          );
+          dateMap[ds].revenue += orderRevenue(o);
         }
       });
       hasCafe24 = true;

@@ -125,11 +125,64 @@ export async function fetchAllOrders(
   return all;
 }
 
+/**
+ * 주문 1건의 실제 매출 금액.
+ *
+ * Cafe24는 결제수단별로 금액 필드가 분산되어 있어서,
+ * 네이버페이 전액 결제처럼 외부 PG로 처리되는 케이스는 total_amount/payment_amount가
+ * 0으로 들어오는 경우가 있음. 이 헬퍼는 모든 fallback을 시도해 실제 매출을 추출:
+ *
+ *   1) 표준 필드: total_amount → payment_amount → actual_payment_amount
+ *   2) 0이면 naverpay_pay_amount (네이버페이 전액 결제 케이스)
+ *   3) 그래도 0이면 order_price_amount (주문가 = 상품가 합계)
+ *   4) 마지막 수단: items 배열 합산
+ */
+export function orderRevenue(o: {
+  total_amount?: string | number;
+  payment_amount?: string | number;
+  actual_payment_amount?: string | number;
+  naverpay_pay_amount?: string | number;
+  order_price_amount?: string | number;
+  actual_order_amount?: string | number;
+  items?: Array<{
+    actual_quantity?: number | string;
+    quantity?: number | string;
+    order_price?: string | number;
+    product_price?: string | number;
+  }>;
+}): number {
+  const num = (v: unknown): number => {
+    const n = parseFloat(String(v ?? "0"));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // 1) 표준 매출 필드 (대부분의 주문은 여기서 결정됨)
+  const std = num(o.total_amount) || num(o.payment_amount) || num(o.actual_payment_amount);
+  if (std > 0) return std;
+
+  // 2) 네이버페이 전액 결제 — payment_amount/total_amount가 0이고
+  //    naverpay_pay_amount만 채워지는 케이스
+  const npay = num(o.naverpay_pay_amount);
+  if (npay > 0) return npay;
+
+  // 3) 주문가 (상품가 합계) — 할인/배송비 미포함이지만 0보다는 정확
+  const orderPrice = num(o.actual_order_amount) || num(o.order_price_amount);
+  if (orderPrice > 0) return orderPrice;
+
+  // 4) items 배열에서 직접 합산
+  if (Array.isArray(o.items)) {
+    return o.items.reduce((s, it) => {
+      const qty = num(it.actual_quantity ?? it.quantity ?? 1) || 1;
+      const price = num(it.order_price) || num(it.product_price);
+      return s + price * qty;
+    }, 0);
+  }
+
+  return 0;
+}
+
 function summarize(orders: any[]): PeriodSummary {
-  const revenue = orders.reduce(
-    (s, o) => s + parseFloat(o.total_amount ?? o.payment_amount ?? "0"),
-    0
-  );
+  const revenue = orders.reduce((s, o) => s + orderRevenue(o), 0);
   const count = orders.length;
   return {
     revenue: Math.round(revenue),
@@ -214,9 +267,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     return {
       hour: `${String(h).padStart(2, "0")}시`,
       orders: filtered.length,
-      revenue: Math.round(
-        filtered.reduce((s, o) => s + parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0"), 0)
-      ),
+      revenue: Math.round(filtered.reduce((s, o) => s + orderRevenue(o), 0)),
     };
   });
 
@@ -231,9 +282,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     );
     return {
       day,
-      revenue: Math.round(
-        dayOrders.reduce((s, o) => s + parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0"), 0)
-      ),
+      revenue: Math.round(dayOrders.reduce((s, o) => s + orderRevenue(o), 0)),
       orders: dayOrders.length,
     };
   });
@@ -248,7 +297,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
   for (const o of allOrdersForDaily) {
     const ds = kstDateStr(o.payment_date ?? o.order_date);
     const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0, shipments: new Set<string>() };
-    cur.revenue += parseFloat(o.total_amount ?? o.payment_amount ?? o.actual_order_amount ?? "0");
+    cur.revenue += orderRevenue(o);
     cur.orders += 1;
     // 합배송 키: 주문자+수령인+연락처+주소
     const buyer = o.buyer_name ?? "";
