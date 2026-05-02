@@ -144,6 +144,7 @@ export default function InboxClient() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [context, setContext] = useState<ContextData | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [operatorNotes, setOperatorNotes] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftNote, setDraftNote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -223,6 +224,9 @@ export default function InboxClient() {
       setContext(null);
       setMobileContextOpen(false);
     }
+    // 다른 스레드로 전환할 때 운영자 메모 초기화 (이전 스레드 메모가 새 초안에 영향 주지 않도록)
+    setOperatorNotes("");
+    setDraftNote(null);
   }, [selectedId, loadDetail]);
 
   // 모바일에서 상세가 열려있을 때 기기 뒤로가기 버튼으로 목록 복귀
@@ -285,7 +289,10 @@ export default function InboxClient() {
       const res = await fetch("/api/cs/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: selectedId }),
+        body: JSON.stringify({
+          threadId: selectedId,
+          operatorNotes: operatorNotes.trim() || undefined,
+        }),
       });
       const json = await res.json();
       if (json.draft) {
@@ -311,6 +318,7 @@ export default function InboxClient() {
       const json = await res.json();
       if (json.ok) {
         setReplyText("");
+        setOperatorNotes("");
         setDraftNote(null);
         await loadDetail(selectedId);
         await loadThreads();
@@ -479,6 +487,8 @@ export default function InboxClient() {
               onToggleContext={() => setMobileContextOpen((v) => !v)}
               replyText={replyText}
               setReplyText={setReplyText}
+              operatorNotes={operatorNotes}
+              setOperatorNotes={setOperatorNotes}
               draftLoading={draftLoading}
               draftNote={draftNote}
               sending={sending}
@@ -694,6 +704,8 @@ export default function InboxClient() {
             detail={detail}
             replyText={replyText}
             setReplyText={setReplyText}
+            operatorNotes={operatorNotes}
+            setOperatorNotes={setOperatorNotes}
             draftLoading={draftLoading}
             draftNote={draftNote}
             sending={sending}
@@ -806,6 +818,8 @@ function ThreadDetailView({
   detail,
   replyText,
   setReplyText,
+  operatorNotes,
+  setOperatorNotes,
   draftLoading,
   draftNote,
   sending,
@@ -818,6 +832,8 @@ function ThreadDetailView({
   detail: ThreadDetail;
   replyText: string;
   setReplyText: (v: string) => void;
+  operatorNotes: string;
+  setOperatorNotes: (v: string) => void;
   draftLoading: boolean;
   draftNote: string | null;
   sending: boolean;
@@ -910,20 +926,29 @@ function ThreadDetailView({
       </div>
 
       <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <div className="px-6 py-3 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60">
-          <button
-            onClick={onDraft}
-            disabled={draftLoading}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:shadow-md flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Sparkles size={12} className={draftLoading ? "animate-pulse" : ""} />
-            {draftLoading ? "생성 중…" : "AI 답장 초안"}
-          </button>
-          {draftNote && (
-            <span className="text-[10px] text-zinc-500 truncate ml-3 flex-1">
-              💡 {draftNote}
-            </span>
-          )}
+        <div className="px-6 py-3 border-b border-zinc-100 dark:border-zinc-800/60">
+          <textarea
+            value={operatorNotes}
+            onChange={(e) => setOperatorNotes(e.target.value)}
+            placeholder="AI 에게 줄 메모 (선택) — 핵심 정보만 짧게: 예) 각인 한글 가능, 5자 제한 / 7월 발송 예정 / 환불 가능"
+            rows={2}
+            className="w-full px-3 py-2 text-xs rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none"
+          />
+          <div className="flex items-center justify-between mt-2">
+            <button
+              onClick={onDraft}
+              disabled={draftLoading}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:shadow-md flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Sparkles size={12} className={draftLoading ? "animate-pulse" : ""} />
+              {draftLoading ? "생성 중…" : operatorNotes.trim() ? "메모 반영해서 작성" : "AI 답장 초안"}
+            </button>
+            {draftNote && (
+              <span className="text-[10px] text-zinc-500 truncate ml-3 flex-1 text-right">
+                💡 {draftNote}
+              </span>
+            )}
+          </div>
         </div>
         <div className="p-4">
           <textarea
@@ -1494,6 +1519,8 @@ function MobileThreadDetailView({
   onToggleContext,
   replyText,
   setReplyText,
+  operatorNotes,
+  setOperatorNotes,
   draftLoading,
   draftNote,
   sending,
@@ -1510,6 +1537,8 @@ function MobileThreadDetailView({
   onToggleContext: () => void;
   replyText: string;
   setReplyText: (v: string) => void;
+  operatorNotes: string;
+  setOperatorNotes: (v: string) => void;
   draftLoading: boolean;
   draftNote: string | null;
   sending: boolean;
@@ -1641,20 +1670,29 @@ function MobileThreadDetailView({
         className="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="px-3 py-2 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800/60 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            onClick={onDraft}
-            disabled={draftLoading}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white disabled:opacity-50"
-          >
-            <Sparkles size={12} className={draftLoading ? "animate-pulse" : ""} />
-            {draftLoading ? "생성 중…" : "AI 초안"}
-          </button>
-          {draftNote && (
-            <span className="text-[10px] text-zinc-500 truncate flex-1 min-w-0">
-              💡 {draftNote}
-            </span>
-          )}
+        <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800/60">
+          <textarea
+            value={operatorNotes}
+            onChange={(e) => setOperatorNotes(e.target.value)}
+            placeholder="AI 에게 줄 메모 (선택) — 짧게: 예) 각인 한글 가능, 5자 제한"
+            rows={2}
+            className="w-full px-2.5 py-1.5 text-[12px] rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none"
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={onDraft}
+              disabled={draftLoading}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white disabled:opacity-50"
+            >
+              <Sparkles size={12} className={draftLoading ? "animate-pulse" : ""} />
+              {draftLoading ? "생성 중…" : operatorNotes.trim() ? "메모 반영해서 작성" : "AI 초안"}
+            </button>
+            {draftNote && (
+              <span className="text-[10px] text-zinc-500 truncate flex-1 min-w-0">
+                💡 {draftNote}
+              </span>
+            )}
+          </div>
         </div>
         <div className="p-3">
           <div className="flex items-end gap-2">

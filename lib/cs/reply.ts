@@ -10,6 +10,7 @@ import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import { cafe24Post, cafe24Put } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import { answerNaverQna } from "../naverCommerceClient";
+import { addReplyExample } from "./replyExamples";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -45,7 +46,27 @@ export async function sendReply(
     };
   }
 
-  return fn(threadId, body);
+  const result = await fn(threadId, body);
+
+  // 답변 송신 성공 시 — 직전 고객 메시지와 페어로 누적해서 다음 AI 초안의 few-shot 으로 활용
+  if (result.ok) {
+    try {
+      const latestIn = [...data.messages].reverse().find((m) => m.direction === "in");
+      const customer = latestIn?.body_text?.trim();
+      if (customer) {
+        await addReplyExample({
+          brand:    thread.brand as CsBrandId,
+          channel:  thread.channel,
+          customer,
+          reply:    body,
+        });
+      }
+    } catch (e) {
+      console.warn("[cs/reply] addReplyExample 실패:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  return result;
 }
 
 async function sendGmailReply(
