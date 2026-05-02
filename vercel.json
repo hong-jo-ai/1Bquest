@@ -37,6 +37,10 @@
       "schedule": "20 * * * *"
     },
     {
+      "path": "/api/cs/ingest/gmail",
+      "schedule": "40 * * * *"
+    },
+    {
       "path": "/api/cs/ingest/naver",
       "schedule": "25 * * * *"
     },
