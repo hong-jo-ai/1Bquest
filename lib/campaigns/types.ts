@@ -8,7 +8,9 @@ export interface Campaign {
   startDate:    string;
   /** YYYY-MM-DD KST. null = 종료일 미정 (open-ended) */
   endDate:      string | null;
-  /** Cafe24 등록한 쿠폰 코드. 주문 매칭용. */
+  /** 인플루언서 협업용으로 만든 Cafe24 상품 번호들 (product_no). 옵션은 상품 옵션으로 들어감. 주문 매칭의 1순위. */
+  productNos?:  number[];
+  /** (legacy) Cafe24 쿠폰 코드. productNos 가 비어있을 때만 fallback 매칭. */
   couponCode:   string | null;
   /** UTM 소스 (인플루언서 식별자). 공유 URL에 ?utm_source=… 로 첨부됨. */
   utmSource:    string;
@@ -37,7 +39,7 @@ export interface CampaignMetrics {
   avgOrder:      number;
   buyers:        CampaignBuyer[];
   /** 매칭 방식 안내 — UI 에 표시 */
-  matchedBy:     "coupon" | "none";
+  matchedBy:     "product" | "coupon" | "none";
   /** 쿠폰 정보가 주문에서 발견 안 된 경우 등 사용자 안내 */
   warning?:      string;
 }

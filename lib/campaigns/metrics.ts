@@ -1,15 +1,19 @@
 /**
  * Cafe24 주문에서 캠페인 매출/주문/구매자 명단 집계.
  *
- * 매칭 방식: 캠페인의 couponCode 와 일치하는 쿠폰이 적용된 주문만 합산.
- * Cafe24 orders.embed=coupons 응답의 `o.coupons` 배열을 검사.
+ * 매칭 방식 (우선순위):
+ *   1. campaign.productNos: 인플루언서 협업용 신상품 product_no — 주문의 items 중 이 product_no
+ *      가 있으면 매칭 (옵션 차이 무관, 옵션은 상품 내부 옵션이라 product_no 동일).
+ *   2. campaign.couponCode (legacy): productNos 비어있을 때만 fallback. 쿠폰이 적용된 주문 매칭.
+ *
+ * 두 경우 모두 — 매칭된 주문 전체 매출을 합산 (인플루언서가 데려온 주문 단위 인정).
  */
 import { cafe24Get } from "@/lib/cafe24Client";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import type { Campaign, CampaignMetrics, CampaignBuyer } from "./types";
 
-/** 캠페인 매칭용 — coupons + buyer 함께 embed 해서 가져옴. */
-async function fetchOrdersWithCoupons(
+/** 캠페인 매칭용 — items + buyer + coupons 함께 embed 해서 가져옴. */
+async function fetchOrdersWithDetails(
   token:     string,
   startDate: string,
   endDate:   string,
@@ -23,7 +27,7 @@ async function fetchOrdersWithCoupons(
       end_date:   endDate,
       limit:      String(limit),
       offset:     String(offset),
-      embed:      "coupons,buyer",
+      embed:      "items,buyer,coupons",
     });
     const data = await cafe24Get(`/api/v2/admin/orders?${qs}`, token);
     const batch: RawOrder[] = data.orders ?? [];
@@ -61,6 +65,7 @@ interface RawOrder {
     quantity?: number | string;
     order_price?: string | number;
     product_price?: string | number;
+    product_no?:    number | string;
   }>;
   /** embed=coupons 시 채워짐 */
   coupons?: Array<{
@@ -69,6 +74,14 @@ interface RawOrder {
     benefit_text?: string;
     benefit_amount?: string;
   }>;
+}
+
+function orderHasProduct(order: RawOrder, productNos: Set<number>): boolean {
+  for (const it of order.items ?? []) {
+    const pn = Number(it.product_no);
+    if (Number.isFinite(pn) && productNos.has(pn)) return true;
+  }
+  return false;
 }
 
 function orderHasCoupon(order: RawOrder, couponCode: string): boolean {
@@ -104,6 +117,11 @@ export async function computeCampaignMetrics(
   const windowStart = campaign.startDate;
   const windowEnd   = (campaign.endDate && campaign.endDate <= today) ? campaign.endDate : today;
 
+  const productNos = (campaign.productNos ?? []).filter((n) => Number.isFinite(n) && n > 0);
+  const hasProductMatch = productNos.length > 0;
+  const hasCouponMatch  = !hasProductMatch && !!campaign.couponCode?.trim();
+  const matchedBy: CampaignMetrics["matchedBy"] = hasProductMatch ? "product" : hasCouponMatch ? "coupon" : "none";
+
   // 캠페인 시작 전이면 빈 메트릭
   if (windowStart > today) {
     return {
@@ -114,18 +132,18 @@ export async function computeCampaignMetrics(
       revenue: 0,
       avgOrder: 0,
       buyers: [],
-      matchedBy: campaign.couponCode ? "coupon" : "none",
+      matchedBy,
     };
   }
 
-  if (!campaign.couponCode || !campaign.couponCode.trim()) {
+  if (matchedBy === "none") {
     return {
       campaignId: campaign.id,
       windowStart, windowEnd,
       ordersCount: 0, revenue: 0, avgOrder: 0,
       buyers: [],
       matchedBy: "none",
-      warning: "쿠폰 코드 미설정 — 캠페인을 편집해 코드를 지정하면 매칭됩니다.",
+      warning: "협업 상품 번호 또는 쿠폰 코드가 없습니다 — 캠페인을 편집해 product_no 를 지정하세요.",
     };
   }
 
@@ -136,33 +154,45 @@ export async function computeCampaignMetrics(
       windowStart, windowEnd,
       ordersCount: 0, revenue: 0, avgOrder: 0,
       buyers: [],
-      matchedBy: "coupon",
+      matchedBy,
       warning: "Cafe24 미연결 — 토큰 갱신 후 다시 조회하세요.",
     };
   }
 
-  const orders = await fetchOrdersWithCoupons(token, windowStart, windowEnd);
+  const orders = await fetchOrdersWithDetails(token, windowStart, windowEnd);
 
-  const matched = orders.filter((o) => orderHasCoupon(o, campaign.couponCode!));
+  let matched: RawOrder[];
+  let warning: string | undefined;
+
+  if (matchedBy === "product") {
+    const productSet = new Set(productNos);
+    matched = orders.filter((o) => orderHasProduct(o, productSet));
+
+    // 진단: items 가 비어있는 주문이 많으면 embed 누락 의심
+    const hasAnyItems = orders.some((o) => (o.items?.length ?? 0) > 0);
+    if (!hasAnyItems && orders.length > 0) {
+      warning = "Cafe24 주문 응답에 items 정보가 없습니다 — embed 옵션 확인 필요.";
+    }
+  } else {
+    matched = orders.filter((o) => orderHasCoupon(o, campaign.couponCode!));
+
+    const hasAnyCouponInfo = orders.some((o) => (o.coupons?.length ?? 0) > 0);
+    if (!hasAnyCouponInfo && orders.length > 0) {
+      warning = "Cafe24 주문 응답에 쿠폰 정보(coupons)가 없습니다 — embed 옵션 또는 admin 권한 확인 필요.";
+    }
+  }
+
   const revenue = matched.reduce((s, o) => s + orderRevenue(o), 0);
   const ordersCount = matched.length;
   const avgOrder = ordersCount > 0 ? Math.round(revenue / ordersCount) : 0;
-
   const buyers = matched.map(orderToBuyer);
-
-  // 쿠폰 정보가 비어있는지 진단
-  const hasAnyCouponInfo = orders.some((o) => (o.coupons?.length ?? 0) > 0);
-  const warning =
-    !hasAnyCouponInfo && orders.length > 0
-      ? "Cafe24 주문 응답에 쿠폰 정보(coupons)가 없습니다 — fetchAllOrders 의 embed 옵션 확인 또는 Cafe24 admin 권한 확인 필요."
-      : undefined;
 
   return {
     campaignId: campaign.id,
     windowStart, windowEnd,
     ordersCount, revenue, avgOrder,
     buyers,
-    matchedBy: "coupon",
+    matchedBy,
     warning,
   };
 }

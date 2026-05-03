@@ -111,7 +111,7 @@ export default function CampaignTracker({ brand }: Props) {
           </div>
           <div>
             <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">캠페인 트래킹</h2>
-            <p className="text-[11px] text-zinc-400 leading-none mt-0.5">인플루언서 컬랩 · 쿠폰 코드 매칭</p>
+            <p className="text-[11px] text-zinc-400 leading-none mt-0.5">인플루언서 컬랩 · 협업 상품 번호 매칭</p>
           </div>
         </div>
 
@@ -235,7 +235,20 @@ function CampaignCard({
           </div>
           <p className="text-[11px] text-zinc-400 mt-0.5 tabular-nums">
             {campaign.startDate} ~ {campaign.endDate ?? "미정"}
-            {campaign.couponCode && <span className="ml-2">· 쿠폰 <code className="text-zinc-600 dark:text-zinc-300">{campaign.couponCode}</code></span>}
+            {campaign.productNos && campaign.productNos.length > 0 ? (
+              <span className="ml-2">
+                · 상품{" "}
+                <code className="text-zinc-600 dark:text-zinc-300">
+                  {campaign.productNos.join(", ")}
+                </code>
+              </span>
+            ) : campaign.couponCode ? (
+              <span className="ml-2">
+                · 쿠폰{" "}
+                <code className="text-zinc-600 dark:text-zinc-300">{campaign.couponCode}</code>
+                <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">(legacy)</span>
+              </span>
+            ) : null}
           </p>
         </div>
         <button

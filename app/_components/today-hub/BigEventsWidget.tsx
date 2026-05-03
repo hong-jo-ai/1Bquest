@@ -15,6 +15,7 @@ export interface MirroredCampaign {
   name:         string;
   startDate:    string;
   endDate:      string | null;
+  productNos?:  number[];
   couponCode:   string | null;
   /** 클릭 시 점프할 앵커 (예: "#campaigns") */
   trackerHref:  string;
@@ -175,12 +176,17 @@ function MirroredCampaignCard({ campaign }: { campaign: MirroredCampaign }) {
           <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">{campaign.name}</p>
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`text-[10px] font-bold tabular-nums ${accent}`}>{statusLabel}</span>
-            {campaign.couponCode && (
+            {campaign.productNos && campaign.productNos.length > 0 ? (
+              <>
+                <span className="text-[10px] text-zinc-300">·</span>
+                <span className="text-[10px] text-zinc-500">상품 {campaign.productNos.join(", ")}</span>
+              </>
+            ) : campaign.couponCode ? (
               <>
                 <span className="text-[10px] text-zinc-300">·</span>
                 <span className="text-[10px] text-zinc-500">쿠폰 {campaign.couponCode}</span>
               </>
-            )}
+            ) : null}
           </div>
         </div>
         <ExternalLink size={11} className="text-zinc-400 group-hover:text-violet-600 shrink-0" />

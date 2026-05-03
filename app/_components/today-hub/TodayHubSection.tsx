@@ -96,7 +96,7 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
       .then((j) => {
         if (cancelled || !j.ok) return;
         const today = kstDateStr(0);
-        type Raw = { id: string; name: string; startDate: string; endDate: string | null; couponCode: string | null };
+        type Raw = { id: string; name: string; startDate: string; endDate: string | null; productNos?: number[]; couponCode: string | null };
         const active = ((j.campaigns ?? []) as Raw[])
           .filter((c) => !c.endDate || c.endDate >= today) // 종료된 건 노출 안 함
           .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -105,6 +105,7 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
             name:         c.name,
             startDate:    c.startDate,
             endDate:      c.endDate,
+            productNos:   c.productNos,
             couponCode:   c.couponCode,
             trackerHref:  "#campaigns",
           }));

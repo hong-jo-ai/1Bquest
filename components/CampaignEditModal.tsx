@@ -21,10 +21,18 @@ function todayKst(offsetDays = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
+function parseProductNos(s: string): number[] {
+  return s
+    .split(/[,\s]+/)
+    .map((t) => Number(t.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
 export default function CampaignEditModal({ campaign, brand, onClose, onSaved }: Props) {
   const [name,         setName]         = useState(campaign?.name         ?? "");
   const [startDate,    setStartDate]    = useState(campaign?.startDate    ?? todayKst(0));
   const [endDate,      setEndDate]      = useState(campaign?.endDate      ?? "");
+  const [productNos,   setProductNos]   = useState((campaign?.productNos ?? []).join(", "));
   const [couponCode,   setCouponCode]   = useState(campaign?.couponCode   ?? "");
   const [utmSource,    setUtmSource]    = useState(campaign?.utmSource    ?? "");
   const [utmCampaign,  setUtmCampaign]  = useState(campaign?.utmCampaign  ?? "");
@@ -35,6 +43,7 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
   const [deleting, setDeleting] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
+  const parsedProductNos = parseProductNos(productNos);
   const canSave = name.trim().length > 0 && startDate.length === 10;
 
   const save = async () => {
@@ -47,6 +56,7 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
       brand,
       startDate,
       endDate:      endDate.length === 10 ? endDate : null,
+      productNos:   parsedProductNos.length > 0 ? parsedProductNos : undefined,
       couponCode:   couponCode.trim() || null,
       utmSource:    utmSource.trim(),
       utmCampaign:  utmCampaign.trim(),
@@ -140,14 +150,31 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
           </div>
 
           <Field
-            label="Cafe24 쿠폰 코드"
-            hint="Cafe24 어드민에서 발행한 쿠폰의 '쿠폰 코드'. 이 코드가 적용된 주문만 캠페인 매출로 집계됩니다."
+            label="협업 상품 번호 (product_no, 콤마로 여러 개 가능)"
+            hint="Cafe24 어드민에 등록한 인플루언서 협업 전용 상품의 product_no. 옵션은 상품 옵션으로 추가하세요. 이 상품을 포함한 주문만 캠페인 매출로 집계됩니다."
+          >
+            <input
+              value={productNos}
+              onChange={(e) => setProductNos(e.target.value)}
+              placeholder="예: 1234, 1235"
+              className="w-full px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 tabular-nums"
+            />
+            {parsedProductNos.length > 0 && (
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
+                매칭 대상 product_no: {parsedProductNos.join(", ")}
+              </p>
+            )}
+          </Field>
+
+          <Field
+            label="(선택, legacy) Cafe24 쿠폰 코드"
+            hint="협업 상품 번호가 비어있을 때만 fallback 으로 사용. 신규 캠페인은 위 상품 번호 권장."
           >
             <input
               value={couponCode}
               onChange={(e) => setCouponCode(e.target.value)}
-              placeholder="예: INFLU0519"
-              className="w-full px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 tabular-nums"
+              placeholder="(상품 번호 사용 시 비워두세요)"
+              className="w-full px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 tabular-nums text-xs"
             />
           </Field>
 
