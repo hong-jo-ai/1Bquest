@@ -2,7 +2,6 @@ import AppHeader from "@/components/AppHeader";
 import MadsThresholds from "@/components/mads/MadsThresholds";
 import MadsRecommendationsClient from "@/components/mads/MadsRecommendationsClient";
 import MadsIntegrationAdvice from "@/components/mads/MadsIntegrationAdvice";
-import MadsBestCreatives from "@/components/mads/MadsBestCreatives";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { Zap, AlertCircle, LogIn, Brain } from "lucide-react";
 
@@ -71,8 +70,6 @@ export default async function AdsPage() {
                 <MadsRecommendationsClient />
               </div>
             </div>
-
-            <MadsBestCreatives />
           </>
         )}
 

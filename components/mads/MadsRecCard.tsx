@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Check, X, Clock, AlertTriangle, TrendingUp, TrendingDown, PauseCircle, Copy, Sparkles, Pause, Bug } from "lucide-react";
+import { Loader2, Check, X, Clock, AlertTriangle, TrendingUp, TrendingDown, PauseCircle, Copy, Sparkles, Pause, Bug, Zap } from "lucide-react";
 import type { ActionType } from "@/lib/mads/types";
 import { ACTION_LABEL_KO } from "@/lib/mads/ruleEngine";
 import MadsTrustBadge from "./MadsTrustBadge";
@@ -54,7 +54,7 @@ function fmtFunnel(s: string) {
 }
 
 export default function MadsRecCard({ rec, onDecided }: RecCardProps) {
-  const [busy, setBusy] = useState<"accept" | "reject" | "ignore" | null>(null);
+  const [busy, setBusy] = useState<"accept" | "reject" | "ignore" | "bump" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const style = ACTION_STYLE[rec.actionType];
   const Icon = style.icon;
@@ -85,8 +85,45 @@ export default function MadsRecCard({ rec, onDecided }: RecCardProps) {
     }
   };
 
+  const manualBump = async () => {
+    if (busy) return;
+    const cur = rec.currentBudget ?? 0;
+    if (cur <= 0) return;
+    const next = Math.max(Math.round((cur * 1.2) / 100) * 100, 5_000);
+    if (!confirm(
+      `"${rec.adset?.name ?? rec.metaAdsetId}" 일예산을 ${cur.toLocaleString("ko-KR")}원 → ${next.toLocaleString("ko-KR")}원 (+20%) 증액?\n\n` +
+      `데이터 부족(${rec.trust?.conversions7d ?? "?"}건/7d)으로 학습 미완 — 빠른 학습용 수동 증액. ` +
+      `직후 72h 락이 걸립니다.`
+    )) return;
+    setBusy("bump");
+    setError(null);
+    try {
+      const res = await fetch("/api/mads/manual-budget-bump", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metaAdsetId: rec.metaAdsetId, deltaPct: 20 }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "증액 실패");
+      onDecided();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "증액 실패");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const canApply = rec.actionType !== "hold" && rec.actionType !== "creative_refresh";
   const wobbling = rec.warnings.some((w) => w.code === "wobble");
+  const lockedByChange = rec.warnings.some((w) => w.code === "recent_budget_change");
+  // hold + 데이터 부족(untrusted/learning) + 변경 락 없음 + 일예산 존재 → 빠른 학습용 수동 +20% 노출
+  const canManualBump =
+    rec.actionType === "hold" &&
+    (rec.trust?.level === "untrusted" || rec.trust?.level === "learning") &&
+    !lockedByChange &&
+    !wobbling &&
+    rec.currentBudget !== null &&
+    rec.currentBudget > 0;
 
   return (
     <div className={`rounded-2xl border ${style.border} ${style.bg} overflow-hidden`}>
@@ -181,6 +218,17 @@ export default function MadsRecCard({ rec, onDecided }: RecCardProps) {
           >
             {busy === "accept" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             적용
+          </button>
+        )}
+        {canManualBump && (
+          <button
+            onClick={manualBump}
+            disabled={busy !== null}
+            className="flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+            title="데이터가 부족해 룰 엔진이 hold — 빠른 학습용 수동 +20% 증액 (72h 락 발동)"
+          >
+            {busy === "bump" ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+            학습 가속 +20%
           </button>
         )}
         <button
