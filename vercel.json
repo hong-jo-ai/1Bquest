@@ -49,6 +49,10 @@
       "schedule": "2,12,22,32,42,52 * * * *"
     },
     {
+      "path": "/api/cron/cafe24-orders-notify",
+      "schedule": "5,15,25,35,45,55 * * * *"
+    },
+    {
       "path": "/api/cs/notify?mode=stale",
       "schedule": "30 * * * *"
     },
