@@ -28,6 +28,8 @@ export interface ClassifiedEmail {
   /** 같은 스레드에 SENT 메시지가 있으면 자동 true → 위젯에서 숨김 */
   userReplied:         boolean;
   dismissedAt?:        string;
+  /** 텔레그램 알림 전송 시각. 한 번 보낸 메일은 재발송 안 함. */
+  telegramNotifiedAt?: string;
 }
 
 export interface NegativeExample {

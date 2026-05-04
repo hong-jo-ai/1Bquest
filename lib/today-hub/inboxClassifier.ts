@@ -10,11 +10,33 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
+import { sendTelegramMessage } from "@/lib/cs/telegram";
 import {
   saveClassifiedEmail, getClassifiedEmail, patchClassifiedEmail,
   listNegativeExamples,
   type ClassifiedEmail, type NegativeExample, type InboxSyncStatus,
 } from "./inboxStore";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function formatEmailNotification(email: ClassifiedEmail): string {
+  const sender = email.fromName
+    ? `${email.fromName} <${email.fromEmail}>`
+    : email.fromEmail;
+  const link = `https://mail.google.com/mail/u/0/#inbox/${email.threadId}`;
+  return [
+    `📧 <b>답장 필요 메일</b>`,
+    `<b>${escapeHtml(sender)}</b>`,
+    escapeHtml(email.subject),
+    email.snippet ? escapeHtml(email.snippet.slice(0, 200)) : "",
+    email.reason ? `<i>판단: ${escapeHtml(email.reason)}</i>` : "",
+    `<a href="${link}">Gmail에서 열기</a>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const CLAUDE_MODEL = "claude-haiku-4-5";
@@ -273,7 +295,7 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
         const cls = await classifyOne(client, systemPrompt, {
           fromEmail, fromName: name, subject, snippet, receivedAt,
         });
-        await saveClassifiedEmail({
+        const record: ClassifiedEmail = {
           messageId:           msg.id,
           threadId:            msg.threadId,
           fromEmail,
@@ -287,8 +309,19 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
           classifiedAt:        new Date().toISOString(),
           userMarkedNotNeeded: false,
           userReplied:         false,
-        });
+        };
+        await saveClassifiedEmail(record);
         newClassified++;
+
+        // needsReply = true 인 경우만 텔레그램 즉시 발송 + 한 번 보낸 메일은
+        // telegramNotifiedAt 마킹해 재발송 방지. 발송 실패는 sendTelegramMessage
+        // 내부에서 console.error 로 기록 (silent 아님).
+        if (cls.needsReply) {
+          await sendTelegramMessage(formatEmailNotification(record));
+          await patchClassifiedEmail(msg.id, {
+            telegramNotifiedAt: new Date().toISOString(),
+          });
+        }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         errors.push({ messageId: msg.id, error: errMsg });
