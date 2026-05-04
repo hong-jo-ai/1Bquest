@@ -1068,11 +1068,17 @@ function NameAliasBanner({ names }: { names: string[] }) {
         onClick={() => setOpen(true)}
         className="w-full text-left text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition"
       >
-        ⚠ SKU 매칭 안 된 상품명 {names.length}개 — 클릭해서 SKU 와 연결하면 매입원가 자동 매칭
+        ⚠ 카페24 상품과 매칭 안 된 상품명 {names.length}개 — 클릭해서 카페24 상품과 연결하면 매입원가 자동 매칭
       </button>
       {open && <NameAliasModal names={names} onClose={() => setOpen(false)} />}
     </>
   );
+}
+
+interface Cafe24Product {
+  sku: string;  // product_code
+  name: string; // product_name
+  category?: string;
 }
 
 function NameAliasModal({
@@ -1082,45 +1088,90 @@ function NameAliasModal({
   names: string[];
   onClose: () => void;
 }) {
-  const [aliases, setAliases] = useState<Record<string, string>>({});
-  const [skuList, setSkuList] = useState<string[]>([]);
+  // 사용자가 입력 박스에서 보고 입력하는 값 = 카페24 상품명 (SKU 아님)
+  // 저장 시점에 name → sku 변환해서 서버로 보냄.
+  const [pickedName, setPickedName] = useState<Record<string, string>>({});
+  const [products, setProducts] = useState<Cafe24Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       fetch("/api/profit/name-aliases").then((r) => r.json()),
-      fetch("/api/profit/cogs").then((r) => r.json()),
+      fetch("/api/cafe24/products").then((r) => r.json()),
     ])
-      .then(([aliasJson, cogsJson]) => {
-        if (aliasJson.ok) {
-          // 현재 unmatched 이름들에 대해 기존 매핑값 미리 채워주기
-          const cur: Record<string, string> = {};
-          for (const n of names) {
-            cur[n] = aliasJson.aliases?.[n] ?? "";
-          }
-          setAliases(cur);
+      .then(([aliasJson, productsJson]) => {
+        if (cancelled) return;
+        if (productsJson.error) {
+          setError(
+            productsJson.error === "not_authenticated"
+              ? "카페24 연결이 필요합니다. 대시보드 상단에서 카페24 인증을 먼저 진행해주세요."
+              : `카페24 상품 조회 실패: ${productsJson.error}`,
+          );
+          return;
         }
-        if (cogsJson.ok) {
-          setSkuList(Object.keys(cogsJson.cogs ?? {}).sort());
+        const list = (productsJson.products ?? []) as Cafe24Product[];
+        setProducts(list);
+        // sku → cafe24 상품명 역인덱스
+        const skuToName = new Map<string, string>();
+        for (const p of list) {
+          if (p.sku) skuToName.set(p.sku, p.name);
         }
+        const cur: Record<string, string> = {};
+        const aliases = (aliasJson?.aliases ?? {}) as Record<string, string>;
+        for (const excelName of names) {
+          const sku = aliases[excelName];
+          cur[excelName] = sku ? (skuToName.get(sku) ?? "") : "";
+        }
+        setPickedName(cur);
       })
-      .finally(() => setLoading(false));
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
   }, [names]);
+
+  // 카페24 상품명 → SKU 정방향 인덱스
+  const nameToSku = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of products) m.set(p.name, p.sku);
+    return m;
+  }, [products]);
 
   const save = async () => {
     setSaving(true);
     try {
-      // 빈 문자열은 서버에서 키 제거됨
+      // pickedName 의 카페24 상품명을 SKU 로 치환해서 PUT
+      const patch: Record<string, string> = {};
+      const unresolved: string[] = [];
+      for (const [excelName, picked] of Object.entries(pickedName)) {
+        const trimmed = picked.trim();
+        if (!trimmed) {
+          patch[excelName] = ""; // 빈 칸 = 서버에서 매핑 제거
+          continue;
+        }
+        const sku = nameToSku.get(trimmed);
+        if (!sku) {
+          unresolved.push(`"${excelName}" → "${trimmed}"`);
+          continue;
+        }
+        patch[excelName] = sku;
+      }
+      if (unresolved.length > 0) {
+        alert(
+          `다음 항목은 카페24 상품 목록에 없는 이름이라 저장되지 않았습니다 (드롭다운에서 정확히 선택):\n\n${unresolved.join("\n")}`,
+        );
+        // 그래도 매칭된 것은 저장
+      }
       const res = await fetch("/api/profit/name-aliases", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(aliases),
+        body: JSON.stringify(patch),
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error ?? "저장 실패");
       onClose();
-      // 다음 업로드부터 적용 — 사용자가 재업로드하도록 안내
       alert("저장 완료. 매입원가 반영을 위해 해당 채널의 Excel 을 다시 업로드해주세요.");
     } catch (e) {
       alert(`저장 실패: ${e instanceof Error ? e.message : String(e)}`);
@@ -1141,11 +1192,11 @@ function NameAliasModal({
         <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-900">
           <div>
             <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
-              상품명 → SKU 매핑
+              엑셀 상품명 → 카페24 상품 매칭
             </h3>
             <p className="text-[11px] text-zinc-400 mt-0.5">
-              SKU 칼럼이 없는 Excel(공동구매 발주별 명세 등)에서 매입원가 매칭을 위해 사용.
-              한 번 매핑해두면 같은 상품명은 다음 업로드부터 자동 매칭됩니다.
+              SKU 칼럼이 없는 Excel(공동구매 등)을 위한 매핑. 카페24 상품 목록에서
+              해당 상품을 골라주면 그 상품의 매입 단가가 자동 적용됩니다.
             </p>
           </div>
           <button
@@ -1159,34 +1210,40 @@ function NameAliasModal({
 
         <div className="p-5 space-y-2">
           {loading ? (
-            <p className="text-xs text-zinc-400 text-center py-6">불러오는 중…</p>
+            <p className="text-xs text-zinc-400 text-center py-6">카페24 상품 불러오는 중…</p>
+          ) : error ? (
+            <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg px-3 py-3">
+              {error}
+            </div>
           ) : (
             <>
-              {skuList.length === 0 && (
+              {products.length === 0 && (
                 <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
-                  먼저 재고/원가 페이지에서 SKU 별 매입 단가를 입력해주세요. SKU 가 등록돼있어야 매핑할 SKU 를 선택할 수 있습니다.
+                  카페24 상품이 조회되지 않았습니다.
                 </div>
               )}
-              {names.map((name) => (
-                <div key={name} className="grid grid-cols-[1fr_auto_180px] items-center gap-2">
-                  <div className="text-xs text-zinc-700 dark:text-zinc-200 truncate" title={name}>
-                    {name}
+              {names.map((excelName) => (
+                <div key={excelName} className="grid grid-cols-[1fr_auto_240px] items-center gap-2">
+                  <div className="text-xs text-zinc-700 dark:text-zinc-200 truncate" title={excelName}>
+                    {excelName}
                   </div>
                   <span className="text-zinc-400 text-xs">→</span>
                   <input
-                    list="profit-sku-list"
-                    placeholder="SKU"
-                    value={aliases[name] ?? ""}
+                    list="cafe24-product-list"
+                    placeholder="카페24 상품 검색"
+                    value={pickedName[excelName] ?? ""}
                     onChange={(e) =>
-                      setAliases((prev) => ({ ...prev, [name]: e.target.value }))
+                      setPickedName((prev) => ({ ...prev, [excelName]: e.target.value }))
                     }
-                    className="px-2 py-1.5 rounded-md bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-200 tabular-nums w-full"
+                    className="px-2 py-1.5 rounded-md bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-200 w-full"
                   />
                 </div>
               ))}
-              <datalist id="profit-sku-list">
-                {skuList.map((sku) => (
-                  <option key={sku} value={sku} />
+              <datalist id="cafe24-product-list">
+                {products.map((p) => (
+                  <option key={p.sku} value={p.name}>
+                    {p.category ? `[${p.category}]` : ""}
+                  </option>
                 ))}
               </datalist>
             </>
@@ -1195,7 +1252,7 @@ function NameAliasModal({
 
         <div className="px-5 py-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center gap-2 sticky bottom-0 bg-white dark:bg-zinc-900">
           <p className="text-[10px] text-zinc-400 flex-1">
-            빈 칸으로 두면 매핑이 등록되지 않습니다 (이미 있던 매핑은 빈 칸 저장 시 제거).
+            입력 칸을 클릭하면 카페24 상품 목록에서 선택할 수 있습니다. 빈 칸은 저장 시 매핑 해제.
           </p>
           <button
             onClick={onClose}
@@ -1205,7 +1262,7 @@ function NameAliasModal({
           </button>
           <button
             onClick={save}
-            disabled={saving || loading}
+            disabled={saving || loading || !!error}
             className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 transition"
           >
             {saving ? "저장 중…" : "저장"}
