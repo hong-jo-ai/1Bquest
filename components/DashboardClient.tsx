@@ -400,7 +400,10 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
               cogs: c.data.dailyCogs ?? [],
             }))
           }
-          unmatchedSkus={cafe24Data?.unmatchedSkus ?? []}
+          unmatchedSkus={Array.from(new Set([
+            ...(cafe24Data?.unmatchedSkus ?? []),
+            ...comparisonChannels.flatMap((c) => c.data.unmatchedSkus ?? []),
+          ]))}
           brand={brand}
         />
 

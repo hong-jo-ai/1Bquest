@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { MultiChannelData } from "./multiChannelData";
-import type { ProductRank, HourlyData, WeeklyData } from "./cafe24Data";
+import type { ProductRank, HourlyData, WeeklyData, DailyCost } from "./cafe24Data";
+import { getProductCogs } from "./profitSettings";
 
 // ── 컬럼 키워드 매핑 ─────────────────────────────────────────────────────────
 // 매칭 순서: (1) 정확 매칭 → (2) 부분 매칭(includes)
@@ -231,9 +232,11 @@ export interface ExcelParseResult {
   rowCount: number;
   period: { start: string; end: string };
   columns: { date: string; name: string; sku: string; qty: string; revenue: string };
+  /** SKU 가 cogsMap 에 없어 매입원가 매칭 실패한 코드들. UI에서 누락 안내. */
+  unmatchedSkus?: string[];
 }
 
-export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
+export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseResult> {
   let allRows: unknown[][];
   let sheetName = "(unknown)";
 
@@ -471,9 +474,42 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ExcelParseResult {
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // ── 일별 매입원가 (COGS) — 카페24와 동일 로직: SKU × 단가 × 수량 ─────────────
+  // SKU 가 cogsMap 에 없으면 unmatchedSkus 로 노출. 사용자가 재고 페이지에서
+  // 매입 단가 입력하면 다음 업로드부터 자동 반영.
+  const cogsMap = await getProductCogs();
+  const dailyCogsMap = new Map<string, number>();
+  const unmatchedSet = new Set<string>();
+  for (const r of rows) {
+    if (!r.date) continue;
+    const sku = r.sku.trim();
+    if (!sku) continue;
+    const ds = fmt(r.date);
+    const unitCost = cogsMap[sku];
+    if (unitCost !== undefined) {
+      dailyCogsMap.set(ds, (dailyCogsMap.get(ds) ?? 0) + unitCost * r.qty);
+    } else {
+      unmatchedSet.add(sku);
+    }
+  }
+  const dailyCogs: DailyCost[] = Array.from(dailyCogsMap.entries())
+    .map(([date, cost]) => ({ date, cost: Math.round(cost) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const unmatchedSkus = Array.from(unmatchedSet);
+
   return {
-    data: { salesSummary, topProducts, hourlyOrders, weeklyRevenue, dailyRevenue, inventory: [] },
+    data: {
+      salesSummary,
+      topProducts,
+      hourlyOrders,
+      weeklyRevenue,
+      dailyRevenue,
+      dailyCogs,
+      unmatchedSkus,
+      inventory: [],
+    },
     rowCount: rows.length,
+    unmatchedSkus,
     period: { start: fmt(minDate), end: fmt(maxDate) },
     columns: {
       date:    dateCol >= 0    ? headers[dateCol]    : "(없음)",

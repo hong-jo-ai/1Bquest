@@ -85,6 +85,8 @@ export interface MultiChannelData {
   weeklyRevenue: WeeklyData[];
   dailyRevenue?: DailyData[]; // 일별 매출 (있는 채널만)
   dailyCogs?: DailyCost[];     // 일별 매입원가 (있는 채널만)
+  /** 매입 단가가 cogsMap 에 없어 매칭 실패한 SKU. UI에서 누락 안내. */
+  unmatchedSkus?: string[];
   inventory: InventoryItem[];
 }
 
