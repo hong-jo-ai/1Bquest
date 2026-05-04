@@ -17,6 +17,7 @@ export interface ProfitChannel {
 interface Props {
   channels: ProfitChannel[];
   unmatchedSkus?: string[];
+  unmatchedNames?: string[];
   brand?: string; // 메타 광고 계정 브랜드 필터링용
 }
 
@@ -65,7 +66,7 @@ const AUTO_FIXED_CATEGORIES = [
   "세금", "수수료", "택배비", "식비", "교통/연료",
 ] as const;
 
-export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Props) {
+export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedNames, brand }: Props) {
   const [preset, setPreset] = useState<Preset>("30d");
   const [customStart, setCustomStart] = useState<string>(daysAgoStr(30));
   const [customEnd, setCustomEnd] = useState<string>(todayStr());
@@ -517,6 +518,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, brand }: Prop
           <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
             ⚠ 원가 미설정 SKU {unmatchedSkus.length}개 — 재고 페이지에서 매입 단가를 입력하면 영업이익이 더 정확해집니다.
           </div>
+        )}
+
+        {unmatchedNames && unmatchedNames.length > 0 && (
+          <NameAliasBanner names={unmatchedNames} />
         )}
 
         {/* 고정비 */}
@@ -1043,6 +1048,166 @@ function SettingsDrawer({
             className="px-5 h-10 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             <Check size={14} />
+            {saving ? "저장 중…" : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 상품명 → SKU 매핑 (Excel 에 SKU 칼럼 없는 경우의 fallback)
+// ─────────────────────────────────────────────────────────────────────
+
+function NameAliasBanner({ names }: { names: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full text-left text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition"
+      >
+        ⚠ SKU 매칭 안 된 상품명 {names.length}개 — 클릭해서 SKU 와 연결하면 매입원가 자동 매칭
+      </button>
+      {open && <NameAliasModal names={names} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function NameAliasModal({
+  names,
+  onClose,
+}: {
+  names: string[];
+  onClose: () => void;
+}) {
+  const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [skuList, setSkuList] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/profit/name-aliases").then((r) => r.json()),
+      fetch("/api/profit/cogs").then((r) => r.json()),
+    ])
+      .then(([aliasJson, cogsJson]) => {
+        if (aliasJson.ok) {
+          // 현재 unmatched 이름들에 대해 기존 매핑값 미리 채워주기
+          const cur: Record<string, string> = {};
+          for (const n of names) {
+            cur[n] = aliasJson.aliases?.[n] ?? "";
+          }
+          setAliases(cur);
+        }
+        if (cogsJson.ok) {
+          setSkuList(Object.keys(cogsJson.cogs ?? {}).sort());
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [names]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      // 빈 문자열은 서버에서 키 제거됨
+      const res = await fetch("/api/profit/name-aliases", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(aliases),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "저장 실패");
+      onClose();
+      // 다음 업로드부터 적용 — 사용자가 재업로드하도록 안내
+      alert("저장 완료. 매입원가 반영을 위해 해당 채널의 Excel 을 다시 업로드해주세요.");
+    } catch (e) {
+      alert(`저장 실패: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-900">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+              상품명 → SKU 매핑
+            </h3>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              SKU 칼럼이 없는 Excel(공동구매 발주별 명세 등)에서 매입원가 매칭을 위해 사용.
+              한 번 매핑해두면 같은 상품명은 다음 업로드부터 자동 매칭됩니다.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            aria-label="닫기"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-2">
+          {loading ? (
+            <p className="text-xs text-zinc-400 text-center py-6">불러오는 중…</p>
+          ) : (
+            <>
+              {skuList.length === 0 && (
+                <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+                  먼저 재고/원가 페이지에서 SKU 별 매입 단가를 입력해주세요. SKU 가 등록돼있어야 매핑할 SKU 를 선택할 수 있습니다.
+                </div>
+              )}
+              {names.map((name) => (
+                <div key={name} className="grid grid-cols-[1fr_auto_180px] items-center gap-2">
+                  <div className="text-xs text-zinc-700 dark:text-zinc-200 truncate" title={name}>
+                    {name}
+                  </div>
+                  <span className="text-zinc-400 text-xs">→</span>
+                  <input
+                    list="profit-sku-list"
+                    placeholder="SKU"
+                    value={aliases[name] ?? ""}
+                    onChange={(e) =>
+                      setAliases((prev) => ({ ...prev, [name]: e.target.value }))
+                    }
+                    className="px-2 py-1.5 rounded-md bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-200 tabular-nums w-full"
+                  />
+                </div>
+              ))}
+              <datalist id="profit-sku-list">
+                {skuList.map((sku) => (
+                  <option key={sku} value={sku} />
+                ))}
+              </datalist>
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center gap-2 sticky bottom-0 bg-white dark:bg-zinc-900">
+          <p className="text-[10px] text-zinc-400 flex-1">
+            빈 칸으로 두면 매핑이 등록되지 않습니다 (이미 있던 매핑은 빈 칸 저장 시 제거).
+          </p>
+          <button
+            onClick={onClose}
+            className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            취소
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || loading}
+            className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 transition"
+          >
             {saving ? "저장 중…" : "저장"}
           </button>
         </div>

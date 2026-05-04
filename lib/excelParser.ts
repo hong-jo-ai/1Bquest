@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { MultiChannelData } from "./multiChannelData";
 import type { ProductRank, HourlyData, WeeklyData, DailyCost } from "./cafe24Data";
-import { getProductCogs } from "./profitSettings";
+import { getProductCogs, getProductNameAliases } from "./profitSettings";
 
 // ── 컬럼 키워드 매핑 ─────────────────────────────────────────────────────────
 // 매칭 순서: (1) 정확 매칭 → (2) 부분 매칭(includes)
@@ -234,6 +234,8 @@ export interface ExcelParseResult {
   columns: { date: string; name: string; sku: string; qty: string; revenue: string };
   /** SKU 가 cogsMap 에 없어 매입원가 매칭 실패한 코드들. UI에서 누락 안내. */
   unmatchedSkus?: string[];
+  /** SKU 칼럼이 비어있고 nameAliases 에도 없어 매칭 실패한 상품명들. */
+  unmatchedNames?: string[];
 }
 
 export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseResult> {
@@ -475,27 +477,43 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // ── 일별 매입원가 (COGS) — 카페24와 동일 로직: SKU × 단가 × 수량 ─────────────
-  // SKU 가 cogsMap 에 없으면 unmatchedSkus 로 노출. 사용자가 재고 페이지에서
-  // 매입 단가 입력하면 다음 업로드부터 자동 반영.
-  const cogsMap = await getProductCogs();
+  // 우선순위: row.sku → nameAliases[row.name] → 매칭 실패시 unmatchedNames
+  // 매칭된 SKU 가 cogsMap 에 없으면 unmatchedSkus 로 노출.
+  const [cogsMap, nameAliases] = await Promise.all([
+    getProductCogs(),
+    getProductNameAliases(),
+  ]);
   const dailyCogsMap = new Map<string, number>();
-  const unmatchedSet = new Set<string>();
+  const unmatchedSkuSet = new Set<string>();
+  const unmatchedNameSet = new Set<string>();
   for (const r of rows) {
     if (!r.date) continue;
-    const sku = r.sku.trim();
-    if (!sku) continue;
     const ds = fmt(r.date);
+    let sku = r.sku.trim();
+    // SKU 칼럼이 비어있으면 상품명을 별칭 테이블에서 찾기
+    if (!sku) {
+      const aliasSku = nameAliases[r.name.trim()];
+      if (aliasSku) {
+        sku = aliasSku.trim();
+      } else if (r.name.trim()) {
+        unmatchedNameSet.add(r.name.trim());
+        continue;
+      } else {
+        continue;
+      }
+    }
     const unitCost = cogsMap[sku];
     if (unitCost !== undefined) {
       dailyCogsMap.set(ds, (dailyCogsMap.get(ds) ?? 0) + unitCost * r.qty);
     } else {
-      unmatchedSet.add(sku);
+      unmatchedSkuSet.add(sku);
     }
   }
   const dailyCogs: DailyCost[] = Array.from(dailyCogsMap.entries())
     .map(([date, cost]) => ({ date, cost: Math.round(cost) }))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const unmatchedSkus = Array.from(unmatchedSet);
+  const unmatchedSkus = Array.from(unmatchedSkuSet);
+  const unmatchedNames = Array.from(unmatchedNameSet);
 
   return {
     data: {
@@ -506,10 +524,12 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
       dailyRevenue,
       dailyCogs,
       unmatchedSkus,
+      unmatchedNames,
       inventory: [],
     },
     rowCount: rows.length,
     unmatchedSkus,
+    unmatchedNames,
     period: { start: fmt(minDate), end: fmt(maxDate) },
     columns: {
       date:    dateCol >= 0    ? headers[dateCol]    : "(없음)",

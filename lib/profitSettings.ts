@@ -10,6 +10,7 @@ const KEYS = {
   shipping: "cost_settings:shipping",
   vatRate: "cost_settings:vat_rate",
   productCogs: "cost_settings:product_cogs",
+  productNameAliases: "cost_settings:product_name_aliases",
 } as const;
 
 export interface FixedCost {
@@ -98,6 +99,36 @@ export async function updateProductCogs(
     }
   }
   await saveProductCogs(next);
+  return next;
+}
+
+// ── 상품명 → SKU 별칭 매핑 ────────────────────────────────────────────
+// SKU 컬럼이 없는 Excel(공동구매 발주별 명세 등)을 위한 fallback.
+// 한 번 매핑해두면 다음 업로드부터 자동 매입원가 매칭.
+
+export type ProductNameAliasMap = Record<string, string>; // 상품명(또는 옵션 표기) → SKU
+
+export async function getProductNameAliases(): Promise<ProductNameAliasMap> {
+  return readKv<ProductNameAliasMap>(KEYS.productNameAliases, {});
+}
+
+export async function saveProductNameAliases(map: ProductNameAliasMap): Promise<void> {
+  await writeKv(KEYS.productNameAliases, map);
+}
+
+export async function updateProductNameAliases(
+  patch: ProductNameAliasMap,
+): Promise<ProductNameAliasMap> {
+  const current = await getProductNameAliases();
+  const next: ProductNameAliasMap = { ...current };
+  for (const [name, sku] of Object.entries(patch)) {
+    if (!sku || sku.trim() === "") {
+      delete next[name];
+    } else {
+      next[name] = sku.trim();
+    }
+  }
+  await saveProductNameAliases(next);
   return next;
 }
 
