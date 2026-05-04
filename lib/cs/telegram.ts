@@ -6,20 +6,36 @@ const LAST_NOTIFY_KEY = "cs_inbox_telegram_last_notify_at";
 export async function sendTelegramMessage(text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
+  if (!token || !chatId) {
+    console.warn("[telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID 미설정 — 알림 발송 생략");
+    return;
+  }
 
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    }),
-  }).catch(() => {
-    // 알림 실패는 무시
-  });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+    });
+    if (!res.ok) {
+      // Telegram이 200 외 응답 — 가장 흔한 silent fail 원인. Vercel 로그에 남겨야 운영자가 알 수 있음.
+      const body = await res.text().catch(() => "(본문 읽기 실패)");
+      console.error(
+        `[telegram] sendMessage 실패 status=${res.status} body=${body.slice(0, 300)}`
+      );
+    }
+  } catch (e) {
+    // 네트워크 자체 실패 — for-loop 호출자가 다음 메시지 진행할 수 있도록 throw 안 함
+    console.error(
+      "[telegram] sendMessage 네트워크 에러:",
+      e instanceof Error ? e.message : String(e)
+    );
+  }
 }
 
 function escapeHtml(s: string): string {
@@ -49,7 +65,9 @@ async function getLastNotifyAt(): Promise<string> {
     .select("data")
     .eq("key", LAST_NOTIFY_KEY)
     .maybeSingle();
-  return (data?.data as string) ?? new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  // fallback 24시간: 최초 실행 / 키 누락 / cron 장기 중단 시에도 직전 하루치는 보강 발송.
+  // 한번 발송이 성공하면 그때부터 정상 시간이 저장돼 이 fallback은 쓰이지 않음.
+  return (data?.data as string) ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 }
 
 async function setLastNotifyAt(iso: string): Promise<void> {
