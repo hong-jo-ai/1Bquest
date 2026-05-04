@@ -28,11 +28,19 @@ function parseProductNos(s: string): number[] {
     .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+function parseProductCodes(s: string): string[] {
+  return s
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
 export default function CampaignEditModal({ campaign, brand, onClose, onSaved }: Props) {
   const [name,         setName]         = useState(campaign?.name         ?? "");
   const [startDate,    setStartDate]    = useState(campaign?.startDate    ?? todayKst(0));
   const [endDate,      setEndDate]      = useState(campaign?.endDate      ?? "");
   const [productNos,   setProductNos]   = useState((campaign?.productNos ?? []).join(", "));
+  const [productCodes, setProductCodes] = useState((campaign?.productCodes ?? []).join(", "));
   const [couponCode,   setCouponCode]   = useState(campaign?.couponCode   ?? "");
   const [utmSource,    setUtmSource]    = useState(campaign?.utmSource    ?? "");
   const [utmCampaign,  setUtmCampaign]  = useState(campaign?.utmCampaign  ?? "");
@@ -44,6 +52,7 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
   const [error,    setError]    = useState<string | null>(null);
 
   const parsedProductNos = parseProductNos(productNos);
+  const parsedProductCodes = parseProductCodes(productCodes);
   const canSave = name.trim().length > 0 && startDate.length === 10;
 
   const save = async () => {
@@ -57,6 +66,7 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
       startDate,
       endDate:      endDate.length === 10 ? endDate : null,
       productNos:   parsedProductNos.length > 0 ? parsedProductNos : undefined,
+      productCodes: parsedProductCodes.length > 0 ? parsedProductCodes : undefined,
       couponCode:   couponCode.trim() || null,
       utmSource:    utmSource.trim(),
       utmCampaign:  utmCampaign.trim(),
@@ -164,6 +174,18 @@ export default function CampaignEditModal({ campaign, brand, onClose, onSaved }:
                 매칭 대상 product_no: {parsedProductNos.join(", ")}
               </p>
             )}
+          </Field>
+
+          <Field
+            label="자체상품코드 (선택, 메모용)"
+            hint="BS01~BS17 같은 자체 부여 코드. 매칭엔 안 쓰이고 카드에 표시되어 'product_no 1234가 뭐였지' 헷갈림 방지용."
+          >
+            <input
+              value={productCodes}
+              onChange={(e) => setProductCodes(e.target.value)}
+              placeholder="예: BS03"
+              className="w-full px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200"
+            />
           </Field>
 
           <Field

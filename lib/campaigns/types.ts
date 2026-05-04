@@ -10,6 +10,8 @@ export interface Campaign {
   endDate:      string | null;
   /** 인플루언서 협업용으로 만든 Cafe24 상품 번호들 (product_no). 옵션은 상품 옵션으로 들어감. 주문 매칭의 1순위. */
   productNos?:  number[];
+  /** 자체상품코드 메모 (BS01~BS17 등). 매칭에는 안 쓰이고 UI 식별용. productNos 와 같은 순서로 입력. */
+  productCodes?: string[];
   /** (legacy) Cafe24 쿠폰 코드. productNos 가 비어있을 때만 fallback 매칭. */
   couponCode:   string | null;
   /** UTM 소스 (인플루언서 식별자). 공유 URL에 ?utm_source=… 로 첨부됨. */

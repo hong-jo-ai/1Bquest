@@ -239,8 +239,13 @@ function CampaignCard({
               <span className="ml-2">
                 · 상품{" "}
                 <code className="text-zinc-600 dark:text-zinc-300">
-                  {campaign.productNos.join(", ")}
+                  {campaign.productCodes && campaign.productCodes.length > 0
+                    ? campaign.productCodes.join(", ")
+                    : campaign.productNos.join(", ")}
                 </code>
+                {campaign.productCodes && campaign.productCodes.length > 0 && (
+                  <span className="ml-1 text-zinc-400">(#{campaign.productNos.join(", ")})</span>
+                )}
               </span>
             ) : campaign.couponCode ? (
               <span className="ml-2">
