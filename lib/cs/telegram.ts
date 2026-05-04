@@ -1,4 +1,5 @@
 import { getCsSupabase } from "./store";
+import { shouldNotifyByAI } from "./notifyFilter";
 import { BRAND_LABEL, CHANNEL_LABEL, type CsThread } from "./types";
 
 const LAST_NOTIFY_KEY = "cs_inbox_telegram_last_notify_at";
@@ -83,8 +84,11 @@ async function setLastNotifyAt(iso: string): Promise<void> {
 /**
  * 지난 실행 이후 새로 수집된 미답변 스레드를 Telegram으로 통지.
  * Cron에서 주기적으로 호출 (예: 10분마다).
+ *
+ * Gmail 채널은 shouldNotifyByAI 로 마케팅·뉴스레터·자동알림 사전 필터링.
+ * 다른 채널은 무조건 발송. fail-open(분류 실패 시 발송).
  */
-export async function notifyNewUnanswered(): Promise<{ sent: number }> {
+export async function notifyNewUnanswered(): Promise<{ sent: number; filtered: number }> {
   const db = getCsSupabase();
   const since = await getLastNotifyAt();
   const now = new Date().toISOString();
@@ -104,12 +108,23 @@ export async function notifyNewUnanswered(): Promise<{ sent: number }> {
     ? `https://${process.env.VERCEL_URL ?? ""}`
     : "";
 
+  let sent = 0;
+  let filtered = 0;
   for (const t of threads) {
+    const decision = await shouldNotifyByAI(t);
+    if (!decision.notify) {
+      console.log(
+        `[cs-notify] skip ${t.brand}/${t.channel} thread=${t.id} (${t.customer_name ?? "?"}): ${decision.reason}`,
+      );
+      filtered++;
+      continue;
+    }
     await sendTelegramMessage(formatThread(t, base));
+    sent++;
   }
 
   await setLastNotifyAt(now);
-  return { sent: threads.length };
+  return { sent, filtered };
 }
 
 /**
@@ -128,7 +143,14 @@ export async function notifyStaleUnanswered(): Promise<{ sent: number }> {
     .order("last_message_at", { ascending: true })
     .limit(10);
 
-  const stale = (data ?? []) as CsThread[];
+  const allStale = (data ?? []) as CsThread[];
+
+  // Gmail 마케팅/뉴스레터는 stale digest 에서도 제외 — 캐시된 분류 재사용이라 비용 거의 없음.
+  const stale: CsThread[] = [];
+  for (const t of allStale) {
+    const decision = await shouldNotifyByAI(t);
+    if (decision.notify) stale.push(t);
+  }
   if (stale.length === 0) return { sent: 0 };
 
   const lines = stale.map((t) => {
