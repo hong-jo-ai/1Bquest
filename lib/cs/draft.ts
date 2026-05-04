@@ -104,6 +104,22 @@ export async function generateDraft(
     ? `\n\n## 운영자가 직접 작성한 답변 메모 (반드시 반영)\n\n아래는 대표가 이 문의에 대해 직접 알려준 핵심 정보·방향이다. 이 내용을 누락 없이 반영해서 자연스러운 완성 문장으로 작성하라. 내용을 임의로 추가하거나 추측하지 말 것.\n\n"""\n${operatorNote}\n"""`
     : "";
 
+  const outputOverride = `
+
+---
+
+## 출력 규칙 (이전 모든 출력 형식 지침을 override)
+
+이 시스템에서는 \`submit_draft\` 도구로만 답변을 제출한다. 일반 텍스트로 응답하지 말 것.
+
+- **draft 필드**: 고객에게 그대로 복사·발송할 본문 텍스트만 작성한다.
+  - 머리말/안내 문구 금지: "다음은 답변입니다", "초안:", "Here's the draft" 등 절대 금지
+  - 메타 헤더 금지: \`[답변 초안]\`, \`[참고]\`, \`---\` 구분선 등 절대 금지
+  - draft 끝에 판단 근거나 주석 붙이지 말 것 (그건 rationale 필드에 작성)
+  - 운영자가 이 필드를 그대로 발송 버튼으로 보낼 수 있어야 한다
+- **rationale 필드**: 판단 근거 한 문장 (운영자만 봄, 고객에겐 안 보임)
+- **needsConfirmation 필드**: 운영자 확인 필요 항목 배열 (없으면 \`[]\`)`;
+
   const systemPrompt = `${skill}${crispBlock}${examplesBlock}
 
 ---
@@ -117,21 +133,13 @@ export async function generateDraft(
 - 고객 연락처: ${thread.customer_handle ?? "(알 수 없음)"}
 - 제목: ${thread.subject ?? "(없음)"}
 
-이 메타데이터를 바탕으로 스킬의 규칙에 따라 답변 초안을 생성한다. 브랜드는 이미 확정돼 있으므로 재질문하지 말 것.${operatorBlock}`;
+이 메타데이터를 바탕으로 스킬의 규칙에 따라 답변 초안을 생성한다. 브랜드는 이미 확정돼 있으므로 재질문하지 말 것.${operatorBlock}${outputOverride}`;
 
-  const userPrompt = `아래는 고객과의 대화 내역이다. 가장 최근 고객 메시지에 대한 답변 초안을 작성하라.
+  const userPrompt = `아래는 고객과의 대화 내역이다. 가장 최근 고객 메시지에 대한 답변을 작성하고 \`submit_draft\` 도구로 제출하라.
 
 <대화내역>
 ${formatMessages(messages)}
-</대화내역>
-
-반드시 아래 JSON 형식으로만 응답하라. 마크다운 코드블록 없이 순수 JSON만 출력한다:
-
-{
-  "draft": "복사 가능한 답변 전문",
-  "rationale": "판단 근거 한 문장",
-  "needsConfirmation": ["대표 확인 필요 항목 (없으면 빈 배열)"]
-}`;
+</대화내역>`;
 
   const response = await client.messages.create({
     model: MODEL,
@@ -143,34 +151,64 @@ ${formatMessages(messages)}
         cache_control: { type: "ephemeral" },
       },
     ],
+    tools: [
+      {
+        name: "submit_draft",
+        description:
+          "고객에게 발송할 답변 초안을 제출한다. draft 필드는 그대로 발송 가능한 상태여야 하며, 어떤 메타 헤더나 안내 문구도 포함하지 않는다.",
+        input_schema: {
+          type: "object",
+          properties: {
+            draft: {
+              type: "string",
+              description:
+                "고객에게 그대로 발송할 답변 본문. '[답변 초안]', '[참고]', '초안:', '다음은 답변입니다' 같은 머리말/메타 헤더 절대 금지. 판단 근거나 주석도 붙이지 말 것.",
+            },
+            rationale: {
+              type: "string",
+              description: "판단 근거 한 문장 (운영자 내부용, 고객에게 보이지 않음).",
+            },
+            needsConfirmation: {
+              type: "array",
+              items: { type: "string" },
+              description: "운영자가 발송 전에 확인할 필요가 있는 항목들. 없으면 빈 배열.",
+            },
+          },
+          required: ["draft", "rationale", "needsConfirmation"],
+        },
+      },
+    ],
+    tool_choice: { type: "tool", name: "submit_draft" },
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  const textBlock = response.content.find((c) => c.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude 응답 파싱 실패: text 블록 없음");
+  const toolUse = response.content.find((c) => c.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") {
+    throw new Error("Claude 응답 파싱 실패: tool_use 블록 없음");
   }
 
-  const raw = textBlock.text.trim();
-  const cleaned = raw
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
+  const input = toolUse.input as Partial<DraftResult>;
+  return {
+    draft: stripLeakage(input.draft ?? ""),
+    rationale: input.rationale ?? "",
+    needsConfirmation: input.needsConfirmation ?? [],
+  };
+}
 
-  try {
-    const parsed = JSON.parse(cleaned) as DraftResult;
-    return {
-      draft: parsed.draft ?? "",
-      rationale: parsed.rationale ?? "",
-      needsConfirmation: parsed.needsConfirmation ?? [],
-    };
-  } catch {
-    // JSON 파싱 실패 시 텍스트 그대로 반환
-    return {
-      draft: cleaned,
-      rationale: "JSON 파싱 실패 — 원본 응답 그대로 반환",
-      needsConfirmation: [],
-    };
-  }
+/**
+ * 도구 응답에 SKILL.md 출력 형식이 새어나오는 경우 대비한 안전망.
+ * tool use 로 거의 다 잡히지만, 모델이 draft 필드 안에 [답변 초안] 헤더 등을
+ * 굳이 박아넣을 가능성에 대비해 후처리.
+ */
+function stripLeakage(draft: string): string {
+  let s = draft;
+  // 선두의 "[답변 초안]" 또는 "초안:" 류 헤더 제거
+  s = s.replace(/^\s*\[\s*답변\s*초안\s*\]\s*\n+/i, "");
+  s = s.replace(/^\s*초안\s*[:：]\s*\n+/i, "");
+  s = s.replace(/^\s*draft\s*[:：]\s*\n+/i, "");
+  // 끝에 붙은 [참고] / [Note] 블록 제거
+  s = s.replace(/\n+\s*\[\s*참고\s*\][\s\S]*$/i, "");
+  s = s.replace(/\n+\s*\[\s*note\s*\][\s\S]*$/i, "");
+  // 최종 trim
+  return s.trim();
 }
