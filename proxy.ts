@@ -18,6 +18,7 @@ const ALLOW_PREFIX = [
   "/api/mcp",          // MCP server (PAULWISE_MCP_TOKEN)
   "/api/threads/webhook/", // Threads webhook
   "/api/cs/ingest/",   // CS 인박스 외부 ingestion
+  "/api/cs/notify",    // CS 알림 cron (텔레그램/이메일/stale) — CRON_SECRET 헤더로 인증
   "/api/cafe24/",      // Cafe24 webhook
   "/api/meta/webhook", // Meta webhook
   "/_next/",
