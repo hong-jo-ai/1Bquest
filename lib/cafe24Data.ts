@@ -1,5 +1,7 @@
 import { cafe24Get } from "./cafe24Client";
 import { getProductCogs } from "./profitSettings";
+import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "./cafe24Historical";
+import type { Brand } from "./multiChannelData";
 
 // ── 타입 정의 ──────────────────────────────────────────────────────────────
 
@@ -244,7 +246,7 @@ export function buildRanking(orders: any[], limit = 10): ProductRank[] {
 
 // ── 메인 데이터 조회 ──────────────────────────────────────────────────────
 
-export async function getDashboardData(token: string): Promise<DashboardData> {
+export async function getDashboardData(token: string, brand: Brand = "paulvice"): Promise<DashboardData> {
   const now = kstNow();
   const todayStr = kstStr(now);
 
@@ -375,6 +377,28 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     .sort((a, b) => a.date.localeCompare(b.date));
   const unmatchedSkus = Array.from(unmatchedSet);
 
+  // ── 카페24 히스토리 보조 데이터 머지 ──────────────────────────────────────
+  // 라이브 API 는 이번 달 + 지난 달만 가져오므로, 그 이전 기간(예: 1~3개월 전)
+  // 매출은 별도 업로드된 CSV 에서 보충해 dailyRevenue 에 합친다.
+  // 라이브 데이터가 있는 날짜는 라이브가 항상 우선 (보조 데이터는 빈 날짜만 채움).
+  let mergedDailyRevenue = dailyRevenue;
+  try {
+    const historical = await loadCafe24Historical(brand);
+    if (historical.uploads.length > 0) {
+      const liveDates = new Set(dailyRevenue.map((d) => d.date));
+      const supplemental = mergeCafe24HistoricalDaily(historical).filter(
+        (d) => !liveDates.has(d.date),
+      );
+      if (supplemental.length > 0) {
+        mergedDailyRevenue = [...supplemental, ...dailyRevenue].sort((a, b) =>
+          a.date.localeCompare(b.date),
+        );
+      }
+    }
+  } catch (e) {
+    console.error("[cafe24] historical merge 실패:", (e as Error).message);
+  }
+
   // ── 재고 현황 ──────────────────────────────────────────────────────────
   const THRESHOLD = 10;
   const inventory: InventoryItem[] = (productsData.products ?? []).map((p: any) => {
@@ -404,7 +428,7 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
     topProductsWeek,
     hourlyOrders,
     weeklyRevenue,
-    dailyRevenue,
+    dailyRevenue: mergedDailyRevenue,
     dailyCogs,
     unmatchedSkus,
     inventory,
