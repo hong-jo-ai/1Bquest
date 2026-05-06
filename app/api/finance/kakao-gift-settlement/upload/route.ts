@@ -60,7 +60,12 @@ export async function POST(req: NextRequest) {
       monthsWithData: merged.data.dailyRevenue?.length ?? 0,
       data: merged.data,
       meta: {
-        fileName: file.name,
+        // 정산서별 raw 는 채널 라우트가 아니라 channel_settlement:* 키에 저장되고,
+        // 여기서 보내는 merged.data 는 항상 모든 정산서를 합친 전체 스냅샷이다.
+        // channel-uploads 라우트는 fileName 으로 PerUpload 를 dedup 하므로,
+        // 가변 file.name 을 그대로 쓰면 매 정산서마다 채널-uploads 에 별도 엔트리가
+        // 쌓여 합산이 이중 계산된다. 안정적인 stable-key 로 단일 엔트리만 유지.
+        fileName: "__kakao_gift_settlement_aggregate__",
         rowCount: merged.data.topProducts.length,
         period: {
           start: merged.data.dailyRevenue?.[0]?.date ?? "",

@@ -36,15 +36,16 @@ import {
 import type { DashboardData } from "@/lib/cafe24Data";
 
 // ── localStorage 키 ────────────────────────────────────────────────────────
-const LS_KEY: Record<UploadableChannel, { data: string; meta: string }> = {
-  wconcept:         { data: "wconcept_excel_data",         meta: "wconcept_excel_meta"         },
-  musinsa:          { data: "musinsa_excel_data",          meta: "musinsa_excel_meta"          },
-  "29cm":           { data: "29cm_excel_data",             meta: "29cm_excel_meta"             },
-  groupbuy:         { data: "groupbuy_excel_data",         meta: "groupbuy_excel_meta"         },
-  kakao_gift:       { data: "kakao_gift_excel_data",       meta: "kakao_gift_excel_meta"       },
-  sixshop:          { data: "sixshop_excel_data",          meta: "sixshop_excel_meta"          },
-  naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta" },
-  sixshop_global:   { data: "sixshop_global_excel_data",   meta: "sixshop_global_excel_meta"   },
+// 데이터/메타에 더해 업로드 이력(history)도 캐시 — 누적 파일 목록 표시용.
+const LS_KEY: Record<UploadableChannel, { data: string; meta: string; history: string }> = {
+  wconcept:         { data: "wconcept_excel_data",         meta: "wconcept_excel_meta",         history: "wconcept_excel_history"         },
+  musinsa:          { data: "musinsa_excel_data",          meta: "musinsa_excel_meta",          history: "musinsa_excel_history"          },
+  "29cm":           { data: "29cm_excel_data",             meta: "29cm_excel_meta",             history: "29cm_excel_history"             },
+  groupbuy:         { data: "groupbuy_excel_data",         meta: "groupbuy_excel_meta",         history: "groupbuy_excel_history"         },
+  kakao_gift:       { data: "kakao_gift_excel_data",       meta: "kakao_gift_excel_meta",       history: "kakao_gift_excel_history"       },
+  sixshop:          { data: "sixshop_excel_data",          meta: "sixshop_excel_meta",          history: "sixshop_excel_history"          },
+  naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta", history: "naver_smartstore_excel_history" },
+  sixshop_global:   { data: "sixshop_global_excel_data",   meta: "sixshop_global_excel_meta",   history: "sixshop_global_excel_history"   },
 };
 
 interface UploadMeta {
@@ -54,8 +55,9 @@ interface UploadMeta {
   uploadedAt: string;
 }
 
-type ChannelUploads = Record<UploadableChannel, MultiChannelData | null>;
-type ChannelMetas = Record<UploadableChannel, UploadMeta | null>;
+type ChannelUploads  = Record<UploadableChannel, MultiChannelData | null>;
+type ChannelMetas    = Record<UploadableChannel, UploadMeta | null>;
+type ChannelHistories = Record<UploadableChannel, UploadMeta[]>;
 const EMPTY_UPLOADS: ChannelUploads = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
@@ -63,6 +65,10 @@ const EMPTY_UPLOADS: ChannelUploads = {
 const EMPTY_METAS: ChannelMetas = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
+};
+const EMPTY_HISTORIES: ChannelHistories = {
+  wconcept: [], musinsa: [], "29cm": [], groupbuy: [], kakao_gift: [],
+  sixshop: [], naver_smartstore: [], sixshop_global: [],
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────
@@ -87,9 +93,36 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   // 현재 브랜드의 채널 ID 목록
   const brandChannelIds = BRAND_CHANNELS[brand];
 
-  // 업로드된 데이터 상태 (7개 채널 통합 관리)
-  const [uploads, setUploads] = useState<ChannelUploads>(EMPTY_UPLOADS);
-  const [metas, setMetas]     = useState<ChannelMetas>(EMPTY_METAS);
+  // 업로드된 데이터 상태 (8개 채널 통합 관리). data/meta 는 누적 머지 결과.
+  const [uploads, setUploads]     = useState<ChannelUploads>(EMPTY_UPLOADS);
+  const [metas, setMetas]         = useState<ChannelMetas>(EMPTY_METAS);
+  const [histories, setHistories] = useState<ChannelHistories>(EMPTY_HISTORIES);
+
+  // 서버 응답을 state + localStorage 양쪽에 반영하는 헬퍼
+  const applyChannelEntry = useCallback(
+    (ch: UploadableChannel, entry: { data: MultiChannelData; meta: UploadMeta; history?: UploadMeta[] } | null) => {
+      if (entry) {
+        setUploads((prev) => ({ ...prev, [ch]: entry.data }));
+        setMetas((prev) => ({ ...prev, [ch]: entry.meta }));
+        setHistories((prev) => ({ ...prev, [ch]: entry.history ?? [] }));
+        try {
+          localStorage.setItem(LS_KEY[ch].data, JSON.stringify(entry.data));
+          localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(entry.meta));
+          localStorage.setItem(LS_KEY[ch].history, JSON.stringify(entry.history ?? []));
+        } catch { /* 용량 초과 등 무시 */ }
+      } else {
+        setUploads((prev) => ({ ...prev, [ch]: null }));
+        setMetas((prev) => ({ ...prev, [ch]: null }));
+        setHistories((prev) => ({ ...prev, [ch]: [] }));
+        try {
+          localStorage.removeItem(LS_KEY[ch].data);
+          localStorage.removeItem(LS_KEY[ch].meta);
+          localStorage.removeItem(LS_KEY[ch].history);
+        } catch { /* ignore */ }
+      }
+    },
+    []
+  );
 
   // 1) localStorage에서 즉시 복원 (서버 응답 전 빠른 표시)
   // 2) 서버 동기화 (다른 기기에서 업로드한 데이터 가져오기 — SSOT)
@@ -98,16 +131,20 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     try {
       const restoredUploads: Partial<ChannelUploads> = {};
       const restoredMetas: Partial<ChannelMetas> = {};
+      const restoredHistories: Partial<ChannelHistories> = {};
       for (const ch of UPLOADABLE_CHANNELS) {
         const d = localStorage.getItem(LS_KEY[ch].data);
         const m = localStorage.getItem(LS_KEY[ch].meta);
+        const h = localStorage.getItem(LS_KEY[ch].history);
         if (d && m) {
           restoredUploads[ch] = JSON.parse(d);
           restoredMetas[ch] = JSON.parse(m);
+          restoredHistories[ch] = h ? JSON.parse(h) : [JSON.parse(m)];
         }
       }
       setUploads((prev) => ({ ...prev, ...restoredUploads }));
       setMetas((prev) => ({ ...prev, ...restoredMetas }));
+      setHistories((prev) => ({ ...prev, ...restoredHistories }));
     } catch { /* localStorage 접근 불가 시 무시 */ }
 
     // 2단계: 서버 SSOT (모든 기기에서 동일한 데이터)
@@ -115,78 +152,74 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       .then((r) => r.json())
       .then((j) => {
         if (!j.ok) return;
-        const serverUploads: Partial<ChannelUploads> = {};
-        const serverMetas: Partial<ChannelMetas> = {};
         for (const ch of UPLOADABLE_CHANNELS) {
           const entry = j.uploads?.[ch];
           if (entry?.data && entry?.meta) {
-            serverUploads[ch] = entry.data;
-            serverMetas[ch] = entry.meta;
-            // 로컬 캐시도 갱신 (다음 로드 시 빠른 표시)
-            try {
-              localStorage.setItem(LS_KEY[ch].data, JSON.stringify(entry.data));
-              localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(entry.meta));
-            } catch { /* ignore */ }
-          } else {
-            // 마이그레이션: 서버에는 없지만 로컬에 있으면 서버로 푸시
-            // (이전에 데스크톱에서만 업로드한 데이터)
-            try {
-              const localData = localStorage.getItem(LS_KEY[ch].data);
-              const localMeta = localStorage.getItem(LS_KEY[ch].meta);
-              if (localData && localMeta) {
-                const data = JSON.parse(localData);
-                const meta = JSON.parse(localMeta);
-                fetch("/api/profit/channel-uploads", {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ channel: ch, data, meta }),
-                }).catch(() => { /* 마이그레이션 실패는 조용히 */ });
-              }
-            } catch { /* ignore */ }
+            applyChannelEntry(ch, entry);
           }
         }
-        setUploads((prev) => ({ ...prev, ...serverUploads }));
-        setMetas((prev) => ({ ...prev, ...serverMetas }));
       })
       .catch(() => { /* 서버 fetch 실패 시 로컬 캐시만 사용 */ });
-  }, []);
+  }, [applyChannelEntry]);
 
-  // 업로드 데이터 저장 (서버 + 로컬 동시)
+  // 업로드 데이터 저장 — 서버에서 누적 머지 후 응답으로 받은 결과를 그대로 사용
   const handleDataLoaded = useCallback(
     (ch: UploadableChannel) => (data: MultiChannelData, meta: UploadMeta) => {
-      try {
-        localStorage.setItem(LS_KEY[ch].data, JSON.stringify(data));
-        localStorage.setItem(LS_KEY[ch].meta, JSON.stringify(meta));
-      } catch { /* 용량 초과 등 무시 */ }
+      // 낙관적 업데이트: 일단 새 파일 데이터로 즉시 표시 (서버 응답으로 곧 머지된 결과로 갱신)
       setUploads((prev) => ({ ...prev, [ch]: data }));
       setMetas((prev) => ({ ...prev, [ch]: meta }));
       setShowUpload(false);
 
-      // 서버 동기화 (실패해도 로컬은 유지)
       fetch("/api/profit/channel-uploads", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel: ch, data, meta }),
-      }).catch((e) => console.error(`[upload] 서버 저장 실패 (${ch}):`, e));
+      })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.ok && j.upload) {
+            applyChannelEntry(ch, j.upload);
+          } else if (!j.ok) {
+            console.error(`[upload] 서버 저장 실패 (${ch}):`, j.error);
+          }
+        })
+        .catch((e) => console.error(`[upload] 서버 저장 실패 (${ch}):`, e));
     },
-    []
+    [applyChannelEntry]
   );
 
-  // 업로드 데이터 삭제 (서버 + 로컬 동시)
+  // 채널 전체 삭제 (모든 누적 업로드 제거)
   const handleClear = useCallback(
     (ch: UploadableChannel) => () => {
-      localStorage.removeItem(LS_KEY[ch].data);
-      localStorage.removeItem(LS_KEY[ch].meta);
-      setUploads((prev) => ({ ...prev, [ch]: null }));
-      setMetas((prev) => ({ ...prev, [ch]: null }));
-
+      applyChannelEntry(ch, null);
       fetch("/api/profit/channel-uploads", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel: ch, clear: true }),
       }).catch((e) => console.error(`[upload] 서버 삭제 실패 (${ch}):`, e));
     },
-    []
+    [applyChannelEntry]
+  );
+
+  // 누적 업로드 중 1건만 삭제
+  const handleRemoveOne = useCallback(
+    (ch: UploadableChannel) => (uploadedAt: string) => {
+      fetch("/api/profit/channel-uploads", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: ch, removeUploadedAt: uploadedAt }),
+      })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.ok) {
+            applyChannelEntry(ch, j.upload ?? null);
+          } else {
+            console.error(`[upload] 단건 삭제 실패 (${ch}):`, j.error);
+          }
+        })
+        .catch((e) => console.error(`[upload] 단건 삭제 실패 (${ch}):`, e));
+    },
+    [applyChannelEntry]
   );
 
   // 카페24 데이터를 MultiChannelData 형태로 변환
@@ -233,6 +266,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   const activeUploadable   = isUploadableActive ? (activeChannel as UploadableChannel) : null;
   const activeHasUpload    = activeUploadable ? !!uploads[activeUploadable] : false;
   const activeMeta         = activeUploadable ? metas[activeUploadable] : null;
+  const activeHistory      = activeUploadable ? histories[activeUploadable] : [];
   const activeChannelMeta  = CHANNELS.find(c => c.id === activeChannel);
 
   // ChannelComparisonChart에 넘길 채널 데이터 (브랜드 채널만)
@@ -368,7 +402,9 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
               channelColor={activeChannelMeta.color}
               onDataLoaded={handleDataLoaded(activeUploadable)}
               onClear={handleClear(activeUploadable)}
+              onRemoveOne={handleRemoveOne(activeUploadable)}
               currentMeta={activeMeta}
+              history={activeHistory}
             />
           )
         )}

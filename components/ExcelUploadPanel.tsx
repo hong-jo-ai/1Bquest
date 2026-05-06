@@ -27,8 +27,14 @@ interface Props {
   channelName: string;
   channelColor: string;
   onDataLoaded: (data: MultiChannelData, meta: UploadMeta) => void;
+  /** 채널의 모든 누적 업로드 삭제 */
   onClear: () => void;
+  /** 누적 업로드 중 1건(uploadedAt 키)만 삭제 */
+  onRemoveOne?: (uploadedAt: string) => void;
+  /** 누적 머지된 가장 최근 메타 */
   currentMeta: UploadMeta | null;
+  /** 누적된 모든 업로드의 메타 목록 (최근 업로드가 마지막) */
+  history?: UploadMeta[];
 }
 
 function fmtKRW(n: number) {
@@ -38,7 +44,7 @@ function fmtKRW(n: number) {
 }
 
 export default function ExcelUploadPanel({
-  channel, channelName, channelColor, onDataLoaded, onClear, currentMeta,
+  channel, channelName, channelColor, onDataLoaded, onClear, onRemoveOne, currentMeta, history,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -129,17 +135,56 @@ export default function ExcelUploadPanel({
       </div>
 
       <div className="px-5 pb-5 space-y-4">
-        {/* 현재 업로드 상태 */}
+        {/* 현재 누적 업로드 상태 — 머지된 합계 + 파일별 이력 */}
         {currentMeta && !preview && (
-          <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-sm text-emerald-700 dark:text-emerald-300">
-            <CheckCircle size={16} className="shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium">실 데이터 사용 중</p>
-              <p className="text-xs mt-0.5 opacity-80">
-                {currentMeta.fileName} · {currentMeta.rowCount.toLocaleString()}건 ·{" "}
-                {currentMeta.period.start} ~ {currentMeta.period.end}
-              </p>
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-sm text-emerald-700 dark:text-emerald-300 space-y-2">
+            <div className="flex items-start gap-2">
+              <CheckCircle size={16} className="shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium">
+                  실 데이터 사용 중
+                  {history && history.length > 1 && (
+                    <span className="ml-2 text-xs opacity-70">· {history.length}개 파일 누적</span>
+                  )}
+                </p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  총 {currentMeta.rowCount.toLocaleString()}건 ·{" "}
+                  {currentMeta.period.start} ~ {currentMeta.period.end}
+                </p>
+              </div>
             </div>
+
+            {/* 파일별 이력 — 2건 이상일 때만 노출. 동일 파일명 재업로드는 서버에서 자동 교체. */}
+            {history && history.length > 0 && (
+              <ul className="space-y-1 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                {[...history].reverse().map((h) => (
+                  <li
+                    key={`${h.fileName}-${h.uploadedAt}`}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{h.fileName}</span>
+                      <span className="opacity-70">
+                        {" "}· {h.rowCount.toLocaleString()}건 · {h.period.start} ~ {h.period.end}
+                      </span>
+                    </span>
+                    {onRemoveOne && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`'${h.fileName}' 업로드 데이터만 삭제할까요?`)) {
+                            onRemoveOne(h.uploadedAt);
+                          }
+                        }}
+                        className="shrink-0 text-emerald-600/70 hover:text-red-500 transition-colors"
+                        title="이 업로드만 삭제"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -178,6 +223,9 @@ export default function ExcelUploadPanel({
               </>
             )}
             <p className="mt-1 text-zinc-300 dark:text-zinc-500">지원 형식: .xlsx, .xls, .csv (최대 10MB)</p>
+            <p className="mt-1 text-zinc-400 dark:text-zinc-500">
+              여러 달 파일을 차례로 업로드하면 자동 누적됩니다. 같은 파일명을 다시 올리면 해당 업로드가 새 데이터로 교체됩니다.
+            </p>
           </div>
         </div>
 

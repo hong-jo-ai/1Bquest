@@ -184,14 +184,23 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
     .select("key, data")
     .like("key", "channel_upload:%");
 
-  for (const row of (data ?? []) as Array<{
-    key: string;
-    data: { data?: { topProducts?: Array<{ sku: string; sold: number }> } };
-  }>) {
-    const tp = row.data?.data?.topProducts;
-    if (!tp) continue;
+  for (const row of (data ?? []) as Array<{ key: string; data: unknown }>) {
+    // 신 포맷: { uploads: [{ data: { topProducts }, ... }] } — 모든 업로드의 topProducts 합산
+    // 구 포맷: { data: { topProducts }, meta }              — 그대로
+    const r = row.data as Record<string, unknown> | null;
+    const tpList: Array<{ sku: string; sold: number }> = [];
+    if (r && Array.isArray((r as { uploads?: unknown }).uploads)) {
+      const uploads = (r as { uploads: Array<{ data?: { topProducts?: Array<{ sku: string; sold: number }> } }> }).uploads;
+      for (const up of uploads) {
+        for (const p of up.data?.topProducts ?? []) tpList.push(p);
+      }
+    } else {
+      const tp = (r as { data?: { topProducts?: Array<{ sku: string; sold: number }> } } | null)?.data?.topProducts;
+      if (tp) tpList.push(...tp);
+    }
+    if (tpList.length === 0) continue;
     const isKakao = row.key === "channel_upload:kakao_gift";
-    for (const p of tp) {
+    for (const p of tpList) {
       if (!p.sku || !p.sold) continue;
       let targetSku = p.sku;
       if (isKakao) {

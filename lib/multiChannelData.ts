@@ -248,3 +248,212 @@ export function mergeChannelData(datasets: MultiChannelData[]): MultiChannelData
 
   return { salesSummary, topProducts, hourlyOrders, weeklyRevenue, dailyRevenue, inventory };
 }
+
+// ── 채널별 다중 업로드 머지 ──────────────────────────────────────────────────
+//
+// 한 채널에 여러 개의 엑셀 파일이 누적 업로드되는 경우 (예: 2월 파일 + 3월 파일),
+// 각 업로드는 자기 파일이 커버하는 기간의 MultiChannelData를 들고 있다.
+// 이걸 하나의 통합 MultiChannelData로 합쳐 UI에 보여준다.
+//
+// 머지 정책:
+//   - dailyRevenue / dailyCogs : 날짜 키. 동일 날짜는 가장 최근 업로드 값이 우선
+//     (사용자가 같은 기간을 다시 올렸다면 보정한 값을 쓴다는 의미).
+//   - topProducts    : SKU(또는 상품명) 키로 sold/revenue 합산 → 매출 기준 상위 10.
+//                       기간이 겹치는 두 업로드가 있으면 이중 합산될 수 있는데,
+//                       동일 fileName 재업로드는 라우트 단에서 교체되므로
+//                       실제로는 서로 다른 기간을 올린 일반 케이스에서만 누적된다.
+//   - hourlyOrders / weeklyRevenue : 같은 사유로 인덱스별 단순 합산.
+//   - salesSummary   : 머지된 dailyRevenue로부터 today/week/month/prevMonth 재계산
+//                       (각 업로드 시점의 "오늘" 기준이 아니라 현재 시각 기준이 맞음).
+//   - unmatchedSkus / unmatchedNames : 합집합.
+//   - inventory      : 빈 배열 (외부 채널은 재고 데이터 없음).
+//
+export interface PerUpload {
+  fileName: string;
+  rowCount: number;
+  period: { start: string; end: string };
+  uploadedAt: string;
+  data: MultiChannelData;
+}
+
+const HOURS_24 = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}시`);
+const WEEK_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
+function fmtKstDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function sumDailySlice(daily: DailyData[], predicate: (date: string) => boolean) {
+  let revenue = 0;
+  let orders = 0;
+  for (const d of daily) {
+    if (!predicate(d.date)) continue;
+    revenue += d.revenue;
+    orders += d.orders;
+  }
+  return { revenue, orders, avgOrder: orders > 0 ? Math.round(revenue / orders) : 0 };
+}
+
+export interface MergedChannelUpload {
+  data: MultiChannelData;
+  meta: {
+    fileName: string;
+    rowCount: number;
+    period: { start: string; end: string };
+    uploadedAt: string;
+  };
+  history: Array<{
+    fileName: string;
+    rowCount: number;
+    period: { start: string; end: string };
+    uploadedAt: string;
+  }>;
+}
+
+export function mergeUploads(uploads: PerUpload[]): MergedChannelUpload | null {
+  if (uploads.length === 0) return null;
+
+  // uploadedAt 오름차순 — 머지 시 뒤쪽(최신)이 우선
+  const sorted = [...uploads].sort((a, b) => a.uploadedAt.localeCompare(b.uploadedAt));
+
+  // dailyRevenue: 날짜 → 최신 업로드 값
+  const dailyRevMap = new Map<string, DailyData>();
+  for (const up of sorted) {
+    for (const d of up.data.dailyRevenue ?? []) {
+      dailyRevMap.set(d.date, d);
+    }
+  }
+  const dailyRevenue: DailyData[] = Array.from(dailyRevMap.values()).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+
+  // dailyCogs: 동일 정책
+  const dailyCogsMap = new Map<string, DailyCost>();
+  for (const up of sorted) {
+    for (const c of up.data.dailyCogs ?? []) {
+      dailyCogsMap.set(c.date, c);
+    }
+  }
+  const dailyCogs: DailyCost[] = Array.from(dailyCogsMap.values()).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+
+  // topProducts: SKU/상품명 키로 합산
+  const productMap = new Map<string, { name: string; sku: string; sold: number; revenue: number; image: string }>();
+  for (const up of sorted) {
+    for (const p of up.data.topProducts ?? []) {
+      const key = (p.sku || p.name).trim();
+      if (!key) continue;
+      const cur = productMap.get(key) ?? {
+        name: p.name,
+        sku: p.sku,
+        sold: 0,
+        revenue: 0,
+        image: p.image || "⌚",
+      };
+      cur.sold += p.sold;
+      cur.revenue += p.revenue;
+      // 이름/이미지는 가장 최신 업로드 값으로 갱신
+      cur.name = p.name || cur.name;
+      cur.image = p.image || cur.image;
+      productMap.set(key, cur);
+    }
+  }
+  const topProducts: ProductRank[] = Array.from(productMap.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10)
+    .map((p, i) => ({ rank: i + 1, ...p }));
+
+  // hourlyOrders: 24시간 버킷 합산
+  const hourlyOrders: HourlyData[] = HOURS_24.map((hour, i) => {
+    let orders = 0;
+    let revenue = 0;
+    for (const up of sorted) {
+      const h = up.data.hourlyOrders?.[i];
+      if (h) {
+        orders += h.orders;
+        revenue += h.revenue;
+      }
+    }
+    return { hour, orders, revenue };
+  });
+
+  // weeklyRevenue: 요일 버킷 합산
+  const weeklyRevenue: WeeklyData[] = WEEK_DAYS.map((day, i) => {
+    let orders = 0;
+    let revenue = 0;
+    for (const up of sorted) {
+      const w = up.data.weeklyRevenue?.[i];
+      if (w) {
+        orders += w.orders;
+        revenue += w.revenue;
+      }
+    }
+    return { day, orders, revenue };
+  });
+
+  // salesSummary: 머지된 dailyRevenue로부터 재계산
+  const now = new Date();
+  const todayStr = fmtKstDate(now);
+  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
+  const weekAgoStr = fmtKstDate(weekAgo);
+  const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevYM = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+
+  const salesSummary: SalesSummaryData = {
+    today:     sumDailySlice(dailyRevenue, (d) => d === todayStr),
+    week:      sumDailySlice(dailyRevenue, (d) => d >= weekAgoStr && d <= todayStr),
+    month:     sumDailySlice(dailyRevenue, (d) => d.startsWith(curYM)),
+    prevMonth: sumDailySlice(dailyRevenue, (d) => d.startsWith(prevYM)),
+  };
+
+  // unmatched 합집합
+  const unmatchedSkuSet = new Set<string>();
+  const unmatchedNameSet = new Set<string>();
+  for (const up of sorted) {
+    for (const s of up.data.unmatchedSkus ?? []) unmatchedSkuSet.add(s);
+    for (const n of up.data.unmatchedNames ?? []) unmatchedNameSet.add(n);
+  }
+
+  const data: MultiChannelData = {
+    salesSummary,
+    topProducts,
+    hourlyOrders,
+    weeklyRevenue,
+    dailyRevenue,
+    dailyCogs,
+    unmatchedSkus: Array.from(unmatchedSkuSet),
+    unmatchedNames: Array.from(unmatchedNameSet),
+    inventory: [],
+  };
+
+  // meta: 누적 정보 + 가장 최근 파일명
+  const newest = sorted[sorted.length - 1];
+  const totalRows = sorted.reduce((s, u) => s + u.rowCount, 0);
+  const periodStart = sorted
+    .map((u) => u.period.start)
+    .filter(Boolean)
+    .sort()[0] ?? newest.period.start;
+  const periodEnd = sorted
+    .map((u) => u.period.end)
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0] ?? newest.period.end;
+
+  return {
+    data,
+    meta: {
+      fileName: newest.fileName,
+      rowCount: totalRows,
+      period: { start: periodStart, end: periodEnd },
+      uploadedAt: newest.uploadedAt,
+    },
+    history: sorted.map(({ fileName, rowCount, period, uploadedAt }) => ({
+      fileName,
+      rowCount,
+      period,
+      uploadedAt,
+    })),
+  };
+}

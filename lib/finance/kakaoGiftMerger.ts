@@ -238,20 +238,29 @@ export async function rebuildKakaoGiftChannelData(): Promise<{
     inventory: [],
   };
 
-  // 6. channel_upload:kakao_gift에 저장 (다른 채널과 동일 형식: { data, meta })
+  // 6. channel_upload:kakao_gift 갱신.
+  // 다른 채널은 파일별로 PerUpload[] 가 누적되지만, kakao_gift 는 정산서/PO 들을 모두
+  // 합쳐 단일 머지 스냅샷으로 만들어 두는 구조. 그래서 안정 fileName 의 PerUpload 1개만
+  // 유지하도록 새 스토리지 형식({ uploads: [...] }) 으로 직접 기록한다.
+  // (channel-uploads 라우트의 PUT 도 동일 fileName 으로 들어와 dedup 되도록 맞춤.)
   const sources: string[] = [];
   if (settlements.length > 0) sources.push(`정산서 ${settlements.length}개월`);
   if (pos.length > 0)         sources.push(`일일발주서 ${pos.length}일`);
-  const meta = {
-    fileName: sources.length > 0 ? sources.join(" + ") : "데이터 없음",
+  const stableFileName = "__kakao_gift_settlement_aggregate__";
+  const perUpload = {
+    fileName: stableFileName,
     rowCount: topProducts.length,
     period: { start: dailyRevenue[0]?.date ?? "", end: dailyRevenue.at(-1)?.date ?? "" },
     uploadedAt: new Date().toISOString(),
+    data,
+    // UI 노출용 라벨(이력 행에 표시). channel-uploads 라우트의 PerUpload 타입엔
+    // 없는 추가 필드라 무시되더라도 안전.
+    sourceLabel: sources.length > 0 ? sources.join(" + ") : "데이터 없음",
   };
   await supabase.from("kv_store").upsert(
     {
       key: CHANNEL_KEY,
-      data: { data, meta },
+      data: { uploads: [perUpload] },
       updated_at: new Date().toISOString(),
     },
     { onConflict: "key" },

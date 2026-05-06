@@ -77,16 +77,35 @@ export async function runRevenueSnapshot(
 
     for (const row of (rows ?? []) as Array<{
       key: string;
-      data: { data?: { dailyRevenue?: DailyData[] } };
+      data: unknown;
     }>) {
       const channel = row.key.slice("channel_upload:".length);
       const brand = channelBrand(channel);
       if (!brand) continue;
-      const daily = row.data?.data?.dailyRevenue ?? [];
-      for (const d of daily) {
-        if (!d?.date || !Number.isFinite(d.revenue)) continue;
-        addEntry(brand, channel, d.date, Math.round(d.revenue));
+      // 신 포맷: { uploads: [{ data: { dailyRevenue }, ... }] }  — 날짜별 최신값으로 머지
+      // 구 포맷: { data: { dailyRevenue }, meta }              — 그대로
+      const r = row.data as Record<string, unknown> | null;
+      const merged = new Map<string, number>();
+      if (r && Array.isArray((r as { uploads?: unknown }).uploads)) {
+        const uploads = (r as { uploads: Array<{ uploadedAt?: string; data?: { dailyRevenue?: DailyData[] } }> }).uploads;
+        const sorted = [...uploads].sort((a, b) =>
+          (a.uploadedAt ?? "").localeCompare(b.uploadedAt ?? "")
+        );
+        for (const up of sorted) {
+          for (const d of up.data?.dailyRevenue ?? []) {
+            if (!d?.date || !Number.isFinite(d.revenue)) continue;
+            merged.set(d.date, Math.round(d.revenue));
+          }
+        }
+      } else {
+        const daily =
+          (r as { data?: { dailyRevenue?: DailyData[] } } | null)?.data?.dailyRevenue ?? [];
+        for (const d of daily) {
+          if (!d?.date || !Number.isFinite(d.revenue)) continue;
+          merged.set(d.date, Math.round(d.revenue));
+        }
       }
+      for (const [date, rev] of merged) addEntry(brand, channel, date, rev);
     }
   }
 
