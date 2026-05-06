@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getDashboardData, type DailyData } from "@/lib/cafe24Data";
 import { upsertRevenueDays } from "@/lib/finance/revenueHistory";
 import { BRAND_CHANNELS, type Brand, type ChannelId } from "@/lib/multiChannelData";
+import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "@/lib/cafe24Historical";
 
 function getDb() {
   const url = process.env.SUPABASE_URL;
@@ -54,7 +55,28 @@ export async function runRevenueSnapshot(
     chMap.set(date, revenue);
   };
 
-  // ── 1. 카페24 (paulvice) ────────────────────────────────────────
+  // ── 1a. 카페24 히스토리 보조 CSV (cafe24_historical:{brand}) ──────
+  // 라이브 API 가 못 가져오는 과거 기간(예: 1~3개월 전)은 사용자가 CSV 업로드.
+  // 토큰 없어도 로드 가능하므로 라이브보다 먼저 적재 → 라이브가 같은 날짜를
+  // 덮어쓸 수 있게 한다 (라이브 우선 정책).
+  for (const brand of ["paulvice", "harriot"] as const) {
+    try {
+      const record = await loadCafe24Historical(brand);
+      if (record.uploads.length === 0) continue;
+      const merged = mergeCafe24HistoricalDaily(record);
+      for (const d of merged) {
+        if (!d.date || !Number.isFinite(d.revenue)) continue;
+        addEntry(brand, "cafe24", d.date, Math.round(d.revenue));
+      }
+    } catch (e) {
+      console.error(
+        `[revenueSnapshot] cafe24 historical (${brand}) 로드 실패:`,
+        (e as Error).message,
+      );
+    }
+  }
+
+  // ── 1b. 카페24 라이브 API (paulvice 만, 토큰 필요) ──────────────────
   if (cafe24Token) {
     try {
       const data = await getDashboardData(cafe24Token);
