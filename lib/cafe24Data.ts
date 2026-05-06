@@ -191,6 +191,31 @@ function summarize(orders: any[]): PeriodSummary {
   };
 }
 
+/**
+ * 결제가 확정된 주문만 매출로 집계하기 위한 필터.
+ *
+ * 카페24 `order_status` 흐름: N00 입금전 → N10 배송준비중 → … → N30 배송완료
+ * (취소: N40/N41, 반품: N50, 교환: N60)
+ *
+ * 무통장입금으로 주문만 걸어두고 입금하지 않아 자동 취소되는 케이스가 흔해서,
+ * 입금 확인 전(N00) 상태는 매출에 포함하지 않는다.
+ *
+ * 판단 기준 (lib/bankDeposit/matcher.ts:isUnpaid 와 동일):
+ *   - `payment_date` 가 채워졌으면 결제 확정.
+ *   - 비어있더라도 `actual_payment_amount > 0` 이면 결제됨 (외부 PG 케이스).
+ *   - 둘 다 없으면 미결제 → 매출에서 제외.
+ *
+ * (입금 후 취소된 N40/N41 케이스는 환불이 별도로 회계 처리되는 구조라 여기선 제외하지 않는다.)
+ */
+export function isPaidOrder(o: {
+  payment_date?: string | null;
+  actual_payment_amount?: string | number;
+}): boolean {
+  if (typeof o.payment_date === "string" && o.payment_date.trim() !== "") return true;
+  const paid = parseFloat(String(o.actual_payment_amount ?? "0"));
+  return Number.isFinite(paid) && paid > 0;
+}
+
 // ── 상품별 판매 순위 빌더 ─────────────────────────────────────────────────
 
 export function buildRanking(orders: any[], limit = 10): ProductRank[] {
@@ -240,11 +265,16 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
   const prevMonthEndStr   = kstStr(prevMonthEnd);
 
   // 이번 달 + 지난 달 주문 + 상품 목록 병렬 조회
-  const [monthOrders, prevMonthOrders, productsData] = await Promise.all([
+  const [rawMonthOrders, rawPrevMonthOrders, productsData] = await Promise.all([
     fetchAllOrders(token, monthStartStr, todayStr),
     fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr),
     cafe24Get("/api/v2/admin/products?limit=100&display=T", token),
   ]);
+
+  // 입금전(N00) 주문은 매출에서 제외 — 무통장 입금 미완료로 자동 취소되는 케이스가 잦음.
+  // 입금 확인 후 배송준비중(N10) 이상으로 넘어간 주문만 진짜 매출로 본다.
+  const monthOrders     = rawMonthOrders.filter(isPaidOrder);
+  const prevMonthOrders = rawPrevMonthOrders.filter(isPaidOrder);
 
   // 오늘 / 이번 주 필터
   const todayOrders = monthOrders.filter(

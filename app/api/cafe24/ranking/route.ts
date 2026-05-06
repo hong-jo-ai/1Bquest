@@ -1,4 +1,4 @@
-import { fetchAllOrders, buildRanking } from "@/lib/cafe24Data";
+import { fetchAllOrders, buildRanking, isPaidOrder } from "@/lib/cafe24Data";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { NextResponse } from "next/server";
 
@@ -66,7 +66,8 @@ export async function GET() {
   }
 
   try {
-    const orders   = await fetchOrdersForMonths(accessToken, 3);
+    // 입금전 주문 제외 — 매출/판매 통계는 결제 확정된 주문만 집계
+    const orders   = (await fetchOrdersForMonths(accessToken, 3)).filter(isPaidOrder);
     const products = buildRanking(orders, 10);
 
     const now = kstNow();

@@ -1,5 +1,5 @@
 import { getCampaign, listProducts, bulkImportOrders } from "@/lib/groupBuying/store";
-import { fetchAllOrders } from "@/lib/cafe24Data";
+import { fetchAllOrders, isPaidOrder } from "@/lib/cafe24Data";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import type { NextRequest } from "next/server";
 
@@ -22,7 +22,8 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const token = await getAccessTokenFromStore();
     if (!token) return Response.json({ error: "Cafe24 토큰 없음" }, { status: 401 });
 
-    const orders = await fetchAllOrders(token, campaign.start_date, campaign.end_date);
+    // 입금전 주문 제외 — 미결제로 자동 취소되는 케이스가 잦아 공구 매출에 잡히면 안 됨
+    const orders = (await fetchAllOrders(token, campaign.start_date, campaign.end_date)).filter(isPaidOrder);
 
     // SKU 매칭: 캠페인 상품 SKU 중 하나라도 포함된 주문
     const gbOrders: any[] = [];

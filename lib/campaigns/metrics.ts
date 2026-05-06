@@ -45,6 +45,7 @@ function kstToday(): string {
 
 interface RawOrder {
   order_id?:     string;
+  payment_date?: string | null;
   payment_amount?: string;
   total_amount?: string;
   order_price_amount?: string;
@@ -94,7 +95,7 @@ function orderHasCoupon(order: RawOrder, couponCode: string): boolean {
 }
 
 // cafe24Data 의 orderRevenue 와 동일 로직 — 네이버페이 전액 결제 포함.
-import { orderRevenue as cafe24OrderRevenue } from "@/lib/cafe24Data";
+import { orderRevenue as cafe24OrderRevenue, isPaidOrder } from "@/lib/cafe24Data";
 function orderRevenue(order: RawOrder): number {
   return cafe24OrderRevenue(order);
 }
@@ -159,7 +160,8 @@ export async function computeCampaignMetrics(
     };
   }
 
-  const orders = await fetchOrdersWithDetails(token, windowStart, windowEnd);
+  // 입금전 주문은 매출/ROAS에서 제외 — 자동 취소되는 케이스 많음
+  const orders = (await fetchOrdersWithDetails(token, windowStart, windowEnd)).filter(isPaidOrder);
 
   let matched: RawOrder[];
   let warning: string | undefined;

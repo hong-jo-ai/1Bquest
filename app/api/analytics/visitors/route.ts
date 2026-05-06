@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { metaGet, META_BASE } from "@/lib/metaClient";
-import { fetchAllOrders, orderRevenue } from "@/lib/cafe24Data";
+import { fetchAllOrders, orderRevenue, isPaidOrder } from "@/lib/cafe24Data";
 import { fetchGa4Data, refreshGoogleToken, type Ga4Data } from "@/lib/ga4Client";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
@@ -242,8 +242,9 @@ export async function GET(_req: NextRequest) {
   // ── [3] Cafe24 주문 ──────────────────────────────────────────────────────
   if (c24Token) {
     try {
-      // analytics에선 items 불필요 → embedItems=false 로 훨씬 빠름
-      const orders = await fetchAllOrders(c24Token, startDate, endDate, false);
+      // analytics에선 items 불필요 → embedItems=false 로 훨씬 빠름.
+      // 입금전(N00) 주문은 매출에서 제외 — 자동 취소되는 케이스 많음.
+      const orders = (await fetchAllOrders(c24Token, startDate, endDate, false)).filter(isPaidOrder);
       orders.forEach((o) => {
         const ds = kstDateStr(o.payment_date ?? o.order_date);
         if (dateMap[ds]) {
