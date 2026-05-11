@@ -7,6 +7,7 @@
  * - 캠페인 이름에 "주얼리"가 포함된 캠페인만 대상
  */
 import { metaGet, metaPost } from "./metaClient";
+import { resolveAdAccountId } from "./metaBrandFilter";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -37,19 +38,7 @@ const BUDGET_DECREASE_PCT = 0.20;
 // ── 광고 계정 ID 조회 ────────────────────────────────────────────────────
 
 async function getAdAccountId(token: string): Promise<string> {
-  const data = await metaGet("/me/adaccounts", token, {
-    fields: "id,name,account_status",
-    limit: "10",
-  });
-  const accounts: any[] = data.data ?? [];
-  if (accounts.length === 0) throw new Error("연결된 Meta 광고 계정이 없습니다");
-
-  const envId = process.env.META_AD_ACCOUNT_ID;
-  const account =
-    (envId ? accounts.find((a: any) => a.id === envId) : null) ??
-    accounts.find((a: any) => a.account_status === 1) ??
-    accounts[0];
-  return account.id;
+  return resolveAdAccountId(token);
 }
 
 // ── "주얼리" 캠페인 찾기 ─────────────────────────────────────────────────

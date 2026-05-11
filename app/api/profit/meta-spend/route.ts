@@ -1,12 +1,15 @@
 import { metaGet } from "@/lib/metaClient";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
+import { campaignMatchesBrand, resolveAdAccountId } from "@/lib/metaBrandFilter";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-interface InsightRow {
-  date_start: string; // YYYY-MM-DD
-  spend?: string;
+interface CampaignDailyRow {
+  date_start:     string; // YYYY-MM-DD
+  campaign_id?:   string;
+  campaign_name?: string;
+  spend?:         string;
 }
 
 function kstDateStr(offsetDays: number = 0): string {
@@ -15,24 +18,9 @@ function kstDateStr(offsetDays: number = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
-// 광고 계정명 → 브랜드 자동 매칭 (계정명에 키워드 포함 시 해당 브랜드)
-const BRAND_ACCOUNT_PATTERNS: Record<string, RegExp[]> = {
-  paulvice: [/icaruse/i, /폴바이스/, /paulvice/i],
-  harriot:  [/해리엇/, /harriot/i],
-};
-
-function accountMatchesBrand(name: string, brand: string): boolean {
-  const patterns = BRAND_ACCOUNT_PATTERNS[brand];
-  if (!patterns) return false;
-  return patterns.some((p) => p.test(name));
-}
-
 /**
- * 최근 N일치 메타 광고비를 일별로 가져온다 (전체 광고 계정 합산).
- *
- * 응답: { ok, daily: [{ date, spend }, ...], accounts, accountErrors }
- *      - ok=false: 토큰 없음 또는 accounts 조회 실패
- *      - ok=true & daily=[]: 연결은 됐지만 광고비 0 또는 계정 없음
+ * 최근 N일치 메타 광고비를 캠페인 단위로 가져와 일별 합산한다.
+ * brand 파라미터가 있으면 캠페인명 패턴으로 필터링 (해리/harriot → harriot, 그 외 → paulvice).
  */
 export async function GET(req: NextRequest) {
   const token = await getMetaTokenServer();
@@ -49,70 +37,30 @@ export async function GET(req: NextRequest) {
   const since = kstDateStr(-(days - 1));
 
   try {
-    // 모든 광고 계정 조회
-    const accountsRes = (await metaGet("/me/adaccounts", token, {
-      fields: "id,name,currency",
-      limit: "20",
-    })) as { data?: Array<{ id: string; name: string }> };
+    const accountId = await resolveAdAccountId(token);
 
-    const allAccounts = accountsRes.data ?? [];
-    if (allAccounts.length === 0) {
-      return Response.json({
-        ok: true,
-        daily: [],
-        accounts: 0,
-        warning: "Meta에 광고 계정이 없거나 토큰에 접근 권한 없음",
-      });
-    }
+    // 일별 × 캠페인별 spend. 90일 × 캠페인 수가 limit을 넘지 않도록 1000 사용.
+    const ins = (await metaGet(`/${accountId}/insights`, token, {
+      fields:         "spend,campaign_id,campaign_name",
+      time_increment: "1",
+      time_range:     JSON.stringify({ since, until }),
+      level:          "campaign",
+      limit:          "1000",
+    })) as { data?: CampaignDailyRow[] };
 
-    // 브랜드 필터링: 지정된 브랜드 패턴에 매칭되는 계정만
-    // brand 미지정 또는 빈 값이면 모두 합산
-    const accounts = brand
-      ? allAccounts.filter((a) => accountMatchesBrand(a.name, brand))
-      : allAccounts;
-    const excludedAccounts = brand
-      ? allAccounts.filter((a) => !accountMatchesBrand(a.name, brand)).map((a) => a.name)
-      : [];
-
-    if (accounts.length === 0) {
-      return Response.json({
-        ok: true,
-        daily: [],
-        accounts: 0,
-        warning: `브랜드 '${brand}'에 매칭되는 광고 계정 없음. 전체 계정: ${allAccounts.map((a) => a.name).join(", ")}`,
-        excludedAccounts,
-      });
-    }
-
-    // 각 계정의 일별 spend 조회 → 날짜별 합산
     const dailyMap = new Map<string, number>();
-    const accountErrors: Array<{ accountId: string; name: string; error: string }> = [];
+    let matchedCount = 0;
+    let skippedCount = 0;
 
-    await Promise.all(
-      accounts.map(async (acc) => {
-        try {
-          const ins = (await metaGet(`/${acc.id}/insights`, token, {
-            fields: "spend",
-            time_increment: "1",
-            // time_range가 date_preset보다 안정적 (last_60d 같은 무효 프리셋 회피)
-            time_range: JSON.stringify({ since, until }),
-            level: "account",
-            // 기본 limit이 25라 60일 요청해도 첫 25일만 반환되어 데이터 누락.
-            // 90일까지 충분히 커버하도록 명시.
-            limit: "100",
-          })) as { data?: InsightRow[] };
-
-          for (const row of ins.data ?? []) {
-            const cur = dailyMap.get(row.date_start) ?? 0;
-            dailyMap.set(row.date_start, cur + parseFloat(row.spend ?? "0"));
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error(`[meta-spend] account ${acc.id} 실패:`, msg);
-          accountErrors.push({ accountId: acc.id, name: acc.name, error: msg });
-        }
-      })
-    );
+    for (const row of ins.data ?? []) {
+      if (!campaignMatchesBrand(row.campaign_name, brand)) {
+        skippedCount++;
+        continue;
+      }
+      matchedCount++;
+      const cur = dailyMap.get(row.date_start) ?? 0;
+      dailyMap.set(row.date_start, cur + parseFloat(row.spend ?? "0"));
+    }
 
     const daily = Array.from(dailyMap.entries())
       .map(([date, spend]) => ({ date, spend: Math.round(spend) }))
@@ -121,13 +69,12 @@ export async function GET(req: NextRequest) {
     return Response.json({
       ok: true,
       daily,
-      accounts: accounts.length,
-      accountNames: accounts.map((a) => a.name),
-      excludedAccounts: excludedAccounts.length > 0 ? excludedAccounts : undefined,
-      accountErrors: accountErrors.length > 0 ? accountErrors : undefined,
+      accountId,
       brand: brand || "all",
       since,
       until,
+      matchedRows: matchedCount,
+      skippedRows: skippedCount,
     });
   } catch (e) {
     return Response.json(

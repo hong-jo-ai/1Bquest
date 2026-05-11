@@ -1,20 +1,9 @@
 import { metaGet } from "@/lib/metaClient";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
+import { campaignMatchesBrand, resolveAdAccountId } from "@/lib/metaBrandFilter";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
-
-// /api/profit/meta-spend와 동일한 패턴
-const BRAND_ACCOUNT_PATTERNS: Record<string, RegExp[]> = {
-  paulvice: [/icaruse/i, /폴바이스/, /paulvice/i],
-  harriot:  [/해리엇/, /harriot/i],
-};
-
-function accountMatchesBrand(name: string, brand: string): boolean {
-  const patterns = BRAND_ACCOUNT_PATTERNS[brand];
-  if (!patterns) return false;
-  return patterns.some((p) => p.test(name));
-}
 
 function kstDateStr(offsetDays = 0): string {
   const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -22,11 +11,12 @@ function kstDateStr(offsetDays = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
-interface InsightRow {
-  spend?:         string;
-  purchase_roas?: { value: string }[];
-  actions?:       { action_type: string; value: string }[];
-  action_values?: { action_type: string; value: string }[];
+interface CampaignInsightRow {
+  campaign_id?:    string;
+  campaign_name?:  string;
+  spend?:          string;
+  actions?:        { action_type: string; value: string }[];
+  action_values?:  { action_type: string; value: string }[];
 }
 
 const PURCHASE_ACTIONS = new Set([
@@ -77,49 +67,27 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const accountsRes = (await metaGet("/me/adaccounts", token, {
-      fields: "id,name,currency",
-      limit: "20",
-    })) as { data?: Array<{ id: string; name: string }> };
+    const accountId = await resolveAdAccountId(token);
 
-    const allAccounts = accountsRes.data ?? [];
-    const accounts = brand
-      ? allAccounts.filter((a) => accountMatchesBrand(a.name, brand))
-      : allAccounts;
+    // 캠페인 단위 인사이트 → 캠페인명 패턴으로 브랜드 분리.
+    const ins = (await metaGet(`/${accountId}/insights`, token, {
+      fields:     "spend,actions,action_values,campaign_id,campaign_name",
+      time_range: JSON.stringify({ since, until }),
+      level:      "campaign",
+      limit:      "500",
+    })) as { data?: CampaignInsightRow[] };
 
-    if (accounts.length === 0) {
-      return Response.json({
-        ok: true, since, until,
-        spend: 0, purchaseValue: 0, purchaseCount: 0, roas: 0,
-        accounts: 0,
-        warning: brand ? `브랜드 '${brand}' 매칭 광고 계정 없음` : "광고 계정 없음",
-      });
-    }
+    const rows = (ins.data ?? []).filter((r) => campaignMatchesBrand(r.campaign_name, brand));
 
     let spend = 0;
     let purchaseValue = 0;
     let purchaseCount = 0;
 
-    await Promise.all(
-      accounts.map(async (acc) => {
-        try {
-          const ins = (await metaGet(`/${acc.id}/insights`, token, {
-            fields: "spend,purchase_roas,actions,action_values",
-            time_range: JSON.stringify({ since, until }),
-            level: "account",
-          })) as { data?: InsightRow[] };
-
-          const row = ins.data?.[0];
-          if (!row) return;
-
-          spend         += parseFloat(row.spend ?? "0");
-          purchaseValue += sumPurchaseAction(row.action_values);
-          purchaseCount += sumPurchaseAction(row.actions);
-        } catch (e) {
-          console.error(`[dashboard-kpi] ${acc.id} 실패:`, e);
-        }
-      })
-    );
+    for (const row of rows) {
+      spend         += parseFloat(row.spend ?? "0");
+      purchaseValue += sumPurchaseAction(row.action_values);
+      purchaseCount += sumPurchaseAction(row.actions);
+    }
 
     const roas = spend > 0 ? purchaseValue / spend : 0;
 
@@ -129,7 +97,8 @@ export async function GET(req: NextRequest) {
       purchaseValue: Math.round(purchaseValue),
       purchaseCount: Math.round(purchaseCount),
       roas,
-      accounts: accounts.length,
+      accountId,
+      campaignsCounted: rows.length,
     });
   } catch (e) {
     return Response.json(

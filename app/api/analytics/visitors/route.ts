@@ -4,6 +4,7 @@ import { fetchAllOrders, orderRevenue, isPaidOrder } from "@/lib/cafe24Data";
 import { fetchGa4Data, refreshGoogleToken, type Ga4Data } from "@/lib/ga4Client";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
+import { resolveAdAccountId } from "@/lib/metaBrandFilter";
 import { type NextRequest } from "next/server";
 
 function kstNow() {
@@ -110,14 +111,7 @@ async function fetchMetaDailyInsights(
 }
 
 async function getMetaAccountId(token: string): Promise<string> {
-  const envId = process.env.META_AD_ACCOUNT_ID;
-  if (envId) return envId;
-  const data = await metaGet("/me/adaccounts", token, {
-    fields: "id,account_status", limit: "10",
-  });
-  const accounts: any[] = data.data ?? [];
-  if (!accounts.length) throw new Error("연결된 Meta 광고 계정 없음");
-  return ((accounts.find(a => a.account_status === 1) ?? accounts[0]).id) as string;
+  return resolveAdAccountId(token);
 }
 
 // ── 메인 핸들러 ───────────────────────────────────────────────────────────
