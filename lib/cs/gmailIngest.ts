@@ -22,6 +22,12 @@ import type { CsChannel, IngestPayload } from "./types";
 const SIXSHOP_SENDER_PATTERNS = [/sixshop/i, /식스샵/, /noreply@.*sixshop/i];
 const CAFE24_SENDER_PATTERNS = [/cafe24/i, /카페24/, /cafe24corp/i];
 
+const NAVERPAY_CENTER_SENDER_PATTERNS = [
+  /pay\.naver\.com/i,
+  /네이버페이/,
+  /naverpay/i,
+];
+
 function detectChannel(from: string | undefined, account: GmailAccount): CsChannel {
   if (!from) return "gmail";
   if (account.brand === "harriot" && SIXSHOP_SENDER_PATTERNS.some((r) => r.test(from))) {
@@ -31,6 +37,29 @@ function detectChannel(from: string | undefined, account: GmailAccount): CsChann
     return "cafe24_board";
   }
   return "gmail";
+}
+
+/**
+ * 네이버페이센터 주문 상황 알림 메일인지 판정.
+ * 발신자가 네이버페이 도메인 + 제목에 "주문 상황" 포함.
+ */
+function isNaverPayCenterNotice(
+  from: string | undefined,
+  subject: string
+): boolean {
+  if (!from) return false;
+  if (!NAVERPAY_CENTER_SENDER_PATTERNS.some((r) => r.test(from))) return false;
+  return /주문\s*상황/.test(subject);
+}
+
+/**
+ * 네이버페이센터 알림 본문에서 "고객문의 N건" 추출.
+ * 0건이거나 패턴 없으면 0 반환.
+ */
+function parseNaverPayInquiryCount(body: string): number {
+  const m = body.match(/고객문의[^\d]{0,30}(\d+)\s*건/);
+  if (!m) return 0;
+  return Number(m[1]) || 0;
 }
 
 export async function syncAllGmailAccounts(): Promise<{
@@ -97,6 +126,39 @@ export async function syncAllGmailAccounts(): Promise<{
 
         const latestSubject = extractHeader(latestIncoming, "Subject") ?? "(제목 없음)";
         const { text: latestText } = extractBody(latestIncoming);
+
+        // 네이버페이센터 알림 메일: 본문 정형이라 AI 분류 우회.
+        // 고객문의 0건이면 skip, N>0 이면 subject 만 알림용으로 가공해서 ingest.
+        if (isNaverPayCenterNotice(latestFromHeader, latestSubject)) {
+          const count = parseNaverPayInquiryCount(
+            latestText || latestIncoming.snippet || ""
+          );
+          if (count === 0) {
+            skipped++;
+            continue;
+          }
+          const noticePayload: IngestPayload = {
+            brand: account.brand,
+            channel: "gmail",
+            externalThreadId: latestIncoming.threadId,
+            externalMessageId: latestIncoming.id,
+            customerHandle: latestEmail ?? undefined,
+            customerName: "네이버페이센터",
+            subject: `[네이버페이센터] 고객문의 ${count}건 — 톡톡에서 응대`,
+            bodyText: latestText || undefined,
+            sentAt: new Date(Number(latestIncoming.internalDate)),
+            direction: "in",
+            raw: {
+              labelIds: latestIncoming.labelIds,
+              snippet: latestIncoming.snippet,
+              naverpay_inquiry_count: count,
+            },
+          };
+          const r = await ingestMessage(noticePayload);
+          if (r.inserted) inserted++;
+          else skipped++;
+          continue;
+        }
 
         // 2차: AI 분류 — 최근 수신 메시지 기준으로 스레드 전체를 판단
         const cls = await classifyEmail({
