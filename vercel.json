@@ -41,10 +41,6 @@
       "schedule": "40 * * * *"
     },
     {
-      "path": "/api/cs/ingest/naver",
-      "schedule": "25 * * * *"
-    },
-    {
       "path": "/api/cs/notify",
       "schedule": "2,12,22,32,42,52 * * * *"
     },
