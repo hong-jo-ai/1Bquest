@@ -75,6 +75,10 @@
     {
       "path": "/api/cron/revenue-snapshot",
       "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/bysoy-daily-report",
+      "schedule": "0 15 * * *"
     }
   ]
 }
