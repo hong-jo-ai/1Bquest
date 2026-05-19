@@ -20,6 +20,11 @@ import {
   REGISTER_INFLUENCER_TOOL,
   type RegisterArgs,
 } from "@/lib/influencer/register";
+import {
+  addTodayTask,
+  ADD_TODAY_TASK_TOOL,
+  type AddTaskArgs,
+} from "@/lib/todayHub/addTask";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -106,12 +111,16 @@ async function downloadTelegramPhoto(
   return { data: buf.toString("base64"), mediaType };
 }
 
-async function extractInfluencerArgs(
+type ExtractedTool =
+  | { toolName: "register_influencer"; args: RegisterArgs }
+  | { toolName: "add_today_task";      args: AddTaskArgs };
+
+async function extractToolCall(
   text: string | undefined,
   imageData: { data: string; mediaType: ImageMediaType } | null,
-): Promise<{ args: RegisterArgs | null; error?: string }> {
+): Promise<{ tool: ExtractedTool | null; error?: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { args: null, error: "ANTHROPIC_API_KEY 미설정" };
+  if (!apiKey) return { tool: null, error: "ANTHROPIC_API_KEY 미설정" };
 
   const client = new Anthropic({ apiKey });
 
@@ -134,15 +143,22 @@ async function extractInfluencerArgs(
     (text && text.trim()
       ? `사용자 메시지: "${text.trim()}"\n\n`
       : "사용자가 사진만 보냈습니다.\n\n") +
-    "위 정보(텍스트/이미지)에서 인플루언서 정보를 추출해서 register_influencer 도구를 한 번 호출하세요.\n" +
-    "- 이미지가 있으면 인스타그램/유튜브/틱톡 프로필 스크린샷으로 가정\n" +
+    "위 정보를 보고 둘 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
+    "1) register_influencer — 인스타/유튜브/틱톡 프로필 스크린샷이거나 인플루언서/계정 등록 의도인 경우.\n" +
+    "2) add_today_task — '오늘 할 일', '투두', '대시보드에 할일' 같이 본인 작업 등록 의도인 경우.\n\n" +
+    "휴리스틱:\n" +
+    "- 이미지가 첨부됐으면 거의 항상 인플루언서 등록.\n" +
+    "- 텍스트만이고 '할일'/'todo'/'task'/'할거'/'추가해줘 (작업명)' 같으면 add_today_task.\n" +
+    "- '@핸들' 또는 팔로워/플랫폼 언급은 register_influencer.\n\n" +
+    "register_influencer 호출 시:\n" +
     "- handle: @ 제외하고 추출 (예: @nak__ta__ → nak__ta__)\n" +
-    "- name: 표시 이름 (한글 이름 또는 닉네임)\n" +
-    "- followers: '5만'/'50K'/'50,000' → 50000 같이 정수로 변환. 모르면 생략\n" +
-    "- categories: bio/소개/해시태그에서 추정 (예: 패션/뷰티/라이프스타일/푸드/여행)\n" +
-    "- platform: 화면 UI로 판단 (인스타 동그라미 스토리 = instagram, 빨강/구독 = youtube)\n" +
-    "- notes: 사용자가 메시지로 강조한 포인트나 bio에서 인상적인 부분\n" +
-    "- 정보 없는 필드는 비워두세요.";
+    "- followers: '5만'/'50K'/'50,000' → 50000 정수\n" +
+    "- categories: bio/해시태그에서 추정 (패션/뷰티/라이프스타일 등)\n" +
+    "- platform: 인스타 UI → instagram, 빨강/구독 → youtube\n" +
+    "- 모르는 필드는 비워두기\n\n" +
+    "add_today_task 호출 시:\n" +
+    "- title: 할 일 한 줄 (예: '에끌라 영상 컷 편집')\n" +
+    "- category: 디자인/광고/CS/콘텐츠/운영/기타 중 추정. 모르면 기타.";
 
   userContent.push({ type: "text", text: userInstruction });
 
@@ -150,10 +166,9 @@ async function extractInfluencerArgs(
     model: "claude-haiku-4-5",
     max_tokens: 1024,
     system:
-      "너는 paulwise 대시보드의 인플루언서 등록 도우미야. " +
-      "사용자가 보낸 인스타/유튜브/틱톡 프로필 스크린샷이나 텍스트 정보에서 " +
-      "인플루언서 정보를 추출해서 register_influencer 도구를 호출해. " +
-      "추측 금지 — 보이는 정보만 추출. 모르는 필드는 비워둬.",
+      "너는 paulwise 대시보드의 모바일 도우미야. " +
+      "사용자가 보낸 메시지/이미지를 보고 register_influencer 또는 add_today_task 중 정확히 하나의 도구를 호출해. " +
+      "추측 금지 — 명확한 신호로만 판단. 둘 다 애매하면 add_today_task 로 fallback.",
     tools: [
       {
         name: REGISTER_INFLUENCER_TOOL.name,
@@ -161,8 +176,14 @@ async function extractInfluencerArgs(
         input_schema:
           REGISTER_INFLUENCER_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
       },
+      {
+        name: ADD_TODAY_TASK_TOOL.name,
+        description: ADD_TODAY_TASK_TOOL.description,
+        input_schema:
+          ADD_TODAY_TASK_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
+      },
     ],
-    tool_choice: { type: "tool", name: REGISTER_INFLUENCER_TOOL.name },
+    tool_choice: { type: "any" },
     messages: [{ role: "user", content: userContent }],
   });
 
@@ -170,10 +191,16 @@ async function extractInfluencerArgs(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
   );
   if (!toolUse) {
-    return { args: null, error: "Claude이 도구를 호출하지 않았습니다" };
+    return { tool: null, error: "Claude이 도구를 호출하지 않았습니다" };
   }
 
-  return { args: toolUse.input as RegisterArgs };
+  if (toolUse.name === "register_influencer") {
+    return { tool: { toolName: "register_influencer", args: toolUse.input as RegisterArgs } };
+  }
+  if (toolUse.name === "add_today_task") {
+    return { tool: { toolName: "add_today_task", args: toolUse.input as AddTaskArgs } };
+  }
+  return { tool: null, error: `알 수 없는 도구: ${toolUse.name}` };
 }
 
 function shouldProcess(
@@ -183,17 +210,18 @@ function shouldProcess(
   // 사진이 있으면 무조건 등록 시도
   if (hasPhoto) return { process: true };
 
-  // 텍스트만 있으면 등록 키워드 확인
+  // 텍스트만 있으면 의도 키워드 확인 (인플루언서 등록 + 오늘 할일 추가)
   if (text) {
-    if (/등록|추가|저장|add|register|발굴/i.test(text)) {
+    if (/등록|추가|저장|add|register|발굴|할일|할\s*일|todo|task|할거|할\s*거/i.test(text)) {
       return { process: true };
     }
     return {
       process: false,
       hint:
-        "💡 인플루언서 등록 사용법:\n" +
-        "• 인스타 프로필 스크린샷 첨부 + '등록해줘'\n" +
-        "• 텍스트로 '인스타 @handle 등록, 패션, 팔로워 5만, 우선순위 높음'",
+        "💡 사용법:\n" +
+        "• 인스타 스크린샷 첨부 + '등록해줘' → 인플루언서 등록\n" +
+        "• '@handle 등록, 패션, 팔로워 5만' → 인플루언서 등록\n" +
+        "• '할일 추가: 에끌라 영상 편집' → 오늘 할일에 추가",
     };
   }
 
@@ -256,11 +284,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { args, error: extractError } = await extractInfluencerArgs(
-      text,
-      imageData,
-    );
-    if (!args) {
+    const { tool, error: extractError } = await extractToolCall(text, imageData);
+    if (!tool) {
       await sendTelegramReply(
         message.chat.id,
         `❌ 정보 추출 실패: ${extractError || "알 수 없는 오류"}`,
@@ -269,27 +294,41 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true });
     }
 
-    const result = await registerInfluencer(args);
-
     let reply: string;
-    if (result.ok) {
-      const lines = [
-        result.message,
-        "",
-        `<b>플랫폼</b>: ${args.platform}`,
-        `<b>이름</b>: ${args.name || args.handle}`,
-        args.followers ? `<b>팔로워</b>: ${args.followers.toLocaleString()}` : null,
-        args.categories?.length ? `<b>카테고리</b>: ${args.categories.join(", ")}` : null,
-        args.priority ? `<b>우선순위</b>: ${args.priority}` : null,
-        args.notes ? `<b>메모</b>: ${args.notes}` : null,
-        "",
-        "대시보드 → 인플루언서 도구에서 확인 (다음 마운트 시 동기화)",
-      ].filter((l): l is string => l !== null);
-      reply = lines.join("\n");
-    } else if ("duplicate" in result) {
-      reply = `⚠️ ${result.message}`;
+
+    if (tool.toolName === "add_today_task") {
+      const result = await addTodayTask(tool.args);
+      if (result.ok) {
+        reply = [
+          `✅ ${result.message}`,
+          "",
+          "대시보드 새로고침 시 즉시 반영됩니다.",
+        ].join("\n");
+      } else {
+        reply = `❌ 할일 추가 실패: ${result.error}`;
+      }
     } else {
-      reply = `❌ 등록 실패: ${result.error}`;
+      const args = tool.args;
+      const result = await registerInfluencer(args);
+      if (result.ok) {
+        const lines = [
+          result.message,
+          "",
+          `<b>플랫폼</b>: ${args.platform}`,
+          `<b>이름</b>: ${args.name || args.handle}`,
+          args.followers ? `<b>팔로워</b>: ${args.followers.toLocaleString()}` : null,
+          args.categories?.length ? `<b>카테고리</b>: ${args.categories.join(", ")}` : null,
+          args.priority ? `<b>우선순위</b>: ${args.priority}` : null,
+          args.notes ? `<b>메모</b>: ${args.notes}` : null,
+          "",
+          "대시보드 → 인플루언서 도구에서 확인 (다음 마운트 시 동기화)",
+        ].filter((l): l is string => l !== null);
+        reply = lines.join("\n");
+      } else if ("duplicate" in result) {
+        reply = `⚠️ ${result.message}`;
+      } else {
+        reply = `❌ 등록 실패: ${result.error}`;
+      }
     }
 
     await sendTelegramReply(message.chat.id, reply, message.message_id);
