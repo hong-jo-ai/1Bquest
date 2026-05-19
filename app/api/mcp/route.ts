@@ -15,6 +15,11 @@ import {
   REGISTER_INFLUENCER_TOOL,
   type RegisterArgs,
 } from "@/lib/influencer/register";
+import {
+  addTodayTask,
+  ADD_TODAY_TASK_TOOL,
+  type AddTaskArgs,
+} from "@/lib/todayHub/addTask";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -35,7 +40,7 @@ function authOk(req: NextRequest): boolean {
   return false;
 }
 
-const TOOLS = [REGISTER_INFLUENCER_TOOL];
+const TOOLS = [REGISTER_INFLUENCER_TOOL, ADD_TODAY_TASK_TOOL];
 
 interface JsonRpcRequest {
   jsonrpc?: string;
@@ -71,16 +76,25 @@ async function handleRpc(msg: JsonRpcRequest) {
 
       case "tools/call": {
         const toolName = params?.name as string | undefined;
-        const args = (params?.arguments as RegisterArgs) || {};
+        const args = (params?.arguments as Record<string, unknown>) || {};
         if (toolName === "register_influencer") {
-          const result = await registerInfluencer(args);
+          const result = await registerInfluencer(args as RegisterArgs);
           return {
             jsonrpc: "2.0",
             id,
             result: {
-              content: [
-                { type: "text", text: JSON.stringify(result, null, 2) },
-              ],
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+              isError: !result.ok,
+            },
+          };
+        }
+        if (toolName === "add_today_task") {
+          const result = await addTodayTask(args as AddTaskArgs);
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
               isError: !result.ok,
             },
           };
