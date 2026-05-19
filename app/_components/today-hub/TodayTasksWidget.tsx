@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { CheckSquare, X, AlertTriangle } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { CheckSquare, X, AlertTriangle, Pencil, Check } from "lucide-react";
 import {
   CATEGORY_LABEL, CATEGORY_BADGE, CATEGORY_ORDER,
   type Task, type TaskCategory, type InjectedEventItem,
@@ -25,6 +25,19 @@ export default function TodayTasksWidget({
   const [draftTitle, setDraftTitle]       = useState("");
   const [draftCategory, setDraftCategory] = useState<TaskCategory>("etc");
 
+  // 인라인 편집 상태 — 한 번에 하나의 task 만 편집 가능
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [editTitle, setEditTitle]       = useState("");
+  const [editCategory, setEditCategory] = useState<TaskCategory>("etc");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
+
   const total = tasks.length + injectedItems.length;
   const done  = tasks.filter((t) => t.done).length;
 
@@ -41,6 +54,31 @@ export default function TodayTasksWidget({
 
   const remove = (id: string) =>
     setTasks((prev) => prev.filter((t) => t.id !== id));
+
+  const startEdit = (t: Task) => {
+    setEditingId(t.id);
+    setEditTitle(t.title);
+    setEditCategory(t.category);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  const saveEdit = () => {
+    const title = editTitle.trim();
+    if (!editingId || !title) {
+      cancelEdit();
+      return;
+    }
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === editingId ? { ...t, title, category: editCategory } : t,
+      ),
+    );
+    cancelEdit();
+  };
 
   const add = () => {
     const title = draftTitle.trim();
@@ -143,38 +181,92 @@ export default function TodayTasksWidget({
                 {CATEGORY_LABEL[cat]}
               </p>
               <ul className="space-y-0.5">
-                {list.map((t) => (
-                  <li
-                    key={t.id}
-                    className="group flex items-center gap-2 py-1.5 px-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={t.done}
-                      onChange={() => toggle(t.id)}
-                      className="w-4 h-4 rounded border-zinc-300 cursor-pointer accent-violet-600 shrink-0"
-                    />
-                    <span
-                      className={`text-sm flex-1 ${
-                        t.done
-                          ? "line-through opacity-50 text-zinc-500"
-                          : "text-zinc-700 dark:text-zinc-200"
-                      }`}
+                {list.map((t) => {
+                  const isEditing = editingId === t.id;
+                  if (isEditing) {
+                    return (
+                      <li
+                        key={t.id}
+                        className="flex items-center gap-2 py-1.5 px-1.5 rounded-lg bg-violet-50 dark:bg-violet-950/30"
+                      >
+                        <input
+                          ref={editInputRef}
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEdit();
+                            else if (e.key === "Escape") cancelEdit();
+                          }}
+                          className="flex-1 min-w-0 text-sm px-2 py-1 rounded bg-white dark:bg-zinc-900 border border-violet-300 dark:border-violet-700 text-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-violet-500"
+                        />
+                        <select
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value as TaskCategory)}
+                          className="text-[11px] px-1.5 py-1 rounded bg-white dark:bg-zinc-900 border border-violet-300 dark:border-violet-700 text-zinc-700 dark:text-zinc-300 shrink-0"
+                        >
+                          {CATEGORY_ORDER.map((c) => (
+                            <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={saveEdit}
+                          className="text-violet-600 hover:text-violet-700 shrink-0"
+                          aria-label="저장"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="text-zinc-400 hover:text-zinc-600 shrink-0"
+                          aria-label="취소"
+                        >
+                          <X size={14} />
+                        </button>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li
+                      key={t.id}
+                      className="group flex items-center gap-2 py-1.5 px-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition"
                     >
-                      {t.title}
-                    </span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${CATEGORY_BADGE[cat]} shrink-0`}>
-                      {CATEGORY_LABEL[cat]}
-                    </span>
-                    <button
-                      onClick={() => remove(t.id)}
-                      className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition shrink-0"
-                      aria-label="삭제"
-                    >
-                      <X size={14} />
-                    </button>
-                  </li>
-                ))}
+                      <input
+                        type="checkbox"
+                        checked={t.done}
+                        onChange={() => toggle(t.id)}
+                        className="w-4 h-4 rounded border-zinc-300 cursor-pointer accent-violet-600 shrink-0"
+                      />
+                      <span
+                        onDoubleClick={() => startEdit(t)}
+                        className={`text-sm flex-1 cursor-text ${
+                          t.done
+                            ? "line-through opacity-50 text-zinc-500"
+                            : "text-zinc-700 dark:text-zinc-200"
+                        }`}
+                        title="더블클릭하여 수정"
+                      >
+                        {t.title}
+                      </span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${CATEGORY_BADGE[cat]} shrink-0`}>
+                        {CATEGORY_LABEL[cat]}
+                      </span>
+                      <button
+                        onClick={() => startEdit(t)}
+                        className="text-zinc-300 hover:text-violet-600 opacity-0 group-hover:opacity-100 transition shrink-0"
+                        aria-label="수정"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => remove(t.id)}
+                        className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition shrink-0"
+                        aria-label="삭제"
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
@@ -212,7 +304,7 @@ export default function TodayTasksWidget({
           </button>
         </div>
         <p className="text-[10px] text-zinc-400 mt-2">
-          미완료 항목은 다음날 자동 이월 · 빅이벤트 마감일 도달 시 상단에 자동 노출
+          미완료 항목은 다음날 자동 이월 · 빅이벤트 마감일 도달 시 상단에 자동 노출 · 더블클릭으로 수정
         </p>
       </div>
     </div>
