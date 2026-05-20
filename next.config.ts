@@ -4,13 +4,12 @@ const nextConfig: NextConfig = {
   experimental: {
     turbopackFileSystemCacheForBuild: true,
   },
-  // pdfkit reads AFM metrics + we readFileSync fonts via process.cwd() — file tracing
-  // doesn't follow these, so the serverless bundle 500s with ENOENT Helvetica.afm.
+  // pdfkit dynamically requires AFM metric files — bundlers can't trace them.
+  // serverExternalPackages 로 번들에서 제외하면 node_modules 통째로 deploy 됨.
+  serverExternalPackages: ["pdfkit"],
+  // 폰트는 readFileSync(process.cwd() + ...) 라 file tracing 미적용 → 명시 포함.
   outputFileTracingIncludes: {
-    "/api/cron/bysoy-daily-report": [
-      "./node_modules/pdfkit/js/data/**/*",
-      "./lib/fonts/**/*",
-    ],
+    "/api/cron/bysoy-daily-report": ["./lib/fonts/**/*"],
   },
 };
 
