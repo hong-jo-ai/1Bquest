@@ -1,4 +1,4 @@
-import { ingestMessage } from "./store";
+import { ingestMessage, refreshThreadCustomer } from "./store";
 import {
   extractBody,
   extractHeader,
@@ -206,6 +206,14 @@ export async function syncAllGmailAccounts(): Promise<{
           const result = await ingestMessage(payload);
           if (result.inserted) inserted++;
           else skipped++;
+        }
+
+        // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)
+        if (latestName || latestEmail) {
+          await refreshThreadCustomer(channel, latestIncoming.threadId, {
+            handle: latestEmail,
+            name: latestName,
+          });
         }
       }
 

@@ -1,4 +1,4 @@
-import { ingestMessage } from "./store";
+import { ingestMessage, refreshThreadCustomer } from "./store";
 import {
   extractTextContent,
   fetchCrispMessages,
@@ -69,6 +69,14 @@ export async function syncAllCrispAccounts(): Promise<{
           const result = await ingestMessage(payload);
           if (result.inserted) inserted++;
           else skipped++;
+        }
+
+        // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)
+        if (nickname || email) {
+          await refreshThreadCustomer("crisp", conv.session_id, {
+            handle: email,
+            name: nickname,
+          });
         }
       }
     } catch (err) {

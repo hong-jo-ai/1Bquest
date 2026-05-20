@@ -79,16 +79,21 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
         ? "unanswered"
         : "waiting";
 
+    // customer_handle/name/subject 는 값이 있을 때만 갱신 — null 로 덮어쓰지 않는다.
+    // (인박스에서 답장 보낼 때 outgoing 메시지엔 고객 정보가 없어서, 덮어쓰면
+    //  고객 이름이 "알 수 없음"으로 지워지는 버그가 있었음)
+    const updateFields: Record<string, unknown> = {
+      last_message_at: payload.sentAt.toISOString(),
+      last_message_preview: preview(bodyForPreview),
+      status: nextStatus,
+    };
+    if (payload.customerHandle) updateFields.customer_handle = payload.customerHandle;
+    if (payload.customerName) updateFields.customer_name = payload.customerName;
+    if (payload.subject) updateFields.subject = payload.subject;
+
     const { error: updErr } = await db
       .from("cs_threads")
-      .update({
-        last_message_at: payload.sentAt.toISOString(),
-        last_message_preview: preview(bodyForPreview),
-        customer_handle: payload.customerHandle ?? null,
-        customer_name: payload.customerName ?? null,
-        subject: payload.subject ?? null,
-        status: nextStatus,
-      })
+      .update(updateFields)
       .eq("id", existingThread.id);
     if (updErr) throw new Error(`cs_threads update 실패: ${updErr.message}`);
     threadId = existingThread.id;
@@ -224,6 +229,30 @@ export async function setThreadStatus(
     .update({ status })
     .eq("id", threadId);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * 스레드 고객 정보 보충 — 값이 있을 때만 갱신.
+ *
+ * 재동기화 때 채널이 고객 이름/이메일을 다시 가져오는데, 메시지는 이미 ingest 돼서
+ * (dup) 스레드 행이 갱신 안 된다. 인박스 답장으로 이름이 지워진 기존 스레드를
+ * 복구하려고 ingest 가 스레드 단위로 한 번 호출한다.
+ */
+export async function refreshThreadCustomer(
+  channel: CsChannel,
+  externalThreadId: string,
+  info: { handle?: string | null; name?: string | null }
+): Promise<void> {
+  const fields: Record<string, unknown> = {};
+  if (info.handle) fields.customer_handle = info.handle;
+  if (info.name) fields.customer_name = info.name;
+  if (Object.keys(fields).length === 0) return;
+  const db = getCsSupabase();
+  await db
+    .from("cs_threads")
+    .update(fields)
+    .eq("channel", channel)
+    .eq("external_thread_id", externalThreadId);
 }
 
 function stripHtml(html: string | undefined | null): string | null {

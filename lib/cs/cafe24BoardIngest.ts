@@ -7,7 +7,7 @@ import {
   type Cafe24Product,
 } from "../cafe24Client";
 import { getAccessTokenFromStore } from "../cafe24TokenStore";
-import { ingestMessage } from "./store";
+import { ingestMessage, refreshThreadCustomer } from "./store";
 import type { IngestPayload } from "./types";
 
 /** 한 sync 내에서 상품 정보 캐시 (같은 product_no 가 여러 글에 반복되는 케이스 흔함) */
@@ -218,6 +218,16 @@ export async function syncCafe24Boards(): Promise<{
         if (r2.inserted) inserted++;
         else skipped++;
       }
+
+      // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)
+      await refreshThreadCustomer(
+        "cafe24_board",
+        `cafe24_${board.board_no}_${article.article_no}`,
+        {
+          handle: article.writer_email ?? article.member_id ?? undefined,
+          name: writerName,
+        }
+      );
     }
   }
 
