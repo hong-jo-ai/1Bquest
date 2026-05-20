@@ -183,6 +183,40 @@ export function orderRevenue(o: {
   return 0;
 }
 
+/**
+ * 단일 라인 아이템의 실수령 매출 (취소/반품 차감 후).
+ *
+ * 캠페인/공구 수수료 정산처럼 "특정 상품만의 매출"이 필요한 경우 사용 — orderRevenue()
+ * 는 주문 전체 결제액이라서 같은 주문에 다른 상품이 섞이면 부풀려진다.
+ *
+ * 계산: qty × (product_price + option_price) − coupon_discount_price − additional_discount_price
+ *   - quantity 는 actual_quantity 우선 (취소/반품 제외된 실 수량). 없으면 quantity − claim_quantity.
+ *   - product_price/option_price 는 단가, 할인 필드는 Cafe24 규약상 라인 합계.
+ *   - 결과 음수는 0으로 보정 (예: 전액 쿠폰 + 환불 케이스).
+ */
+export function lineItemRevenue(it: {
+  quantity?: number | string;
+  actual_quantity?: number | string;
+  claim_quantity?: number | string;
+  product_price?: string | number;
+  option_price?: string | number;
+  coupon_discount_price?: string | number;
+  additional_discount_price?: string | number;
+}): number {
+  const num = (v: unknown): number => {
+    const n = parseFloat(String(v ?? "0"));
+    return Number.isFinite(n) ? n : 0;
+  };
+  let qty = num(it.actual_quantity);
+  if (qty === 0) qty = Math.max(0, num(it.quantity) - num(it.claim_quantity));
+  if (qty === 0) return 0;
+  const base    = num(it.product_price);
+  const opt     = num(it.option_price);
+  const coupon  = num(it.coupon_discount_price);
+  const extra   = num(it.additional_discount_price);
+  return Math.max(0, qty * (base + opt) - coupon - extra);
+}
+
 function summarize(orders: any[]): PeriodSummary {
   const revenue = orders.reduce((s, o) => s + orderRevenue(o), 0);
   const count = orders.length;

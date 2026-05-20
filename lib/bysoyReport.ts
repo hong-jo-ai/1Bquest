@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import PDFDocument from "pdfkit";
-import { fetchAllOrders } from "./cafe24Data";
+import { fetchAllOrders, lineItemRevenue } from "./cafe24Data";
 import { getCsSupabase } from "./cs/store";
 
 const BYSOY_KV_KEY = "bysoy_consolidated:product";
@@ -116,12 +116,7 @@ export async function buildBysoyReport(token: string): Promise<BysoyReport> {
       const qty      = Math.max(0, rawQty - claimQty);
       if (qty === 0) continue;
 
-      const base       = Number(it.product_price ?? 0) || 0;
-      const optionAdd  = Number(it.option_price ?? 0) || 0;
-      const couponDisc = Number(it.coupon_discount_price ?? 0) || 0;
-      const extraDisc  = Number(it.additional_discount_price ?? 0) || 0;
-      const unitPrice  = base + optionAdd - couponDisc - extraDisc;
-      const lineRevenue = qty * unitPrice;
+      const lineRevenue = lineItemRevenue(it);
 
       // "시계 모델=..." prefix 제거
       const model = (it.option_value ?? "")

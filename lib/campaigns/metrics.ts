@@ -43,6 +43,18 @@ function kstToday(): string {
   return d.toISOString().slice(0, 10);
 }
 
+interface RawOrderItem {
+  actual_quantity?: number | string;
+  quantity?: number | string;
+  claim_quantity?: number | string;
+  order_price?: string | number;
+  product_price?: string | number;
+  option_price?: string | number;
+  coupon_discount_price?: string | number;
+  additional_discount_price?: string | number;
+  product_no?: number | string;
+}
+
 interface RawOrder {
   order_id?:     string;
   payment_date?: string | null;
@@ -61,13 +73,7 @@ interface RawOrder {
   member_email?: string;
   email?: string;
   cellphone?: string;
-  items?: Array<{
-    actual_quantity?: number | string;
-    quantity?: number | string;
-    order_price?: string | number;
-    product_price?: string | number;
-    product_no?:    number | string;
-  }>;
+  items?: RawOrderItem[];
   /** embed=coupons 시 채워짐 */
   coupons?: Array<{
     coupon_code?: string;
@@ -94,19 +100,31 @@ function orderHasCoupon(order: RawOrder, couponCode: string): boolean {
   return false;
 }
 
-// cafe24Data 의 orderRevenue 와 동일 로직 — 네이버페이 전액 결제 포함.
-import { orderRevenue as cafe24OrderRevenue, isPaidOrder } from "@/lib/cafe24Data";
-function orderRevenue(order: RawOrder): number {
-  return cafe24OrderRevenue(order);
+import { orderRevenue as cafe24OrderRevenue, lineItemRevenue, isPaidOrder } from "@/lib/cafe24Data";
+
+/**
+ * 캠페인 정산용 — productNos 매칭 시 해당 라인만 합산.
+ *
+ * Why: 인플루언서 수수료는 협업 상품 매출에만 적용. 같은 주문에 협업 외 상품이 섞여도
+ * 그건 자연 매출이라 수수료 대상이 아님. orderRevenue() 로 주문 전체를 합산하면 과지급.
+ */
+function campaignOrderRevenue(order: RawOrder, productNos: Set<number>): number {
+  let sum = 0;
+  for (const it of order.items ?? []) {
+    const pn = Number(it.product_no);
+    if (!Number.isFinite(pn) || !productNos.has(pn)) continue;
+    sum += lineItemRevenue(it);
+  }
+  return sum;
 }
 
-function orderToBuyer(order: RawOrder): CampaignBuyer {
+function orderToBuyer(order: RawOrder, amount: number): CampaignBuyer {
   return {
     orderId:   order.order_id ?? "",
     email:     order.buyer_email ?? order.member_email ?? order.email ?? null,
     phone:     order.buyer_cellphone ?? order.cellphone ?? null,
     name:      order.buyer_name ?? null,
-    amount:    Math.round(orderRevenue(order)),
+    amount:    Math.round(amount),
     orderedAt: order.ordered_date ?? order.order_date ?? "",
   };
 }
@@ -163,12 +181,15 @@ export async function computeCampaignMetrics(
   // 입금전 주문은 매출/ROAS에서 제외 — 자동 취소되는 케이스 많음
   const orders = (await fetchOrdersWithDetails(token, windowStart, windowEnd)).filter(isPaidOrder);
 
-  let matched: RawOrder[];
+  // (order, amount) 로 묶어서 합산 — productNo 매칭일 땐 협업 라인만, 쿠폰일 땐 주문 전체.
+  let matched: Array<{ order: RawOrder; amount: number }>;
   let warning: string | undefined;
 
   if (matchedBy === "product") {
     const productSet = new Set(productNos);
-    matched = orders.filter((o) => orderHasProduct(o, productSet));
+    matched = orders
+      .filter((o) => orderHasProduct(o, productSet))
+      .map((o) => ({ order: o, amount: campaignOrderRevenue(o, productSet) }));
 
     // 진단: items 가 비어있는 주문이 많으면 embed 누락 의심
     const hasAnyItems = orders.some((o) => (o.items?.length ?? 0) > 0);
@@ -176,7 +197,10 @@ export async function computeCampaignMetrics(
       warning = "Cafe24 주문 응답에 items 정보가 없습니다 — embed 옵션 확인 필요.";
     }
   } else {
-    matched = orders.filter((o) => orderHasCoupon(o, campaign.couponCode!));
+    // 쿠폰 매칭은 주문 전체에 쿠폰이 적용된 거라 주문 전체 매출 사용 (legacy).
+    matched = orders
+      .filter((o) => orderHasCoupon(o, campaign.couponCode!))
+      .map((o) => ({ order: o, amount: cafe24OrderRevenue(o) }));
 
     const hasAnyCouponInfo = orders.some((o) => (o.coupons?.length ?? 0) > 0);
     if (!hasAnyCouponInfo && orders.length > 0) {
@@ -184,10 +208,10 @@ export async function computeCampaignMetrics(
     }
   }
 
-  const revenue = matched.reduce((s, o) => s + orderRevenue(o), 0);
+  const revenue = matched.reduce((s, m) => s + m.amount, 0);
   const ordersCount = matched.length;
   const avgOrder = ordersCount > 0 ? Math.round(revenue / ordersCount) : 0;
-  const buyers = matched.map(orderToBuyer);
+  const buyers = matched.map((m) => orderToBuyer(m.order, m.amount));
 
   return {
     campaignId: campaign.id,
