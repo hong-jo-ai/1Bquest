@@ -99,6 +99,10 @@ async function run(opts: { manual?: boolean; date?: string } = {}) {
 }
 
 export async function GET(req: Request) {
+  // ?ping=1 — 발송 없이 배포 버전 확인용 (date 옵션 지원 여부). 인증 불필요.
+  if (new URL(req.url).searchParams.get("ping") === "1") {
+    return Response.json({ pong: true, supportsDate: true });
+  }
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("authorization");
