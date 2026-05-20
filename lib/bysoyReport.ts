@@ -69,8 +69,15 @@ function kstDate(offsetDays = 0): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** 통합 상품 메타 + 최근 주문 → 모델별 집계 */
-export async function buildBysoyReport(token: string): Promise<BysoyReport> {
+/**
+ * 통합 상품 메타 + 주문 → 모델별 집계.
+ *
+ * opts.date 지정 시 그 하루(KST)만 집계 (일일 리포트). 미지정이면 상품 생성일~오늘 누적.
+ */
+export async function buildBysoyReport(
+  token: string,
+  opts: { date?: string } = {},
+): Promise<BysoyReport> {
   // 1) kv_store 에서 통합 상품 정보
   const db = getCsSupabase();
   const { data: row } = await db
@@ -89,9 +96,9 @@ export async function buildBysoyReport(token: string): Promise<BysoyReport> {
   const productCode = consolidated.productCode ?? "";
   const productName = consolidated.productName ?? "폴바이스 × @_bysoy 공동구매";
 
-  // 2) 주문 조회 — 상품 생성일부터 오늘까지
-  const periodStart = (consolidated.createdAt ?? "2026-04-30").slice(0, 10);
-  const periodEnd   = kstDate(0);
+  // 2) 주문 조회 — opts.date 있으면 그 하루만, 없으면 상품 생성일~오늘 누적
+  const periodStart = opts.date ?? (consolidated.createdAt ?? "2026-04-30").slice(0, 10);
+  const periodEnd   = opts.date ?? kstDate(0);
   const all = (await fetchAllOrders(token, periodStart, periodEnd, true)) as Order[];
 
   // 3) 통합 상품 포함 주문 + 모델별 집계

@@ -39,9 +39,16 @@ function formatSummary(r: BysoyReport): string {
   const top3 = r.byModel.slice(0, 3).map(
     (m) => `· ${m.model} — ${m.qty}개 / ${krw(m.revenue)}`,
   ).join("\n") || "<i>판매 없음</i>";
+  const isDaily = r.periodStart === r.periodEnd;
+  const header = isDaily
+    ? `📊 <b>바이소이 공구 일일 리포트</b> (${r.periodEnd} 하루)`
+    : `📊 <b>바이소이 공구 리포트</b> (${r.periodStart}~${r.periodEnd} 누적)`;
+  const totalLine = isDaily
+    ? `· ${r.orders}건 · ${r.qty}개 · ${krw(r.revenue)}`
+    : `· 누적 ${r.orders}건 · ${r.qty}개 · ${krw(r.revenue)}`;
   return [
-    `📊 <b>바이소이 공구 일일 리포트</b> (${r.periodEnd} KST)`,
-    `· 누적 ${r.orders}건 · ${r.qty}개 · ${krw(r.revenue)}`,
+    header,
+    totalLine,
     ``,
     `<b>TOP 3</b>`,
     top3,
@@ -63,7 +70,7 @@ function formatStockNotice(r: BysoyReport): string {
   ].join("\n");
 }
 
-async function run(opts: { manual?: boolean } = {}) {
+async function run(opts: { manual?: boolean; date?: string } = {}) {
   const skip = shouldSkip();
   if (skip.skip && !opts.manual) {
     return Response.json({ ok: true, skipped: skip.reason });
@@ -74,7 +81,7 @@ async function run(opts: { manual?: boolean } = {}) {
     return Response.json({ ok: false, error: "카페24 토큰 없음" }, { status: 500 });
   }
 
-  const report = await buildBysoyReport(token);
+  const report = await buildBysoyReport(token, { date: opts.date });
   const pdf = await renderBysoyReportPdf(report);
 
   const filename = `bysoy-report-${report.periodEnd}.pdf`;
@@ -109,8 +116,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const url = new URL(req.url);
   const manual = url.searchParams.get("manual") === "1";
+  // ?date=YYYY-MM-DD — 그 하루(KST)만 집계해서 발송 (일일 리포트). 미지정이면 누적.
+  const dateParam = url.searchParams.get("date");
+  const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
   try {
-    return await run({ manual });
+    return await run({ manual, date });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
