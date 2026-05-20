@@ -44,26 +44,47 @@ function authHeader(account: CrispAccount): string {
   return `Basic ${b64}`;
 }
 
+/** Crisp 는 plugin tier 토큰에 요청 쿼터를 둬서 버스트 시 429(rate_limited)를 던진다.
+ *  대개 일시적이라 Retry-After(초) 또는 지수 백오프로 몇 번 재시도하면 통과한다. */
+const RATE_LIMIT_RETRIES = 3;
+
+function parseRetryAfterMs(res: Response, attempt: number): number {
+  const header = res.headers.get("retry-after");
+  const sec = header ? parseFloat(header) : NaN;
+  if (Number.isFinite(sec) && sec > 0) return Math.min(sec * 1000, 8000);
+  return Math.min(1000 * 2 ** attempt, 8000); // 1s, 2s, 4s …
+}
+
 async function crispFetch<T>(
   account: CrispAccount,
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetch(`${CRISP_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: authHeader(account),
-      "X-Crisp-Tier": TIER,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-  const text = await res.text();
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${CRISP_BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: authHeader(account),
+        "X-Crisp-Tier": TIER,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+    const text = await res.text();
+    if (res.ok) return text ? (JSON.parse(text) as T) : ({} as T);
+
+    if (res.status === 429 && attempt < RATE_LIMIT_RETRIES) {
+      await new Promise((r) => setTimeout(r, parseRetryAfterMs(res, attempt)));
+      continue;
+    }
+    if (res.status === 429) {
+      throw new Error(
+        "Crisp 요청 한도 초과 (rate limited) — 잠시 후 다시 전송하거나 Crisp 어드민에서 직접 답변해 주세요."
+      );
+    }
     throw new Error(`Crisp API ${path} 실패: ${res.status} ${text}`);
   }
-  return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
 export async function listCrispAccounts(): Promise<CrispAccount[]> {
