@@ -7,14 +7,28 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const PERSONAL_EMAIL_DOMAINS = [
+  "@gmail.com",
+  "@naver.com",
+  "@daum.net",
+  "@kakao.com",
+  "@hanmail.net",
+  "@nate.com",
+  "@hotmail.com",
+  "@outlook.com",
+  "@yahoo.com",
+  "@yahoo.co.kr",
+];
+
 /**
  * POST /api/cs/threads/{id}/not-cs
- * 이 스레드를 archived로 전환.
- * ?blockSender=1 을 붙이면 송신자도 차단 목록에 추가 (선택).
+ * 이 스레드를 archived로 전환 + 분류기 학습.
  *
- * 추가로 — 사용자가 "CS 아님" 으로 마킹한 사례를 분류기 학습 셋
- * (`cs_classifier_negatives`) 에 추가해, 다음에 비슷한 메일이 들어오면
- * 분류기가 자동으로 false 로 거른다.
+ * 차단 정책 (사용자 선택: "회사 도메인만 자동 차단"):
+ *   - 항상 분류기 negative 학습 (`cs_classifier_negatives`) → 비슷한 메일 AI 자동 거름.
+ *   - 발신자가 회사 도메인(비개인)이면 도메인 자동 하드 차단 → 같은 도메인 재유입 방지.
+ *   - 개인 메일(gmail/naver 등)은 학습만. ?blockSender=1 일 때만 그 정확 주소까지 하드 차단.
+ *     (실제 고객이 한 번 비-CS 보냈다고 영구 차단되는 사고 방지)
  */
 export async function POST(
   req: Request,
@@ -31,23 +45,17 @@ export async function POST(
     }
 
     let added: string | null = null;
-    if (blockSender) {
-      const handle = data.thread.customer_handle;
-      if (handle && handle.includes("@")) {
-        const domain = "@" + handle.split("@")[1].toLowerCase();
-        const isPersonalDomain = [
-          "@gmail.com",
-          "@naver.com",
-          "@daum.net",
-          "@kakao.com",
-          "@hanmail.net",
-          "@nate.com",
-          "@hotmail.com",
-          "@outlook.com",
-          "@yahoo.com",
-          "@yahoo.co.kr",
-        ].includes(domain);
-        added = isPersonalDomain ? handle.toLowerCase() : domain;
+    const handle = data.thread.customer_handle;
+    if (handle && handle.includes("@")) {
+      const domain = "@" + handle.split("@")[1].toLowerCase();
+      const isPersonal = PERSONAL_EMAIL_DOMAINS.includes(domain);
+      if (!isPersonal) {
+        // 회사 도메인 → 항상 도메인 자동 차단
+        added = domain;
+        await addToSenderBlacklist(domain);
+      } else if (blockSender) {
+        // 개인 메일은 명시적 차단 요청일 때만 정확 주소 차단
+        added = handle.toLowerCase();
         await addToSenderBlacklist(added);
       }
     }

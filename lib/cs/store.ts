@@ -145,13 +145,48 @@ export async function listThreads(opts: {
     .order("last_message_at", { ascending: false })
     .limit(opts.limit ?? 100);
 
-  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  if (opts.status && opts.status !== "all") {
+    q = q.eq("status", opts.status);
+  } else {
+    // "전체"는 보관(CS 아님)을 제외한 실제 CS 스레드만. 보관함은 status=archived 로 따로 조회.
+    q = q.neq("status", "archived");
+  }
   if (opts.brand && opts.brand !== "all") q = q.eq("brand", opts.brand);
   if (opts.channel && opts.channel !== "all") q = q.eq("channel", opts.channel);
 
   const { data, error } = await q;
   if (error) throw new Error(`listThreads 실패: ${error.message}`);
   return (data ?? []) as CsThread[];
+}
+
+/**
+ * 상태별 스레드 개수 — 탭 배지용 서버 집계.
+ * all = 보관 제외한 미답변+대기중+해결됨 합계.
+ */
+export async function countThreadsByStatus(opts: {
+  brand?: "paulvice" | "harriot" | "all";
+  channel?: CsChannel | "all";
+}): Promise<{ unanswered: number; waiting: number; resolved: number; archived: number; all: number }> {
+  const db = getCsSupabase();
+  const statuses: CsStatus[] = ["unanswered", "waiting", "resolved", "archived"];
+  const entries = await Promise.all(
+    statuses.map(async (status) => {
+      let q = db.from("cs_threads").select("id", { count: "exact", head: true }).eq("status", status);
+      if (opts.brand && opts.brand !== "all") q = q.eq("brand", opts.brand);
+      if (opts.channel && opts.channel !== "all") q = q.eq("channel", opts.channel);
+      const { count, error } = await q;
+      if (error) throw new Error(`countThreadsByStatus 실패: ${error.message}`);
+      return [status, count ?? 0] as const;
+    })
+  );
+  const m = Object.fromEntries(entries) as Record<CsStatus, number>;
+  return {
+    unanswered: m.unanswered,
+    waiting:    m.waiting,
+    resolved:   m.resolved,
+    archived:   m.archived,
+    all:        m.unanswered + m.waiting + m.resolved,
+  };
 }
 
 export async function getThread(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import BackToHubButton from "@/components/BackToHubButton";
 import {
@@ -25,6 +25,7 @@ import {
   MoreVertical,
   Menu as MenuIcon,
   X,
+  RotateCcw,
 } from "lucide-react";
 import type {
   CsThread,
@@ -130,6 +131,13 @@ interface ContextData {
 
 export default function InboxClient() {
   const [threads, setThreads] = useState<CsThread[]>([]);
+  const [counts, setCounts] = useState({
+    unanswered: 0,
+    waiting: 0,
+    resolved: 0,
+    archived: 0,
+    all: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("unanswered");
@@ -154,6 +162,19 @@ export default function InboxClient() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const loadCounts = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (brandFilter !== "all") params.set("brand", brandFilter);
+    if (channelFilter !== "all") params.set("channel", channelFilter);
+    try {
+      const res = await fetch(`/api/cs/threads/counts?${params}`);
+      const json = await res.json();
+      if (json.counts) setCounts(json.counts);
+    } catch {
+      // 카운트 실패는 치명적이지 않음 — 목록은 그대로
+    }
+  }, [brandFilter, channelFilter]);
+
   const loadThreads = useCallback(async () => {
     setLoading(true);
     try {
@@ -161,14 +182,17 @@ export default function InboxClient() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (brandFilter !== "all") params.set("brand", brandFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
-      const res = await fetch(`/api/cs/threads?${params}`);
+      const [res] = await Promise.all([
+        fetch(`/api/cs/threads?${params}`),
+        loadCounts(),
+      ]);
       const json = await res.json();
       setThreads(json.threads ?? []);
       setLastRefresh(new Date());
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, brandFilter, channelFilter]);
+  }, [statusFilter, brandFilter, channelFilter, loadCounts]);
 
   const loadDetail = useCallback(async (threadId: string) => {
     const [d, c] = await Promise.all([
@@ -338,28 +362,32 @@ export default function InboxClient() {
     showToast("해결됨으로 표시");
   };
 
+  // 해결 취소 / 보관 되돌리기 — 다시 처리할 거리로 미답변 복귀.
+  const reopenThread = async (toastMsg: string) => {
+    if (!selectedId) return;
+    await fetch(`/api/cs/threads/${selectedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "unanswered" }),
+    });
+    await loadThreads();
+    await loadDetail(selectedId);
+    showToast(toastMsg);
+  };
+
   const markNotCs = async (blockSender = false) => {
     if (!selectedId) return;
     const url = `/api/cs/threads/${selectedId}/not-cs${blockSender ? "?blockSender=1" : ""}`;
     const res = await fetch(url, { method: "POST" });
     const json = await res.json();
     if (json.ok) {
-      showToast(blockSender && json.blacklisted ? `차단: ${json.blacklisted}` : "보관됨");
+      showToast(json.blacklisted ? `보관 + 차단: ${json.blacklisted}` : "보관됨 (학습)");
       await loadThreads();
       setSelectedId(null);
     } else {
       showToast(json.error ?? "실패");
     }
   };
-
-  const counts = useMemo(() => {
-    return {
-      unanswered: threads.filter((t) => t.status === "unanswered").length,
-      waiting: threads.filter((t) => t.status === "waiting").length,
-      resolved: threads.filter((t) => t.status === "resolved").length,
-      all: threads.length,
-    };
-  }, [threads]);
 
   return (
     <>
@@ -405,6 +433,7 @@ export default function InboxClient() {
               { key: "waiting", label: "대기중", count: counts.waiting, accent: "amber" },
               { key: "resolved", label: "해결됨", count: counts.resolved, accent: "emerald" },
               { key: "all", label: "전체", count: counts.all, accent: "zinc" },
+              { key: "archived", label: "보관", count: counts.archived, accent: "zinc" },
             ] as { key: StatusFilter; label: string; count: number; accent: string }[]
           ).map(({ key, label, count }) => {
             const active = statusFilter === key;
@@ -491,6 +520,7 @@ export default function InboxClient() {
               onDraft={generateDraft}
               onSend={sendReply}
               onResolved={markResolved}
+              onReopen={() => reopenThread("미답변으로 되돌림")}
               onNotCs={() => markNotCs(false)}
               onBlockSender={() => markNotCs(true)}
             />
@@ -557,6 +587,7 @@ export default function InboxClient() {
               { key: "waiting", label: "대기중", count: counts.waiting },
               { key: "resolved", label: "해결됨", count: counts.resolved },
               { key: "all", label: "전체", count: counts.all },
+              { key: "archived", label: "보관", count: counts.archived },
             ] as { key: StatusFilter; label: string; count: number }[]
           ).map(({ key, label, count }) => (
             <button
@@ -706,6 +737,7 @@ export default function InboxClient() {
             onDraft={generateDraft}
             onSend={sendReply}
             onResolved={markResolved}
+            onReopen={() => reopenThread("미답변으로 되돌림")}
             onNotCs={() => markNotCs(false)}
             onBlockSender={() => markNotCs(true)}
           />
@@ -820,6 +852,7 @@ function ThreadDetailView({
   onDraft,
   onSend,
   onResolved,
+  onReopen,
   onNotCs,
   onBlockSender,
 }: {
@@ -834,6 +867,7 @@ function ThreadDetailView({
   onDraft: () => void;
   onSend: () => void;
   onResolved: () => void;
+  onReopen: () => void;
   onNotCs: () => void;
   onBlockSender: () => void;
 }) {
@@ -879,31 +913,55 @@ function ThreadDetailView({
           </div>
           {/* 액션 버튼 — 좁은 폭에서는 아이콘만 보이도록 (lg 이상에서 라벨 표시) */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={onNotCs}
-              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
-              title="이 스레드 보관"
-            >
-              <Ban size={12} />
-              <span className="hidden lg:inline">CS 아님</span>
-            </button>
-            <button
-              onClick={onBlockSender}
-              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800"
-              title="보관 + 송신자 자동 차단"
-              aria-label="송신자 차단"
-            >
-              <Ban size={12} className="lg:hidden" />
-              <span className="hidden lg:inline">송신자 차단</span>
-            </button>
-            <button
-              onClick={onResolved}
-              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
-              title="해결됨으로 표시"
-            >
-              <Check size={12} />
-              <span className="hidden lg:inline">해결됨</span>
-            </button>
+            {thread.status === "archived" ? (
+              <button
+                onClick={onReopen}
+                className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300 flex items-center gap-1"
+                title="보관 해제 — 미답변으로 되돌리기"
+              >
+                <RotateCcw size={12} />
+                <span className="hidden lg:inline">되돌리기</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={onNotCs}
+                  className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 flex items-center gap-1"
+                  title="이 스레드 보관 (CS 아님 학습)"
+                >
+                  <Ban size={12} />
+                  <span className="hidden lg:inline">CS 아님</span>
+                </button>
+                <button
+                  onClick={onBlockSender}
+                  className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800"
+                  title="보관 + 송신자 자동 차단"
+                  aria-label="송신자 차단"
+                >
+                  <Ban size={12} className="lg:hidden" />
+                  <span className="hidden lg:inline">송신자 차단</span>
+                </button>
+                {thread.status === "resolved" ? (
+                  <button
+                    onClick={onReopen}
+                    className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 flex items-center gap-1"
+                    title="해결 취소 — 미답변으로 되돌리기"
+                  >
+                    <RotateCcw size={12} />
+                    <span className="hidden lg:inline">해결 취소</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={onResolved}
+                    className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 flex items-center gap-1"
+                    title="해결됨으로 표시"
+                  >
+                    <Check size={12} />
+                    <span className="hidden lg:inline">해결됨</span>
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -1521,6 +1579,7 @@ function MobileThreadDetailView({
   onDraft,
   onSend,
   onResolved,
+  onReopen,
   onNotCs,
   onBlockSender,
 }: {
@@ -1539,6 +1598,7 @@ function MobileThreadDetailView({
   onDraft: () => void;
   onSend: () => void;
   onResolved: () => void;
+  onReopen: () => void;
   onNotCs: () => void;
   onBlockSender: () => void;
 }) {
@@ -1595,36 +1655,64 @@ function MobileThreadDetailView({
               onClick={() => setActionsOpen(false)}
             />
             <div className="absolute top-12 right-2 z-50 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 py-1 w-48 animate-in fade-in slide-in-from-top-1">
-              <button
-                onClick={() => {
-                  setActionsOpen(false);
-                  onResolved();
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-emerald-700 dark:text-emerald-400 active:bg-emerald-50 dark:active:bg-emerald-900/20"
-              >
-                <Check size={14} />
-                해결됨으로 표시
-              </button>
-              <button
-                onClick={() => {
-                  setActionsOpen(false);
-                  onNotCs();
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
-              >
-                <Ban size={14} />
-                CS 아님 (보관)
-              </button>
-              <button
-                onClick={() => {
-                  setActionsOpen(false);
-                  onBlockSender();
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
-              >
-                <Ban size={14} />
-                송신자 차단
-              </button>
+              {thread.status === "archived" ? (
+                <button
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onReopen();
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-violet-700 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-900/20"
+                >
+                  <RotateCcw size={14} />
+                  되돌리기 (미답변)
+                </button>
+              ) : (
+                <>
+                  {thread.status === "resolved" ? (
+                    <button
+                      onClick={() => {
+                        setActionsOpen(false);
+                        onReopen();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-amber-700 dark:text-amber-400 active:bg-amber-50 dark:active:bg-amber-900/20"
+                    >
+                      <RotateCcw size={14} />
+                      해결 취소 (미답변)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setActionsOpen(false);
+                        onResolved();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-emerald-700 dark:text-emerald-400 active:bg-emerald-50 dark:active:bg-emerald-900/20"
+                    >
+                      <Check size={14} />
+                      해결됨으로 표시
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setActionsOpen(false);
+                      onNotCs();
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
+                  >
+                    <Ban size={14} />
+                    CS 아님 (보관)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActionsOpen(false);
+                      onBlockSender();
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 active:bg-zinc-50 dark:active:bg-zinc-800"
+                  >
+                    <Ban size={14} />
+                    송신자 차단
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}
