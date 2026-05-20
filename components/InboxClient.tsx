@@ -539,18 +539,18 @@ export default function InboxClient() {
       {/* ── 좌측 사이드바: 필터 ───────────────────────────────────── */}
       <aside className="w-48 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
         <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <InboxIcon size={16} className="text-violet-600" />
-              <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+          <div className="flex items-center justify-between gap-1 mb-3">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <InboxIcon size={16} className="text-violet-600 shrink-0" />
+              <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
                 CS 인박스
               </h2>
             </div>
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 shrink-0">
               <button
                 onClick={triggerSync}
                 disabled={syncing}
-                className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
+                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
                 title="동기화"
               >
                 <RefreshCw
@@ -561,7 +561,7 @@ export default function InboxClient() {
               <button
                 onClick={reclassifyAll}
                 disabled={reclassifying}
-                className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
+                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 disabled:opacity-50"
                 title="AI 재분류"
               >
                 <Filter
@@ -571,7 +571,7 @@ export default function InboxClient() {
               </button>
               <Link
                 href="/inbox/setup"
-                className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
                 title="설정"
               >
                 <Settings size={13} />
