@@ -14,6 +14,9 @@ import { getCsSupabase } from "./cs/store";
 
 const BYSOY_KV_KEY = "bysoy_consolidated:product";
 
+/** 공구 오픈일(KST). 이전 사전판매 건은 이 날짜로 합산한다. */
+const BYSOY_START_DATE = "2026-05-19";
+
 interface OrderItem {
   product_no?: number | string;
   product_code?: string;
@@ -123,7 +126,10 @@ export async function buildBysoyReport(
   for (const o of all) {
     const st = (o.order_status ?? "").trim();
     if (/취소|환불|반품/.test(st)) continue;
-    const day = (o.order_date ?? "").slice(0, 10); // order_date 는 +09:00 → 앞 10자리가 KST 날짜
+    // order_date 는 +09:00 → 앞 10자리가 KST 날짜. 공구 오픈일(5/19) 전 사전판매는
+    // 의미상 오픈일과 동일하므로 5/19 로 합산.
+    const rawDay = (o.order_date ?? "").slice(0, 10);
+    const day = rawDay && rawDay < BYSOY_START_DATE ? BYSOY_START_DATE : rawDay;
 
     for (const it of o.items ?? []) {
       const isBysoy =
@@ -187,13 +193,19 @@ export async function buildBysoyReport(
   };
 }
 
-/** 모델명 정규화 — 옵션 prefix 제거 + '(…출고예정)' 접미사 제거(오타 날짜 변형 병합). */
+/**
+ * 모델명 정규화 — 옵션 prefix 제거.
+ *
+ * '(…출고예정)' 날짜 접미사는 그대로 둔다 — 출고예정일이 다르면 배송완료·정산 시점이
+ * 달라 인플루언서 수수료 정산도 분리되므로 별개 모델로 봐야 한다.
+ * 단 '4월29일 출고예정'은 '5월29일 출고예정'의 오타라 그것만 통일해 병합한다.
+ */
 function normalizeModelName(optionValue?: string, productName?: string): string {
   const m = (optionValue ?? "")
     .trim()
     .replace(/^시계\s*모델\s*=\s*/, "")
     .replace(/^모델\s*=\s*/, "")
-    .replace(/\s*\([^)]*출고예정\)\s*$/, "")
+    .replace(/4월\s*29일\s*출고예정/, "5월29일 출고예정")
     .trim();
   return m || (productName ?? "(옵션 없음)").trim();
 }
