@@ -11,9 +11,6 @@ import {
   Users,
   Megaphone,
   AtSign,
-  Film,
-  BarChart2,
-  ImagePlus,
   Gem,
   Inbox,
   ShoppingBag,
@@ -34,13 +31,10 @@ type AppPage =
   | "inbox"
   | "inventory"
   | "jewelry"
-  | "analytics"
   | "influencer"
   | "groupbuying"
   | "adsauto"
   | "threads"
-  | "content"
-  | "imagemaker"
   | "finance"
   | "pricing";
 
@@ -56,13 +50,10 @@ const NAV_ITEMS: {
   { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
-  { href: "/analytics", label: "방문자", icon: BarChart2, page: "analytics" },
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
   { href: "/tools/group-buying", label: "공동구매", icon: ShoppingBag, page: "groupbuying" },
   { href: "/ads", label: "광고 의사결정", icon: Brain, page: "adsauto" },
   { href: "/tools/threads", label: "쓰레드", icon: AtSign, page: "threads" },
-  { href: "/tools/content", label: "콘텐츠", icon: Film, page: "content" },
-  { href: "/imagemaker", label: "화보 메이커", icon: ImagePlus, page: "imagemaker" },
 ];
 
 const HREF_TO_PAGE: Record<string, AppPage> = {
@@ -72,13 +63,10 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/inbox": "inbox",
   "/inventory": "inventory",
   "/jewelry-clearance": "jewelry",
-  "/analytics": "analytics",
   "/tools/influencer": "influencer",
   "/tools/group-buying": "groupbuying",
   "/ads": "adsauto",
   "/tools/threads": "threads",
-  "/tools/content": "content",
-  "/imagemaker": "imagemaker",
 };
 
 const PROGRESS_STEPS = [0, 20, 40, 60, 80, 100];
@@ -123,13 +111,10 @@ export default function Sidebar({
       inbox: 0,
       inventory: 0,
       jewelry: 0,
-      analytics: 0,
       influencer: 0,
       groupbuying: 0,
       adsauto: 0,
       threads: 0,
-      content: 0,
-      imagemaker: 0,
     };
     return defaults;
   });
