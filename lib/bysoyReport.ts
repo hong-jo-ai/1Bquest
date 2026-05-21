@@ -43,6 +43,13 @@ export interface ModelLine {
   orders:   number;
 }
 
+export interface DayLine {
+  date:     string;   // YYYY-MM-DD (KST)
+  qty:      number;
+  revenue:  number;
+  orders:   number;
+}
+
 export interface BysoyReport {
   snapshotAt:   string;     // ISO
   periodStart:  string;     // YYYY-MM-DD (KST)
@@ -54,6 +61,7 @@ export interface BysoyReport {
   qty:          number;
   revenue:      number;
   byModel:      ModelLine[];
+  byDay:        DayLine[];
 }
 
 function krw(n: number): string {
@@ -101,22 +109,29 @@ export async function buildBysoyReport(
   const periodEnd   = opts.date ?? kstDate(0);
   const all = (await fetchAllOrders(token, periodStart, periodEnd, true)) as Order[];
 
-  // 3) 통합 상품 포함 주문 + 모델별 집계
+  // 3) 통합 상품 포함 주문 → 모델별 + 일자별 집계 (단일 패스)
   const byOption = new Map<string, ModelLine>();
+  const modelOrderSets = new Map<string, Set<string>>();
+  const byDayMap = new Map<string, { qty: number; revenue: number; orders: Set<string> }>();
   let totalQty = 0;
   let totalRevenue = 0;
   const orderIdsSet = new Set<string>();
+  let minDate: string | null = null;
+  let maxDate: string | null = null;
 
   const target = String(productNo);
   for (const o of all) {
     const st = (o.order_status ?? "").trim();
     if (/취소|환불|반품/.test(st)) continue;
+    const day = (o.order_date ?? "").slice(0, 10); // order_date 는 +09:00 → 앞 10자리가 KST 날짜
 
     for (const it of o.items ?? []) {
       const isBysoy =
         String(it.product_no ?? "") === target ||
         (it.product_code ?? "") === productCode;
       if (!isBysoy) continue;
+      // 쇼핑백 옵션 라인은 공구와 무관 → 제외
+      if (isShoppingBagLine(it.option_value)) continue;
 
       const rawQty   = Number(it.actual_quantity ?? it.quantity ?? 0) || 0;
       const claimQty = Number(it.claim_quantity ?? 0) || 0;
@@ -124,52 +139,43 @@ export async function buildBysoyReport(
       if (qty === 0) continue;
 
       const lineRevenue = lineItemRevenue(it);
-
-      // "시계 모델=..." prefix 제거
-      const model = (it.option_value ?? "")
-        .trim()
-        .replace(/^시계\s*모델\s*=\s*/, "")
-        .replace(/^모델\s*=\s*/, "")
-        || (it.product_name ?? "(옵션 없음)").trim();
+      const model = normalizeModelName(it.option_value, it.product_name);
 
       const a = byOption.get(model) ?? { model, qty: 0, revenue: 0, orders: 0 };
       a.qty += qty;
       a.revenue += lineRevenue;
       byOption.set(model, a);
+      if (!modelOrderSets.has(model)) modelOrderSets.set(model, new Set());
+      if (o.order_id) modelOrderSets.get(model)!.add(o.order_id);
+
+      if (day) {
+        const d = byDayMap.get(day) ?? { qty: 0, revenue: 0, orders: new Set<string>() };
+        d.qty += qty;
+        d.revenue += lineRevenue;
+        if (o.order_id) d.orders.add(o.order_id);
+        byDayMap.set(day, d);
+        if (!minDate || day < minDate) minDate = day;
+        if (!maxDate || day > maxDate) maxDate = day;
+      }
 
       if (o.order_id) orderIdsSet.add(o.order_id);
       totalQty += qty;
       totalRevenue += lineRevenue;
     }
   }
-
-  // orders count per model — 별도 set 으로 정확히
-  const modelOrderSets = new Map<string, Set<string>>();
-  for (const o of all) {
-    const st = (o.order_status ?? "").trim();
-    if (/취소|환불|반품/.test(st)) continue;
-    for (const it of o.items ?? []) {
-      const isBysoy =
-        String(it.product_no ?? "") === target ||
-        (it.product_code ?? "") === productCode;
-      if (!isBysoy) continue;
-      const model = (it.option_value ?? "")
-        .trim()
-        .replace(/^시계\s*모델\s*=\s*/, "")
-        .replace(/^모델\s*=\s*/, "")
-        || (it.product_name ?? "(옵션 없음)").trim();
-      if (!modelOrderSets.has(model)) modelOrderSets.set(model, new Set());
-      if (o.order_id) modelOrderSets.get(model)!.add(o.order_id);
-    }
-  }
   for (const line of byOption.values()) {
     line.orders = modelOrderSets.get(line.model)?.size ?? 0;
   }
 
+  const byDay: DayLine[] = [...byDayMap.entries()]
+    .map(([date, d]) => ({ date, qty: d.qty, revenue: d.revenue, orders: d.orders.size }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   return {
     snapshotAt:  kstNow().toISOString(),
-    periodStart,
-    periodEnd,
+    // 실제 판매가 발생한 날짜 범위로 표기 (상품 생성일 등 판매 없는 구간 제외)
+    periodStart: opts.date ?? minDate ?? periodStart,
+    periodEnd:   opts.date ?? maxDate ?? periodEnd,
     productNo,
     productCode,
     productName,
@@ -177,7 +183,24 @@ export async function buildBysoyReport(
     qty:     totalQty,
     revenue: totalRevenue,
     byModel: [...byOption.values()].sort((a, b) => b.qty - a.qty),
+    byDay,
   };
+}
+
+/** 모델명 정규화 — 옵션 prefix 제거 + '(…출고예정)' 접미사 제거(오타 날짜 변형 병합). */
+function normalizeModelName(optionValue?: string, productName?: string): string {
+  const m = (optionValue ?? "")
+    .trim()
+    .replace(/^시계\s*모델\s*=\s*/, "")
+    .replace(/^모델\s*=\s*/, "")
+    .replace(/\s*\([^)]*출고예정\)\s*$/, "")
+    .trim();
+  return m || (productName ?? "(옵션 없음)").trim();
+}
+
+/** 쇼핑백 옵션 라인 여부 — 공구 집계에서 제외. */
+function isShoppingBagLine(optionValue?: string): boolean {
+  return /^\s*쇼핑백/.test(optionValue ?? "");
 }
 
 /** PDF 생성 — Buffer 반환. */
@@ -249,14 +272,48 @@ export async function renderBysoyReportPdf(r: BysoyReport): Promise<Buffer> {
 
   doc.y = boxY + 70 + 24;
 
+  const tableX = 48;
+  const tableW = doc.page.width - 96;
+
+  // ── 일자별 판매 ──────────────────────────────
+  if (r.byDay.length > 0) {
+    doc.font("KR-Bold").fontSize(13).fillColor("#0F172A");
+    doc.text("일자별 판매", 48);
+    doc.moveDown(0.5);
+
+    const dC0 = tableW * 0.40; // 날짜
+    const dC1 = tableW * 0.20; // 주문
+    const dC2 = tableW * 0.18; // 수량
+    const dC3 = tableW * 0.22; // 매출
+
+    let dy = doc.y;
+    doc.fillColor("#0F172A").font("KR-Bold").fontSize(10);
+    doc.text("날짜", tableX, dy, { width: dC0 });
+    doc.text("주문", tableX + dC0, dy, { width: dC1, align: "right" });
+    doc.text("수량", tableX + dC0 + dC1, dy, { width: dC2, align: "right" });
+    doc.text("매출", tableX + dC0 + dC1 + dC2, dy, { width: dC3, align: "right" });
+    dy += 18;
+    doc.moveTo(tableX, dy - 4).lineTo(tableX + tableW, dy - 4).strokeColor("#CBD5E1").lineWidth(0.5).stroke();
+
+    doc.font("KR").fontSize(10);
+    for (const d of r.byDay) {
+      doc.fillColor("#0F172A");
+      doc.text(d.date, tableX, dy, { width: dC0 });
+      doc.text(`${d.orders}건`, tableX + dC0, dy, { width: dC1, align: "right" });
+      doc.text(`${d.qty}개`, tableX + dC0 + dC1, dy, { width: dC2, align: "right" });
+      doc.text(krw(d.revenue), tableX + dC0 + dC1 + dC2, dy, { width: dC3, align: "right" });
+      dy += 18;
+      doc.moveTo(tableX, dy - 4).lineTo(tableX + tableW, dy - 4).strokeColor("#F1F5F9").lineWidth(0.5).stroke();
+    }
+    doc.y = dy + 16;
+  }
+
   // ── 모델별 테이블 ────────────────────────────
   doc.font("KR-Bold").fontSize(13).fillColor("#0F172A");
   doc.text("모델별 판매 (수량 내림차순)", 48);
   doc.moveDown(0.5);
 
   // 헤더
-  const tableX = 48;
-  const tableW = doc.page.width - 96;
   const colWModel = tableW * 0.55;
   const colWQty   = tableW * 0.12;
   const colWOrd   = tableW * 0.13;

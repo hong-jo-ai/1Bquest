@@ -46,11 +46,15 @@ function formatSummary(r: BysoyReport): string {
   const totalLine = isDaily
     ? `· ${r.orders}건 · ${r.qty}개 · ${krw(r.revenue)}`
     : `· 누적 ${r.orders}건 · ${r.qty}개 · ${krw(r.revenue)}`;
+  const dailyBlock = !isDaily && r.byDay.length > 0
+    ? ["", "<b>일자별</b>", ...r.byDay.map((d) => `· ${d.date} — ${d.orders}건 / ${d.qty}개 / ${krw(d.revenue)}`)]
+    : [];
   return [
     header,
     totalLine,
+    ...dailyBlock,
     ``,
-    `<b>TOP 3</b>`,
+    `<b>TOP 3 모델</b>`,
     top3,
     ``,
     `<i>상세는 첨부 PDF 참고. 바이소이님 전달용 자료입니다.</i>`,
