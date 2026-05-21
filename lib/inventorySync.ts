@@ -246,6 +246,46 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
   return out;
 }
 
+export interface InventoryLevel {
+  sku: string;
+  initialStock: number;
+  currentStock: number;
+  totalSold: number;
+}
+
+/**
+ * 현재고 계산 (카페24 push 없음) — 저재고 알림 등 읽기 전용 용도.
+ * currentStock = initialStock + manualAdjustment − (카페24 판매 + 타채널 판매).
+ */
+export async function computeInventoryLevels(token: string): Promise<InventoryLevel[]> {
+  const entries = await loadInventoryFromStore();
+  // 재고 입력된 상품: initialStock>0 또는 실사로 명시 카운트(stockInDate 존재) → 0개 품절도 포함.
+  const skus = Object.keys(entries).filter(
+    (sku) => entries[sku].initialStock > 0 || !!entries[sku].stockInDate,
+  );
+  if (skus.length === 0) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const earliest = skus
+    .map((sku) => entries[sku].stockInDate)
+    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
+    .sort()[0];
+  const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const [cafe24SalesBySku, otherChannelsSales] = await Promise.all([
+    fetchSalesBySku(token, startDate),
+    fetchOtherChannelsSales(),
+  ]);
+  return skus.map((sku) => {
+    const e = entries[sku];
+    const totalSold = (cafe24SalesBySku[sku] ?? 0) + (otherChannelsSales[sku] ?? 0);
+    return {
+      sku,
+      initialStock: e.initialStock,
+      totalSold,
+      currentStock: Math.max(0, e.initialStock + e.manualAdjustment - totalSold),
+    };
+  });
+}
+
 /**
  * 재고 동기화 실행
  * @param token - Cafe24 access token

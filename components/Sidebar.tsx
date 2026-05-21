@@ -27,7 +27,6 @@ import {
   LogOut,
   Store,
   Tags,
-  Truck,
 } from "lucide-react";
 
 type AppPage =
@@ -43,8 +42,7 @@ type AppPage =
   | "content"
   | "imagemaker"
   | "finance"
-  | "pricing"
-  | "purchasing";
+  | "pricing";
 
 const NAV_ITEMS: {
   href: string;
@@ -57,7 +55,6 @@ const NAV_ITEMS: {
   { href: "/channel-pricing", label: "채널 가격", icon: Tags, page: "pricing" },
   { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
-  { href: "/purchase-orders", label: "발주·재입고", icon: Truck, page: "purchasing" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
   { href: "/analytics", label: "방문자", icon: BarChart2, page: "analytics" },
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
@@ -74,7 +71,6 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/channel-pricing": "pricing",
   "/inbox": "inbox",
   "/inventory": "inventory",
-  "/purchase-orders": "purchasing",
   "/jewelry-clearance": "jewelry",
   "/analytics": "analytics",
   "/tools/influencer": "influencer",
@@ -124,7 +120,6 @@ export default function Sidebar({
       dashboard: 0,
       finance: 0,
       pricing: 0,
-      purchasing: 0,
       inbox: 0,
       inventory: 0,
       jewelry: 0,

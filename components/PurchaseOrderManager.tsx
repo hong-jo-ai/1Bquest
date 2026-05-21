@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Package, Plus, RefreshCw, Loader2, Truck, AlertTriangle, Check, X, CalendarClock,
 } from "lucide-react";
@@ -212,56 +212,137 @@ export default function PurchaseOrderManager() {
   );
 }
 
+interface PreviewItem {
+  productName: string;
+  code?: string;
+  qty: number;
+  unitPrice: number | null;
+  amount: number | null;
+  sku: string;
+  candidates: Array<{ sku: string; name: string; score: number }>;
+}
+
 function AddForm({ onAdded }: { onAdded: () => void }) {
-  const [f, setF] = useState({ productName: "", sku: "", supplier: "나비스트", orderDate: todayKst(), qty: "", unitPrice: "", leadMinDays: "14", leadMaxDays: "21" });
+  const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [err, setErr] = useState<string | null>(null);
+  const [supplier, setSupplier] = useState("");
+  const [orderDate, setOrderDate] = useState(todayKst());
+  const [leadMin, setLeadMin] = useState("14");
+  const [leadMax, setLeadMax] = useState("21");
+  const [items, setItems] = useState<PreviewItem[]>([]);
+  const [allSkus, setAllSkus] = useState<Array<{ sku: string; name: string }>>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onFile = async (file: File) => {
+    setParsing(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/purchase-orders/parse", { method: "POST", body: fd });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "파싱 실패");
+      setSupplier(j.supplier ?? "");
+      setOrderDate(j.orderDate ?? todayKst());
+      setItems(j.items ?? []);
+      setAllSkus(j.skus ?? []);
+      if ((j.items ?? []).length === 0) setErr("발주 품목을 못 찾았어요. 파일을 확인하거나 수동으로 추가하세요.");
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setParsing(false); }
+  };
+
+  const setItem = (i: number, patch: Partial<PreviewItem>) =>
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
+  const addBlank = () =>
+    setItems((prev) => [...prev, { productName: "", qty: 1, unitPrice: null, amount: null, sku: "", candidates: [] }]);
 
   const submit = async () => {
-    if (!f.productName.trim() || !f.orderDate || !f.qty) return;
+    const valid = items.filter((it) => it.productName.trim() && it.qty > 0);
+    if (valid.length === 0 || !orderDate) return;
     setSaving(true);
     try {
-      const qty = parseInt(f.qty, 10) || 0;
-      const unitPrice = f.unitPrice ? parseInt(f.unitPrice, 10) : null;
-      const res = await fetch("/api/purchase-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productName: f.productName, sku: f.sku, supplier: f.supplier, orderDate: f.orderDate,
-          qty, unitPrice, amount: unitPrice ? unitPrice * qty : null,
-          leadMinDays: parseInt(f.leadMinDays, 10) || 14, leadMaxDays: parseInt(f.leadMaxDays, 10) || 21,
-        }),
-      });
+      const body = {
+        items: valid.map((it) => ({
+          productName: it.productName, sku: it.sku, supplier, orderDate,
+          qty: it.qty, unitPrice: it.unitPrice, amount: it.amount ?? (it.unitPrice ? it.unitPrice * it.qty : null),
+          leadMinDays: parseInt(leadMin, 10) || 14, leadMaxDays: parseInt(leadMax, 10) || 21,
+        })),
+      };
+      const res = await fetch("/api/purchase-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await res.json();
       if (j.ok) onAdded();
+      else setErr(j.error ?? "등록 실패");
     } finally { setSaving(false); }
   };
 
-  const I = (k: string, ph: string, type = "text", w = "") => (
-    <input value={(f as Record<string, string>)[k]} onChange={(e) => set(k, e.target.value)} placeholder={ph} type={type}
-      className={`text-sm px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 ${w}`} />
-  );
-
   return (
-    <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 mb-5 space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {I("productName", "상품명 *", "text", "col-span-2")}
-        {I("sku", "SKU (카페24 코드)")}
-        {I("supplier", "공급사")}
-        {I("orderDate", "발주일", "date")}
-        {I("qty", "수량 *", "number")}
-        {I("unitPrice", "단가(원)", "number")}
-        <div className="flex items-center gap-1">
-          {I("leadMinDays", "최소(일)", "number", "w-full")}
-          <span className="text-zinc-400 text-xs">~</span>
-          {I("leadMaxDays", "최대(일)", "number", "w-full")}
-        </div>
-      </div>
-      <div className="flex justify-end">
-        <button onClick={submit} disabled={saving || !f.productName.trim() || !f.qty} className="text-sm font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg flex items-center gap-1.5">
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} 발주 등록
+    <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 mb-5 space-y-3">
+      {/* 파일 첨부 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
+        <button onClick={() => fileRef.current?.click()} disabled={parsing}
+          className="text-sm font-semibold bg-white dark:bg-zinc-900 border border-violet-300 dark:border-violet-700 hover:bg-violet-50 text-violet-700 dark:text-violet-300 px-3 py-2 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+          {parsing ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} 발주제안서 첨부 (PDF·엑셀)
         </button>
+        <span className="text-[11px] text-zinc-500">파일을 올리면 상품·수량·단가를 자동 추출해요. 추출 후 검토·수정 가능.</span>
+        <button onClick={addBlank} className="text-xs text-violet-600 dark:text-violet-400 hover:underline ml-auto">+ 직접 행 추가</button>
       </div>
+
+      {err && <p className="text-xs text-red-600 dark:text-red-400">{err}</p>}
+
+      {items.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <label className="text-xs text-zinc-500 flex flex-col gap-1">공급사
+              <input value={supplier} onChange={(e) => setSupplier(e.target.value)} className="text-sm px-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700" />
+            </label>
+            <label className="text-xs text-zinc-500 flex flex-col gap-1">발주일
+              <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="text-sm px-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700" />
+            </label>
+            <label className="text-xs text-zinc-500 flex flex-col gap-1">예상 리드타임(일, 보통 2~3주)
+              <div className="flex items-center gap-1">
+                <input type="number" value={leadMin} onChange={(e) => setLeadMin(e.target.value)} className="w-full text-sm px-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700" />
+                <span className="text-zinc-400">~</span>
+                <input type="number" value={leadMax} onChange={(e) => setLeadMax(e.target.value)} className="w-full text-sm px-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700" />
+              </div>
+            </label>
+          </div>
+
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2 bg-white dark:bg-zinc-900 rounded-lg px-2 py-1.5 text-xs flex-wrap">
+                <input value={it.productName} onChange={(e) => setItem(i, { productName: e.target.value })} placeholder="상품명"
+                  className="flex-1 min-w-[140px] text-sm px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-transparent" />
+                <input type="number" value={it.qty} onChange={(e) => setItem(i, { qty: parseInt(e.target.value, 10) || 0 })} placeholder="수량"
+                  className="w-16 text-sm px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-transparent text-right" />
+                <input type="number" value={it.unitPrice ?? ""} onChange={(e) => setItem(i, { unitPrice: e.target.value ? parseInt(e.target.value, 10) : null })} placeholder="단가"
+                  className="w-20 text-sm px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-transparent text-right" />
+                <select value={it.sku} onChange={(e) => setItem(i, { sku: e.target.value })}
+                  className="text-xs px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 max-w-[200px]">
+                  <option value="">SKU 미연결</option>
+                  {it.candidates.length > 0 && (
+                    <optgroup label="추천">
+                      {it.candidates.map((c) => <option key={c.sku} value={c.sku}>{c.name} ({Math.round(c.score * 100)}%)</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label="전체 SKU">
+                    {allSkus.filter((s) => !it.candidates.some((c) => c.sku === s.sku)).map((s) => <option key={s.sku} value={s.sku}>{s.name}</option>)}
+                  </optgroup>
+                </select>
+                <button onClick={() => removeItem(i)} className="text-zinc-300 hover:text-red-500 p-1"><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end">
+            <button onClick={submit} disabled={saving} className="text-sm font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg flex items-center gap-1.5">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {items.filter((it) => it.productName.trim() && it.qty > 0).length}건 발주 등록
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

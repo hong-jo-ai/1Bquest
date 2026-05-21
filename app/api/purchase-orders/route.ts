@@ -59,16 +59,23 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: CreatePOInput;
+  let body: CreatePOInput & { items?: CreatePOInput[] };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "본문 파싱 실패" }, { status: 400 });
   }
-  if (!body.productName?.trim() || !body.orderDate || !body.qty) {
-    return Response.json({ error: "productName, orderDate, qty 필수" }, { status: 400 });
-  }
   try {
+    // 일괄 등록 (엑셀/PDF 파싱 결과)
+    if (Array.isArray(body.items)) {
+      const valid = body.items.filter((i) => i.productName?.trim() && i.orderDate && i.qty);
+      const created = [];
+      for (const i of valid) created.push(await createPurchaseOrder(i));
+      return Response.json({ ok: true, count: created.length, orders: created });
+    }
+    if (!body.productName?.trim() || !body.orderDate || !body.qty) {
+      return Response.json({ error: "productName, orderDate, qty 필수" }, { status: 400 });
+    }
     const po = await createPurchaseOrder(body);
     return Response.json({ ok: true, po });
   } catch (e) {
