@@ -1,7 +1,8 @@
+import { createClient } from "@supabase/supabase-js";
 import { cafe24Get } from "./cafe24Client";
 import { getProductCogs } from "./profitSettings";
 import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "./cafe24Historical";
-import type { Brand } from "./multiChannelData";
+import type { Brand, MultiChannelData } from "./multiChannelData";
 
 // ── 타입 정의 ──────────────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ export interface DashboardData {
   dailyCogs: DailyCost[];     // 최근 60일치 일별 매입원가
   unmatchedSkus: string[];   // COGS 미설정 SKU (UI에 경고 표시용)
   inventory: InventoryItem[];
+  /** 공동구매 채널로 분리된 공구 상품(226 등) 매출 — 카페24 합계에서는 제외됨 */
+  groupBuyLive?: MultiChannelData;
   isReal: true;
 }
 
@@ -217,15 +220,6 @@ export function lineItemRevenue(it: {
   return Math.max(0, qty * (base + opt) - coupon - extra);
 }
 
-function summarize(orders: any[]): PeriodSummary {
-  const revenue = orders.reduce((s, o) => s + orderRevenue(o), 0);
-  const count = orders.length;
-  return {
-    revenue: Math.round(revenue),
-    orders: count,
-    avgOrder: count > 0 ? Math.round(revenue / count) : 0,
-  };
-}
 
 /**
  * 결제가 확정된 주문만 매출로 집계하기 위한 필터.
@@ -252,12 +246,79 @@ export function isPaidOrder(o: {
   return Number.isFinite(paid) && paid > 0;
 }
 
+// ── 공동구매 채널 분리 ────────────────────────────────────────────────────
+// 카페24에 등록된 공구 전용 상품(예: 226)은 매출을 '공동구매' 채널로 분리한다.
+// 카페24 채널 = 자사몰 순수 매출(공구 제외), 공구 채널 = 공구 상품 매출.
+
+/** 공구 상품 번호 — kv_store(bysoy_consolidated:product) + 기본 226. 향후 공구 추가 시 union. */
+export async function getGroupBuyProductNos(): Promise<Set<number>> {
+  const set = new Set<number>([226]);
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (url && key) {
+    try {
+      const db = createClient(url, key);
+      const { data } = await db
+        .from("kv_store")
+        .select("data")
+        .eq("key", "bysoy_consolidated:product")
+        .maybeSingle();
+      const pn = (data?.data as { productNo?: number } | null)?.productNo;
+      if (Number.isFinite(pn)) set.add(Number(pn));
+    } catch { /* kv 실패 시 기본값만 */ }
+  }
+  return set;
+}
+
+interface OrderSplit { cafe24: number; groupbuy: number; gbQty: number }
+
+/**
+ * 주문을 카페24/공구 매출로 분리.
+ *   - 공구 상품만 있는 주문 → 통째로 공구(배송비 포함).
+ *   - 섞인 주문 → 공구 상품 라인만 공구, 나머지는 카페24.
+ *   - 공구 상품 없는 주문 → 전부 카페24.
+ */
+function splitOrderRevenue(o: any, gbNos: Set<number>): OrderSplit {
+  const items = (o.items ?? []) as any[];
+  const total = orderRevenue(o);
+  const gbItems = items.filter((it) => gbNos.has(Number(it.product_no)));
+  if (gbItems.length === 0) return { cafe24: total, groupbuy: 0, gbQty: 0 };
+
+  let gbQty = 0;
+  let gbLine = 0;
+  for (const it of gbItems) {
+    gbLine += lineItemRevenue(it);
+    const raw = Number(it.actual_quantity ?? it.quantity ?? 0) || 0;
+    const claim = Number(it.claim_quantity ?? 0) || 0;
+    gbQty += Math.max(0, raw - claim);
+  }
+  const allGb = items.every((it) => gbNos.has(Number(it.product_no)));
+  if (allGb) return { cafe24: 0, groupbuy: total, gbQty };
+  return { cafe24: Math.max(0, total - gbLine), groupbuy: gbLine, gbQty };
+}
+
+/** revOf(주문)>0 인 주문만 카운트해서 기간 요약. */
+function summarizeBy(orders: any[], revOf: (o: any) => number): PeriodSummary {
+  let revenue = 0;
+  let count = 0;
+  for (const o of orders) {
+    const r = revOf(o);
+    if (r > 0) { revenue += r; count++; }
+  }
+  return { revenue: Math.round(revenue), orders: count, avgOrder: count > 0 ? Math.round(revenue / count) : 0 };
+}
+
 // ── 상품별 판매 순위 빌더 ─────────────────────────────────────────────────
 
-export function buildRanking(orders: any[], limit = 10): ProductRank[] {
+export function buildRanking(
+  orders: any[],
+  limit = 10,
+  itemFilter?: (item: any) => boolean,
+): ProductRank[] {
   const pMap: Record<string, { name: string; sku: string; sold: number; revenue: number }> = {};
   orders.forEach((order) => {
     (order.items ?? []).forEach((item: any) => {
+      if (itemFilter && !itemFilter(item)) return;
       const key = String(item.product_no ?? item.product_code ?? item.product_name);
       if (!pMap[key]) {
         pMap[key] = {
@@ -312,6 +373,19 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
   const monthOrders     = rawMonthOrders.filter(isPaidOrder);
   const prevMonthOrders = rawPrevMonthOrders.filter(isPaidOrder);
 
+  // ── 공동구매 채널 분리 — 공구 상품(226 등)은 카페24에서 빼고 공구로 ──────
+  const gbNos = await getGroupBuyProductNos();
+  const splitCache = new Map<any, OrderSplit>();
+  const splitOf = (o: any): OrderSplit => {
+    let s = splitCache.get(o);
+    if (!s) { s = splitOrderRevenue(o, gbNos); splitCache.set(o, s); }
+    return s;
+  };
+  const cafe24Rev = (o: any) => splitOf(o).cafe24;
+  const gbRev = (o: any) => splitOf(o).groupbuy;
+  const isGbItem = (it: any) => gbNos.has(Number(it.product_no));
+  const notGbItem = (it: any) => !gbNos.has(Number(it.product_no));
+
   // 오늘 / 이번 주 필터
   const todayOrders = monthOrders.filter(
     (o) => kstDateStr(o.payment_date ?? o.order_date) === todayStr
@@ -320,20 +394,19 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     (o) => kstDateStr(o.payment_date ?? o.order_date) >= weekStartStr
   );
 
-  // ── 상품별 판매 순위 (기간별) ──────────────────────────────────────────
-  const topProducts         = buildRanking(monthOrders);
-  const topProductsToday    = buildRanking(todayOrders);
-  const topProductsWeek     = buildRanking(weekOrders);
+  // ── 상품별 판매 순위 (기간별) — 카페24는 공구 상품 제외 ─────────────────
+  const topProducts         = buildRanking(monthOrders, 10, notGbItem);
+  const topProductsToday    = buildRanking(todayOrders, 10, notGbItem);
+  const topProductsWeek     = buildRanking(weekOrders, 10, notGbItem);
 
-  // ── 시간대별 주문 (오늘) ───────────────────────────────────────────────
+  // ── 시간대별 주문 (오늘) — 카페24(공구 제외) ───────────────────────────
+  const hourOf = (o: any) => kstHour(o.payment_date ?? o.order_date);
   const hourlyOrders: HourlyData[] = Array.from({ length: 24 }, (_, h) => {
-    const filtered = todayOrders.filter(
-      (o) => kstHour(o.payment_date ?? o.order_date) === h
-    );
+    const filtered = todayOrders.filter((o) => hourOf(o) === h);
     return {
       hour: `${String(h).padStart(2, "0")}시`,
-      orders: filtered.length,
-      revenue: Math.round(filtered.reduce((s, o) => s + orderRevenue(o), 0)),
+      orders: filtered.filter((o) => cafe24Rev(o) > 0).length,
+      revenue: Math.round(filtered.reduce((s, o) => s + cafe24Rev(o), 0)),
     };
   });
 
@@ -348,8 +421,19 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     );
     return {
       day,
-      revenue: Math.round(dayOrders.reduce((s, o) => s + orderRevenue(o), 0)),
-      orders: dayOrders.length,
+      revenue: Math.round(dayOrders.reduce((s, o) => s + cafe24Rev(o), 0)),
+      orders: dayOrders.filter((o) => cafe24Rev(o) > 0).length,
+    };
+  });
+  const weeklyRevenueGb: WeeklyData[] = DAYS.map((day, i) => {
+    const d = new Date(weekStart);
+    d.setUTCDate(weekStart.getUTCDate() + i);
+    const ds = kstStr(d);
+    const dayOrders = monthOrders.filter((o) => kstDateStr(o.payment_date ?? o.order_date) === ds);
+    return {
+      day,
+      revenue: Math.round(dayOrders.reduce((s, o) => s + gbRev(o), 0)),
+      orders: dayOrders.filter((o) => gbRev(o) > 0).length,
     };
   });
 
@@ -360,11 +444,13 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     string,
     { revenue: number; orders: number; shipments: Set<string> }
   >();
+  const gbDailyMap = new Map<string, { revenue: number; orders: number }>();
   for (const o of allOrdersForDaily) {
     const ds = kstDateStr(o.payment_date ?? o.order_date);
+    const { cafe24, groupbuy } = splitOf(o);
     const cur = dailyMap.get(ds) ?? { revenue: 0, orders: 0, shipments: new Set<string>() };
-    cur.revenue += orderRevenue(o);
-    cur.orders += 1;
+    cur.revenue += cafe24;
+    if (cafe24 > 0) cur.orders += 1;
     // 합배송 키: 주문자+수령인+연락처+주소
     const buyer = o.buyer_name ?? "";
     const receiver = o.receiver_name ?? "";
@@ -373,6 +459,13 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     const shipKey = `${buyer}|${receiver}|${phone}|${addr}`;
     cur.shipments.add(shipKey);
     dailyMap.set(ds, cur);
+
+    if (groupbuy > 0) {
+      const g = gbDailyMap.get(ds) ?? { revenue: 0, orders: 0 };
+      g.revenue += groupbuy;
+      g.orders += 1;
+      gbDailyMap.set(ds, g);
+    }
   }
   const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
     .map(([date, v]) => ({
@@ -382,31 +475,43 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
       shipments: v.shipments.size,
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const gbDailyRevenue: DailyData[] = Array.from(gbDailyMap.entries())
+    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   // ── 일별 매입원가 (COGS) — items 단위로 SKU × 단가 합산 ────────────────
   const cogsMap = await getProductCogs();
   const dailyCogsMap = new Map<string, number>();
+  const gbCogsMap = new Map<string, number>();
   const unmatchedSet = new Set<string>();
   for (const o of allOrdersForDaily) {
     const ds = kstDateStr(o.payment_date ?? o.order_date);
     let dayCost = dailyCogsMap.get(ds) ?? 0;
+    let gbDayCost = gbCogsMap.get(ds) ?? 0;
     for (const item of (o.items ?? []) as Array<{
       product_code?: string;
+      product_no?: number | string;
       actual_quantity?: number;
       quantity?: number;
     }>) {
       const sku = item.product_code ?? "";
       const qty = item.actual_quantity ?? item.quantity ?? 1;
       const unitCost = cogsMap[sku];
+      const isGb = gbNos.has(Number(item.product_no));
       if (unitCost !== undefined) {
-        dayCost += unitCost * qty;
-      } else if (sku) {
+        if (isGb) gbDayCost += unitCost * qty;
+        else dayCost += unitCost * qty;
+      } else if (sku && !isGb) {
         unmatchedSet.add(sku);
       }
     }
     dailyCogsMap.set(ds, dayCost);
+    gbCogsMap.set(ds, gbDayCost);
   }
   const dailyCogs: DailyCost[] = Array.from(dailyCogsMap.entries())
+    .map(([date, cost]) => ({ date, cost: Math.round(cost) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const gbDailyCogs: DailyCost[] = Array.from(gbCogsMap.entries())
     .map(([date, cost]) => ({ date, cost: Math.round(cost) }))
     .sort((a, b) => a.date.localeCompare(b.date));
   const unmatchedSkus = Array.from(unmatchedSet);
@@ -450,12 +555,36 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     };
   });
 
+  // ── 공동구매 라이브 채널 데이터 (226 등 공구 상품) ─────────────────────
+  const hourlyOrdersGb: HourlyData[] = Array.from({ length: 24 }, (_, h) => {
+    const filtered = todayOrders.filter((o) => hourOf(o) === h);
+    return {
+      hour: `${String(h).padStart(2, "0")}시`,
+      orders: filtered.filter((o) => gbRev(o) > 0).length,
+      revenue: Math.round(filtered.reduce((s, o) => s + gbRev(o), 0)),
+    };
+  });
+  const groupBuyLive: MultiChannelData = {
+    salesSummary: {
+      today:     summarizeBy(todayOrders, gbRev),
+      week:      summarizeBy(weekOrders, gbRev),
+      month:     summarizeBy(monthOrders, gbRev),
+      prevMonth: summarizeBy(prevMonthOrders, gbRev),
+    },
+    topProducts:  buildRanking(monthOrders, 10, isGbItem),
+    hourlyOrders: hourlyOrdersGb,
+    weeklyRevenue: weeklyRevenueGb,
+    dailyRevenue: gbDailyRevenue,
+    dailyCogs:    gbDailyCogs,
+    inventory:    [],
+  };
+
   return {
     salesSummary: {
-      today:     summarize(todayOrders),
-      week:      summarize(weekOrders),
-      month:     summarize(monthOrders),
-      prevMonth: summarize(prevMonthOrders),
+      today:     summarizeBy(todayOrders, cafe24Rev),
+      week:      summarizeBy(weekOrders, cafe24Rev),
+      month:     summarizeBy(monthOrders, cafe24Rev),
+      prevMonth: summarizeBy(prevMonthOrders, cafe24Rev),
     },
     topProducts,
     topProductsToday,
@@ -466,6 +595,7 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     dailyCogs,
     unmatchedSkus,
     inventory,
+    groupBuyLive,
     isReal: true,
   };
 }

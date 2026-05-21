@@ -234,16 +234,21 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   }), [cafe24Data]);
 
   // 실제 표시 데이터 (업로드 > 더미)
-  const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => ({
-    wconcept:         uploads.wconcept         ?? UPLOADABLE_DUMMIES.wconcept,
-    musinsa:          uploads.musinsa          ?? UPLOADABLE_DUMMIES.musinsa,
-    "29cm":           uploads["29cm"]          ?? UPLOADABLE_DUMMIES["29cm"],
-    groupbuy:         uploads.groupbuy         ?? UPLOADABLE_DUMMIES.groupbuy,
-    kakao_gift:       uploads.kakao_gift       ?? UPLOADABLE_DUMMIES.kakao_gift,
-    sixshop:          uploads.sixshop          ?? UPLOADABLE_DUMMIES.sixshop,
-    naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
-    sixshop_global:   uploads.sixshop_global   ?? UPLOADABLE_DUMMIES.sixshop_global,
-  }), [uploads]);
+  const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => {
+    // 공동구매 = 엑셀 업로드(과거) + 카페24 라이브 공구 상품(226 등) 합산
+    const gbParts = [uploads.groupbuy, cafe24Data?.groupBuyLive].filter(Boolean) as MultiChannelData[];
+    const groupbuy = gbParts.length ? mergeChannelData(gbParts) : UPLOADABLE_DUMMIES.groupbuy;
+    return {
+      wconcept:         uploads.wconcept         ?? UPLOADABLE_DUMMIES.wconcept,
+      musinsa:          uploads.musinsa          ?? UPLOADABLE_DUMMIES.musinsa,
+      "29cm":           uploads["29cm"]          ?? UPLOADABLE_DUMMIES["29cm"],
+      groupbuy,
+      kakao_gift:       uploads.kakao_gift       ?? UPLOADABLE_DUMMIES.kakao_gift,
+      sixshop:          uploads.sixshop          ?? UPLOADABLE_DUMMIES.sixshop,
+      naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
+      sixshop_global:   uploads.sixshop_global   ?? UPLOADABLE_DUMMIES.sixshop_global,
+    };
+  }, [uploads, cafe24Data]);
 
   const displayData: MultiChannelData = useMemo(() => {
     if (activeChannel === "cafe24") return cafe24Channel;
@@ -377,7 +382,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
               wconcept: !!uploads.wconcept,
               musinsa:  !!uploads.musinsa,
               "29cm":   !!uploads["29cm"],
-              groupbuy: !!uploads.groupbuy,
+              groupbuy: !!uploads.groupbuy || (cafe24Data?.groupBuyLive?.salesSummary?.month?.revenue ?? 0) > 0,
               sixshop:  !!uploads.sixshop,
               naver_smartstore: !!uploads.naver_smartstore,
               sixshop_global:   !!uploads.sixshop_global,
