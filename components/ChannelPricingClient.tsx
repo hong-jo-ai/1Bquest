@@ -35,7 +35,11 @@ export default function ChannelPricingClient() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<PricingChannel | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [linkSel, setLinkSel] = useState<Record<string, string>>({});
+  const [linking, setLinking] = useState(false);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const selKey = (channel: string, channelCode: string) => `${channel}|${channelCode}`;
 
   const showToast = (m: string) => {
     setToast(m);
@@ -61,6 +65,16 @@ export default function ChannelPricingClient() {
     load();
   }, [load]);
 
+  // 데이터 로드 시 미매칭 행의 드롭다운을 추천 후보(있으면)로 미리 채움 — 빠른 일괄 연결용.
+  useEffect(() => {
+    if (!data) return;
+    const seed: Record<string, string> = {};
+    for (const u of data.unmatched) {
+      seed[selKey(u.channel, u.channelCode)] = u.candidates[0]?.sku ?? "";
+    }
+    setLinkSel(seed);
+  }, [data]);
+
   const onUpload = async (channel: PricingChannel, file: File) => {
     setUploading(channel);
     try {
@@ -78,26 +92,36 @@ export default function ChannelPricingClient() {
     }
   };
 
-  const onLink = async (u: UnmatchedChannelProduct, sku: string) => {
-    if (!sku) return;
+  const onBatchLink = async () => {
+    const links = (data?.unmatched ?? [])
+      .map((u) => ({ channel: u.channel, channelCode: u.channelCode, sku: linkSel[selKey(u.channel, u.channelCode)] }))
+      .filter((l) => l.sku); // 선택 안 한(빈) 행은 제외
+    if (links.length === 0) {
+      showToast("연결할 항목을 드롭다운에서 먼저 선택하세요");
+      return;
+    }
+    setLinking(true);
     try {
       const res = await fetch("/api/channel-pricing/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: u.channel, channelCode: u.channelCode, sku }),
+        body: JSON.stringify({ links }),
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error ?? "연결 실패");
-      showToast(`연결됨 → ${sku}`);
+      showToast(`${j.count}건 일괄 연결 완료`);
       await load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLinking(false);
     }
   };
 
   const entries = data?.entries ?? [];
   const cogs = data?.cogs ?? {};
   const unmatched = data?.unmatched ?? [];
+  const selectedCount = unmatched.filter((u) => linkSel[selKey(u.channel, u.channelCode)]).length;
 
   // 경고 집계
   let lowestBreaks = 0;
@@ -196,13 +220,35 @@ export default function ChannelPricingClient() {
       {/* 미매칭 확인 */}
       {unmatched.length > 0 && (
         <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl p-4 mb-5">
-          <div className="text-sm font-bold text-violet-800 dark:text-violet-200 mb-2 flex items-center gap-1.5">
-            <Link2 size={14} /> 미매칭 상품 — 우리 SKU에 연결하세요 ({unmatched.length})
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <div className="text-sm font-bold text-violet-800 dark:text-violet-200 flex items-center gap-1.5">
+              <Link2 size={14} /> 미매칭 상품 — 드롭다운에서 SKU 고른 뒤 일괄 연결 ({unmatched.length})
+            </div>
+            <button
+              onClick={onBatchLink}
+              disabled={linking || selectedCount === 0}
+              className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              {linking ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+              선택한 {selectedCount}건 일괄 연결
+            </button>
           </div>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {unmatched.map((u, i) => (
-              <UnmatchedRow key={`${u.channel}-${u.channelCode}-${i}`} u={u} allSkus={data?.skus ?? []} onLink={onLink} />
-            ))}
+          <p className="text-[11px] text-violet-600 dark:text-violet-400 mb-2">
+            추천 후보가 있으면 미리 채워져 있어요. 틀린 건 바꾸고, 매칭 안 되는 건 “SKU 선택…”으로 비워두면 제외됩니다.
+          </p>
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {unmatched.map((u, i) => {
+              const key = selKey(u.channel, u.channelCode);
+              return (
+                <UnmatchedRow
+                  key={`${u.channel}-${u.channelCode}-${i}`}
+                  u={u}
+                  allSkus={data?.skus ?? []}
+                  value={linkSel[key] ?? ""}
+                  onChange={(sku) => setLinkSel((prev) => ({ ...prev, [key]: sku }))}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -303,12 +349,18 @@ function Badge({ children, tone, icon }: { children: React.ReactNode; tone: "red
   );
 }
 
-function UnmatchedRow({ u, allSkus, onLink }: { u: UnmatchedChannelProduct; allSkus: Array<{ sku: string; name: string }>; onLink: (u: UnmatchedChannelProduct, sku: string) => void }) {
-  const [sku, setSku] = useState(u.candidates[0]?.sku ?? "");
+function UnmatchedRow({
+  u, allSkus, value, onChange,
+}: {
+  u: UnmatchedChannelProduct;
+  allSkus: Array<{ sku: string; name: string }>;
+  value: string;
+  onChange: (sku: string) => void;
+}) {
   const candSkus = new Set(u.candidates.map((c) => c.sku));
   const others = allSkus.filter((s) => !candSkus.has(s.sku));
   return (
-    <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 rounded-lg px-3 py-2 text-xs flex-wrap">
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs flex-wrap ${value ? "bg-violet-100/60 dark:bg-violet-900/20" : "bg-white dark:bg-zinc-900"}`}>
       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 shrink-0">
         {PRICING_CHANNEL_LABEL[u.channel]}
       </span>
@@ -316,11 +368,11 @@ function UnmatchedRow({ u, allSkus, onLink }: { u: UnmatchedChannelProduct; allS
       <span className="text-zinc-400 tabular-nums">{krw(u.discount)}</span>
       <div className="flex-1" />
       <select
-        value={sku}
-        onChange={(e) => setSku(e.target.value)}
-        className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 max-w-[260px]"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 max-w-[280px]"
       >
-        <option value="">SKU 선택…</option>
+        <option value="">SKU 선택… (비우면 제외)</option>
         {u.candidates.length > 0 && (
           <optgroup label="추천 후보">
             {u.candidates.map((c) => (
@@ -338,13 +390,6 @@ function UnmatchedRow({ u, allSkus, onLink }: { u: UnmatchedChannelProduct; allS
           ))}
         </optgroup>
       </select>
-      <button
-        onClick={() => onLink(u, sku)}
-        disabled={!sku}
-        className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-2.5 py-1 rounded-md flex items-center gap-1"
-      >
-        <Link2 size={11} /> 연결
-      </button>
     </div>
   );
 }

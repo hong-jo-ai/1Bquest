@@ -65,6 +65,28 @@ export async function linkChannelCode(ch: PricingChannel, channelCode: string, s
   await saveChannelSkuMap(ch, map);
 }
 
+/** 여러 건 일괄 연결 — 채널별로 맵을 한 번씩만 읽고 써서 효율적. */
+export async function linkChannelCodesBulk(
+  links: Array<{ channel: PricingChannel; channelCode: string; sku: string }>,
+): Promise<number> {
+  const byChannel = new Map<PricingChannel, Array<{ channelCode: string; sku: string }>>();
+  for (const l of links) {
+    if (!l.channelCode || !l.sku) continue;
+    if (!byChannel.has(l.channel)) byChannel.set(l.channel, []);
+    byChannel.get(l.channel)!.push({ channelCode: l.channelCode, sku: l.sku });
+  }
+  let count = 0;
+  for (const [ch, items] of byChannel) {
+    const map = await loadChannelSkuMap(ch);
+    for (const it of items) {
+      map[it.channelCode] = it.sku;
+      count++;
+    }
+    await saveChannelSkuMap(ch, map);
+  }
+  return count;
+}
+
 // ── Cafe24 마스터 카탈로그 (canonical) ───────────────────────────────────
 
 async function fetchCafe24Products(token: string): Promise<Cafe24Product[]> {
