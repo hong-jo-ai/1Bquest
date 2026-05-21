@@ -164,8 +164,10 @@ export async function assembleCatalog(): Promise<AssembledCatalog> {
     const kmap = await loadKakaoGiftSkuMap();
     const byKakaoSku = new Map<string, string>();
     for (const m of kmap) if (!m.optionText) byKakaoSku.set(m.kakaoSku, m.cafe24Code);
+    // 수동연결(channel_pricing:skumap:kakao_gift) 우선, 없으면 기존 kakao_gift_sku_map
+    const manualMap = await loadChannelSkuMap(ch);
     for (const p of raw) {
-      const sku = byKakaoSku.get(p.channelCode);
+      const sku = manualMap[p.channelCode] ?? byKakaoSku.get(p.channelCode);
       if (!sku || !entries[sku]) {
         if (p.discount != null) {
           unmatched.push({ channel: ch, channelCode: p.channelCode, name: p.name, image: null, list: p.list, discount: p.discount, net: p.net, candidates: rankCandidates(p.name, skuRefs) });
