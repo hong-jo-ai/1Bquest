@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { RefreshCw, Upload, AlertTriangle, Link2, Loader2, TrendingDown } from "lucide-react";
 import {
   PRICING_CHANNEL_LABEL,
@@ -118,8 +118,8 @@ export default function ChannelPricingClient() {
     }
   };
 
-  const entries = data?.entries ?? [];
-  const cogs = data?.cogs ?? {};
+  const entries = useMemo(() => data?.entries ?? [], [data]);
+  const cogs = useMemo(() => data?.cogs ?? {}, [data]);
   const unmatched = data?.unmatched ?? [];
   const selectedCount = unmatched.filter((u) => linkSel[selKey(u.channel, u.channelCode)]).length;
 
@@ -139,6 +139,27 @@ export default function ChannelPricingClient() {
       }
     }
   }
+
+  // 정렬: 가격 수정 필요(최저가 깨짐·저마진) → 상단, 채널 취급 → 중간, 미취급(카페24만) → 최하단
+  const sortedEntries = useMemo(() => {
+    const tier = (e: CatalogEntry): number => {
+      const ref = e.channels.cafe24?.discount ?? null;
+      const cogsV = cogs[e.sku] ?? null;
+      let needsFix = false;
+      let nonCafe24 = 0;
+      for (const ch of COLUMN_CHANNELS) {
+        const c = e.channels[ch];
+        if (!c) continue;
+        if (ch !== "cafe24") nonCafe24++;
+        if (ch !== "cafe24" && ref != null && c.discount != null && c.discount < ref) needsFix = true;
+        if (c.net != null && cogsV != null && cogsV > 0 && (c.net - cogsV) / c.net < LOW_MARGIN) needsFix = true;
+      }
+      if (needsFix) return 0;       // 상단: 가격 수정 필요
+      if (nonCafe24 > 0) return 1;  // 중간: 채널 취급중
+      return 2;                     // 최하단: 미취급(카페24만)
+    };
+    return [...entries].sort((a, b) => tier(a) - tier(b) || a.name.localeCompare(b.name, "ko"));
+  }, [entries, cogs]);
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6">
@@ -277,7 +298,7 @@ export default function ChannelPricingClient() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => {
+              {sortedEntries.map((e) => {
                 const ref = e.channels.cafe24?.discount ?? null;
                 const cogsV = cogs[e.sku] ?? null;
                 return (
