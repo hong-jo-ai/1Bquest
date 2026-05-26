@@ -75,6 +75,12 @@ export function smsConfigured(): { ok: boolean; missing: string[] } {
 interface OutMessage { to: string; from: string; text: string; type: "SMS" | "LMS"; subject?: string }
 
 /**
+ * LMS 기본 제목. 제목을 비우면 Solapi 가 본문 앞부분을 잘라 제목으로 자동 생성하는데
+ * 단어 중간에서 끊겨 지저분하므로(예: "…폴바이스입니다.주"), 항상 깔끔한 제목을 강제한다.
+ */
+export const DEFAULT_LMS_SUBJECT = "폴바이스 고객 안내";
+
+/**
  * 다건 발송 — send-many/detail. 수신자마다 다른 text(이름 치환)를 보낼 수 있다.
  * Solapi 는 부분 실패를 허용하므로 그룹 결과에서 건별 상태를 파싱한다.
  */
@@ -84,13 +90,17 @@ export async function sendMany(
   if (messages.length === 0) return { ok: true, results: [], successCount: 0, failCount: 0 };
   const from = getSender();
   const payload: { messages: OutMessage[] } = {
-    messages: messages.map((m) => ({
-      to: m.to.replace(/\D/g, ""),
-      from,
-      text: m.text,
-      type: detectMessageType(m.text),
-      ...(detectMessageType(m.text) === "LMS" && m.subject ? { subject: m.subject } : {}),
-    })),
+    messages: messages.map((m) => {
+      const type = detectMessageType(m.text);
+      // LMS 는 제목 필수 — 미지정 시 기본 제목으로 채워 자동생성(본문 잘림)을 막는다.
+      return {
+        to: m.to.replace(/\D/g, ""),
+        from,
+        text: m.text,
+        type,
+        ...(type === "LMS" ? { subject: (m.subject ?? "").trim() || DEFAULT_LMS_SUBJECT } : {}),
+      };
+    }),
   };
 
   let res: Response;

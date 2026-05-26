@@ -25,14 +25,15 @@ const won = (n: number) => n.toLocaleString("ko-KR") + "원";
 
 interface Recipient { name: string; phone: string; orderIds: string[]; sample: string }
 
-const TEMPLATES: { label: string; text: string }[] = [
-  { label: "배송 지연",
+const TEMPLATES: { label: string; subject: string; text: string }[] = [
+  { label: "배송 지연", subject: "폴바이스 배송 안내",
     text: "안녕하세요 #{이름}님, 폴바이스입니다.\n주문해주신 상품의 배송이 예정보다 지연되어 안내드립니다. 최대한 빠르게 발송하겠습니다. 기다리게 해드려 죄송합니다." },
-  { label: "에끌라 실버 지연(6/4)",
+  { label: "에끌라 실버 지연(6/4)", subject: "폴바이스 배송 안내",
     text: "안녕하세요 #{이름}님, 폴바이스입니다.\n주문하신 에끌라 오벌 실버 시계가 생산 일정 지연으로 6월 4일 순차 출고 예정입니다. 기다려주셔서 감사하며, 출고되면 다시 안내드리겠습니다." },
-  { label: "A/S 안내",
+  { label: "A/S 안내", subject: "폴바이스 A/S 안내",
     text: "안녕하세요 #{이름}님, 폴바이스 고객센터입니다.\n문의주신 A/S 관련하여 안내드립니다. 제품을 보내주실 주소와 절차는 회신 문자로 안내드릴게요. 감사합니다." },
 ];
+const DEFAULT_SUBJECT = "폴바이스 고객 안내";
 
 const SHIP_STATUSES = ["", "배송보류", "배송준비중", "배송중", "배송완료"];
 
@@ -64,7 +65,7 @@ export default function SmsClient() {
 
   // 문안
   const [message, setMessage] = useState("");
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(DEFAULT_SUBJECT);
 
   // 발송
   const [testPhone, setTestPhone] = useState("");
@@ -327,15 +328,18 @@ export default function SmsClient() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {TEMPLATES.map((t) => (
-            <button key={t.label} onClick={() => setMessage(t.text)}
+            <button key={t.label} onClick={() => { setMessage(t.text); setSubject(t.subject); }}
               className="px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600">
               {t.label}
             </button>
           ))}
         </div>
         {type === "LMS" && (
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="LMS 제목 (선택)"
-            className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm" />
+          <div>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="LMS 제목 (예: 폴바이스 배송 안내)"
+              className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm" />
+            <p className="text-[11px] text-zinc-400 mt-1">긴 문자(LMS)는 제목이 함께 표시돼요. 비우면 "{DEFAULT_SUBJECT}"로 나갑니다.</p>
+          </div>
         )}
         <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5}
           placeholder="#{이름}님 안녕하세요, 폴바이스입니다…"
