@@ -30,7 +30,17 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as SendBody;
   const message = (body.message ?? "").trim();
-  const recipients = (body.recipients ?? []).filter((r) => r.phone && r.phone.replace(/\D/g, "").length >= 10);
+
+  // 유효 번호만 + 중복 번호 제거(첫 항목 유지).
+  // Solapi send-many 는 한 요청에 동일 번호가 중복되면 "중복 수신번호"로 실패 처리하므로
+  // 출처가 섞여(카페24 + 수동) 같은 번호가 들어와도 안전하게 1건만 남긴다.
+  const seen = new Set<string>();
+  const recipients = (body.recipients ?? []).filter((r) => {
+    const d = (r.phone ?? "").replace(/\D/g, "");
+    if (d.length < 10 || seen.has(d)) return false;
+    seen.add(d);
+    return true;
+  });
 
   if (!message) return Response.json({ ok: false, error: "메시지를 입력하세요" }, { status: 400 });
   if (recipients.length === 0) return Response.json({ ok: false, error: "유효한 수신자가 없습니다" }, { status: 400 });
