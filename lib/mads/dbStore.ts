@@ -41,6 +41,26 @@ export async function upsertAdSets(rows: AdSetSummary[]): Promise<void> {
   if (error) throw new Error("ad_sets upsert: " + error.message);
 }
 
+/**
+ * Meta에서 더 이상 ACTIVE로 안 잡히는 세트를 PAUSED로 정리.
+ * activeIds = 이번 사이클에서 Meta가 effective ACTIVE로 돌려준 세트 전체.
+ * ⚠️ 호출 측에서 모든 계정 fetch 성공을 보장한 경우에만 호출할 것 (부분 실패 시 대량 오삭제 위험).
+ * @returns PAUSED 처리된 세트 수
+ */
+export async function deactivateStaleAdSets(activeIds: string[]): Promise<number> {
+  const db = getDb();
+  let q = db
+    .from("mads_ad_sets")
+    .update({ status: "PAUSED", last_synced_at: new Date().toISOString() })
+    .eq("status", "ACTIVE");
+  if (activeIds.length > 0) {
+    q = q.not("meta_adset_id", "in", `(${activeIds.join(",")})`);
+  }
+  const { data, error } = await q.select("meta_adset_id");
+  if (error) throw new Error("ad_sets deactivate: " + error.message);
+  return data?.length ?? 0;
+}
+
 export async function getAdSet(metaAdsetId: string): Promise<AdSetSummary | null> {
   const db = getDb();
   const { data } = await db

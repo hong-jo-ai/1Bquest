@@ -80,7 +80,7 @@ export async function buildIntegrationAdvice(): Promise<IntegrationAdvice> {
     .in("meta_adset_id", ids)
     .order("evaluated_at", { ascending: false });
 
-  const latestTrust = new Map<string, { trust_level: string; conversions_7d: number; spend_7d: number; roas_7d: number }>();
+  const latestTrust = new Map<string, { trust_level: string; conversions_7d: number; spend_7d: number; roas_7d: number; evaluated_at: string | null }>();
   for (const t of trusts ?? []) {
     if (!latestTrust.has(t.meta_adset_id)) {
       latestTrust.set(t.meta_adset_id, {
@@ -88,20 +88,27 @@ export async function buildIntegrationAdvice(): Promise<IntegrationAdvice> {
         conversions_7d: t.conversions_7d,
         spend_7d: Number(t.spend_7d),
         roas_7d: Number(t.roas_7d),
+        evaluated_at: t.evaluated_at ?? null,
       });
     }
   }
+
+  // 평가가 STALE_DAYS 넘게 멈춘 세트는 Meta에서 꺼졌으나 DB에 ACTIVE로 남은 유령 가능성 → 제외.
+  // (reconcile이 다음 cron에서 PAUSED 처리하지만, 그 전까지의 방어책)
+  const STALE_DAYS = 3;
+  const staleBefore = Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000;
 
   // 2) untrusted/learning 세트만 필터 (= 학습 미완)
   const small = ads
     .filter((a) => a.daily_budget !== null) // CBO는 제외
     .map((a) => {
       const t = latestTrust.get(a.meta_adset_id) ?? {
-        trust_level: "untrusted", conversions_7d: 0, spend_7d: 0, roas_7d: 0,
+        trust_level: "untrusted", conversions_7d: 0, spend_7d: 0, roas_7d: 0, evaluated_at: null,
       };
       return { ...a, ...t };
     })
-    .filter((a) => a.trust_level === "untrusted" || a.trust_level === "learning");
+    .filter((a) => a.trust_level === "untrusted" || a.trust_level === "learning")
+    .filter((a) => !a.evaluated_at || new Date(a.evaluated_at).getTime() >= staleBefore);
 
   if (small.length < POLICY.MIN_SETS_TO_TRIGGER) {
     return { ...empty, triggered: false, reason: `학습 미완 세트 ${small.length}개 (트리거 ${POLICY.MIN_SETS_TO_TRIGGER}개 미만)` };

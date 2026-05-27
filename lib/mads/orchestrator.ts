@@ -20,6 +20,7 @@ import { evaluateTrust } from "./trustEvaluator";
 import { generateRecommendation } from "./ruleEngine";
 import { buildWarnings, getManualActionCount24h } from "./wobbleDetector";
 import {
+  deactivateStaleAdSets,
   expireOldPending,
   getRecentMetrics,
   insertRecommendation,
@@ -37,6 +38,7 @@ export interface RunResult {
   adsetsEvaluated: number;
   recommendations: number;
   expired: number;
+  deactivated: number;
   counts: Record<string, number>;
   errors: Array<{ scope: string; id?: string; error: string }>;
   thresholds: { beRoas: number; roasLow: number; roasBase: number; roasHigh: number };
@@ -47,7 +49,7 @@ export async function runEvaluationCycle(): Promise<RunResult> {
   const token = await getMetaTokenServer();
   if (!token) {
     return {
-      ok: false, accounts: 0, adsetsEvaluated: 0, recommendations: 0, expired: 0,
+      ok: false, accounts: 0, adsetsEvaluated: 0, recommendations: 0, expired: 0, deactivated: 0,
       counts: {}, errors: [{ scope: "auth", error: "Meta 토큰 없음 — 미연결" }],
       thresholds: { beRoas: 0, roasLow: 0, roasBase: 0, roasHigh: 0 },
     };
@@ -67,13 +69,15 @@ export async function runEvaluationCycle(): Promise<RunResult> {
   } catch (e) {
     errors.push({ scope: "accounts", error: msg(e) });
     return {
-      ok: false, accounts: 0, adsetsEvaluated: 0, recommendations: 0, expired,
+      ok: false, accounts: 0, adsetsEvaluated: 0, recommendations: 0, expired, deactivated: 0,
       counts: {}, errors, thresholds: stripThresholds(thresholds),
     };
   }
 
   let totalEvaluated = 0;
   const counts: Record<string, number> = {};
+  const seenActiveIds: string[] = []; // 이번 사이클 Meta가 ACTIVE로 돌려준 세트 전체
+  let adsetFetchOk = true;            // 한 계정이라도 fetch 실패하면 reconcile 건너뜀
 
   for (const acc of accounts) {
     let adsets;
@@ -81,9 +85,11 @@ export async function runEvaluationCycle(): Promise<RunResult> {
       adsets = await listActiveAdSets(token, acc.id, acc.name);
     } catch (e) {
       errors.push({ scope: "adsets", id: acc.id, error: msg(e) });
+      adsetFetchOk = false;
       continue;
     }
 
+    seenActiveIds.push(...adsets.map((a) => a.metaAdsetId));
     if (adsets.length === 0) continue;
 
     try {
@@ -128,12 +134,24 @@ export async function runEvaluationCycle(): Promise<RunResult> {
     }
   }
 
+  // Meta에서 더 이상 ACTIVE가 아닌 DB 세트 정리 (유령 ACTIVE 누적 방지).
+  // 모든 계정 fetch가 성공했을 때만 — 부분 실패 시 멀쩡한 세트를 PAUSED로 오삭제할 수 있음.
+  let deactivated = 0;
+  if (adsetFetchOk) {
+    try {
+      deactivated = await deactivateStaleAdSets(seenActiveIds);
+    } catch (e) {
+      errors.push({ scope: "deactivate_stale", error: msg(e) });
+    }
+  }
+
   return {
     ok: true,
     accounts: accounts.length,
     adsetsEvaluated: totalEvaluated,
     recommendations: totalEvaluated,
     expired,
+    deactivated,
     counts,
     errors,
     thresholds: stripThresholds(thresholds),
