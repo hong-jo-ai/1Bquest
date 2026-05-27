@@ -210,6 +210,35 @@ export default function MoriClient({
     setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
     let full = "";
+    // 문장 단위 스트리밍 TTS: 문장이 완성될 때마다 즉시 합성 시작(병렬), 순서대로 재생.
+    // → 전체 응답을 기다리지 않고 첫 문장부터 바로 말한다(첫 소리까지 지연 ↓).
+    const audioJobs: Promise<ArrayBuffer | null>[] = [];
+    let sentBuf = "";
+    let streamDone = false;
+    const ttsOn = speakRef.current;
+    const pushSentences = (force: boolean) => {
+      if (!ttsOn) return;
+      const [sents, rest] = cutSentences(sentBuf, force);
+      sentBuf = rest;
+      for (const s of sents) {
+        const txt = s.trim();
+        if (txt) audioJobs.push(synthTts(txt));
+      }
+    };
+    const player = (async () => {
+      if (!ttsOn) return;
+      let i = 0;
+      for (;;) {
+        if (i < audioJobs.length) {
+          const ab = await audioJobs[i++];
+          if (ab) await playWithAmplitude(ab);
+        } else if (streamDone) {
+          break;
+        } else {
+          await new Promise((r) => setTimeout(r, 60));
+        }
+      }
+    })();
     try {
       const res = await fetch("/api/mori/chat", {
         method: "POST",
@@ -240,6 +269,8 @@ export default function MoriClient({
               firstToken = false;
             }
             full += payload.text;
+            sentBuf += payload.text;
+            pushSentences(false); // 완성된 문장 즉시 합성 시작
             setMessages((cur) => {
               const copy = [...cur];
               const last = copy[copy.length - 1];
@@ -262,11 +293,14 @@ export default function MoriClient({
         else copy.push({ role: "assistant", content: msg });
         return copy;
       });
+      streamDone = true;
       setOrb("idle");
       return;
     }
-    // 스트림 완료 → 음성 출력(켜져 있으면). 재생 동안 구체는 말하는 중.
-    if (full.trim()) await speak(full);
+    // 스트림 완료 → 남은 문장 flush 후 재생 워커가 끝날 때까지 대기.
+    pushSentences(true);
+    streamDone = true;
+    await player;
     setOrb("idle");
   }
 
@@ -478,6 +512,39 @@ export default function MoriClient({
       </div>
     </div>
   );
+}
+
+// 스트리밍 텍스트에서 완성된 문장만 잘라낸다(나머지는 버퍼에 남김). force=true면 잔여도 flush.
+function cutSentences(buf: string, force: boolean): [string[], string] {
+  const out: string[] = [];
+  const re = /[^.!?。…\n]*[.!?。…\n]+/g;
+  let m: RegExpExecArray | null;
+  let last = 0;
+  while ((m = re.exec(buf))) {
+    out.push(m[0]);
+    last = re.lastIndex;
+  }
+  let rest = buf.slice(last);
+  if (force && rest.trim()) {
+    out.push(rest);
+    rest = "";
+  }
+  return [out, rest];
+}
+
+// 문장 1개 → Gemini TTS WAV(ArrayBuffer). 실패 시 null.
+async function synthTts(text: string): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch("/api/mori/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return null;
+    return await res.arrayBuffer();
+  } catch {
+    return null;
+  }
 }
 
 function blobToBase64(blob: Blob): Promise<string> {

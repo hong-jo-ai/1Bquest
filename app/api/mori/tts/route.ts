@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const res = await ai.models.generateContent({
       model: MODEL,
       // 전달 톤 힌트 + 본문
-      contents: [{ role: "user", parts: [{ text: `차분하고 정중한 톤으로 또박또박 읽어줘:\n${t}` }] }],
+      contents: [{ role: "user", parts: [{ text: `정중하고 자연스러운 톤으로, 너무 느리지 않게 약간 경쾌하게 읽어줘:\n${t}` }] }],
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
