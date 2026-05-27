@@ -26,6 +26,8 @@ import {
   Tags,
   MessageSquare,
   Sparkles,
+  Wand2,
+  ExternalLink,
 } from "lucide-react";
 
 type AppPage =
@@ -76,6 +78,12 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/ads": "adsauto",
   "/tools/threads": "threads",
 };
+
+// 외부 도구 (이 앱의 라우트가 아님) — 아이맥 셀프호스팅 엔진, Cloudflare Tunnel 경유.
+// 새 탭으로 열고 progress 게이지/activePage 로직과 엮지 않는다.
+const EXTERNAL_ITEMS: { href: string; label: string; icon: React.ElementType }[] = [
+  { href: "https://engine.harriot.co.kr", label: "광고 소재 생성", icon: Wand2 },
+];
 
 const PROGRESS_STEPS = [0, 20, 40, 60, 80, 100];
 const STORAGE_KEY = "paulvice_app_progress";
@@ -306,6 +314,26 @@ export default function Sidebar({
               </div>
             );
           })}
+
+          {/* 외부 도구 — 새 탭, progress 게이지 없음 */}
+          {EXTERNAL_ITEMS.map(({ href, label, icon: Icon }) => (
+            <a
+              key={href}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200"
+              title={collapsed && !isMobile ? label : undefined}
+            >
+              <Icon size={18} className="text-zinc-400 dark:text-zinc-500" />
+              {(!collapsed || isMobile) && (
+                <>
+                  <span className="flex-1">{label}</span>
+                  <ExternalLink size={13} className="text-zinc-300 dark:text-zinc-600" />
+                </>
+              )}
+            </a>
+          ))}
         </div>
       </nav>
 
