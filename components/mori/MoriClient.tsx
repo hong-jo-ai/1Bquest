@@ -45,8 +45,11 @@ export default function MoriClient({
   const [speakOn, setSpeakOn] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [arming, setArming] = useState(false); // 마이크 잡는 중(첫 클릭만 잠깐)
   const [clock, setClock] = useState(nowKst);
   const meterRef = useRef<HTMLSpanElement>(null); // 녹음 중 실시간 진폭 막대
+  const streamRef = useRef<MediaStream | null>(null); // 마이크 스트림 세션 내 재사용
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
@@ -71,6 +74,15 @@ export default function MoriClient({
     const id = setInterval(tick, 1000);
     tick();
     return () => clearInterval(id);
+  }, []);
+
+  // 언마운트 시 마이크 스트림/오디오 컨텍스트 해제(세션 동안만 살려둠)
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      audioCtxRef.current?.close().catch(() => {});
+    };
   }, []);
 
   // 메모 큐 초기 로드
@@ -318,21 +330,46 @@ export default function MoriClient({
   }
 
   // ── 음성: 마이크 토글 녹음 → 전사 ──
+  // 스트림/AudioContext/analyser를 세션 내내 재사용 → 첫 클릭만 getUserMedia 비용을
+  // 치르고 이후 녹음은 즉시 시작(클릭→녹음 지연 제거).
+  async function getMicStream(): Promise<MediaStream> {
+    const live = streamRef.current?.getAudioTracks().some((t) => t.readyState === "live");
+    if (streamRef.current && live) return streamRef.current;
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+    // 진폭 분석 그래프를 이 스트림에 한 번만 연결.
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const ac = audioCtxRef.current ?? new AC();
+      audioCtxRef.current = ac;
+      if (ac.state === "suspended") await ac.resume();
+      const analyser = ac.createAnalyser();
+      analyser.fftSize = 256;
+      ac.createMediaStreamSource(stream).connect(analyser);
+      analyserRef.current = analyser;
+    } catch {
+      /* 진폭 실패해도 녹음/전사는 됨 */
+    }
+    return stream;
+  }
+
   async function toggleMic() {
     if (recording) {
       recorderRef.current?.stop();
       return;
     }
-    if (busy) return;
+    if (busy || arming) return;
+    setArming(true); // 클릭 즉시 시각 피드백(첫 클릭은 마이크 잡느라 잠깐 걸림)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getMicStream();
       const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       rec.onstop = async () => {
         stopAmplitude();
-        stream.getTracks().forEach((t) => t.stop());
+        // 스트림은 살려둔다(다음 녹음 즉시 시작). 트랙 stop은 언마운트 때만.
         setOrb("idle");
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size === 0) return;
@@ -340,48 +377,39 @@ export default function MoriClient({
       };
       recorderRef.current = rec;
       rec.start();
-      startAmplitude(stream);
+      startAmplitude();
       setOrb("listening");
     } catch {
       // 마이크 권한 거부 등
       setOrb("idle");
+    } finally {
+      setArming(false);
     }
   }
 
-  // 마이크 진폭(RMS) → ampRef. AnalyserNode를 RAF로 샘플(React 리렌더 없음).
-  function startAmplitude(stream: MediaStream) {
-    try {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
-      const ac = new AC();
-      audioCtxRef.current = ac;
-      const src = ac.createMediaStreamSource(stream);
-      const analyser = ac.createAnalyser();
-      analyser.fftSize = 256;
-      src.connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const loop = () => {
-        analyser.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (const v of buf) {
-          const x = (v - 128) / 128;
-          sum += x * x;
-        }
-        const amp = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
-        ampRef.current = amp;
-        // 마이크 버튼 옆 막대를 직접 갱신(상태 없이) — "내 말이 들어가고 있다" 확인용.
-        if (meterRef.current) meterRef.current.style.transform = `scaleX(${0.06 + amp * 0.94})`;
-        rafRef.current = requestAnimationFrame(loop);
-      };
-      loop();
-    } catch {
-      /* 진폭 실패해도 녹음/전사는 됨 */
-    }
+  // 마이크 진폭(RMS) → ampRef. 재사용 analyser를 RAF로 샘플(React 리렌더 없음).
+  function startAmplitude() {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    const loop = () => {
+      analyser.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) {
+        const x = (v - 128) / 128;
+        sum += x * x;
+      }
+      const amp = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
+      ampRef.current = amp;
+      // 마이크 버튼 옆 막대를 직접 갱신(상태 없이) — "내 말이 들어가고 있다" 확인용.
+      if (meterRef.current) meterRef.current.style.transform = `scaleX(${0.06 + amp * 0.94})`;
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    loop();
   }
   function stopAmplitude() {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
     ampRef.current = 0;
     if (meterRef.current) meterRef.current.style.transform = "scaleX(0.06)";
   }
@@ -514,10 +542,14 @@ export default function MoriClient({
           </button>
           <button
             onClick={toggleMic}
-            disabled={busy}
-            title={recording ? "녹음 중지" : "말하기"}
-            className={`rounded-full border p-2.5 transition disabled:opacity-30 ${
-              recording ? "border-indigo-400 bg-indigo-400/20 text-indigo-200" : "border-white/10 bg-white/5 text-[#9fb0c8] hover:text-white"
+            disabled={busy || arming}
+            title={recording ? "녹음 중지" : arming ? "마이크 켜는 중…" : "말하기"}
+            className={`rounded-full border p-2.5 transition disabled:opacity-50 ${
+              recording
+                ? "border-indigo-400 bg-indigo-400/20 text-indigo-200"
+                : arming
+                ? "animate-pulse border-indigo-400/60 bg-indigo-400/10 text-indigo-200"
+                : "border-white/10 bg-white/5 text-[#9fb0c8] hover:text-white"
             }`}
           >
             {recording ? <Square size={16} /> : <Mic size={16} />}
@@ -543,7 +575,9 @@ export default function MoriClient({
                 }
               }}
               placeholder={
-                recording
+                arming
+                  ? "마이크 켜는 중…"
+                  : recording
                   ? "듣고 있어요… (말이 끝나면 ⏹ 버튼)"
                   : transcribing
                   ? "음성 전사 중…"
