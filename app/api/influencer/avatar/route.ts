@@ -1,104 +1,20 @@
 /**
- * 인플루언서 프로필 사진 프록시.
+ * 인플루언서 프로필 사진 프록시 (라이브 fallback).
  *
  * 클라이언트는 `/api/influencer/avatar?platform=instagram&handle=hong_sj` 같이 호출.
- * 서버가 플랫폼별로 프로필 사진 URL을 찾아서 이미지 바이트로 응답.
+ * 해석 로직은 lib/influencer/avatarResolve(resolveAvatarUrl)와 공유 — 채우기 cron/백필과 동일.
  *
- *   - instagram: 프로필 페이지 og:image 메타에서 추출 (모바일 UA)
- *   - youtube / tiktok: unavatar.io 프록시
- *
- * Vercel Edge Cache로 24h 브라우저 / 7d CDN 캐시.
- * 실패 시 404 → 카드에서 onError로 그라디언트 이니셜 fallback.
+ * profileImage가 아직 영구 저장(Storage)되지 않은 인플루언서를 위한 즉석 프록시.
+ * Vercel Edge Cache로 24h 브라우저 / 7d CDN 캐시. 실패 시 404 → 카드 이니셜 fallback.
  */
 import { NextRequest } from "next/server";
+import { resolveAvatarUrl } from "@/lib/influencer/avatarResolve";
 
 // Edge runtime — Vercel serverless egress IP가 인스타에 차단되므로 Cloudflare 네트워크 사용
 export const runtime = "edge";
 
 const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
-
-async function resolveInstagramAvatar(handle: string): Promise<string | null> {
-  // 1차: 비공식 web_profile_info API (JSON, 안정적)
-  try {
-    const apiUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`;
-    const res = await fetch(apiUrl, {
-      headers: {
-        "User-Agent": MOBILE_UA,
-        "x-ig-app-id": "936619743392459",
-        Accept: "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      redirect: "follow",
-    });
-    if (res.ok) {
-      const json = (await res.json()) as {
-        data?: { user?: { profile_pic_url_hd?: string; profile_pic_url?: string } };
-      };
-      const pic =
-        json?.data?.user?.profile_pic_url_hd ||
-        json?.data?.user?.profile_pic_url;
-      if (pic) return pic;
-      console.log(`[avatar] instagram(${handle}) api responded but no pic`);
-    } else {
-      console.log(
-        `[avatar] instagram(${handle}) api status=${res.status}`,
-      );
-    }
-  } catch (e) {
-    console.log(
-      `[avatar] instagram(${handle}) api threw: ${e instanceof Error ? e.message : "?"}`,
-    );
-  }
-
-  // 2차: 프로필 페이지 HTML에서 og:image
-  try {
-    const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": MOBILE_UA,
-        "Accept-Language": "en-US,en;q=0.9",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      },
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      console.log(
-        `[avatar] instagram(${handle}) html status=${res.status}`,
-      );
-      return null;
-    }
-    const html = await res.text();
-    const match =
-      html.match(
-        /<meta\s+property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/i,
-      ) ||
-      html.match(
-        /<meta\s+content=["']([^"']+)["']\s+property=["']og:image(?::secure_url)?["']/i,
-      );
-    if (!match) {
-      console.log(
-        `[avatar] instagram(${handle}) html no og:image (len=${html.length})`,
-      );
-      return null;
-    }
-    return match[1].replace(/&amp;/g, "&").replace(/&#x2F;/g, "/");
-  } catch (e) {
-    console.log(
-      `[avatar] instagram(${handle}) html threw: ${e instanceof Error ? e.message : "?"}`,
-    );
-    return null;
-  }
-}
-
-function unavatarUrl(
-  platform: "instagram" | "youtube" | "tiktok",
-  handle: string,
-): string {
-  // ?fallback=false 로 하면 unavatar가 못 찾았을 때 image 대신 404 에러 반환 (우리 fallback 로직 작동 가능)
-  return `https://unavatar.io/${platform}/${encodeURIComponent(handle)}?fallback=false`;
-}
 
 export async function GET(req: NextRequest) {
   const platform = req.nextUrl.searchParams.get("platform");
@@ -111,17 +27,13 @@ export async function GET(req: NextRequest) {
   if (!handle) {
     return new Response("invalid handle", { status: 400 });
   }
+  if (platform !== "instagram" && platform !== "youtube" && platform !== "tiktok") {
+    return new Response("unsupported platform", { status: 400 });
+  }
 
   let imgUrl: string | null = null;
   try {
-    if (platform === "instagram") {
-      imgUrl = await resolveInstagramAvatar(handle);
-      // 인스타가 Vercel egress IP를 막으면 null 반환 → 카드에서 이니셜 fallback
-    } else if (platform === "youtube" || platform === "tiktok") {
-      imgUrl = unavatarUrl(platform, handle);
-    } else {
-      return new Response("unsupported platform", { status: 400 });
-    }
+    imgUrl = await resolveAvatarUrl(platform, handle);
   } catch {
     return new Response("resolve failed", { status: 502 });
   }

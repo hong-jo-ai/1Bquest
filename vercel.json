@@ -5,6 +5,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/influencer-avatars",
+      "schedule": "0 21 * * *"
+    },
+    {
       "path": "/api/cron/inventory-sync",
       "schedule": "0 22 * * *"
     },
