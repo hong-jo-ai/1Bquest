@@ -157,6 +157,52 @@ export async function fetchDailyMetrics(
   });
 }
 
+interface MetaCreative {
+  object_type?: string;
+  video_id?: string;
+  object_story_spec?: {
+    video_data?: unknown;
+    link_data?: { child_attachments?: unknown[] };
+    template_data?: unknown;
+  };
+  asset_feed_spec?: { videos?: unknown[]; images?: unknown[] };
+}
+
+/** 소재 1건의 포맷 추정 — video / image / unknown. */
+function detectCreativeFormat(creative?: MetaCreative): "video" | "image" | "unknown" {
+  if (!creative) return "unknown";
+  const oss = creative.object_story_spec;
+  const afs = creative.asset_feed_spec;
+  if (creative.video_id || oss?.video_data || (afs?.videos?.length ?? 0) > 0) return "video";
+  if (oss?.link_data || oss?.template_data || (afs?.images?.length ?? 0) > 0) return "image";
+  const ot = (creative.object_type ?? "").toUpperCase();
+  if (ot.includes("VIDEO")) return "video";
+  if (["PHOTO", "SHARE", "CAROUSEL", "STATUS"].includes(ot)) return "image";
+  return "unknown";
+}
+
+/**
+ * 광고세트에서 현재 노출 중인(ACTIVE) 광고의 소재 포맷 distinct 목록.
+ * "소재 유형 다양성" 조언용 — 예: ["video"] 만 있으면 image 추가 권장.
+ */
+export async function fetchAdSetCreativeFormats(
+  token: string,
+  metaAdsetId: string,
+): Promise<string[]> {
+  const res = (await metaGet(`/${metaAdsetId}/ads`, token, {
+    fields: "effective_status,creative{object_type,video_id,object_story_spec{video_data,link_data,template_data},asset_feed_spec{videos,images}}",
+    effective_status: JSON.stringify(["ACTIVE"]),
+    limit: "50",
+  })) as { data?: Array<{ effective_status?: string; creative?: MetaCreative }> };
+
+  const formats = new Set<string>();
+  for (const ad of res.data ?? []) {
+    const f = detectCreativeFormat(ad.creative);
+    if (f !== "unknown") formats.add(f);
+  }
+  return [...formats];
+}
+
 export async function updateAdsetBudget(
   token: string,
   metaAdsetId: string,

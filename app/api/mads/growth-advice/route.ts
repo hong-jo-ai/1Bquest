@@ -1,11 +1,11 @@
-import { buildIntegrationAdvice } from "@/lib/mads/integrationAdvisor";
+import { buildGrowthAdvice } from "@/lib/mads/growthAdvisor";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const advice = await buildIntegrationAdvice();
-    return Response.json({ ok: true, advice });
+    const result = await buildGrowthAdvice();
+    return Response.json({ ok: true, ...result });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },

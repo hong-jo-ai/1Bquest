@@ -12,6 +12,7 @@
  */
 import { getMetaTokenServer } from "../metaTokenStore";
 import {
+  fetchAdSetCreativeFormats,
   fetchDailyMetrics,
   listActiveAccounts,
   listActiveAdSets,
@@ -91,6 +92,15 @@ export async function runEvaluationCycle(): Promise<RunResult> {
 
     seenActiveIds.push(...adsets.map((a) => a.metaAdsetId));
     if (adsets.length === 0) continue;
+
+    // 소재 포맷 수집 (실패 시 undefined → 기존 값 유지)
+    for (const adset of adsets) {
+      try {
+        adset.creativeFormats = await fetchAdSetCreativeFormats(token, adset.metaAdsetId);
+      } catch (e) {
+        errors.push({ scope: "creative_formats", id: adset.metaAdsetId, error: msg(e) });
+      }
+    }
 
     try {
       await upsertAdSets(adsets);

@@ -42,6 +42,7 @@ export interface AdSetSummary {
   dailyBudget: number | null; // KRW
   funnelStage: FunnelStage;
   lastBudgetChangeAt: string | null;
+  creativeFormats?: string[] | null; // ["video"], ["image"], ["video","image"] — 활성 광고 소재 포맷
 }
 
 export interface TrustEvaluation {

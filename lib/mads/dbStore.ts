@@ -35,6 +35,8 @@ export async function upsertAdSets(rows: AdSetSummary[]): Promise<void> {
       funnel_stage:          r.funnelStage,
       last_budget_change_at: r.lastBudgetChangeAt,
       last_synced_at:        new Date().toISOString(),
+      // 미수집(undefined) 시 기존 값 유지 — null로 덮어쓰지 않음
+      ...(r.creativeFormats !== undefined ? { creative_formats: r.creativeFormats } : {}),
     })),
     { onConflict: "meta_adset_id" },
   );
@@ -93,6 +95,7 @@ interface DbAdSet {
   daily_budget: number | null;
   funnel_stage: string;
   last_budget_change_at: string | null;
+  creative_formats: string[] | null;
 }
 
 function mapAdSet(d: DbAdSet): AdSetSummary {
@@ -108,6 +111,7 @@ function mapAdSet(d: DbAdSet): AdSetSummary {
     dailyBudget:        d.daily_budget,
     funnelStage:        (d.funnel_stage ?? "unknown") as AdSetSummary["funnelStage"],
     lastBudgetChangeAt: d.last_budget_change_at,
+    creativeFormats:    d.creative_formats ?? null,
   };
 }
 

@@ -1,7 +1,7 @@
 import AppHeader from "@/components/AppHeader";
 import MadsThresholds from "@/components/mads/MadsThresholds";
 import MadsRecommendationsClient from "@/components/mads/MadsRecommendationsClient";
-import MadsIntegrationAdvice from "@/components/mads/MadsIntegrationAdvice";
+import MadsGrowthAdvice from "@/components/mads/MadsGrowthAdvice";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { Zap, AlertCircle, LogIn, Brain } from "lucide-react";
 
@@ -56,7 +56,7 @@ export default async function AdsPage() {
           <>
             <MadsThresholds />
 
-            <MadsIntegrationAdvice />
+            <MadsGrowthAdvice />
 
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden">
               <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
