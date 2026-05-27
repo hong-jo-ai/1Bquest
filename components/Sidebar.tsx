@@ -114,6 +114,7 @@ export default function Sidebar({
   const [progress, setProgress] = useState<Record<AppPage, number>>(() => {
     const defaults: Record<AppPage, number> = {
       dashboard: 0,
+      mori: 0,
       finance: 0,
       pricing: 0,
       inbox: 0,
