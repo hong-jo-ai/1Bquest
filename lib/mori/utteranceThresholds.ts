@@ -15,8 +15,12 @@ import type { ActionType } from "@/lib/mads/types";
 
 export type MoriMode = "office" | "quiet";
 
-/** 능동 발화 신호 종류. */
-export type UtteranceSignalType = "ads" | "sales" | "cs";
+/**
+ * 능동 발화 신호 종류.
+ *  - ads/sales/cs: "문제 생기면 알린다"(경보형).
+ *  - morning_brief/tasks/po_eta: "먼저 밀어준다"(코칭형). 대표님이 더 잘 일하도록 선제 푸쉬.
+ */
+export type UtteranceSignalType = "ads" | "sales" | "cs" | "morning_brief" | "tasks" | "po_eta";
 
 export interface UtteranceThresholds {
   /** 광고 — MADS 신규 추천 발생 시 발화. */
@@ -40,6 +44,15 @@ export interface UtteranceThresholds {
     /** 사무시간 한정. 야간/주말 미답변은 정상 → 조용 모드 발화 안 함. */
     officeOnly: true;
   };
+  /** 코칭형(먼저 밀어주는) 발화. 전부 사무시간 한정 — 가족시간/조용모드엔 푸쉬 안 함. */
+  coaching: {
+    /** 아침 브리핑: 평일 이 시각(시) 이후 첫 펄스에서 하루 1회 "오늘 이렇게 시작하시죠". */
+    morningBriefFromHour: number;
+    /** 할일 채찍질: 평일 이 시각(시) 이후 미완료 할일이 남아 있으면 하루 1회 푸쉬. */
+    tasksNudgeFromHour: number;
+    /** 발주 입고일 리마인드: ETA 구간에 오늘이 들어오면 발주 1건당 하루 1회. */
+    poEtaReminder: boolean;
+  };
   /** 같은 알림 키는 이 시간(분) 내 반복 발화 안 함. */
   cooldownMinutes: number;
 }
@@ -56,6 +69,11 @@ export const UTTERANCE_THRESHOLDS: UtteranceThresholds = {
   cs: {
     minUnanswered: 1, // 미답변 생기면 즉시
     officeOnly: true,
+  },
+  coaching: {
+    morningBriefFromHour: 8, // 사무 시작과 동시에 브리핑
+    tasksNudgeFromHour: 14, // 오후 2시 — 오전 다 보냈는데 할일 남았으면 민다
+    poEtaReminder: true,
   },
   cooldownMinutes: 120, // 2시간
 };

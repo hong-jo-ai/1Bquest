@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/mori-pulse",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/inventory-sync",
       "schedule": "0 22 * * *"
     },

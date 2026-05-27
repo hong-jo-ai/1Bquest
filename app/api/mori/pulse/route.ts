@@ -8,12 +8,14 @@
  */
 
 import { runPulse, drainQueue } from "@/lib/mori/pulse";
+import { touchPresence } from "@/lib/mori/presence";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET() {
   try {
+    await touchPresence(); // 화면이 살아 있음을 기록 → cron이 자리비움 푸쉬를 안 함
     await runPulse(); // 신호 있으면 생성·적재(없으면 저렴하게 종료)
     const utterances = await drainQueue();
     return Response.json({ ok: true, utterances });

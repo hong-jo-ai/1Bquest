@@ -20,10 +20,12 @@ import {
   type UtteranceSignalType,
 } from "@/lib/mori/utteranceThresholds";
 import { assembleDashboardContext } from "@/lib/mori/context";
+import { loadTodayTasks, kstDateStr } from "@/lib/mori/tasks";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getDashboardData } from "@/lib/cafe24Data";
+import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import type { ActionType } from "@/lib/mads/types";
 
 const MODEL = process.env.MORI_MODEL ?? "claude-sonnet-4-6";
@@ -82,7 +84,12 @@ async function kvSet(key: string, data: unknown): Promise<void> {
 }
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
-const kstHourNow = () => new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+const kstNow = () => new Date(Date.now() + 9 * 60 * 60 * 1000);
+const kstHourNow = () => kstNow().getUTCHours();
+const isWeekdayKst = () => {
+  const d = kstNow().getUTCDay();
+  return d >= 1 && d <= 5;
+};
 
 /** 현재 state → 신호 후보. 임계값 미달/정상이면 비움. */
 async function detectSignals(state: PulseState): Promise<{ signals: Signal[]; nextUnanswered: number }> {
@@ -146,6 +153,78 @@ async function detectSignals(state: PulseState): Promise<{ signals: Signal[]; ne
     /* degrade */
   }
 
+  // ── 코칭형(먼저 밀어주는) — 사무시간(평일 08-19) 한정 ──
+  const hour = kstHourNow();
+  const inOffice = isWeekdayKst() && hour >= 8 && hour < 19;
+  if (inOffice) {
+    const today = kstDateStr();
+
+    // 발주 입고 예정(오늘이 ETA 구간 안) — 아침 브리핑/리마인드에 공유.
+    let duePos: Awaited<ReturnType<typeof listPurchaseOrders>> = [];
+    try {
+      duePos = (await listPurchaseOrders()).filter((p) => {
+        if (p.status !== "ordered") return false;
+        const { start, end } = restockEta(p);
+        return today >= start && today <= end;
+      });
+    } catch {
+      /* degrade */
+    }
+
+    // ① 아침 브리핑: 평일 오전, 하루 1회. (date 키 → 한 번 발화하면 그날은 재발화 안 함)
+    const briefKey = `brief:morning:${today}`;
+    if (hour >= T.coaching.morningBriefFromHour && hour < 12 && !state.cooldowns[briefKey]) {
+      let taskLine = "오늘 할일은 아직 안 적혀 있어요";
+      try {
+        const { pending, total } = await loadTodayTasks();
+        if (total > 0) {
+          taskLine =
+            `오늘 할일 ${total}개(미완료 ${pending.length})` +
+            (pending.length ? `: ${pending.slice(0, 5).map((t) => t.title).join(", ")}` : " — 전부 끝남");
+        }
+      } catch {
+        /* degrade */
+      }
+      const poLine = duePos.length
+        ? ` / 오늘 입고예정 발주: ${duePos.map((p) => `${p.productName} ${p.qty}개`).join(", ")}`
+        : "";
+      signals.push({ type: "morning_brief", key: briefKey, summary: `${taskLine}${poLine}` });
+    }
+
+    // ② 할일 채찍질: 오후, 미완료 할일 남아 있으면 하루 1회.
+    const tasksKey = `tasks:nudge:${today}`;
+    if (hour >= T.coaching.tasksNudgeFromHour && !state.cooldowns[tasksKey]) {
+      try {
+        const { pending, total } = await loadTodayTasks();
+        if (pending.length > 0) {
+          signals.push({
+            type: "tasks",
+            key: tasksKey,
+            summary:
+              `오후인데 오늘 할일 ${total}개 중 ${pending.length}개 아직 남음: ` +
+              `${pending.slice(0, 5).map((t) => t.title).join(", ")}`,
+          });
+        }
+      } catch {
+        /* degrade */
+      }
+    }
+
+    // ③ 발주 입고일 리마인드: ETA 구간에 오늘이 들어온 발주, 발주 1건당 하루 1회.
+    if (T.coaching.poEtaReminder) {
+      for (const p of duePos) {
+        const key = `po:eta:${p.id}:${today}`;
+        if (state.cooldowns[key]) continue;
+        const { start, end } = restockEta(p);
+        signals.push({
+          type: "po_eta",
+          key,
+          summary: `발주 입고 예정일 — "${p.productName}" ${p.qty}개 (${p.supplier || "공급사?"}) 입고예정 ${start}~${end}. 입고/입금 확인.`,
+        });
+      }
+    }
+  }
+
   return { signals, nextUnanswered };
 }
 
@@ -169,7 +248,31 @@ async function generateUtterance(fired: Signal[]): Promise<string> {
   const dashboardContext = await assembleDashboardContext().catch(() => "");
 
   const triggers = fired.map((s, i) => `${i + 1}. ${s.summary}`).join("\n");
-  const directive = `[능동 발화 상황] 지금은 대표님이 묻지 않았는데 네가 먼저 말 거는 순간이다.
+  const hasBrief = fired.some((s) => s.type === "morning_brief");
+  const coachingOnly = fired.every((s) => s.type === "morning_brief" || s.type === "tasks" || s.type === "po_eta");
+
+  let directive: string;
+  if (hasBrief) {
+    directive = `[아침 브리핑] 하루를 여는 첫 인사다. 대표님이 오늘 더 잘 굴러가도록 네가 먼저 운전대를 잡아라.
+아래 사실을 근거로:
+- 짧은 인사 한마디로 시작(과하지 않게, "좋은 아침이에요 대표님" 정도).
+- 오늘 챙길 상황을 한두 가지만 짚고,
+- "오늘은 이것부터 하시죠" 하고 우선순위 한두 개를 콕 집어 제안하고,
+- 가볍게 밀어붙이는 한마디로 마무리.
+4~5문장 이내. 차트/위젯 얘기 말고 말로만. 운영 헌법·말투 그대로(정중한 프로, 대표님, 존댓말).
+
+근거:
+${triggers}`;
+  } else if (coachingOnly) {
+    directive = `[능동 코칭] 대표님이 묻지 않았지만, 오늘 더 잘 일하도록 네가 먼저 밀어주는 순간이다.
+아래를 근거로 **짧게(2~3문장)** — 지금 챙겨야 할 것을 콕 집고, 잔소리가 아니라 동료의 푸쉬로 가볍게 밀어붙여라.
+- 인사말·서론 없이 핵심부터. 차트/위젯 얘기 말고 말로만.
+- 운영 헌법·말투 그대로(정중한 프로, 대표님, 존댓말).
+
+근거:
+${triggers}`;
+  } else {
+    directive = `[능동 발화 상황] 지금은 대표님이 묻지 않았는데 네가 먼저 말 거는 순간이다.
 아래 트리거를 근거로, 대표님께 **짧게(2~3문장)** 상황 + (알면)원인 + 다음 행동 제안을 말해라.
 - 인사말·서론 없이 바로 핵심부터.
 - 차트/위젯 얘기는 하지 말고 말로만.
@@ -177,6 +280,7 @@ async function generateUtterance(fired: Signal[]): Promise<string> {
 
 트리거:
 ${triggers}`;
+  }
 
   const msg = await client.messages.create({
     model: MODEL,
@@ -217,8 +321,15 @@ export async function runPulse(): Promise<ProactiveUtterance[]> {
   const fired = gate(signals, mode, state);
 
   // state 갱신(lastSeenUnanswered/lastPulseAt는 발화 여부와 무관하게 항상 갱신)
+  // 48h 지난 쿨다운 키는 정리(날짜 키가 무한정 쌓이는 것 방지).
+  const pruneBefore = Date.now() - 48 * 60 * 60 * 1000;
+  const cooldowns: Record<string, string> = {};
+  for (const [k, v] of Object.entries(state.cooldowns)) {
+    if (new Date(v).getTime() >= pruneBefore) cooldowns[k] = v;
+  }
   const newState: PulseState = {
     ...state,
+    cooldowns,
     lastSeenUnanswered: nextUnanswered,
     lastPulseAt: new Date().toISOString(),
   };

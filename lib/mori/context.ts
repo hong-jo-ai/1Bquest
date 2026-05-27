@@ -11,6 +11,7 @@ import { getDashboardData, type DashboardData } from "@/lib/cafe24Data";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
+import { loadTodayTasks } from "@/lib/mori/tasks";
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
 
@@ -82,6 +83,16 @@ async function purchaseBlock(): Promise<string> {
     .join("\n");
 }
 
+/** 오늘 할일 — 미완료 우선, 진척(완료/전체) 표시. */
+async function tasksBlock(): Promise<string> {
+  const { pending, doneCount, total } = await loadTodayTasks();
+  if (total === 0) return "오늘 등록된 할일 없음";
+  const head = `오늘 할일 ${total}개 중 ${doneCount}개 완료, ${pending.length}개 남음`;
+  if (pending.length === 0) return `${head} (전부 끝냄)`;
+  const list = pending.map((t) => `· [${t.category}] ${t.title}`).join("\n");
+  return `${head}\n${list}`;
+}
+
 async function safe(label: string, fn: () => Promise<string>): Promise<string> {
   try {
     return await fn();
@@ -95,7 +106,7 @@ async function safe(label: string, fn: () => Promise<string>): Promise<string> {
  * 매출/재고는 한 번에 묶어 처리하고, 나머지는 병렬.
  */
 export async function assembleDashboardContext(): Promise<string> {
-  const [si, ads, cs, po] = await Promise.all([
+  const [si, ads, cs, po, tasks] = await Promise.all([
     salesAndInventoryBlock().catch((e: any) => {
       const fail = `(불러오기 실패: ${e?.message ?? "알 수 없는 오류"})`;
       return { sales: fail, inventory: fail };
@@ -103,6 +114,7 @@ export async function assembleDashboardContext(): Promise<string> {
     safe("ads", adsBlock),
     safe("cs", csBlock),
     safe("po", purchaseBlock),
+    safe("tasks", tasksBlock),
   ]);
 
   return `# 지금 대시보드 상태 (실시간 — 폴바이스 기준)
@@ -120,5 +132,8 @@ ${cs}
 ${si.inventory}
 
 ## 발주 (재입고 예정)
-${po}`;
+${po}
+
+## 오늘 할일
+${tasks}`;
 }
