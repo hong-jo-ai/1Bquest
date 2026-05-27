@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import MoriWidgets from "@/components/mori/MoriWidgets";
+import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
 type OrbState = "idle" | "thinking" | "speaking";
 
@@ -12,11 +14,14 @@ interface Msg {
 export default function MoriClient({
   mode,
   nowKst,
+  initialHistory = [],
 }: {
   mode: "office" | "quiet";
   nowKst: string;
+  initialHistory?: Msg[];
 }) {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<Msg[]>(initialHistory);
+  const [widgets, setWidgets] = useState<MoriWidget[]>([]);
   const [input, setInput] = useState("");
   const [orb, setOrb] = useState<OrbState>("idle");
   const [clock, setClock] = useState(nowKst);
@@ -39,21 +44,24 @@ export default function MoriClient({
     flowRef.current?.scrollTo({ top: flowRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  function applyWidget(w: WidgetEvent) {
+    if (w.kind === "clear") setWidgets([]);
+    else setWidgets((cur) => [...cur, w]);
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || streaming) return;
     setInput("");
 
-    const next: Msg[] = [...messages, { role: "user", content: text }];
-    // 자리표시 assistant 메시지
-    setMessages([...next, { role: "assistant", content: "" }]);
+    setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
 
     try {
       const res = await fetch("/api/mori/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ message: text }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: "응답 오류" }));
@@ -83,11 +91,11 @@ export default function MoriClient({
             setMessages((cur) => {
               const copy = [...cur];
               const last = copy[copy.length - 1];
-              if (last?.role === "assistant") {
-                copy[copy.length - 1] = { ...last, content: last.content + payload.text };
-              }
+              if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: last.content + payload.text };
               return copy;
             });
+          } else if (payload.type === "widget") {
+            applyWidget(payload.widget as WidgetEvent);
           } else if (payload.type === "error") {
             throw new Error(payload.error);
           }
@@ -110,7 +118,7 @@ export default function MoriClient({
   // 최신 메시지가 가장 크고 위로 갈수록 작아지며 페이드 (자막 역할)
   const total = messages.length;
   const styleFor = (i: number) => {
-    const dist = total - 1 - i; // 0 = 최신
+    const dist = total - 1 - i;
     const opacity = Math.max(0.28, 1 - dist * 0.22);
     const scale = Math.max(0.82, 1 - dist * 0.06);
     const fontSize = dist === 0 ? "1.35rem" : dist === 1 ? "1.1rem" : "0.95rem";
@@ -119,9 +127,10 @@ export default function MoriClient({
 
   return (
     <div className="flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
-      {/* 상단 65% — 구체 */}
+      {/* 상단 65% — 구체 + 위젯 패널 */}
       <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
         <Orb state={orb} dimmed={mode === "quiet"} />
+        <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
 
       {/* 하단 30% — 채팅 흐름 (자막) */}
@@ -131,7 +140,7 @@ export default function MoriClient({
       >
         {total === 0 ? (
           <p className="text-center text-sm text-[#7c8aa0]">
-            모리입니다. 매출·광고·CS·재고, 지금 화면을 같이 보고 있습니다.
+            모리입니다. 매출·광고·CS·재고, 지금 화면을 같이 보고 있습니다. 차트나 지표를 띄워달라고 해보세요.
           </p>
         ) : (
           messages.map((m, i) => (
@@ -180,9 +189,7 @@ export default function MoriClient({
       <div className="flex items-center justify-between border-t border-white/5 px-6 py-2 text-[11px] text-[#6b7a93] sm:px-10">
         <div className="flex items-center gap-2">
           <span
-            className={`inline-block h-2 w-2 rounded-full ${
-              mode === "office" ? "bg-emerald-400" : "bg-zinc-500"
-            }`}
+            className={`inline-block h-2 w-2 rounded-full ${mode === "office" ? "bg-emerald-400" : "bg-zinc-500"}`}
             title={mode === "office" ? "사무실 모드 (활성)" : "조용 모드 (비활성)"}
           />
           <span>{mode === "office" ? "사무실" : "조용"}</span>
@@ -201,17 +208,14 @@ function Orb({ state, dimmed }: { state: OrbState; dimmed: boolean }) {
       className="relative"
       style={{ width: "min(42vh, 42vw)", height: "min(42vh, 42vw)", opacity: dimmed ? 0.7 : 1 }}
     >
-      {/* 본체 */}
       <div
         className="mori-orb absolute inset-0 rounded-full"
         style={{
           background:
             "radial-gradient(circle at 35% 30%, #E8ECF0 0%, #B8C4D0 38%, #4a5a72 72%, #1A2332 100%)",
-          boxShadow:
-            "0 0 80px 10px rgba(184,196,208,0.25), inset 0 0 60px rgba(26,35,50,0.6)",
+          boxShadow: "0 0 80px 10px rgba(184,196,208,0.25), inset 0 0 60px rgba(26,35,50,0.6)",
         }}
       />
-      {/* 생각 중 — 내부 입자 회전 */}
       {state === "thinking" && (
         <div
           className="mori-particles absolute inset-[18%] rounded-full"
@@ -222,7 +226,6 @@ function Orb({ state, dimmed }: { state: OrbState; dimmed: boolean }) {
           }}
         />
       )}
-      {/* 말하는 중 — 골드 발화 */}
       {state === "speaking" && (
         <div
           className="mori-gold-pulse absolute inset-[-6%] rounded-full"
