@@ -50,6 +50,7 @@ export default function MoriClient({
   const meterRef = useRef<HTMLSpanElement>(null); // 녹음 중 실시간 진폭 막대
   const streamRef = useRef<MediaStream | null>(null); // 마이크 스트림 세션 내 재사용
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const recStartRef = useRef<number>(0); // 녹음 시작 시각(진단용)
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
@@ -363,7 +364,9 @@ export default function MoriClient({
     setArming(true); // 클릭 즉시 시각 피드백(첫 클릭은 마이크 잡느라 잠깐 걸림)
     try {
       const stream = await getMicStream();
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      // 브라우저별 지원 포맷 선택(크롬=webm/opus, 사파리=mp4). OpenAI는 둘 다 받음.
+      const cand = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+      const mime = cand.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
@@ -371,12 +374,17 @@ export default function MoriClient({
         stopAmplitude();
         // 스트림은 살려둔다(다음 녹음 즉시 시작). 트랙 stop은 언마운트 때만.
         setOrb("idle");
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
-        if (blob.size === 0) return;
-        await transcribeAndHandle(blob);
+        const durMs = Date.now() - recStartRef.current;
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || mime || "audio/webm" });
+        if (blob.size === 0) {
+          flashNotice("⚠️ 녹음 데이터가 비어있어요. 마이크 권한/입력을 확인해 주세요.");
+          return;
+        }
+        await transcribeAndHandle(blob, durMs);
       };
       recorderRef.current = rec;
-      rec.start();
+      recStartRef.current = Date.now();
+      rec.start(250); // timeslice — 짧은 녹음도 데이터가 확실히 flush되게.
       startAmplitude();
       setOrb("listening");
     } catch {
@@ -419,9 +427,11 @@ export default function MoriClient({
     setMessages((cur) => [...cur, { role: "assistant", content: text }]);
   }
 
-  async function transcribeAndHandle(blob: Blob) {
+  async function transcribeAndHandle(blob: Blob, durMs = 0) {
     setTranscribing(true);
     setOrb("thinking");
+    // 진단 꼬리표: 녹음 길이·크기·포맷 — 실패 시 원인 파악용.
+    const diag = `[녹음 ${(durMs / 1000).toFixed(1)}s · ${(blob.size / 1024).toFixed(1)}KB · ${blob.type || "?"}]`;
     try {
       const b64 = await blobToBase64(blob);
       const res = await fetch("/api/mori/transcribe", {
@@ -433,7 +443,7 @@ export default function MoriClient({
       setTranscribing(false);
       setOrb("idle");
       if (!res.ok || j.error) {
-        flashNotice(`⚠️ 음성 전사 실패: ${j.error ?? `HTTP ${res.status}`}`);
+        flashNotice(`⚠️ 음성 전사 실패: ${j.error ?? `HTTP ${res.status}`}\n${diag}`);
         return;
       }
       const text = (j.text ?? "").trim();
