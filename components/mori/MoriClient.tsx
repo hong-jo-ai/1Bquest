@@ -104,9 +104,14 @@ export default function MoriClient({
         if (!alive || !json?.utterances?.length) return;
         setGold(true);
         setTimeout(() => alive && setGold(false), 3500);
-        for (const u of json.utterances as { text: string }[]) {
-          setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
-          await speak(u.text); // 능동 발화도 소리로(켜져 있으면)
+        try {
+          for (const u of json.utterances as { text: string }[]) {
+            setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
+            await speak(u.text); // 능동 발화도 소리로(켜져 있으면)
+          }
+        } finally {
+          // 재생/오류와 무관하게 '말하는 중'에서 idle로 복귀 — 입력 잠금 해제(버그 수정)
+          setOrb("idle");
         }
       } catch {
         /* noop */
