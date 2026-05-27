@@ -1,50 +1,65 @@
 /**
- * 모리 음성 전사 — Gemini(gemini-2.5-flash) STT.
+ * 모리 음성 전사 — OpenAI(gpt-4o-transcribe) STT.
  *
  * 클라이언트가 녹음한 오디오(base64 + mimeType)를 받아 한국어로 전사한다.
- * 스펙의 Whisper 대체 — GEMINI_API_KEY 재사용(별도 키 불필요, 한국어·고유명사 양호).
+ * 브라우저 MediaRecorder는 webm/opus(크롬)·mp4(사파리)를 내보내는데, OpenAI 전사
+ * 엔드포인트는 이를 그대로 받는다. (이전 Gemini inlineData는 webm 미지원이라 무음
+ * 실패가 났음 — TTS에서 쓰는 OPENAI_API_KEY 재사용.)
  *
  * 입력(JSON): { audio: <base64>, mimeType: "audio/webm" 등 }
  * 출력: { text } 또는 { error }
  */
 
-import { GoogleGenAI } from "@google/genai";
 import { type NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gpt-4o-transcribe";
 
-const HINT = `다음 오디오를 한국어로 정확히 전사하라. 받아쓰기만 하고 다른 말은 붙이지 마라.
-- 브랜드/제품 고유명사를 살려라: 폴바이스(PAULVICE), 해리엇(해리엇워치스), 미니엘, 에끌라/에골라 오벌, 오드리, 각인.
-- 운영 용어: 매출, 광고, ROAS, MADS, 광고세트, 재고, 발주, 공동구매, 카페24.
-- 들리는 그대로의 문장만 출력. 추측·요약·인사말 금지. 비어있으면 빈 문자열.`;
+// 브랜드/운영 고유명사를 살리는 전사 힌트(prompt).
+const PROMPT =
+  "폴바이스(PAULVICE), 해리엇워치스, 미니엘, 에끌라, 에골라 오벌, 오드리, 각인, 매출, 광고, ROAS, MADS, 광고세트, 재고, 발주, 공동구매, 카페24.";
+
+function extFor(mime: string): string {
+  if (mime.includes("mp4") || mime.includes("m4a")) return "mp4";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("wav")) return "wav";
+  if (mime.includes("mpeg") || mime.includes("mp3")) return "mp3";
+  return "webm";
+}
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return Response.json({ error: "GEMINI_API_KEY 없음" }, { status: 500 });
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return Response.json({ error: "OPENAI_API_KEY 없음" }, { status: 500 });
 
   const { audio, mimeType } = (await req.json()) as { audio?: string; mimeType?: string };
   if (!audio) return Response.json({ error: "audio 비어있음" }, { status: 400 });
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const res = await ai.models.generateContent({
-      model: MODEL,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: mimeType || "audio/webm", data: audio } },
-            { text: HINT },
-          ],
-        },
-      ],
-      config: { maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+    const type = mimeType || "audio/webm";
+    const bytes = Buffer.from(audio, "base64");
+    if (bytes.length === 0) return Response.json({ error: "오디오 비어있음" }, { status: 400 });
+
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type }), `audio.${extFor(type)}`);
+    form.append("model", MODEL);
+    form.append("language", "ko");
+    form.append("prompt", PROMPT);
+
+    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
     });
-    const text = (res.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
-    return Response.json({ text });
+
+    if (!r.ok) {
+      const detail = (await r.text()).slice(0, 300);
+      return Response.json({ error: `전사 실패(${r.status}): ${detail}` }, { status: 500 });
+    }
+
+    const j = (await r.json()) as { text?: string };
+    return Response.json({ text: (j.text ?? "").trim() });
   } catch (e: any) {
     return Response.json({ error: e?.message ?? "전사 실패" }, { status: 500 });
   }

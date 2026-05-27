@@ -44,7 +44,9 @@ export default function MoriClient({
   const [memoMode, setMemoMode] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [clock, setClock] = useState(nowKst);
+  const meterRef = useRef<HTMLSpanElement>(null); // 녹음 중 실시간 진폭 막대
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
@@ -364,7 +366,10 @@ export default function MoriClient({
           const x = (v - 128) / 128;
           sum += x * x;
         }
-        ampRef.current = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
+        const amp = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
+        ampRef.current = amp;
+        // 마이크 버튼 옆 막대를 직접 갱신(상태 없이) — "내 말이 들어가고 있다" 확인용.
+        if (meterRef.current) meterRef.current.style.transform = `scaleX(${0.06 + amp * 0.94})`;
         rafRef.current = requestAnimationFrame(loop);
       };
       loop();
@@ -378,9 +383,16 @@ export default function MoriClient({
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
     ampRef.current = 0;
+    if (meterRef.current) meterRef.current.style.transform = "scaleX(0.06)";
+  }
+
+  // 화면 하단에 잠깐 뜨는 안내(전사 중·실패 등) — 입력이 묻히지 않게.
+  function flashNotice(text: string) {
+    setMessages((cur) => [...cur, { role: "assistant", content: text }]);
   }
 
   async function transcribeAndHandle(blob: Blob) {
+    setTranscribing(true);
     setOrb("thinking");
     try {
       const b64 = await blobToBase64(blob);
@@ -389,13 +401,23 @@ export default function MoriClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ audio: b64, mimeType: blob.type || "audio/webm" }),
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
+      setTranscribing(false);
+      setOrb("idle");
+      if (!res.ok || j.error) {
+        flashNotice(`⚠️ 음성 전사 실패: ${j.error ?? `HTTP ${res.status}`}`);
+        return;
+      }
       const text = (j.text ?? "").trim();
-      setOrb("idle");
-      if (!text) return;
+      if (!text) {
+        flashNotice("⚠️ 음성을 알아듣지 못했어요. 다시 말씀해 주세요.");
+        return;
+      }
       await handleUserText(text);
-    } catch {
+    } catch (e: any) {
+      setTranscribing(false);
       setOrb("idle");
+      flashNotice(`⚠️ 음성 전사 오류: ${e?.message ?? "네트워크 오류"}`);
     }
   }
 
@@ -500,7 +522,17 @@ export default function MoriClient({
           >
             {recording ? <Square size={16} /> : <Mic size={16} />}
           </button>
-          <div className="flex flex-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 backdrop-blur">
+          <div className="relative flex flex-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 backdrop-blur">
+            {/* 녹음 중 실시간 진폭 막대 — 마이크가 내 말을 듣고 있다는 확인 */}
+            {recording && (
+              <span className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 overflow-hidden rounded-full">
+                <span
+                  ref={meterRef}
+                  className="block h-full w-full origin-left rounded-full bg-indigo-400 transition-none"
+                  style={{ transform: "scaleX(0.06)" }}
+                />
+              </span>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -511,7 +543,15 @@ export default function MoriClient({
                 }
               }}
               placeholder={
-                recording ? "듣고 있어요…" : busy ? "모리가 응답 중…" : memoMode ? "메모할 내용…" : "모리에게 말하기"
+                recording
+                  ? "듣고 있어요… (말이 끝나면 ⏹ 버튼)"
+                  : transcribing
+                  ? "음성 전사 중…"
+                  : busy
+                  ? "모리가 응답 중…"
+                  : memoMode
+                  ? "메모할 내용…"
+                  : "모리에게 말하기"
               }
               disabled={busy || recording}
               className="flex-1 bg-transparent text-sm text-[#E8ECF0] placeholder:text-[#5f6e85] focus:outline-none disabled:opacity-50"
