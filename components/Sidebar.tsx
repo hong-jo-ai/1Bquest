@@ -25,6 +25,7 @@ import {
   Store,
   Tags,
   MessageSquare,
+  Sparkles,
 } from "lucide-react";
 
 type AppPage =
@@ -38,7 +39,8 @@ type AppPage =
   | "threads"
   | "finance"
   | "pricing"
-  | "sms";
+  | "sms"
+  | "mori";
 
 const NAV_ITEMS: {
   href: string;
@@ -47,6 +49,7 @@ const NAV_ITEMS: {
   page: AppPage;
 }[] = [
   { href: "/", label: "대시보드", icon: LayoutDashboard, page: "dashboard" },
+  { href: "/mori", label: "모리 (MORI)", icon: Sparkles, page: "mori" },
   { href: "/finance", label: "재무 관리", icon: Wallet, page: "finance" },
   { href: "/channel-pricing", label: "채널 가격", icon: Tags, page: "pricing" },
   { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
@@ -61,6 +64,7 @@ const NAV_ITEMS: {
 
 const HREF_TO_PAGE: Record<string, AppPage> = {
   "/": "dashboard",
+  "/mori": "mori",
   "/finance": "finance",
   "/channel-pricing": "pricing",
   "/inbox": "inbox",
