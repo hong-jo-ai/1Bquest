@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Mic, Square, NotebookPen, X, Volume2, VolumeX } from "lucide-react";
+import { Mic, Square, NotebookPen, X, Volume2, VolumeX, ScrollText } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
@@ -43,7 +43,9 @@ export default function MoriClient({
   const [gold, setGold] = useState(false);
   const [memoMode, setMemoMode] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [clock, setClock] = useState(nowKst);
+  const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
   const playCtxRef = useRef<AudioContext | null>(null);
@@ -81,6 +83,15 @@ export default function MoriClient({
   useEffect(() => {
     flowRef.current?.scrollTo({ top: flowRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // 기록 패널 열리면 맨 아래로
+  useEffect(() => {
+    if (historyOpen) {
+      requestAnimationFrame(() => {
+        historyScrollRef.current?.scrollTo({ top: historyScrollRef.current.scrollHeight });
+      });
+    }
+  }, [historyOpen]);
 
   // 능동 발화 폴링
   useEffect(() => {
@@ -405,7 +416,36 @@ export default function MoriClient({
   };
 
   return (
-    <div className="flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
+    <div className="relative flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
+      {/* 대화 기록 오버레이 — 또렷하게 스크롤해서 지난 대화 읽기 */}
+      {historyOpen && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-[#0a0f1a]/96 backdrop-blur-md">
+          <div className="flex items-center justify-between border-b border-white/10 px-6 py-3">
+            <span className="text-sm font-semibold text-[#cdd7e6]">대화 기록</span>
+            <button onClick={() => setHistoryOpen(false)} className="rounded-full p-1.5 text-[#7c8aa0] transition hover:bg-white/10 hover:text-white" title="닫기">
+              <X size={18} />
+            </button>
+          </div>
+          <div ref={historyScrollRef} className="flex-1 space-y-3 overflow-y-auto px-6 py-4 sm:px-10">
+            {messages.length === 0 ? (
+              <p className="pt-6 text-center text-sm text-[#7c8aa0]">아직 대화가 없습니다.</p>
+            ) : (
+              messages.map((m, i) => (
+                <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                  <div
+                    className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      m.role === "user" ? "bg-[#F4E4C1]/15 text-[#E8ECF0]" : "bg-white/[0.06] text-[#cdd7e6]"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 상단 65% — 구체 + 메모(좌) + 위젯(우) */}
       <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
         <MoriOrb state={orb} ampRef={ampRef} gold={gold} dimmed={mode === "quiet"} />
@@ -508,7 +548,17 @@ export default function MoriClient({
           <span className="opacity-50">·</span>
           <span>{clock}</span>
         </div>
-        <span className="font-mono tracking-[0.3em] text-[#9fb0c8]">MORI</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-1 text-[#7c8aa0] transition hover:text-white"
+            title="대화 기록 보기"
+          >
+            <ScrollText size={13} />
+            <span>기록</span>
+          </button>
+          <span className="font-mono tracking-[0.3em] text-[#9fb0c8]">MORI</span>
+        </div>
       </div>
     </div>
   );
