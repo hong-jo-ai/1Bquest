@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Mic, Square, NotebookPen, X } from "lucide-react";
+import { Mic, Square, NotebookPen, X, Volume2, VolumeX } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
@@ -42,7 +42,11 @@ export default function MoriClient({
   const [orb, setOrb] = useState<OrbState>("idle");
   const [gold, setGold] = useState(false);
   const [memoMode, setMemoMode] = useState(false);
+  const [speakOn, setSpeakOn] = useState(true);
   const [clock, setClock] = useState(nowKst);
+  const speakRef = useRef(speakOn);
+  speakRef.current = speakOn;
+  const playCtxRef = useRef<AudioContext | null>(null);
   const busy = orb === "thinking" || orb === "speaking";
   const recording = orb === "listening";
   const flowRef = useRef<HTMLDivElement>(null);
@@ -87,11 +91,12 @@ export default function MoriClient({
         const res = await fetch("/api/mori/pulse", { cache: "no-store" });
         const json = await res.json();
         if (!alive || !json?.utterances?.length) return;
-        for (const u of json.utterances as { text: string }[]) {
-          setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
-        }
         setGold(true);
         setTimeout(() => alive && setGold(false), 3500);
+        for (const u of json.utterances as { text: string }[]) {
+          setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
+          await speak(u.text); // 능동 발화도 소리로(켜져 있으면)
+        }
       } catch {
         /* noop */
       }
@@ -142,9 +147,69 @@ export default function MoriClient({
     await chatSend(t);
   }
 
+  // ── 음성 출력: Gemini TTS → Web Audio 재생 + 진폭 → 구체(말하는 중) ──
+  async function speak(text: string) {
+    if (!speakRef.current) return;
+    const t = text.trim();
+    if (!t) return;
+    try {
+      const res = await fetch("/api/mori/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: t }),
+      });
+      if (!res.ok) return;
+      const ab = await res.arrayBuffer();
+      await playWithAmplitude(ab);
+    } catch {
+      /* TTS 실패해도 자막은 이미 보임 */
+    }
+  }
+
+  function playWithAmplitude(ab: ArrayBuffer): Promise<void> {
+    return new Promise(async (resolve) => {
+      try {
+        const AC = window.AudioContext || (window as any).webkitAudioContext;
+        const ac = playCtxRef.current ?? new AC();
+        playCtxRef.current = ac;
+        if (ac.state === "suspended") await ac.resume();
+        const buf = await ac.decodeAudioData(ab);
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        const analyser = ac.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        analyser.connect(ac.destination);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        setOrb("speaking");
+        let raf = 0;
+        const loop = () => {
+          analyser.getByteTimeDomainData(data);
+          let s = 0;
+          for (const v of data) {
+            const x = (v - 128) / 128;
+            s += x * x;
+          }
+          ampRef.current = Math.min(1, Math.sqrt(s / data.length) * 3.2);
+          raf = requestAnimationFrame(loop);
+        };
+        loop();
+        src.onended = () => {
+          cancelAnimationFrame(raf);
+          ampRef.current = 0;
+          resolve();
+        };
+        src.start();
+      } catch {
+        resolve();
+      }
+    });
+  }
+
   async function chatSend(text: string) {
     setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
+    let full = "";
     try {
       const res = await fetch("/api/mori/chat", {
         method: "POST",
@@ -174,6 +239,7 @@ export default function MoriClient({
               setOrb("speaking");
               firstToken = false;
             }
+            full += payload.text;
             setMessages((cur) => {
               const copy = [...cur];
               const last = copy[copy.length - 1];
@@ -196,9 +262,12 @@ export default function MoriClient({
         else copy.push({ role: "assistant", content: msg });
         return copy;
       });
-    } finally {
       setOrb("idle");
+      return;
     }
+    // 스트림 완료 → 음성 출력(켜져 있으면). 재생 동안 구체는 말하는 중.
+    if (full.trim()) await speak(full);
+    setOrb("idle");
   }
 
   function onSendClick() {
@@ -336,6 +405,15 @@ export default function MoriClient({
       {/* 입력 + 음성 */}
       <div className="px-6 pb-2 sm:px-10">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
+          <button
+            onClick={() => setSpeakOn((v) => !v)}
+            title={speakOn ? "음성 출력 켜짐" : "음성 출력 꺼짐"}
+            className={`rounded-full border p-2.5 transition ${
+              speakOn ? "border-[#F4E4C1]/60 bg-white/5 text-[#9fb0c8] hover:text-white" : "border-white/10 bg-white/5 text-[#5f6e85] hover:text-white"
+            }`}
+          >
+            {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
           <button
             onClick={() => setMemoMode((v) => !v)}
             title={memoMode ? "받아쓰기(메모) 모드 — 켜짐" : "받아쓰기(메모) 모드"}
