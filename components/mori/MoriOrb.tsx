@@ -100,7 +100,8 @@ export default function MoriOrb({
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.z = 3.2;
+    // 카메라를 뒤로 빼 일렁임(변위)+스케일이 프러스텀을 넘어 잘리지 않게 여백 확보
+    camera.position.z = 4.4;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -208,5 +209,5 @@ export default function MoriOrb({
     };
   }, [ampRef]);
 
-  return <div ref={mountRef} className="pointer-events-none" style={{ width: "min(48vh, 48vw)", height: "min(48vh, 48vw)" }} />;
+  return <div ref={mountRef} className="pointer-events-none" style={{ width: "min(16vh, 16vw)", height: "min(16vh, 16vw)" }} />;
 }

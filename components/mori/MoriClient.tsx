@@ -509,7 +509,7 @@ function MemoPanel({ memos, onDelete }: { memos: Memo[]; onDelete: (id: string) 
 // R3F 로딩/비WebGL 폴백 — 콜드 플래티넘 호흡 구체(CSS).
 function OrbFallback() {
   return (
-    <div className="pointer-events-none" style={{ width: "min(48vh, 48vw)", height: "min(48vh, 48vw)" }}>
+    <div className="pointer-events-none" style={{ width: "min(16vh, 16vw)", height: "min(16vh, 16vw)" }}>
       <div
         className="mori-orb h-full w-full rounded-full"
         style={{
