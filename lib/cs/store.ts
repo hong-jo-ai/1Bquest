@@ -255,6 +255,31 @@ export async function refreshThreadCustomer(
     .eq("external_thread_id", externalThreadId);
 }
 
+/**
+ * 채널 + external_thread_id 목록에 대해 마지막 메시지 시각(epoch ms) 맵을 반환.
+ * 증분 동기화용 — 외부 API에서 받은 대화가 우리가 가진 마지막 메시지보다
+ * 새것인지 비교해, 변경 없으면 메시지 재조회(외부 API 호출)를 생략한다.
+ */
+export async function getThreadLastMessageMap(
+  channel: CsChannel,
+  externalThreadIds: string[]
+): Promise<Map<string, number>> {
+  if (externalThreadIds.length === 0) return new Map();
+  const db = getCsSupabase();
+  const { data } = await db
+    .from("cs_threads")
+    .select("external_thread_id, last_message_at")
+    .eq("channel", channel)
+    .in("external_thread_id", externalThreadIds);
+  const map = new Map<string, number>();
+  for (const r of data ?? []) {
+    if (r.external_thread_id && r.last_message_at) {
+      map.set(r.external_thread_id as string, new Date(r.last_message_at as string).getTime());
+    }
+  }
+  return map;
+}
+
 function stripHtml(html: string | undefined | null): string | null {
   if (!html) return null;
   return html

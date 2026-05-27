@@ -1,4 +1,4 @@
-import { ingestMessage, refreshThreadCustomer } from "./store";
+import { getThreadLastMessageMap, ingestMessage, refreshThreadCustomer } from "./store";
 import {
   extractTextContent,
   fetchCrispMessages,
@@ -11,11 +11,13 @@ export async function syncAllCrispAccounts(): Promise<{
   accounts: number;
   inserted: number;
   skipped: number;
+  unchanged: number;
   errors: string[];
 }> {
   const accounts = await listCrispAccounts();
   let inserted = 0;
   let skipped = 0;
+  let unchanged = 0;
   const errors: string[] = [];
 
   for (const account of accounts) {
@@ -25,7 +27,25 @@ export async function syncAllCrispAccounts(): Promise<{
         pages: 2,
       });
 
+      // 증분 동기화: 이미 가진 마지막 메시지 시각과 비교해, 변경 없는 대화는
+      // 메시지 조회(Crisp API 호출)를 생략한다. 매 실행 전량 재조회로 plugin
+      // 토큰 쿼터가 소진돼 429(rate_limited)로 인제스트가 멈추던 문제 해결.
+      const lastSeen = await getThreadLastMessageMap(
+        "crisp",
+        conversations.map((c) => c.session_id)
+      );
+
       for (const conv of conversations) {
+        const seenAt = lastSeen.get(conv.session_id);
+        let convUpdated = conv.updated_at ?? conv.created_at ?? 0;
+        // Crisp는 ms 타임스탬프지만, 초 단위로 오면 전부 seenAt 미만이 되어
+        // 모든 대화를 건너뛰는 회귀가 생긴다 → ms로 정규화.
+        if (convUpdated > 0 && convUpdated < 1e12) convUpdated *= 1000;
+        if (seenAt !== undefined && convUpdated > 0 && convUpdated <= seenAt) {
+          unchanged++;
+          continue;
+        }
+
         let messages;
         try {
           messages = await fetchCrispMessages(account, conv.session_id);
@@ -85,5 +105,5 @@ export async function syncAllCrispAccounts(): Promise<{
     }
   }
 
-  return { accounts: accounts.length, inserted, skipped, errors };
+  return { accounts: accounts.length, inserted, skipped, unchanged, errors };
 }
