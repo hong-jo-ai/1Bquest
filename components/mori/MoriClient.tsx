@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Mic, Square, NotebookPen, X } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
+
+// R3F 구체는 클라 전용(WebGL) — SSR 끄고, 로딩 동안 CSS 플레이스홀더.
+const MoriOrb = dynamic(() => import("@/components/mori/MoriOrb"), {
+  ssr: false,
+  loading: () => <OrbFallback />,
+});
 
 type OrbState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -43,6 +50,9 @@ export default function MoriClient({
   orbRef.current = orb;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const ampRef = useRef<number>(0); // 0~1 마이크 진폭 → 구체
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // 실시간 시계 (KST)
   useEffect(() => {
@@ -212,6 +222,7 @@ export default function MoriClient({
       chunksRef.current = [];
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       rec.onstop = async () => {
+        stopAmplitude();
         stream.getTracks().forEach((t) => t.stop());
         setOrb("idle");
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
@@ -220,11 +231,46 @@ export default function MoriClient({
       };
       recorderRef.current = rec;
       rec.start();
+      startAmplitude(stream);
       setOrb("listening");
     } catch {
       // 마이크 권한 거부 등
       setOrb("idle");
     }
+  }
+
+  // 마이크 진폭(RMS) → ampRef. AnalyserNode를 RAF로 샘플(React 리렌더 없음).
+  function startAmplitude(stream: MediaStream) {
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const ac = new AC();
+      audioCtxRef.current = ac;
+      const src = ac.createMediaStreamSource(stream);
+      const analyser = ac.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (const v of buf) {
+          const x = (v - 128) / 128;
+          sum += x * x;
+        }
+        ampRef.current = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
+        rafRef.current = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch {
+      /* 진폭 실패해도 녹음/전사는 됨 */
+    }
+  }
+  function stopAmplitude() {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    ampRef.current = 0;
   }
 
   async function transcribeAndHandle(blob: Blob) {
@@ -259,7 +305,7 @@ export default function MoriClient({
     <div className="flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
       {/* 상단 65% — 구체 + 메모(좌) + 위젯(우) */}
       <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
-        <Orb state={orb} dimmed={mode === "quiet"} gold={gold} />
+        <MoriOrb state={orb} ampRef={ampRef} gold={gold} dimmed={mode === "quiet"} />
         <MemoPanel memos={memos} onDelete={deleteMemo} />
         <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
@@ -382,37 +428,17 @@ function MemoPanel({ memos, onDelete }: { memos: Memo[]; onDelete: (id: string) 
   );
 }
 
-function Orb({ state, dimmed, gold }: { state: OrbState; dimmed: boolean; gold?: boolean }) {
-  const listening = state === "listening";
+// R3F 로딩/비WebGL 폴백 — 콜드 플래티넘 호흡 구체(CSS).
+function OrbFallback() {
   return (
-    <div className="relative" style={{ width: "min(42vh, 42vw)", height: "min(42vh, 42vw)", opacity: dimmed ? 0.7 : 1 }}>
+    <div className="pointer-events-none" style={{ width: "min(48vh, 48vw)", height: "min(48vh, 48vw)" }}>
       <div
-        className="mori-orb absolute inset-0 rounded-full"
+        className="mori-orb h-full w-full rounded-full"
         style={{
-          background: listening
-            ? "radial-gradient(circle at 35% 30%, #cdd7e6 0%, #8ea0c8 36%, #3a4a7a 72%, #1A2332 100%)"
-            : "radial-gradient(circle at 35% 30%, #E8ECF0 0%, #B8C4D0 38%, #4a5a72 72%, #1A2332 100%)",
-          boxShadow: listening
-            ? "0 0 90px 14px rgba(120,140,220,0.4), inset 0 0 60px rgba(26,35,50,0.6)"
-            : "0 0 80px 10px rgba(184,196,208,0.25), inset 0 0 60px rgba(26,35,50,0.6)",
+          background: "radial-gradient(circle at 35% 30%, #E8ECF0 0%, #B8C4D0 38%, #4a5a72 72%, #1A2332 100%)",
+          boxShadow: "0 0 80px 10px rgba(184,196,208,0.25), inset 0 0 60px rgba(26,35,50,0.6)",
         }}
       />
-      {state === "thinking" && (
-        <div
-          className="mori-particles absolute inset-[18%] rounded-full"
-          style={{
-            background:
-              "conic-gradient(from 0deg, transparent 0deg, rgba(120,140,200,0.55) 60deg, transparent 140deg, rgba(120,140,200,0.4) 220deg, transparent 300deg)",
-            filter: "blur(6px)",
-          }}
-        />
-      )}
-      {(state === "speaking" || gold) && (
-        <div
-          className="mori-gold-pulse absolute inset-[-6%] rounded-full"
-          style={{ boxShadow: gold ? "0 0 90px 20px rgba(244,228,193,0.85)" : "0 0 60px 12px rgba(244,228,193,0.6)" }}
-        />
-      )}
     </div>
   );
 }
