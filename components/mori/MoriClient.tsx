@@ -24,9 +24,12 @@ export default function MoriClient({
   const [widgets, setWidgets] = useState<MoriWidget[]>([]);
   const [input, setInput] = useState("");
   const [orb, setOrb] = useState<OrbState>("idle");
+  const [gold, setGold] = useState(false);
   const [clock, setClock] = useState(nowKst);
   const streaming = orb !== "idle";
   const flowRef = useRef<HTMLDivElement>(null);
+  const orbRef = useRef(orb);
+  orbRef.current = orb;
 
   // 실시간 시계 (KST)
   useEffect(() => {
@@ -43,6 +46,34 @@ export default function MoriClient({
   useEffect(() => {
     flowRef.current?.scrollTo({ top: flowRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // 능동 발화 폴링 — 모리가 먼저 말 거는지 주기 확인(응답 중엔 건너뜀)
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      if (orbRef.current !== "idle") return;
+      try {
+        const res = await fetch("/api/mori/pulse", { cache: "no-store" });
+        const json = await res.json();
+        if (!alive || !json?.utterances?.length) return;
+        for (const u of json.utterances as { text: string }[]) {
+          setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
+        }
+        // 골드 펄스 한 번 + 짧은 빛 번짐
+        setGold(true);
+        setTimeout(() => alive && setGold(false), 3500);
+      } catch {
+        /* 폴링 실패 무시 */
+      }
+    };
+    const id = setInterval(poll, 120_000);
+    const warmup = setTimeout(poll, 8_000); // 진입 8초 후 1회
+    return () => {
+      alive = false;
+      clearInterval(id);
+      clearTimeout(warmup);
+    };
+  }, []);
 
   function applyWidget(w: WidgetEvent) {
     if (w.kind === "clear") setWidgets([]);
@@ -129,7 +160,7 @@ export default function MoriClient({
     <div className="flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
       {/* 상단 65% — 구체 + 위젯 패널 */}
       <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
-        <Orb state={orb} dimmed={mode === "quiet"} />
+        <Orb state={orb} dimmed={mode === "quiet"} gold={gold} />
         <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
 
@@ -202,7 +233,7 @@ export default function MoriClient({
   );
 }
 
-function Orb({ state, dimmed }: { state: OrbState; dimmed: boolean }) {
+function Orb({ state, dimmed, gold }: { state: OrbState; dimmed: boolean; gold?: boolean }) {
   return (
     <div
       className="relative"
@@ -226,10 +257,10 @@ function Orb({ state, dimmed }: { state: OrbState; dimmed: boolean }) {
           }}
         />
       )}
-      {state === "speaking" && (
+      {(state === "speaking" || gold) && (
         <div
           className="mori-gold-pulse absolute inset-[-6%] rounded-full"
-          style={{ boxShadow: "0 0 60px 12px rgba(244,228,193,0.6)" }}
+          style={{ boxShadow: gold ? "0 0 90px 20px rgba(244,228,193,0.85)" : "0 0 60px 12px rgba(244,228,193,0.6)" }}
         />
       )}
     </div>
