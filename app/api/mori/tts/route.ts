@@ -5,7 +5,7 @@
  * 자연스러운 음성 + 낮은 지연(짧은 문장 단위로 호출하므로 첫 소리까지 빠름).
  * 클라이언트는 Web Audio로 재생하며 AnalyserNode로 진폭을 뽑아 구체에 연동.
  *
- * 필요: OPENAI_API_KEY (환경변수). 보이스는 MORI_OPENAI_VOICE로 교체 가능(기본 sage).
+ * 필요: OPENAI_API_KEY (환경변수). 보이스는 MORI_OPENAI_VOICE로 교체 가능(기본 nova).
  */
 
 import { type NextRequest } from "next/server";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MODEL = "gpt-4o-mini-tts";
-const VOICE = process.env.MORI_OPENAI_VOICE ?? "sage";
+const VOICE = process.env.MORI_OPENAI_VOICE ?? "nova";
 
 export async function POST(req: NextRequest) {
   const key = process.env.OPENAI_API_KEY;
