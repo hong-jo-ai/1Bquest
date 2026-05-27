@@ -48,9 +48,7 @@ export default function MoriClient({
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
-  const synthRef = useRef<SpeechSynthesis | null>(null);
-  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
-  const speakRafRef = useRef<number | null>(null);
+  const playCtxRef = useRef<AudioContext | null>(null);
   const busy = orb === "thinking" || orb === "speaking";
   const recording = orb === "listening";
   const flowRef = useRef<HTMLDivElement>(null);
@@ -79,19 +77,6 @@ export default function MoriClient({
       .then((r) => r.json())
       .then((j) => setMemos(j.memos ?? []))
       .catch(() => {});
-  }, []);
-
-  // Web Speech(브라우저 내장 TTS) 준비 — 한국어 음성 선택
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    synthRef.current = window.speechSynthesis;
-    const pick = () => {
-      const vs = window.speechSynthesis.getVoices();
-      voiceRef.current = vs.find((v) => v.lang === "ko-KR") || vs.find((v) => v.lang?.startsWith("ko")) || null;
-    };
-    pick();
-    window.speechSynthesis.onvoiceschanged = pick;
-    return () => { window.speechSynthesis.cancel(); };
   }, []);
 
   // 채팅 스크롤
@@ -178,70 +163,86 @@ export default function MoriClient({
     await chatSend(t);
   }
 
-  // ── 음성 출력: 브라우저 내장 Web Speech (로컬 합성 → 거의 즉각 시작) ──
-  function startPulse() {
-    setOrb("speaking");
-    if (speakRafRef.current != null) return;
-    const loop = () => {
-      ampRef.current *= 0.85; // 단어 경계 bump 후 감쇠 → 말하는 리듬으로 구체 일렁
-      speakRafRef.current = requestAnimationFrame(loop);
-    };
-    loop();
-  }
-  function stopPulse() {
-    if (speakRafRef.current != null) cancelAnimationFrame(speakRafRef.current);
-    speakRafRef.current = null;
-    ampRef.current = 0;
-  }
-  // 문장 1개를 음성 큐에 넣음 — speechSynthesis가 순서대로 즉시 재생
-  function enqueueSpeech(text: string) {
-    const s = synthRef.current;
-    if (!s) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ko-KR";
-    if (voiceRef.current) u.voice = voiceRef.current;
-    u.rate = 1.05;
-    u.onboundary = () => { ampRef.current = Math.min(1, ampRef.current + 0.5); }; // 단어마다 일렁
-    s.speak(u);
-  }
-  function waitForSpeechEnd(): Promise<void> {
-    return new Promise((resolve) => {
-      const s = synthRef.current;
-      if (!s) return resolve();
-      const check = () => (!s.speaking && !s.pending ? resolve() : setTimeout(check, 120));
-      check();
+  // ── 음성 출력: OpenAI 신경망 TTS → Web Audio 재생 + 실제 진폭 → 구체 ──
+  function playWithAmplitude(ab: ArrayBuffer): Promise<void> {
+    return new Promise(async (resolve) => {
+      try {
+        const AC = window.AudioContext || (window as any).webkitAudioContext;
+        const ac = playCtxRef.current ?? new AC();
+        playCtxRef.current = ac;
+        if (ac.state === "suspended") await ac.resume();
+        const buf = await ac.decodeAudioData(ab);
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        const analyser = ac.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        analyser.connect(ac.destination);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        setOrb("speaking");
+        let raf = 0;
+        const loop = () => {
+          analyser.getByteTimeDomainData(data);
+          let s = 0;
+          for (const v of data) {
+            const x = (v - 128) / 128;
+            s += x * x;
+          }
+          ampRef.current = Math.min(1, Math.sqrt(s / data.length) * 3.2);
+          raf = requestAnimationFrame(loop);
+        };
+        loop();
+        src.onended = () => {
+          cancelAnimationFrame(raf);
+          ampRef.current = 0;
+          resolve();
+        };
+        src.start();
+      } catch {
+        resolve();
+      }
     });
   }
-  // 능동 발화 등 한 덩어리 발화(즉시 시작, 끝까지 대기)
+  // 능동 발화 등 한 덩어리 발화(즉시 합성·재생)
   async function speak(text: string) {
     const t = text.trim();
-    if (!t || !speakRef.current || !synthRef.current) return;
-    startPulse();
-    enqueueSpeech(t);
-    await waitForSpeechEnd();
-    stopPulse();
+    if (!t || !speakRef.current) return;
+    const ab = await synthTts(t);
+    if (ab) await playWithAmplitude(ab);
   }
 
   async function chatSend(text: string) {
     setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
-    synthRef.current?.cancel(); // 직전 발화 잔여 정리
     let full = "";
-    // 문장이 완성될 때마다 즉시 음성 큐에 넣어 바로 말하기 시작(로컬 합성 → 지연 거의 0).
+    // 문장이 완성될 때마다 즉시 합성 시작(병렬), 완성 순서대로 재생 → 첫 문장부터 빨리 말함.
+    const audioJobs: Promise<ArrayBuffer | null>[] = [];
     let sentBuf = "";
-    let spoke = false;
-    const ttsOn = speakRef.current && !!synthRef.current;
+    let streamDone = false;
+    const ttsOn = speakRef.current;
     const pushSentences = (force: boolean) => {
       if (!ttsOn) return;
       const [sents, rest] = cutSentences(sentBuf, force);
       sentBuf = rest;
       for (const s of sents) {
         const txt = s.trim();
-        if (!txt) continue;
-        if (!spoke) { spoke = true; startPulse(); }
-        enqueueSpeech(txt);
+        if (txt) audioJobs.push(synthTts(txt));
       }
     };
+    const player = (async () => {
+      if (!ttsOn) return;
+      let i = 0;
+      for (;;) {
+        if (i < audioJobs.length) {
+          const ab = await audioJobs[i++];
+          if (ab) await playWithAmplitude(ab);
+        } else if (streamDone) {
+          break;
+        } else {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+    })();
     try {
       const res = await fetch("/api/mori/chat", {
         method: "POST",
@@ -296,17 +297,14 @@ export default function MoriClient({
         else copy.push({ role: "assistant", content: msg });
         return copy;
       });
-      synthRef.current?.cancel();
-      stopPulse();
+      streamDone = true;
       setOrb("idle");
       return;
     }
-    // 스트림 완료 → 남은 문장 음성 큐에 넣고, 발화가 끝날 때까지 대기.
+    // 스트림 완료 → 남은 문장 flush 후 재생 워커가 끝날 때까지 대기.
     pushSentences(true);
-    if (spoke) {
-      await waitForSpeechEnd();
-      stopPulse();
-    }
+    streamDone = true;
+    await player;
     setOrb("idle");
   }
 
@@ -575,6 +573,21 @@ function cutSentences(buf: string, force: boolean): [string[], string] {
     rest = "";
   }
   return [out, rest];
+}
+
+// 문장 1개 → OpenAI TTS 오디오(ArrayBuffer). 실패 시 null.
+async function synthTts(text: string): Promise<ArrayBuffer | null> {
+  try {
+    const res = await fetch("/api/mori/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return null;
+    return await res.arrayBuffer();
+  } catch {
+    return null;
+  }
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
