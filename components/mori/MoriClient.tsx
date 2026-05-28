@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Mic, Square, NotebookPen, X, Volume2, VolumeX, ScrollText } from "lucide-react";
+import { Mic, Square, X, Volume2, VolumeX, ScrollText } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
@@ -18,14 +18,6 @@ interface Msg {
   role: "user" | "assistant";
   content: string;
 }
-interface Memo {
-  id: string;
-  text: string;
-  ts: string;
-}
-
-const MEMO_RE = /^메모[\s,.:!~]*/;
-
 export default function MoriClient({
   mode,
   nowKst,
@@ -37,11 +29,9 @@ export default function MoriClient({
 }) {
   const [messages, setMessages] = useState<Msg[]>(initialHistory);
   const [widgets, setWidgets] = useState<MoriWidget[]>([]);
-  const [memos, setMemos] = useState<Memo[]>([]);
   const [input, setInput] = useState("");
   const [orb, setOrb] = useState<OrbState>("idle");
   const [gold, setGold] = useState(false);
-  const [memoMode, setMemoMode] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -84,14 +74,6 @@ export default function MoriClient({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioCtxRef.current?.close().catch(() => {});
     };
-  }, []);
-
-  // 메모 큐 초기 로드
-  useEffect(() => {
-    fetch("/api/mori/memo", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => setMemos(j.memos ?? []))
-      .catch(() => {});
   }, []);
 
   // 채팅 스크롤
@@ -146,35 +128,10 @@ export default function MoriClient({
     else setWidgets((cur) => [...cur, w]);
   }
 
-  async function saveMemo(text: string) {
-    const t = text.trim();
-    if (!t) return;
-    try {
-      const res = await fetch("/api/mori/memo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: t }),
-      });
-      const j = await res.json();
-      if (j.memo) setMemos((cur) => [...cur, j.memo]);
-    } catch {
-      /* noop */
-    }
-  }
-
-  async function deleteMemo(id: string) {
-    setMemos((cur) => cur.filter((m) => m.id !== id));
-    fetch(`/api/mori/memo?id=${id}`, { method: "DELETE" }).catch(() => {});
-  }
-
-  // 입력 한 줄을 처리: 메모 모드/'메모' 접두면 메모, 아니면 모리에게 전송
+  // 입력 한 줄을 처리: 모리에게 전송
   async function handleUserText(text: string) {
     const t = text.trim();
     if (!t) return;
-    if (memoMode || MEMO_RE.test(t)) {
-      await saveMemo(t.replace(MEMO_RE, ""));
-      return;
-    }
     await chatSend(t);
   }
 
@@ -499,10 +456,9 @@ export default function MoriClient({
         </div>
       )}
 
-      {/* 상단 65% — 구체 + 메모(좌) + 위젯(우) */}
+      {/* 상단 65% — 구체 + 위젯(우) */}
       <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
         <MoriOrb state={orb} ampRef={ampRef} gold={gold} dimmed={mode === "quiet"} />
-        <MemoPanel memos={memos} onDelete={deleteMemo} />
         <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
 
@@ -510,7 +466,7 @@ export default function MoriClient({
       <div ref={flowRef} className="flex flex-[30] flex-col justify-end gap-2 overflow-y-auto px-6 pb-2 sm:px-10">
         {total === 0 ? (
           <p className="text-center text-sm text-[#7c8aa0]">
-            모리입니다. 마이크로 말하거나 입력하세요. &quot;메모&quot;로 시작하면 답 없이 메모로 적어둡니다.
+            모리입니다. 마이크로 말하거나 입력하세요.
           </p>
         ) : (
           messages.map((m, i) => (
@@ -540,15 +496,6 @@ export default function MoriClient({
             }`}
           >
             {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
-          <button
-            onClick={() => setMemoMode((v) => !v)}
-            title={memoMode ? "받아쓰기(메모) 모드 — 켜짐" : "받아쓰기(메모) 모드"}
-            className={`rounded-full border p-2.5 transition ${
-              memoMode ? "border-[#F4E4C1] bg-[#F4E4C1]/15 text-[#F4E4C1]" : "border-white/10 bg-white/5 text-[#7c8aa0] hover:text-white"
-            }`}
-          >
-            <NotebookPen size={16} />
           </button>
           <button
             onClick={toggleMic}
@@ -593,8 +540,6 @@ export default function MoriClient({
                   ? "음성 전사 중…"
                   : busy
                   ? "모리가 응답 중…"
-                  : memoMode
-                  ? "메모할 내용…"
                   : "모리에게 말하기"
               }
               disabled={busy || recording}
@@ -605,7 +550,7 @@ export default function MoriClient({
               disabled={busy || recording || !input.trim()}
               className="rounded-full bg-[#F4E4C1] px-4 py-1.5 text-xs font-semibold text-[#1A2332] transition disabled:opacity-30"
             >
-              {memoMode ? "메모" : "보내기"}
+              보내기
             </button>
           </div>
         </div>
@@ -621,7 +566,6 @@ export default function MoriClient({
             title={recording ? "듣는 중" : mode === "office" ? "사무실 모드 (활성)" : "조용 모드 (비활성)"}
           />
           <span>{recording ? "듣는 중" : mode === "office" ? "사무실" : "조용"}</span>
-          {memoMode && <span className="text-[#F4E4C1]">· 메모</span>}
           <span className="opacity-50">·</span>
           <span>{clock}</span>
         </div>
@@ -681,23 +625,6 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.onerror = reject;
     r.readAsDataURL(blob);
   });
-}
-
-function MemoPanel({ memos, onDelete }: { memos: Memo[]; onDelete: (id: string) => void }) {
-  if (memos.length === 0) return null;
-  return (
-    <div className="pointer-events-auto absolute left-3 top-3 bottom-3 z-10 flex w-[min(300px,38vw)] flex-col gap-2 overflow-y-auto rounded-2xl border border-[#F4E4C1]/15 bg-[#0d1320]/80 p-3 backdrop-blur-md">
-      <span className="px-1 text-[11px] font-semibold tracking-wide text-[#F4E4C1]/80">메모 ({memos.length})</span>
-      {[...memos].reverse().map((m) => (
-        <div key={m.id} className="group flex items-start gap-2 rounded-lg bg-white/[0.04] px-3 py-2">
-          <p className="flex-1 text-xs leading-relaxed text-[#cdd7e6]">{m.text}</p>
-          <button onClick={() => onDelete(m.id)} className="opacity-0 transition group-hover:opacity-100" title="삭제">
-            <X size={12} className="text-[#7c8aa0] hover:text-white" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 // R3F 로딩/비WebGL 폴백 — 콜드 플래티넘 호흡 구체(CSS).
