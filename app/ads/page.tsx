@@ -2,6 +2,7 @@ import AppHeader from "@/components/AppHeader";
 import MadsThresholds from "@/components/mads/MadsThresholds";
 import MadsRecommendationsClient from "@/components/mads/MadsRecommendationsClient";
 import MadsGrowthAdvice from "@/components/mads/MadsGrowthAdvice";
+import MadsSyncButton from "@/components/mads/MadsSyncButton";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { Zap, AlertCircle, LogIn, Brain } from "lucide-react";
 
@@ -29,7 +30,9 @@ export default async function AdsPage() {
               </div>
             </div>
 
-            {!isConnected && (
+            {isConnected ? (
+              <MadsSyncButton />
+            ) : (
               <a
                 href="/api/meta/auth/login"
                 className="flex items-center gap-1.5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors"
