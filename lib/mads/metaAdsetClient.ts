@@ -51,7 +51,7 @@ function sumPurchase(rows: AdInsightAction[] | undefined): number {
 /** 캠페인명/오디언스명 패턴으로 funnel stage 추정. */
 function guessFunnelStage(name: string, campaignName: string): FunnelStage {
   const n = `${name} ${campaignName}`.toLowerCase();
-  if (/리타겟|retarget|rt|warm|engaged|view|atc|add[_ ]?to[_ ]?cart|구매자|repurch/.test(n)) {
+  if (/리타게?팅|리타겟|리마케팅|재타겟|retarget|remarket|rt|warm|engaged|view|atc|add[_ ]?to[_ ]?cart|장바구니|구매자|repurch/.test(n)) {
     return "retargeting";
   }
   if (/신규|prospect|cold|broad|interest|lookalike|lal|asc/.test(n)) {
