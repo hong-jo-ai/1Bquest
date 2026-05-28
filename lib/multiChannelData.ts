@@ -16,6 +16,8 @@ export type ChannelId =
   | "29cm"
   | "groupbuy"
   | "kakao_gift"
+  | "lotte_dutyfree"
+  | "shinsegae_dutyfree"
   | "sixshop"
   | "naver_smartstore"
   | "sixshop_global";
@@ -26,6 +28,8 @@ export type UploadableChannel =
   | "29cm"
   | "groupbuy"
   | "kakao_gift"
+  | "lotte_dutyfree"
+  | "shinsegae_dutyfree"
   | "sixshop"
   | "naver_smartstore"
   | "sixshop_global";
@@ -36,6 +40,8 @@ export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "29cm",
   "groupbuy",
   "kakao_gift",
+  "lotte_dutyfree",
+  "shinsegae_dutyfree",
   "sixshop",
   "naver_smartstore",
   "sixshop_global",
@@ -51,7 +57,7 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
-  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift"],
+  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
   harriot:  ["all", "sixshop", "naver_smartstore", "sixshop_global"],
 };
 
@@ -71,6 +77,9 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "29cm",     name: "29CM",     color: "#000000", bgColor: "bg-zinc-900",     textColor: "text-zinc-900"    },
   { id: "groupbuy", name: "공동구매", color: "#f59e0b", bgColor: "bg-amber-500",    textColor: "text-amber-600"   },
   { id: "kakao_gift", name: "카카오선물하기", color: "#fbbf24", bgColor: "bg-yellow-400", textColor: "text-yellow-700"  },
+  // 면세점 (밴더사 제드아이티씨 경유 — 월 정산서 업로드)
+  { id: "lotte_dutyfree",     name: "롯데면세점",   color: "#dc2626", bgColor: "bg-red-600",    textColor: "text-red-600"     },
+  { id: "shinsegae_dutyfree", name: "신세계면세점", color: "#7c2d12", bgColor: "bg-orange-900",  textColor: "text-orange-900"  },
 
   // 해리엇 채널
   { id: "sixshop",          name: "식스샵",         color: "#10b981", bgColor: "bg-emerald-500", textColor: "text-emerald-600" },
@@ -163,12 +172,23 @@ export const musinsaDummy: MultiChannelData = {
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
 };
 
+export const lotteDutyfreeDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+export const shinsegaeDutyfreeDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+
 export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   wconcept: wconceptDummy,
   musinsa: musinsaDummy,
   "29cm": twentyNineCmDummy,
   groupbuy: groupbuyDummy,
   kakao_gift: kakaoGiftDummy,
+  lotte_dutyfree: lotteDutyfreeDummy,
+  shinsegae_dutyfree: shinsegaeDutyfreeDummy,
   sixshop: sixshopDummy,
   naver_smartstore: naverSmartstoreDummy,
   sixshop_global: sixshopGlobalDummy,

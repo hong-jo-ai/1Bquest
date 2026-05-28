@@ -12,6 +12,8 @@ const CHANNEL_BADGE: Record<string, string> = {
   musinsa:          "bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
   "29cm":           "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
   groupbuy:         "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+  lotte_dutyfree:     "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400",
+  shinsegae_dutyfree: "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-400",
   sixshop:          "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
   naver_smartstore: "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400",
   sixshop_global:   "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400",

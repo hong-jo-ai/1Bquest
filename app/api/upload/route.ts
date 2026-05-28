@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
 import { parseGroupBuyExcel } from "@/lib/groupBuyParser";
+import { parseDutyFreeSettlement } from "@/lib/dutyFreeParser";
 import { convertUsdToKrw, USD_TO_KRW } from "@/lib/finance/forex";
 
 const ALLOWED_CHANNELS = [
@@ -9,6 +10,8 @@ const ALLOWED_CHANNELS = [
   "29cm",
   "groupbuy",
   "kakao_gift",
+  "lotte_dutyfree",
+  "shinsegae_dutyfree",
   "sixshop",
   "naver_smartstore",
   "sixshop_global",
@@ -45,18 +48,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const buffer = await file.arrayBuffer();
-    // 일반 파서로 먼저 시도. 공동구매에서 집계 형식이 들어오면 fallback으로
-    // groupBuyParser 사용.
+    // 면세점(롯데/신세계) 월 정산서는 전용 파서 — 형식이 일반 주문목록과 완전히 다름.
     let result;
-    try {
-      result = await parseExcelBuffer(buffer);
-    } catch (e) {
-      if (channel === "groupbuy") {
-        console.warn("[upload] 공동구매 일반 파싱 실패, 집계 형식으로 fallback:",
-          e instanceof Error ? e.message : String(e));
-        result = parseGroupBuyExcel(buffer);
-      } else {
-        throw e;
+    if (channel === "lotte_dutyfree" || channel === "shinsegae_dutyfree") {
+      result = parseDutyFreeSettlement(buffer, channel === "lotte_dutyfree" ? "lotte" : "shinsegae");
+    } else {
+      // 일반 파서로 먼저 시도. 공동구매에서 집계 형식이 들어오면 fallback으로
+      // groupBuyParser 사용.
+      try {
+        result = await parseExcelBuffer(buffer);
+      } catch (e) {
+        if (channel === "groupbuy") {
+          console.warn("[upload] 공동구매 일반 파싱 실패, 집계 형식으로 fallback:",
+            e instanceof Error ? e.message : String(e));
+          result = parseGroupBuyExcel(buffer);
+        } else {
+          throw e;
+        }
       }
     }
 

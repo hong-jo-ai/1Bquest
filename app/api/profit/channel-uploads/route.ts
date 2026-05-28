@@ -45,6 +45,8 @@ const ALLOWED: UploadableChannel[] = [
   "29cm",
   "groupbuy",
   "kakao_gift",
+  "lotte_dutyfree",
+  "shinsegae_dutyfree",
   "sixshop",
   "naver_smartstore",
   "sixshop_global",

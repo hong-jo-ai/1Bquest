@@ -11,6 +11,8 @@ const CHANNEL_TEXT: Record<string, string> = {
   musinsa: "text-blue-500",
   "29cm": "text-zinc-700 dark:text-zinc-300",
   groupbuy: "text-amber-500",
+  lotte_dutyfree: "text-red-500",
+  shinsegae_dutyfree: "text-orange-700",
   sixshop: "text-emerald-500",
   naver_smartstore: "text-green-500",
   sixshop_global: "text-teal-500",

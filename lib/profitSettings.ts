@@ -37,6 +37,9 @@ export const DEFAULT_SETTINGS: ProfitSettings = {
     sixshop_global: 1.85,
     groupbuy: 0,
     kakao_gift: 30, // 카카오 + 피오르드(중간 벤더) 통합 수수료. 정산서 검증으로 30% 확정
+    // 면세점: 매출로 입력하는 '입금예정액'이 이미 제드아이티씨 수수료 12% 제외 net → 추가 수수료 0
+    lotte_dutyfree: 0,
+    shinsegae_dutyfree: 0,
   },
   fixedCosts: [],
   shippingPerOrder: 2500,

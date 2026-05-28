@@ -21,6 +21,8 @@ interface Props {
     | "29cm"
     | "groupbuy"
     | "kakao_gift"
+    | "lotte_dutyfree"
+    | "shinsegae_dutyfree"
     | "sixshop"
     | "naver_smartstore"
     | "sixshop_global";
@@ -207,6 +209,14 @@ export default function ExcelUploadPanel({
             )}
             {channel === "kakao_gift" && (
               <p className="mt-0.5">카카오선물하기 정산 시트(구글시트) → 파일 → 다운로드 → CSV 또는 엑셀</p>
+            )}
+            {(channel === "lotte_dutyfree" || channel === "shinsegae_dutyfree") && (
+              <>
+                <p className="mt-0.5">제드아이티씨(JEDITC)가 보내주는 월 정산서 엑셀을 그대로 업로드</p>
+                <p className="mt-0.5 text-amber-600 dark:text-amber-400">
+                  ⓘ 매출 = 수수료 12% 제외 입금예정액(세금계산서 발행요청 금액). 월 단위로 집계됩니다.
+                </p>
+              </>
             )}
             {channel === "sixshop" && (
               <p className="mt-0.5">식스샵 관리자 → 주문관리 → 주문목록 → 엑셀 다운로드</p>
