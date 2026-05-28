@@ -180,6 +180,35 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
     return () => { cancelled = true; };
   }, [brand, save]);
 
+  // 공통 tasks 슬롯 라이브 동기화 — 텔레그램/모바일(MCP)에서 추가된 할일을
+  // 새로고침 없이 반영. lastSaved 와 다를 때만 적용하므로 로컬 편집을 덮지 않고,
+  // setTasks 직전에 lastSaved 를 갱신해 save 이펙트의 불필요한 재저장(=clobber)도 막는다.
+  useEffect(() => {
+    if (!loaded) return;
+    let cancelled = false;
+    const sync = () => {
+      fetch(`/api/today-hub?brand=${brand}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled || j.tasks === undefined) return;
+          const tStr = JSON.stringify(normalizeTasks(j.tasks as Task[]));
+          if (tStr === lastSaved.current.tasks) return; // 외부 변경 없음(또는 이미 반영됨)
+          lastSaved.current.tasks = tStr;
+          setTasks(JSON.parse(tStr) as Task[]);
+        })
+        .catch(() => { /* 폴링 실패는 무시 */ });
+    };
+    const id = setInterval(sync, 15000);
+    // 탭 복귀 시 즉시 동기화 — 폰에서 추가 후 데스크톱으로 돌아오면 바로 반영
+    const onVis = () => { if (document.visibilityState === "visible") sync(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [brand, loaded]);
+
   useEffect(() => {
     if (!loaded) return;
     const s = JSON.stringify(tasks);
