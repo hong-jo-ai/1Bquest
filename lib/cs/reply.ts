@@ -6,6 +6,7 @@ import {
 } from "./gmailClient";
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
+import { listRedditAccounts, postRedditReply } from "./reddit";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import { cafe24Post, cafe24Put } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
@@ -32,6 +33,7 @@ export async function sendReply(
     gmail: sendGmailReply,
     threads: sendThreadsReply,
     crisp: sendCrispReply,
+    reddit: sendRedditReply,
     ig_dm: sendIgReply,
     cafe24_board: sendCafe24BoardReply,
   };
@@ -436,6 +438,48 @@ async function sendCrispReply(
       .eq("id", threadId);
 
     return { ok: true, externalMessageId: String(result.fingerprint) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function sendRedditReply(
+  threadId: string,
+  body: string
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  const accounts = await listRedditAccounts();
+  const account = accounts.find((a) => a.brand === thread.brand);
+  if (!account) return { ok: false, error: "Reddit 계정 미등록" };
+
+  // 답글은 스레드의 가장 최근 수신 메시지(레딧 fullname)에 단다.
+  const latestIn = [...data.messages]
+    .reverse()
+    .find((m) => m.direction === "in" && m.external_message_id);
+  const thingId = latestIn?.external_message_id;
+  if (!thingId) return { ok: false, error: "답글 대상 메시지를 찾을 수 없습니다" };
+
+  try {
+    const result = await postRedditReply(account, thingId, body);
+
+    await ingestMessage({
+      brand: thread.brand as CsBrandId,
+      channel: "reddit",
+      externalThreadId: thread.external_thread_id,
+      externalMessageId: result.name ?? `reddit_out_${Date.now()}`,
+      bodyText: body,
+      sentAt: new Date(),
+      direction: "out",
+      raw: { sent_via: "inbox_ui", in_reply_to: thingId },
+    });
+
+    const db = getCsSupabase();
+    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+
+    return { ok: true, externalMessageId: result.name };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

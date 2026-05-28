@@ -86,6 +86,11 @@ const CHANNEL_STYLE: Record<
     color: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/40",
   },
+  reddit: {
+    icon: MessageCircle,
+    color: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-900/40",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
