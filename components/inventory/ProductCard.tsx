@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Pencil, AlertTriangle, Clock, Package, Trash2, Coins, Check } from "lucide-react";
+import { Pencil, AlertTriangle, Clock, Package, Trash2, Coins, Check, Ban } from "lucide-react";
 import type { InventoryProduct } from "@/lib/inventoryStorage";
 import { AGING_CONFIG } from "@/lib/inventoryStorage";
 import { CHANNELS } from "@/lib/multiChannelData";
@@ -107,12 +107,19 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* 수동 추가 배지 */}
-        {product.isManual && (
-          <div className="absolute top-2 right-2 bg-violet-600/80 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm">
-            수동
-          </div>
-        )}
+        {/* 우상단 배지 — 단종 / 수동 */}
+        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+          {product.entry.discontinued && (
+            <div className="flex items-center gap-1 bg-zinc-800/85 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm">
+              <Ban size={10} /> 단종
+            </div>
+          )}
+          {product.isManual && (
+            <div className="bg-violet-600/80 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm">
+              수동
+            </div>
+          )}
+        </div>
 
         {/* 편집 버튼 (호버) */}
         <div className="absolute inset-0 flex items-end justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity">

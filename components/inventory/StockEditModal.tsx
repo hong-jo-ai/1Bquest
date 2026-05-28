@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Plus, Minus, Save, Calendar, Package, StickyNote, Tag } from "lucide-react";
+import { X, Plus, Minus, Save, Calendar, Package, StickyNote, Tag, Ban } from "lucide-react";
 import type { InventoryProduct } from "@/lib/inventoryStorage";
 import { CHANNELS } from "@/lib/multiChannelData";
 
@@ -25,7 +25,7 @@ function channelLabel(id: string): string {
 interface Props {
   product: InventoryProduct;
   categories: string[]; // 기존 카테고리 목록 (자동완성용)
-  onSave: (sku: string, patch: { initialStock: number; stockInDate: string; manualAdjustment: number; notes: string; categoryOverride: string }) => void;
+  onSave: (sku: string, patch: { initialStock: number; stockInDate: string; manualAdjustment: number; notes: string; categoryOverride: string; discontinued: boolean }) => void;
   onClose: () => void;
 }
 
@@ -35,6 +35,7 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
   const [adjustment, setAdjustment] = useState(product.entry.manualAdjustment);
   const [notes, setNotes] = useState(product.entry.notes);
   const [categoryOverride, setCategoryOverride] = useState(product.entry.categoryOverride ?? "");
+  const [discontinued, setDiscontinued] = useState(product.entry.discontinued ?? false);
 
   const previewStock = Math.max(0, initialStock + adjustment - product.totalSold);
 
@@ -200,6 +201,28 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
             />
           </div>
 
+          {/* 단종 처리 — 저재고/품절이어도 재입고 알림 제외 */}
+          <label className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+            discontinued
+              ? "border-zinc-400 bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800"
+              : "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+          }`}>
+            <input
+              type="checkbox"
+              checked={discontinued}
+              onChange={(e) => setDiscontinued(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-zinc-700"
+            />
+            <span className="flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                <Ban size={14} /> 단종 처리
+              </span>
+              <span className="block text-xs text-zinc-400 mt-0.5">
+                체크하면 재고가 없거나 적어도 <b>재입고(품절 임박) 알림</b>에서 제외됩니다.
+              </span>
+            </span>
+          </label>
+
           {/* 저장 후 예상 재고 */}
           <div className="bg-violet-50 dark:bg-violet-950/30 rounded-xl px-4 py-3 flex items-center justify-between">
             <span className="text-sm text-violet-600 dark:text-violet-400 font-medium">저장 후 현재 재고</span>
@@ -207,7 +230,7 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
           </div>
 
           <button
-            onClick={() => { onSave(product.sku, { initialStock, stockInDate, manualAdjustment: adjustment, notes, categoryOverride }); onClose(); }}
+            onClick={() => { onSave(product.sku, { initialStock, stockInDate, manualAdjustment: adjustment, notes, categoryOverride, discontinued }); onClose(); }}
             className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl py-3 transition-colors"
           >
             <Save size={16} />

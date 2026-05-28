@@ -17,6 +17,7 @@ export interface InventoryEntry {
   manualAdjustment: number; // 수동 조정 (+/-)
   notes: string;
   categoryOverride: string; // 대시보드에서 직접 지정한 카테고리 (빈 문자열 = Cafe24 기본값 사용)
+  discontinued?: boolean;   // 단종 — 저재고/품절이어도 재입고 알림 제외
 }
 
 export type AgingStatus = "normal" | "caution" | "urgent" | "critical";
@@ -49,6 +50,7 @@ export function defaultEntry(sku: string): InventoryEntry {
     manualAdjustment: 0,
     notes: "",
     categoryOverride: "",
+    discontinued: false,
   };
 }
 

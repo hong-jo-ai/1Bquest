@@ -238,7 +238,7 @@ export default function InventoryManager() {
 
   const handleSave = useCallback((
     sku: string,
-    patch: { initialStock: number; stockInDate: string; manualAdjustment: number; notes: string; categoryOverride: string }
+    patch: { initialStock: number; stockInDate: string; manualAdjustment: number; notes: string; categoryOverride: string; discontinued: boolean }
   ) => {
     updateEntry(sku, patch); // localStorage 즉시 업데이트 + 서버 백그라운드 저장
 

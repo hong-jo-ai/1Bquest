@@ -11,6 +11,7 @@ import { getDashboardData, type DashboardData } from "@/lib/cafe24Data";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
+import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { loadTodayTasks } from "@/lib/mori/tasks";
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
@@ -37,7 +38,12 @@ async function salesAndInventoryBlock(): Promise<{ sales: string; inventory: str
     `오늘 잘나가는 상품: ${top}`,
   ].join("\n");
 
-  const lowStock = d.inventory.filter((i) => i.status === "soldout" || i.status === "critical");
+  // 단종 처리된 SKU는 품절·위험이어도 알림 대상에서 제외
+  const entries = await loadInventoryFromStore().catch((): Record<string, { discontinued?: boolean }> => ({}));
+  const discontinued = new Set(Object.keys(entries).filter((s) => entries[s].discontinued));
+  const lowStock = d.inventory.filter(
+    (i) => (i.status === "soldout" || i.status === "critical") && !discontinued.has(i.sku),
+  );
   const inventory =
     lowStock.length === 0
       ? "품절·위험 재고 없음 (전 상품 양호)"

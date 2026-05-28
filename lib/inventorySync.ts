@@ -260,8 +260,9 @@ export interface InventoryLevel {
 export async function computeInventoryLevels(token: string): Promise<InventoryLevel[]> {
   const entries = await loadInventoryFromStore();
   // 재고 입력된 상품: initialStock>0 또는 실사로 명시 카운트(stockInDate 존재) → 0개 품절도 포함.
+  // 단, 단종(discontinued) 상품은 제외 — 저재고/품절이어도 재입고 알림 대상 아님.
   const skus = Object.keys(entries).filter(
-    (sku) => entries[sku].initialStock > 0 || !!entries[sku].stockInDate,
+    (sku) => (entries[sku].initialStock > 0 || !!entries[sku].stockInDate) && !entries[sku].discontinued,
   );
   if (skus.length === 0) return [];
   const today = new Date().toISOString().slice(0, 10);
