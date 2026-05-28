@@ -62,14 +62,17 @@ type ChannelMetas    = Record<UploadableChannel, UploadMeta | null>;
 type ChannelHistories = Record<UploadableChannel, UploadMeta[]>;
 const EMPTY_UPLOADS: ChannelUploads = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
+  lotte_dutyfree: null, shinsegae_dutyfree: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 const EMPTY_METAS: ChannelMetas = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
+  lotte_dutyfree: null, shinsegae_dutyfree: null,
   sixshop: null, naver_smartstore: null, sixshop_global: null,
 };
 const EMPTY_HISTORIES: ChannelHistories = {
   wconcept: [], musinsa: [], "29cm": [], groupbuy: [], kakao_gift: [],
+  lotte_dutyfree: [], shinsegae_dutyfree: [],
   sixshop: [], naver_smartstore: [], sixshop_global: [],
 };
 

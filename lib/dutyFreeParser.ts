@@ -153,7 +153,7 @@ export function parseDutyFreeSettlement(
   const sheets = readSheets(buffer);
   if (sheets.length === 0) throw new Error("정산서에 시트가 없습니다.");
 
-  const { net, ym } = extractSummary(sheets[0]);
+  const { net, ym } = extractSummary(sheets[0].rows);
   if (net <= 0) {
     throw new Error(
       `${OPERATOR_LABEL[operator]} 정산서에서 '세금계산서 발행요청 금액(입금예정액)'을 찾지 못했습니다. JEDITC 정산서 형식이 맞는지 확인해주세요.`,
