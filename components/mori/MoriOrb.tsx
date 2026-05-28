@@ -105,6 +105,8 @@ export default function MoriOrb({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 캔버스 기본 display:inline → baseline 여백 탓에 구체가 박스 안에서 위로 치우침. block으로 제거.
+    renderer.domElement.style.display = "block";
     mount.appendChild(renderer.domElement);
 
     const uniforms = {
