@@ -50,6 +50,7 @@ export default function MoriClient({
   const flowRef = useRef<HTMLDivElement>(null);
   const orbRef = useRef(orb);
   orbRef.current = orb;
+  const toggleMicRef = useRef<() => void>(() => {});
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const ampRef = useRef<number>(0); // 0~1 마이크 진폭 → 구체
@@ -74,6 +75,20 @@ export default function MoriClient({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioCtxRef.current?.close().catch(() => {});
     };
+  }, []);
+
+  // 스페이스바로 녹음 토글 — 입력창/버튼/링크 포커스 시엔 스페이스 본래 동작 유지.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || el?.isContentEditable) return;
+      e.preventDefault(); // 페이지 스크롤 방지
+      toggleMicRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // 채팅 스크롤
@@ -351,6 +366,7 @@ export default function MoriClient({
       setArming(false);
     }
   }
+  toggleMicRef.current = toggleMic; // 전역 스페이스바 핸들러가 항상 최신 클로저 호출
 
   // 마이크 진폭(RMS) → ampRef. 재사용 analyser를 RAF로 샘플(React 리렌더 없음).
   function startAmplitude() {
@@ -466,7 +482,7 @@ export default function MoriClient({
       <div ref={flowRef} className="flex flex-[30] flex-col justify-end gap-2 overflow-y-auto px-6 pb-2 sm:px-10">
         {total === 0 ? (
           <p className="text-center text-sm text-[#7c8aa0]">
-            모리입니다. 마이크로 말하거나 입력하세요.
+            모리입니다. 마이크(또는 스페이스바)로 말하거나 입력하세요.
           </p>
         ) : (
           messages.map((m, i) => (
@@ -500,7 +516,7 @@ export default function MoriClient({
           <button
             onClick={toggleMic}
             disabled={busy || arming}
-            title={recording ? "녹음 중지" : arming ? "마이크 켜는 중…" : "말하기"}
+            title={recording ? "녹음 중지 (스페이스바)" : arming ? "마이크 켜는 중…" : "말하기 (스페이스바)"}
             className={`rounded-full border p-2.5 transition disabled:opacity-50 ${
               recording
                 ? "border-indigo-400 bg-indigo-400/20 text-indigo-200"
