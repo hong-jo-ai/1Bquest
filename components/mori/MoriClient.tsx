@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Mic, Square, X, Volume2, VolumeX, ScrollText } from "lucide-react";
+import { Mic, Square, Volume2, VolumeX } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
@@ -33,7 +33,6 @@ export default function MoriClient({
   const [orb, setOrb] = useState<OrbState>("idle");
   const [gold, setGold] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [arming, setArming] = useState(false); // 마이크 잡는 중(첫 클릭만 잠깐)
   const [clock, setClock] = useState(nowKst);
@@ -41,7 +40,6 @@ export default function MoriClient({
   const streamRef = useRef<MediaStream | null>(null); // 마이크 스트림 세션 내 재사용
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recStartRef = useRef<number>(0); // 녹음 시작 시각(진단용)
-  const historyScrollRef = useRef<HTMLDivElement>(null);
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
   const playCtxRef = useRef<AudioContext | null>(null);
@@ -91,19 +89,10 @@ export default function MoriClient({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 채팅 스크롤
+  // 채팅 스크롤 — 새 메시지마다 맨 아래로(카톡식 스레드)
   useEffect(() => {
     flowRef.current?.scrollTo({ top: flowRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
-
-  // 기록 패널 열리면 맨 아래로
-  useEffect(() => {
-    if (historyOpen) {
-      requestAnimationFrame(() => {
-        historyScrollRef.current?.scrollTo({ top: historyScrollRef.current.scrollHeight });
-      });
-    }
-  }, [historyOpen]);
 
   // 능동 발화 폴링
   useEffect(() => {
@@ -143,11 +132,13 @@ export default function MoriClient({
     else setWidgets((cur) => [...cur, w]);
   }
 
-  // 입력 한 줄을 처리: 모리에게 전송
-  async function handleUserText(text: string) {
+  // 입력 한 줄을 처리: 모리에게 전송.
+  // source="text"(타이핑)면 음성 합성 없이 텍스트로만 응답 → 딜레이 제거.
+  // source="voice"(마이크)면 스피커가 켜져 있을 때 음성으로 응답.
+  async function handleUserText(text: string, source: "voice" | "text" = "text") {
     const t = text.trim();
     if (!t) return;
-    await chatSend(t);
+    await chatSend(t, source);
   }
 
   // ── 음성 출력: OpenAI 신경망 TTS → Web Audio 재생 + 실제 진폭 → 구체 ──
@@ -198,7 +189,7 @@ export default function MoriClient({
     if (ab) await playWithAmplitude(ab);
   }
 
-  async function chatSend(text: string) {
+  async function chatSend(text: string, source: "voice" | "text" = "text") {
     setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
     let full = "";
@@ -206,7 +197,8 @@ export default function MoriClient({
     const audioJobs: Promise<ArrayBuffer | null>[] = [];
     let sentBuf = "";
     let streamDone = false;
-    const ttsOn = speakRef.current;
+    // 음성 입력일 때만, 그리고 스피커 토글이 켜져 있을 때만 TTS. 타이핑은 항상 무음.
+    const ttsOn = source === "voice" && speakRef.current;
     const pushSentences = (force: boolean) => {
       if (!ttsOn) return;
       const [sents, rest] = cutSentences(sentBuf, force);
@@ -256,7 +248,7 @@ export default function MoriClient({
           const payload = JSON.parse(line.slice(6));
           if (payload.type === "text") {
             if (firstToken) {
-              setOrb("speaking");
+              if (ttsOn) setOrb("speaking"); // 무음(타이핑)일 땐 thinking 유지 → 입력 잠금만
               firstToken = false;
             }
             full += payload.text;
@@ -299,7 +291,7 @@ export default function MoriClient({
     const t = input.trim();
     if (!t || busy) return;
     setInput("");
-    handleUserText(t);
+    handleUserText(t, "text");
   }
 
   // ── 음성: 마이크 토글 녹음 → 전사 ──
@@ -424,7 +416,7 @@ export default function MoriClient({
         flashNotice("⚠️ 음성을 알아듣지 못했어요. 다시 말씀해 주세요.");
         return;
       }
-      await handleUserText(text);
+      await handleUserText(text, "voice");
     } catch (e: any) {
       setTranscribing(false);
       setOrb("idle");
@@ -433,76 +425,38 @@ export default function MoriClient({
   }
 
   const total = messages.length;
-  const styleFor = (i: number) => {
-    const dist = total - 1 - i;
-    const opacity = Math.max(0.28, 1 - dist * 0.22);
-    const scale = Math.max(0.82, 1 - dist * 0.06);
-    const fontSize = dist === 0 ? "1.35rem" : dist === 1 ? "1.1rem" : "0.95rem";
-    return { opacity, fontSize, transformOrigin: "left center", transform: `scale(${scale})` };
-  };
 
   return (
-    <div className="relative flex h-screen flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
-      {/* 대화 기록 오버레이 — 또렷하게 스크롤해서 지난 대화 읽기 */}
-      {historyOpen && (
-        <div className="absolute inset-0 z-30 flex flex-col bg-[#0a0f1a]/96 backdrop-blur-md">
-          <div className="flex items-center justify-between border-b border-white/10 px-6 py-3">
-            <span className="text-sm font-semibold text-[#cdd7e6]">대화 기록</span>
-            <button onClick={() => setHistoryOpen(false)} className="rounded-full p-1.5 text-[#7c8aa0] transition hover:bg-white/10 hover:text-white" title="닫기">
-              <X size={18} />
-            </button>
-          </div>
-          <div ref={historyScrollRef} className="flex-1 space-y-3 overflow-y-auto px-6 py-4 sm:px-10">
-            {messages.length === 0 ? (
-              <p className="pt-6 text-center text-sm text-[#7c8aa0]">아직 대화가 없습니다.</p>
-            ) : (
-              messages.map((m, i) => (
-                <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                  <div
-                    className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      m.role === "user" ? "bg-[#F4E4C1]/15 text-[#E8ECF0]" : "bg-white/[0.06] text-[#cdd7e6]"
-                    }`}
-                  >
-                    {m.content}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 상단 65% — 구체 + 위젯(우) */}
-      <div className="relative flex flex-[65] items-center justify-center overflow-hidden">
+    <div className="relative flex h-[100dvh] flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
+      {/* 상단 — 구체 + 위젯(우). 채팅 스레드에 자리를 내주려 축소. */}
+      <div className="relative flex flex-[34] items-center justify-center overflow-hidden">
         <MoriOrb state={orb} ampRef={ampRef} gold={gold} dimmed={mode === "quiet"} />
         <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
 
-      {/* 하단 30% — 채팅 흐름 */}
-      <div ref={flowRef} className="flex flex-[30] flex-col justify-end gap-2 overflow-y-auto px-6 pb-2 sm:px-10">
+      {/* 채팅 스레드 — 메인에서 바로 스크롤(카톡/텔레그램식 말풍선). 별도 기록 화면 불필요. */}
+      <div ref={flowRef} className="flex-[66] space-y-3 overflow-y-auto px-4 pb-2 sm:px-10">
         {total === 0 ? (
-          <p className="text-center text-sm text-[#7c8aa0]">
+          <p className="pt-6 text-center text-sm text-[#7c8aa0]">
             모리입니다. 마이크(또는 스페이스바)로 말하거나 입력하세요.
           </p>
         ) : (
           messages.map((m, i) => (
-            <div
-              key={i}
-              style={styleFor(i)}
-              className={`max-w-3xl transition-all duration-300 ${
-                m.role === "user" ? "self-end text-right text-[#9fb0c8]" : "self-start text-[#E8ECF0]"
-              }`}
-            >
-              <span className="whitespace-pre-wrap leading-relaxed">
+            <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div
+                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  m.role === "user" ? "bg-[#F4E4C1]/15 text-[#E8ECF0]" : "bg-white/[0.06] text-[#cdd7e6]"
+                }`}
+              >
                 {m.content || (orb === "thinking" ? "…" : "")}
-              </span>
+              </div>
             </div>
           ))
         )}
       </div>
 
       {/* 입력 + 음성 */}
-      <div className="px-6 pb-2 sm:px-10">
+      <div className="px-4 pb-2 sm:px-10">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           <button
             onClick={() => setSpeakOn((v) => !v)}
@@ -559,7 +513,8 @@ export default function MoriClient({
                   : "모리에게 말하기"
               }
               disabled={busy || recording}
-              className="flex-1 bg-transparent text-sm text-[#E8ECF0] placeholder:text-[#5f6e85] focus:outline-none disabled:opacity-50"
+              /* text-[16px]: iOS가 14px 입력에 포커스 시 자동 확대하는 것 방지 */
+              className="flex-1 bg-transparent text-[16px] text-[#E8ECF0] placeholder:text-[#5f6e85] focus:outline-none disabled:opacity-50 sm:text-sm"
             />
             <button
               onClick={onSendClick}
@@ -572,8 +527,11 @@ export default function MoriClient({
         </div>
       </div>
 
-      {/* 최하단 5% — 모드/시각/상태/인장 */}
-      <div className="flex items-center justify-between border-t border-white/5 px-6 py-2 text-[11px] text-[#6b7a93] sm:px-10">
+      {/* 최하단 — 모드/시각/상태/인장. 노치 단말 홈인디케이터 침범 방지(safe-area). */}
+      <div
+        className="flex items-center justify-between border-t border-white/5 px-4 py-2 text-[11px] text-[#6b7a93] sm:px-10"
+        style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+      >
         <div className="flex items-center gap-2">
           <span
             className={`inline-block h-2 w-2 rounded-full ${
@@ -585,17 +543,7 @@ export default function MoriClient({
           <span className="opacity-50">·</span>
           <span>{clock}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setHistoryOpen(true)}
-            className="flex items-center gap-1 text-[#7c8aa0] transition hover:text-white"
-            title="대화 기록 보기"
-          >
-            <ScrollText size={13} />
-            <span>기록</span>
-          </button>
-          <span className="font-mono tracking-[0.3em] text-[#9fb0c8]">MORI</span>
-        </div>
+        <span className="font-mono tracking-[0.3em] text-[#9fb0c8]">MORI</span>
       </div>
     </div>
   );
