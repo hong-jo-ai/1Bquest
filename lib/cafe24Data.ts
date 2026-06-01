@@ -59,6 +59,8 @@ export interface InventoryItem {
   stock: number;
   threshold: number;
   status: "soldout" | "critical" | "warning" | "ok";
+  /** 카페24 재고관리(use_inventory) 사용 여부. false면 stock은 의미 없고 sold_out으로만 판단(판매중/품절). */
+  tracked?: boolean;
 }
 
 export interface DashboardData {
@@ -361,11 +363,25 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
   const prevMonthStartStr = kstStr(prevMonthStart);
   const prevMonthEndStr   = kstStr(prevMonthEnd);
 
-  // 이번 달 + 지난 달 주문 + 상품 목록 병렬 조회
-  const [rawMonthOrders, rawPrevMonthOrders, productsData] = await Promise.all([
+  // 이번 달 + 지난 달 주문 + 상품 목록(재고 variant 포함) 병렬 조회.
+  // 상품은 진열중 전체를 페이지네이션(100개 초과 누락 방지) + embed=variants 로 재고까지 한 번에.
+  const fetchProducts = async (): Promise<any[]> => {
+    const out: any[] = [];
+    for (let offset = 0; offset < 1000; offset += 100) {
+      const res = await cafe24Get(
+        `/api/v2/admin/products?limit=100&offset=${offset}&display=T&embed=variants`,
+        token,
+      );
+      const batch: any[] = res.products ?? [];
+      out.push(...batch);
+      if (batch.length < 100) break;
+    }
+    return out;
+  };
+  const [rawMonthOrders, rawPrevMonthOrders, allProducts] = await Promise.all([
     fetchAllOrders(token, monthStartStr, todayStr),
     fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr),
-    cafe24Get("/api/v2/admin/products?limit=100&display=T", token),
+    fetchProducts(),
   ]);
 
   // 입금전(N00) 주문은 매출에서 제외 — 무통장 입금 미완료로 자동 취소되는 케이스가 잦음.
@@ -539,19 +555,33 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
   }
 
   // ── 재고 현황 ──────────────────────────────────────────────────────────
+  // 카페24 products 목록은 stock_quantity 를 안 준다 → variant 의 quantity + use_inventory 로 계산.
+  // 다수 상품이 use_inventory=F(재고관리 미사용) → 수량은 무의미(-1 등), sold_out 으로만 판매여부 판단.
   const THRESHOLD = 10;
-  const inventory: InventoryItem[] = (productsData.products ?? []).map((p: any) => {
-    const stock = p.stock_quantity ?? 0;
-    let status: InventoryItem["status"] = "ok";
-    if (stock === 0) status = "soldout";
-    else if (stock <= 3) status = "critical";
-    else if (stock <= THRESHOLD) status = "warning";
+  const inventory: InventoryItem[] = allProducts.map((p: any) => {
+    const variants: any[] = Array.isArray(p.variants) ? p.variants : [];
+    const managed = variants.filter((v) => v.use_inventory === "T");
+    const tracked = managed.length > 0;
+    const soldOut = p.sold_out === "T";
+    let stock = 0;
+    let status: InventoryItem["status"];
+    if (tracked) {
+      stock = managed.reduce((s, v) => s + Math.max(0, Number(v.quantity) || 0), 0);
+      if (soldOut || stock === 0) status = "soldout";
+      else if (stock <= 3) status = "critical";
+      else if (stock <= THRESHOLD) status = "warning";
+      else status = "ok";
+    } else {
+      // 재고관리 미사용 — 수량 추적 안 함. 품절 여부만 유효.
+      status = soldOut ? "soldout" : "ok";
+    }
     return {
       name: p.product_name,
       sku: p.product_code ?? "",
       stock,
       threshold: THRESHOLD,
       status,
+      tracked,
     };
   });
 

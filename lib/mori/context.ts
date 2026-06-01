@@ -42,14 +42,26 @@ async function salesAndInventoryBlock(): Promise<{ sales: string; inventory: str
   // (예전엔 품절·위험만 넣어, 정상 재고 제품이 컨텍스트에서 빠져 모리가 "재고 없음"이라 오답했다.)
   const entries = await loadInventoryFromStore().catch((): Record<string, { discontinued?: boolean }> => ({}));
   const discontinued = new Set(Object.keys(entries).filter((s) => entries[s].discontinued));
-  const sorted = [...d.inventory].sort((a, b) => a.stock - b.stock);
+  const RANK: Record<string, number> = { soldout: 0, critical: 1, warning: 2, ok: 3 };
+  const statusKo = (s: string) => (s === "soldout" ? "품절" : s === "critical" ? "위험" : s === "warning" ? "부족" : "양호");
+  // 문제 품목(품절·부족) 먼저, 그다음 재고 적은 순.
+  const sorted = [...d.inventory].sort(
+    (a, b) => (RANK[a.status] - RANK[b.status]) || a.stock - b.stock,
+  );
   const soldout = sorted.filter((i) => i.status === "soldout" && !discontinued.has(i.sku)).length;
   const critical = sorted.filter((i) => i.status === "critical" && !discontinued.has(i.sku)).length;
   const head = `총 ${sorted.length}품목 · 품절 ${soldout} · 위험 ${critical} (단종 제외)`;
   const lines = sorted
     .map((i) => {
-      const tags = [i.status, discontinued.has(i.sku) ? "단종" : ""].filter(Boolean).join(", ");
-      return `${i.name} (${i.sku}): 재고 ${i.stock} [${tags}]`;
+      // tracked=false: 카페24 재고관리 미사용 → 수량 무의미, 판매중/품절로만.
+      const qty =
+        i.tracked === false
+          ? i.status === "soldout"
+            ? "품절"
+            : "판매중(재고관리 안 함)"
+          : `재고 ${i.stock}개 · ${statusKo(i.status)}`;
+      const dc = discontinued.has(i.sku) ? " · 단종" : "";
+      return `${i.name} (${i.sku}): ${qty}${dc}`;
     })
     .join("\n");
   const inventory = sorted.length === 0 ? "(상품 없음)" : `${head}\n${lines}`;

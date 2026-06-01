@@ -69,7 +69,20 @@ export default function InventoryStatus({ items }: { items: InventoryItem[] }) {
         {sorted.map((item, idx) => {
           const cfg = statusConfig[item.status];
           const Icon = cfg.icon;
-          const pct = item.stock === 0 ? 0 : Math.min((item.stock / (item.threshold * 3)) * 100, 100);
+          // tracked=false: 카페24 재고관리 미사용 → 수량 무의미, 판매중/품절로만 표시.
+          const untracked = item.tracked === false;
+          const stockLabel = untracked
+            ? item.status === "soldout"
+              ? "품절"
+              : "판매중"
+            : `${item.stock}개`;
+          const pct = untracked
+            ? item.status === "soldout"
+              ? 0
+              : 100
+            : item.stock === 0
+            ? 0
+            : Math.min((item.stock / (item.threshold * 3)) * 100, 100);
           return (
             <div key={item.sku || idx} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${cfg.rowClass}`}>
               <Icon size={16} className={cfg.iconClass} />
@@ -79,7 +92,7 @@ export default function InventoryStatus({ items }: { items: InventoryItem[] }) {
                     {item.name}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">{item.stock}개</span>
+                    <span className="text-sm font-bold text-zinc-700 dark:text-zinc-200">{stockLabel}</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.badgeClass}`}>
                       {cfg.label}
                     </span>

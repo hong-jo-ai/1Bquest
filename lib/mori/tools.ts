@@ -277,8 +277,16 @@ async function queryInventory(input: any): Promise<{ resultText: string }> {
     (): Record<string, { discontinued?: boolean }> => ({}),
   );
   const discontinued = new Set(Object.keys(entries).filter((s) => entries[s].discontinued));
-  const fmt = (i: DashboardData["inventory"][number]) =>
-    `${i.name} (${i.sku}): 재고 ${i.stock}개 · ${statusKo(i.status)}${discontinued.has(i.sku) ? " · 단종" : ""}`;
+  const fmt = (i: DashboardData["inventory"][number]) => {
+    // tracked=false: 카페24 재고관리 미사용 → 수량 무의미, 판매중/품절로만.
+    const qty =
+      i.tracked === false
+        ? i.status === "soldout"
+          ? "품절"
+          : "판매중(재고관리 안 함)"
+        : `재고 ${i.stock}개 · ${statusKo(i.status)}`;
+    return `${i.name} (${i.sku}): ${qty}${discontinued.has(i.sku) ? " · 단종" : ""}`;
+  };
 
   const q = String(input.query ?? "").trim().toLowerCase();
   if (q) {
@@ -292,7 +300,8 @@ async function queryInventory(input: any): Promise<{ resultText: string }> {
   }
 
   const filter = input.filter === "all" ? "all" : input.filter === "soldout" ? "soldout" : "low";
-  let list = [...d.inventory].sort((a, b) => a.stock - b.stock);
+  const RANK: Record<string, number> = { soldout: 0, critical: 1, warning: 2, ok: 3 };
+  let list = [...d.inventory].sort((a, b) => (RANK[a.status] - RANK[b.status]) || a.stock - b.stock);
   if (filter === "soldout") list = list.filter((i) => i.status === "soldout");
   else if (filter === "low") list = list.filter((i) => i.status !== "ok");
   if (list.length === 0) {
