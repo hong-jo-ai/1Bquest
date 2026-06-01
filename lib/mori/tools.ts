@@ -17,6 +17,7 @@ import { countThreadsByStatus } from "@/lib/cs/store";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { addTodayTask } from "@/lib/todayHub/addTask";
 import { createPurchaseOrder, restockEta } from "@/lib/purchaseOrders";
+import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
 import type { WidgetEvent, ChartPoint, MetricCard } from "@/lib/mori/widgetTypes";
 
 /** KST 기준 오늘 날짜 YYYY-MM-DD. */
@@ -110,6 +111,23 @@ export const TOOL_DEFS: Anthropic.Tool[] = [
         },
       },
       required: ["period"],
+    },
+  },
+  {
+    name: "query_ads",
+    description:
+      "메타 광고 실적을 직접 조회한다(계정 단위, 실시간). 지출·노출·클릭·CTR·구매·ROAS. " +
+      "'왜 주문이 없지?/광고 어때?/오늘 광고 돌고 있어?' 같은 질문에 추측 전에 이 도구로 확인하라. " +
+      "노출·지출 0이면 광고 미집행, 노출은 있는데 구매 0이면 전환 문제로 진단한다.",
+    input_schema: {
+      type: "object",
+      properties: {
+        period: {
+          type: "string",
+          enum: ["today", "yesterday", "last_7d"],
+          description: "조회 기간. 기본 today.",
+        },
+      },
     },
   },
   {
@@ -387,6 +405,34 @@ function proposeOwnerTelegram(input: any): { resultText: string; widget?: Widget
   };
 }
 
+/** 메타 광고 실적 직접 조회 — 오늘/어제/최근7일. */
+async function queryAds(input: any): Promise<{ resultText: string }> {
+  const today = todayKstDate();
+  let since = today;
+  let until = today;
+  let label = "오늘";
+  if (input.period === "yesterday") {
+    const y = new Date(Date.now() + 9 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    since = until = y;
+    label = "어제";
+  } else if (input.period === "last_7d") {
+    since = new Date(Date.now() + 9 * 60 * 60 * 1000 - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    label = "최근 7일";
+  }
+
+  const ad = await fetchAdSummary(since, until);
+  if (!ad.ok) return { resultText: `(광고 조회 실패: ${ad.error})` };
+  if (ad.spend === 0 && ad.impressions === 0) {
+    return { resultText: `${label} 광고: 지출·노출 0 — 광고가 집행되지 않고 있습니다(중단/예산소진/심사반려 가능성).` };
+  }
+  return {
+    resultText:
+      `${label} 광고 — 지출 ${won(ad.spend)} · 노출 ${ad.impressions.toLocaleString("ko-KR")} · ` +
+      `클릭 ${ad.clicks.toLocaleString("ko-KR")} · CTR ${ad.ctr.toFixed(2)}% · ` +
+      `구매 ${ad.purchases}건 · 광고매출 ${won(ad.purchaseValue)} · ROAS ${ad.roas.toFixed(2)}`,
+  };
+}
+
 /** tool_use 실행. 알 수 없는 툴은 안전 메시지 반환. */
 export async function executeTool(
   name: string,
@@ -398,6 +444,7 @@ export async function executeTool(
     if (name === "clear_widgets") return { resultText: "위젯을 비웠습니다.", widget: { kind: "clear" } };
     if (name === "query_inventory") return await queryInventory(input);
     if (name === "query_sales") return await querySales(input);
+    if (name === "query_ads") return await queryAds(input);
     if (name === "add_task") return await addTask(input);
     if (name === "create_purchase_order") return await createPO(input);
     if (name === "propose_owner_telegram") return proposeOwnerTelegram(input);

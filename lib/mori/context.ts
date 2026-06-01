@@ -13,6 +13,7 @@ import { countThreadsByStatus } from "@/lib/cs/store";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { loadTodayTasks } from "@/lib/mori/tasks";
+import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
 
@@ -69,21 +70,42 @@ async function salesAndInventoryBlock(): Promise<{ sales: string; inventory: str
   return { sales, inventory };
 }
 
-/** 광고 — MADS 대기 중 추천 요약 (ROAS·예산·액션). */
+/** 광고 — 오늘 실적(지출·노출·클릭·전환) + MADS 대기 추천. */
 async function adsBlock(): Promise<string> {
-  const recs = await listRecommendations("pending", 50);
-  if (recs.length === 0) return "MADS 대기 중 추천 없음 (현재 손 댈 광고세트 없음)";
-  return recs
-    .slice(0, 8)
-    .map((r) => {
+  const today = todayKstDate();
+  const [ad, recs] = await Promise.all([
+    fetchAdSummary(today, today),
+    listRecommendations("pending", 50).catch(() => []),
+  ]);
+
+  const lines: string[] = [];
+  // 오늘 광고 집행 현황 — "왜 주문이 없지?" 진단의 1차 근거
+  if (!ad.ok) {
+    lines.push(`오늘 광고: (불러오기 실패: ${ad.error})`);
+  } else if (ad.spend === 0 && ad.impressions === 0) {
+    lines.push("오늘 광고: 지출·노출 0 — 광고가 거의 안 돌고 있음(중단/예산소진/심사반려 가능성). 주문 없음의 1차 의심 지점.");
+  } else {
+    lines.push(
+      `오늘 광고: 지출 ${won(ad.spend)} · 노출 ${ad.impressions.toLocaleString("ko-KR")} · ` +
+        `클릭 ${ad.clicks.toLocaleString("ko-KR")} · CTR ${ad.ctr.toFixed(2)}% · ` +
+        `구매 ${ad.purchases}건 · ROAS ${ad.roas.toFixed(2)}`,
+    );
+  }
+
+  // MADS 대기 추천
+  if (recs.length === 0) {
+    lines.push("MADS 대기 추천 없음 (현재 손 댈 광고세트 없음)");
+  } else {
+    for (const r of recs.slice(0, 8)) {
       const adset = r.adset?.name ?? "광고세트";
       const roas = r.trust?.roas7d;
       const roasStr = typeof roas === "number" ? `ROAS ${roas.toFixed(2)}` : "";
       const cur = r.currentBudget != null ? won(r.currentBudget) : "?";
       const rec = r.recommendedBudget != null ? won(r.recommendedBudget) : "?";
-      return `· [${r.actionType}] ${adset} — ${roasStr} / 일예산 ${cur}→${rec} : ${r.reason}`;
-    })
-    .join("\n");
+      lines.push(`· [${r.actionType}] ${adset} — ${roasStr} / 일예산 ${cur}→${rec} : ${r.reason}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 /** CS — 미답/대기 건수. */
@@ -143,7 +165,7 @@ export async function assembleDashboardContext(): Promise<string> {
 ## 매출
 ${si.sales}
 
-## 광고 (MADS 추천 대기열)
+## 광고 (오늘 실적 + MADS 추천)
 ${ads}
 
 ## CS
