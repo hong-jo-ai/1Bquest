@@ -38,18 +38,21 @@ async function salesAndInventoryBlock(): Promise<{ sales: string; inventory: str
     `오늘 잘나가는 상품: ${top}`,
   ].join("\n");
 
-  // 단종 처리된 SKU는 품절·위험이어도 알림 대상에서 제외
+  // 전 품목 재고를 재고 적은 순으로 주입한다.
+  // (예전엔 품절·위험만 넣어, 정상 재고 제품이 컨텍스트에서 빠져 모리가 "재고 없음"이라 오답했다.)
   const entries = await loadInventoryFromStore().catch((): Record<string, { discontinued?: boolean }> => ({}));
   const discontinued = new Set(Object.keys(entries).filter((s) => entries[s].discontinued));
-  const lowStock = d.inventory.filter(
-    (i) => (i.status === "soldout" || i.status === "critical") && !discontinued.has(i.sku),
-  );
-  const inventory =
-    lowStock.length === 0
-      ? "품절·위험 재고 없음 (전 상품 양호)"
-      : lowStock
-          .map((i) => `${i.name} (${i.sku}): 재고 ${i.stock} [${i.status}]`)
-          .join("\n");
+  const sorted = [...d.inventory].sort((a, b) => a.stock - b.stock);
+  const soldout = sorted.filter((i) => i.status === "soldout" && !discontinued.has(i.sku)).length;
+  const critical = sorted.filter((i) => i.status === "critical" && !discontinued.has(i.sku)).length;
+  const head = `총 ${sorted.length}품목 · 품절 ${soldout} · 위험 ${critical} (단종 제외)`;
+  const lines = sorted
+    .map((i) => {
+      const tags = [i.status, discontinued.has(i.sku) ? "단종" : ""].filter(Boolean).join(", ");
+      return `${i.name} (${i.sku}): 재고 ${i.stock} [${tags}]`;
+    })
+    .join("\n");
+  const inventory = sorted.length === 0 ? "(상품 없음)" : `${head}\n${lines}`;
 
   return { sales, inventory };
 }
@@ -134,7 +137,7 @@ ${ads}
 ## CS
 ${cs}
 
-## 재고 (품절·위험)
+## 재고 (전 품목 · 재고 적은 순)
 ${si.inventory}
 
 ## 발주 (재입고 예정)
