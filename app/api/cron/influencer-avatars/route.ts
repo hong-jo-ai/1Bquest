@@ -10,19 +10,26 @@
  */
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { captureAvatarToStorage } from "@/lib/influencer/avatarResolve";
+import { captureAvatarToStorage, AVATAR_BUCKET } from "@/lib/influencer/avatarResolve";
 import { INFLUENCERS_KEY, type StoredInfluencer } from "@/lib/influencer/register";
 
 export const runtime = "edge";
 
 const MAX_PER_RUN = 25;
 
-/** 영구 저장이 필요한가 — 비었거나 라이브 프록시 경로면 채운다. 사용자가 박은 http URL은 보존. */
+// 우리가 영구 저장한 사진의 public URL 마커. 이 경로가 아니면 신뢰할 수 없는 값으로 본다.
+const STORAGE_MARKER = `/storage/v1/object/public/${AVATAR_BUCKET}/`;
+
+/**
+ * 영구 저장이 필요한가 — 우리 Storage URL이 아니면 모두 (재)수집한다.
+ * 비었거나(미수집), 라이브 프록시 경로(/api/...)거나, 추출 과정에서 잘못 박힌 외부 URL
+ * (프로필 페이지·바이오 링크·example.com 같은 placeholder)은 깨진 이미지를 유발하고
+ * 기존엔 self-heal에서 누락됐다 → 우리 Storage 사본으로 덮어써 복구한다.
+ */
 function needsCapture(profileImage: string): boolean {
   const v = (profileImage || "").trim();
   if (!v) return true;
-  if (v.startsWith("/")) return true; // /api/influencer/avatar?... 같은 라이브 프록시
-  return false;
+  return !v.includes(STORAGE_MARKER);
 }
 
 export async function GET(req: NextRequest) {

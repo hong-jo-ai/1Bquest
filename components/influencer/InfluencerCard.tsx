@@ -39,6 +39,9 @@ const ALL_STATUSES: InfluencerStatus[] = [
   "rejected",
 ];
 
+// 카드에 바로 노출하는 빠른 상태 전환 (발굴→검토→승인/보류 트리아지). 전체 10단계는 ... 메뉴에 유지.
+const QUICK_STATUSES: InfluencerStatus[] = ["reviewing", "approved", "rejected"];
+
 function getProfileUrl(
   platform: Influencer["platform"],
   handle: string,
@@ -310,6 +313,36 @@ export default function InfluencerCard({
             )}
           </div>
         </div>
+      </div>
+
+      {/* 빠른 액션: 카드에서 바로 상태 전환 + 삭제 (... 메뉴 안 거치게) */}
+      <div className="flex items-center gap-1.5 px-3 sm:px-4 pb-3 -mt-0.5">
+        {QUICK_STATUSES.map((s) => {
+          const cfg = STATUS_CONFIG[s];
+          const isCurrent = s === inf.status;
+          return (
+            <button
+              key={s}
+              onClick={() => handleStatusChange(s)}
+              aria-pressed={isCurrent}
+              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
+                isCurrent
+                  ? `${cfg.bg} ${cfg.color} ${cfg.border} font-semibold`
+                  : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {cfg.label}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => onDelete(inf.id)}
+          className="shrink-0 p-1.5 text-zinc-300 hover:text-red-500 dark:text-zinc-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+          aria-label="삭제"
+          title="삭제"
+        >
+          <Trash2 size={15} />
+        </button>
       </div>
     </div>
   );

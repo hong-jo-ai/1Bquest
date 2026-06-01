@@ -40,7 +40,6 @@ export interface RegisterArgs {
   categories?: string[];
   priority?: string;
   notes?: string;
-  profile_image?: string;
 }
 
 export type RegisterResult =
@@ -96,10 +95,10 @@ export const REGISTER_INFLUENCER_TOOL = {
         description:
           "메모 — 왜 등록했는지, 어떤 점이 매력적이었는지 등 (선택)",
       },
-      profile_image: {
-        type: "string",
-        description: "프로필 이미지 URL (선택)",
-      },
+      // profile_image는 받지 않는다. 스크린샷에서 추출한 URL은 프로필 페이지/바이오
+      // 링크/환각 placeholder인 경우가 많아 깨진 이미지를 유발했다. 프로필 사진은
+      // handle 기반 파이프라인(/api/influencer/avatar 프록시 + influencer-avatars cron)이
+      // 전담해 Supabase Storage에 영구 저장한다.
     },
     required: ["platform", "handle", "name"],
   },
@@ -189,7 +188,8 @@ export async function registerInfluencer(
     platform,
     handle,
     name,
-    profileImage: String(args.profile_image || ""),
+    // 빈 값으로 시작 → handle 기반 아바타 파이프라인이 채운다 (위 스키마 주석 참고).
+    profileImage: "",
     followers: Number.isFinite(Number(args.followers))
       ? Number(args.followers)
       : 0,

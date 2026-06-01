@@ -156,10 +156,9 @@ export default function InfluencerManager() {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("인플루언서를 삭제하시겠습니까?\n삭제된 계정은 앞으로 발굴 시 자동 제외됩니다.")) {
-      deleteInfluencer(id);
-      reload();
-    }
+    // 확인창 없이 바로 삭제 (카드의 빠른 삭제 버튼 UX). 삭제된 계정은 발굴 시 자동 제외.
+    deleteInfluencer(id);
+    reload();
   };
 
   const handleBulkDownloadCSV = () => {
