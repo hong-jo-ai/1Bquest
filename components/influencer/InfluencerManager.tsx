@@ -17,6 +17,7 @@ import ConversationModal from "./ConversationModal";
 import ShippingModal from "./ShippingModal";
 import AddInfluencerModal from "./AddInfluencerModal";
 import DiscoverModal from "./DiscoverModal";
+import SendQueueModal from "./SendQueueModal";
 
 // 파이프라인 탭 정의
 type TabId = "all" | InfluencerStatus;
@@ -59,6 +60,7 @@ export default function InfluencerManager() {
   const [search, setSearch]           = useState("");
   const [showAdd, setShowAdd]           = useState(false);
   const [showDiscover, setShowDiscover] = useState(false);
+  const [showQueue, setShowQueue]       = useState(false);
   const [conversationTarget, setConversationTarget] = useState<Influencer | null>(null);
   const [shippingTarget, setShippingTarget]         = useState<Influencer | null>(null);
 
@@ -205,6 +207,20 @@ export default function InfluencerManager() {
               <span className="hidden sm:inline">시트 불러오기</span>
               <span className="sm:hidden">시트</span>
             </button>
+            {filtered.length > 0 && (
+              <button
+                onClick={() => setShowQueue(true)}
+                className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold bg-zinc-800 hover:bg-zinc-700 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-colors"
+                title="현재 목록을 순서대로 빠르게 발송"
+              >
+                <Send size={15} />
+                <span className="hidden sm:inline">순차 발송</span>
+                <span className="sm:hidden">발송</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white/20">
+                  {filtered.length}
+                </span>
+              </button>
+            )}
             <button
               onClick={reload}
               className="p-2 sm:p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
@@ -362,6 +378,13 @@ export default function InfluencerManager() {
           influencer={shippingTarget}
           onUpdate={reload}
           onClose={() => { setShippingTarget(null); reload(); }}
+        />
+      )}
+      {showQueue && (
+        <SendQueueModal
+          queue={filtered}
+          onUpdate={reload}
+          onClose={() => { setShowQueue(false); reload(); }}
         />
       )}
     </div>

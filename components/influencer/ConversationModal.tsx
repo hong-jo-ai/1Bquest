@@ -20,8 +20,9 @@ interface Props {
   onClose: () => void;
 }
 
+// 프로필이 아니라 DM 작성창으로 바로 진입하는 딥링크.
 const INSTAGRAM_DM_URL = (handle: string) =>
-  `https://www.instagram.com/${handle}/`;
+  `https://ig.me/m/${handle.replace(/^@/, "")}`;
 
 export default function ConversationModal({ influencer, onUpdate, onClose }: Props) {
   const [inf, setInf]           = useState<Influencer>(influencer);
@@ -325,7 +326,7 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
               className="flex-1 flex items-center justify-center gap-1.5 bg-zinc-800 dark:bg-zinc-100 hover:bg-zinc-700 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-semibold rounded-xl py-3 text-sm transition-colors"
             >
               {copied ? <CheckCircle size={15} className="text-emerald-400" /> : <Copy size={15} />}
-              {copied ? "복사됨!" : "복사 + Instagram 열기"}
+              {copied ? "복사됨!" : "복사 + DM 열기"}
               <ExternalLink size={12} className="opacity-50" />
             </button>
             <button
