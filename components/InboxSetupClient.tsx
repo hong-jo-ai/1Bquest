@@ -266,7 +266,7 @@ export default function InboxSetupClient() {
                     </div>
                     <div className="text-xs text-zinc-500 truncate">
                       {account?.display_name ??
-                        (brand === "paulvice" ? "@plve_seoul" : "@harriotwatches")}
+                        (brand === "paulvice" ? "@paulvice.kr" : "@harriotwatches")}
                     </div>
                     {account?.error_message && (
                       <div className="text-[10px] text-red-500 mt-0.5 truncate">
