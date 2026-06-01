@@ -66,7 +66,9 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
 
   const handleMarkSent = () => {
     addMessage(inf.id, { direction: "outgoing", content: templateText, isTemplate: true });
-    if (inf.status === "approved") {
+    // DM발송 이전(발굴·검토·승인) 어느 단계에서 보내든 'DM발송'으로 진행.
+    // 이미 답장수신 이후 단계면 되돌리지 않는다.
+    if (["discovered", "reviewing", "approved"].includes(inf.status)) {
       updateInfluencer(inf.id, { status: "dm_sent" });
     }
     setSentConfirmed(true);
