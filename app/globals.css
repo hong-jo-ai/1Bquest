@@ -36,20 +36,3 @@ html {
   overflow-x: clip;
 }
 
-/* ── MORI 구체 시각화 ─────────────────────────────────────────────────────
- * Week 1 placeholder (Week 5에 React Three Fiber 디스토션 셰이더로 교체 예정).
- * 대기=호흡 펄스, 생각 중=내부 입자 회전, 말하는 중=골드 발화. */
-@keyframes mori-breathe {
-  0%, 100% { transform: scale(1);     opacity: 0.92; }
-  50%      { transform: scale(1.045); opacity: 1;    }
-}
-@keyframes mori-spin {
-  to { transform: rotate(360deg); }
-}
-@keyframes mori-gold {
-  0%, 100% { opacity: 0;   }
-  50%      { opacity: 0.7; }
-}
-.mori-orb        { animation: mori-breathe 4s ease-in-out infinite; }
-.mori-particles  { animation: mori-spin 6s linear infinite; }
-.mori-gold-pulse { animation: mori-gold 1.6s ease-in-out infinite; }

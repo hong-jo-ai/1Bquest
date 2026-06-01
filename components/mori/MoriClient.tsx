@@ -1,17 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import { Mic, Square, Volume2, VolumeX } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
-// R3F 구체는 클라 전용(WebGL) — SSR 끄고, 로딩 동안 CSS 플레이스홀더.
-const MoriOrb = dynamic(() => import("@/components/mori/MoriOrb"), {
-  ssr: false,
-  loading: () => <OrbFallback />,
-});
-
+// 응답 단계 상태(입력 잠금·상태표시용). 시각 구체는 제거됨 — 피드백은 말풍선/플레이스홀더/하단 점.
 type OrbState = "idle" | "listening" | "thinking" | "speaking";
 
 interface Msg {
@@ -31,7 +25,6 @@ export default function MoriClient({
   const [widgets, setWidgets] = useState<MoriWidget[]>([]);
   const [input, setInput] = useState("");
   const [orb, setOrb] = useState<OrbState>("idle");
-  const [gold, setGold] = useState(false);
   const [speakOn, setSpeakOn] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
   const [arming, setArming] = useState(false); // 마이크 잡는 중(첫 클릭만 잠깐)
@@ -51,7 +44,6 @@ export default function MoriClient({
   const toggleMicRef = useRef<() => void>(() => {});
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const ampRef = useRef<number>(0); // 0~1 마이크 진폭 → 구체
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -103,8 +95,6 @@ export default function MoriClient({
         const res = await fetch("/api/mori/pulse", { cache: "no-store" });
         const json = await res.json();
         if (!alive || !json?.utterances?.length) return;
-        setGold(true);
-        setTimeout(() => alive && setGold(false), 3500);
         try {
           for (const u of json.utterances as { text: string }[]) {
             setMessages((cur) => [...cur, { role: "assistant", content: u.text }]);
@@ -141,8 +131,8 @@ export default function MoriClient({
     await chatSend(t, source);
   }
 
-  // ── 음성 출력: OpenAI 신경망 TTS → Web Audio 재생 + 실제 진폭 → 구체 ──
-  function playWithAmplitude(ab: ArrayBuffer): Promise<void> {
+  // ── 음성 출력: OpenAI 신경망 TTS → Web Audio 재생 ──
+  function playAudio(ab: ArrayBuffer): Promise<void> {
     return new Promise(async (resolve) => {
       try {
         const AC = window.AudioContext || (window as any).webkitAudioContext;
@@ -152,29 +142,9 @@ export default function MoriClient({
         const buf = await ac.decodeAudioData(ab);
         const src = ac.createBufferSource();
         src.buffer = buf;
-        const analyser = ac.createAnalyser();
-        analyser.fftSize = 256;
-        src.connect(analyser);
-        analyser.connect(ac.destination);
-        const data = new Uint8Array(analyser.frequencyBinCount);
+        src.connect(ac.destination);
         setOrb("speaking");
-        let raf = 0;
-        const loop = () => {
-          analyser.getByteTimeDomainData(data);
-          let s = 0;
-          for (const v of data) {
-            const x = (v - 128) / 128;
-            s += x * x;
-          }
-          ampRef.current = Math.min(1, Math.sqrt(s / data.length) * 3.2);
-          raf = requestAnimationFrame(loop);
-        };
-        loop();
-        src.onended = () => {
-          cancelAnimationFrame(raf);
-          ampRef.current = 0;
-          resolve();
-        };
+        src.onended = () => resolve();
         src.start();
       } catch {
         resolve();
@@ -186,7 +156,7 @@ export default function MoriClient({
     const t = text.trim();
     if (!t || !speakRef.current) return;
     const ab = await synthTts(t);
-    if (ab) await playWithAmplitude(ab);
+    if (ab) await playAudio(ab);
   }
 
   async function chatSend(text: string, source: "voice" | "text" = "text") {
@@ -214,7 +184,7 @@ export default function MoriClient({
       for (;;) {
         if (i < audioJobs.length) {
           const ab = await audioJobs[i++];
-          if (ab) await playWithAmplitude(ab);
+          if (ab) await playAudio(ab);
         } else if (streamDone) {
           break;
         } else {
@@ -360,7 +330,7 @@ export default function MoriClient({
   }
   toggleMicRef.current = toggleMic; // 전역 스페이스바 핸들러가 항상 최신 클로저 호출
 
-  // 마이크 진폭(RMS) → ampRef. 재사용 analyser를 RAF로 샘플(React 리렌더 없음).
+  // 마이크 진폭(RMS) → 입력창 막대(meterRef). 재사용 analyser를 RAF로 샘플(React 리렌더 없음).
   function startAmplitude() {
     const analyser = analyserRef.current;
     if (!analyser) return;
@@ -373,7 +343,6 @@ export default function MoriClient({
         sum += x * x;
       }
       const amp = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
-      ampRef.current = amp;
       // 마이크 버튼 옆 막대를 직접 갱신(상태 없이) — "내 말이 들어가고 있다" 확인용.
       if (meterRef.current) meterRef.current.style.transform = `scaleX(${0.06 + amp * 0.94})`;
       rafRef.current = requestAnimationFrame(loop);
@@ -383,7 +352,6 @@ export default function MoriClient({
   function stopAmplitude() {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
-    ampRef.current = 0;
     if (meterRef.current) meterRef.current.style.transform = "scaleX(0.06)";
   }
 
@@ -428,31 +396,29 @@ export default function MoriClient({
 
   return (
     <div className="relative flex h-[100dvh] flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
-      {/* 상단 — 구체 + 위젯(우). 채팅 스레드에 자리를 내주려 축소. */}
-      <div className="relative flex flex-[34] items-center justify-center overflow-hidden">
-        <MoriOrb state={orb} ampRef={ampRef} gold={gold} dimmed={mode === "quiet"} />
-        <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
-      </div>
-
-      {/* 채팅 스레드 — 메인에서 바로 스크롤(카톡/텔레그램식 말풍선). 별도 기록 화면 불필요. */}
-      <div ref={flowRef} className="flex-[66] space-y-3 overflow-y-auto px-4 pb-2 sm:px-10">
-        {total === 0 ? (
-          <p className="pt-6 text-center text-sm text-[#7c8aa0]">
-            모리입니다. 마이크(또는 스페이스바)로 말하거나 입력하세요.
-          </p>
-        ) : (
-          messages.map((m, i) => (
-            <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  m.role === "user" ? "bg-[#F4E4C1]/15 text-[#E8ECF0]" : "bg-white/[0.06] text-[#cdd7e6]"
-                }`}
-              >
-                {m.content || (orb === "thinking" ? "…" : "")}
+      {/* 대화 스레드 — 화면 전체를 차지하고 카톡/텔레그램식으로 스크롤.
+          모리가 띄운 위젯은 우상단 고정 오버레이(대화는 그 아래로 스크롤). */}
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={flowRef} className="h-full space-y-3 overflow-y-auto px-4 pb-2 pt-4 sm:px-10">
+          {total === 0 ? (
+            <p className="pt-6 text-center text-sm text-[#7c8aa0]">
+              모리입니다. 마이크(또는 스페이스바)로 말하거나 입력하세요.
+            </p>
+          ) : (
+            messages.map((m, i) => (
+              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                <div
+                  className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    m.role === "user" ? "bg-[#F4E4C1]/15 text-[#E8ECF0]" : "bg-white/[0.06] text-[#cdd7e6]"
+                  }`}
+                >
+                  {m.content || (orb === "thinking" ? "…" : "")}
+                </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
+        <MoriWidgets widgets={widgets} onClear={() => setWidgets([])} />
       </div>
 
       {/* 입력 + 음성 */}
@@ -589,19 +555,4 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.onerror = reject;
     r.readAsDataURL(blob);
   });
-}
-
-// R3F 로딩/비WebGL 폴백 — 콜드 플래티넘 호흡 구체(CSS).
-function OrbFallback() {
-  return (
-    <div className="pointer-events-none" style={{ width: "min(16vh, 16vw)", height: "min(16vh, 16vw)" }}>
-      <div
-        className="mori-orb h-full w-full rounded-full"
-        style={{
-          background: "radial-gradient(circle at 35% 30%, #E8ECF0 0%, #B8C4D0 38%, #4a5a72 72%, #1A2332 100%)",
-          boxShadow: "0 0 80px 10px rgba(184,196,208,0.25), inset 0 0 60px rgba(26,35,50,0.6)",
-        }}
-      />
-    </div>
-  );
 }
