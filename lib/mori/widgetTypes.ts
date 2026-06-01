@@ -40,5 +40,29 @@ export interface ClearWidget {
   kind: "clear";
 }
 
-export type MoriWidget = ChartWidget | CardsWidget;
+/**
+ * 실행 확인 카드 — 되돌리기 어려운 작업(예: 사장님 텔레그램)은 모리가 바로 실행하지 않고
+ * 이 카드를 띄운다. 사용자가 [실행]을 직접 눌러야 /api/mori/action 으로 실제 실행된다.
+ * (음성/LLM 단독으로는 실행 불가 — 사람 클릭이 트리거)
+ */
+export interface ConfirmAction {
+  /** 실행 엔드포인트가 분기하는 액션 종류 (화이트리스트) */
+  type: "telegram_owner";
+  /** 실행에 필요한 파라미터(서버가 type별로 해석) */
+  params: Record<string, unknown>;
+}
+
+export interface ConfirmWidget {
+  id: string;
+  kind: "confirm";
+  /** 카드 제목 (예: "사장님 텔레그램 보내기") */
+  title: string;
+  /** 미리보기 본문 — 실제로 실행될 내용 */
+  detail: string;
+  /** 실행 버튼 라벨 (기본 "실행") */
+  confirmLabel?: string;
+  action: ConfirmAction;
+}
+
+export type MoriWidget = ChartWidget | CardsWidget | ConfirmWidget;
 export type WidgetEvent = MoriWidget | ClearWidget;

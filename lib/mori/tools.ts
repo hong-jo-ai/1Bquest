@@ -15,7 +15,12 @@ import { getDashboardData, type DashboardData } from "@/lib/cafe24Data";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
+import { addTodayTask } from "@/lib/todayHub/addTask";
+import { createPurchaseOrder, restockEta } from "@/lib/purchaseOrders";
 import type { WidgetEvent, ChartPoint, MetricCard } from "@/lib/mori/widgetTypes";
+
+/** KST 기준 오늘 날짜 YYYY-MM-DD. */
+const todayKst = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
 const newId = () => `w_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -105,6 +110,55 @@ export const TOOL_DEFS: Anthropic.Tool[] = [
         },
       },
       required: ["period"],
+    },
+  },
+  {
+    name: "add_task",
+    description:
+      "대시보드 '오늘 할일'에 새 할 일을 추가한다(즉시 반영, 되돌리기 쉬움). " +
+      "사용자가 '~할일에 넣어줘 / 잊지 않게 적어줘'라고 하면 사용. 카테고리는 디자인/광고/CS/콘텐츠/운영/기타.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "할 일 제목 한 줄. 필수." },
+        category: {
+          type: "string",
+          description: "디자인/광고/CS/콘텐츠/운영/기타 중 하나. 모르면 생략(기타).",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "create_purchase_order",
+    description:
+      "발주(재입고 주문)를 기록한다(내부 기록, 되돌리기 쉬움 — 실제 공급사 주문이 나가는 건 아님). " +
+      "사용자가 '~ N개 발주 넣어줘/발주 기록해줘'라고 하면 사용. 발주일 미지정 시 오늘로 기록.",
+    input_schema: {
+      type: "object",
+      properties: {
+        product_name: { type: "string", description: "제품명. 필수." },
+        qty: { type: "number", description: "발주 수량. 필수." },
+        supplier: { type: "string", description: "공급사 (예: 나비스트). 선택." },
+        unit_price: { type: "number", description: "단가(원). 선택." },
+        order_date: { type: "string", description: "발주일 YYYY-MM-DD. 미지정 시 오늘." },
+        notes: { type: "string", description: "메모. 선택." },
+      },
+      required: ["product_name", "qty"],
+    },
+  },
+  {
+    name: "propose_owner_telegram",
+    description:
+      "사장님(대표) 본인 텔레그램으로 메모/알림을 보낸다. 되돌릴 수 없으므로 바로 보내지 않고, " +
+      "화면에 미리보기 확인 카드를 띄운다 — 사장님이 [실행]을 눌러야 실제 전송된다. " +
+      "고객이 아니라 대표 본인에게만 간다. 리마인더·요약을 본인 폰으로 받고 싶어 할 때 사용.",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "보낼 메시지 본문. 필수." },
+      },
+      required: ["text"],
     },
   },
 ];
@@ -279,6 +333,51 @@ async function querySales(input: any): Promise<{ resultText: string }> {
   return { resultText: `최근 ${n}일 일별\n${rows}\n합계 ${won(sum)}` };
 }
 
+/** 할일 추가 — 즉시 실행(되돌리기 쉬움). */
+async function addTask(input: any): Promise<{ resultText: string }> {
+  const r = await addTodayTask({ title: input.title, category: input.category });
+  return { resultText: r.ok ? r.message : `(할일 추가 실패: ${r.error})` };
+}
+
+/** 발주 기록 — 즉시 실행(내부 기록, 되돌리기 쉬움). */
+async function createPO(input: any): Promise<{ resultText: string }> {
+  const name = String(input.product_name ?? "").trim();
+  const qty = Math.round(Number(input.qty)) || 0;
+  if (!name) return { resultText: "(발주 실패: 제품명 없음)" };
+  if (qty <= 0) return { resultText: "(발주 실패: 수량은 1 이상)" };
+  const po = await createPurchaseOrder({
+    productName: name,
+    qty,
+    supplier: input.supplier ? String(input.supplier) : undefined,
+    unitPrice: input.unit_price != null ? Number(input.unit_price) : undefined,
+    orderDate: typeof input.order_date === "string" && input.order_date ? input.order_date : todayKst(),
+    notes: input.notes ? String(input.notes) : undefined,
+  });
+  const eta = restockEta(po);
+  const sup = po.supplier ? ` (${po.supplier})` : "";
+  return {
+    resultText: `발주 기록 완료: ${po.productName} ${po.qty}개${sup}. 발주일 ${po.orderDate}, 입고 예정 ${eta.start}~${eta.end}.`,
+  };
+}
+
+/** 사장님 텔레그램 — 바로 보내지 않고 확인 카드를 띄운다. 실제 전송은 [실행] 클릭(→ /api/mori/action). */
+function proposeOwnerTelegram(input: any): { resultText: string; widget?: WidgetEvent } {
+  const text = String(input.text ?? "").trim();
+  if (!text) return { resultText: "(보낼 내용이 비어 있습니다)" };
+  return {
+    resultText:
+      "사장님 텔레그램으로 보낼 내용을 확인 카드로 띄웠습니다. 카드의 [실행]을 누르면 전송됩니다(아직 안 보냄).",
+    widget: {
+      id: newId(),
+      kind: "confirm",
+      title: "사장님 텔레그램 보내기",
+      detail: text,
+      confirmLabel: "전송",
+      action: { type: "telegram_owner", params: { text } },
+    },
+  };
+}
+
 /** tool_use 실행. 알 수 없는 툴은 안전 메시지 반환. */
 export async function executeTool(
   name: string,
@@ -290,6 +389,9 @@ export async function executeTool(
     if (name === "clear_widgets") return { resultText: "위젯을 비웠습니다.", widget: { kind: "clear" } };
     if (name === "query_inventory") return await queryInventory(input);
     if (name === "query_sales") return await querySales(input);
+    if (name === "add_task") return await addTask(input);
+    if (name === "create_purchase_order") return await createPO(input);
+    if (name === "propose_owner_telegram") return proposeOwnerTelegram(input);
     return { resultText: `(알 수 없는 툴: ${name})` };
   } catch (e: any) {
     return { resultText: `(툴 실행 실패: ${e?.message ?? "오류"})` };

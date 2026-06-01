@@ -11,8 +11,9 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { X } from "lucide-react";
-import type { MoriWidget, ChartWidget, CardsWidget } from "@/lib/mori/widgetTypes";
+import { useState } from "react";
+import { X, Send, Check, Loader2 } from "lucide-react";
+import type { MoriWidget, ChartWidget, CardsWidget, ConfirmWidget } from "@/lib/mori/widgetTypes";
 
 /**
  * 모리가 Tool Use로 띄운 위젯 패널.
@@ -38,7 +39,83 @@ export default function MoriWidgets({
           <X size={14} />
         </button>
       </div>
-      {widgets.map((w) => (w.kind === "chart" ? <Chart key={w.id} w={w} /> : <Cards key={w.id} w={w} />))}
+      {widgets.map((w) =>
+        w.kind === "chart" ? (
+          <Chart key={w.id} w={w} />
+        ) : w.kind === "confirm" ? (
+          <Confirm key={w.id} w={w} />
+        ) : (
+          <Cards key={w.id} w={w} />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** 되돌리기 어려운 작업의 확인 카드. [실행] 클릭 시에만 /api/mori/action 으로 실제 실행. */
+function Confirm({ w }: { w: ConfirmWidget }) {
+  const [state, setState] = useState<"idle" | "running" | "done" | "error" | "cancelled">("idle");
+  const [msg, setMsg] = useState("");
+
+  const run = async () => {
+    setState("running");
+    try {
+      const res = await fetch("/api/mori/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: w.action.type, params: w.action.params }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) {
+        setState("done");
+        setMsg(j.message ?? "실행했습니다.");
+      } else {
+        setState("error");
+        setMsg(j.error ?? `실패 (HTTP ${res.status})`);
+      }
+    } catch (e: any) {
+      setState("error");
+      setMsg(e?.message ?? "네트워크 오류");
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-amber-200">
+        <Send size={12} /> {w.title}
+      </p>
+      <p className="mb-2.5 whitespace-pre-wrap rounded-lg bg-black/20 px-3 py-2 text-xs leading-relaxed text-[#cdd7e6]">
+        {w.detail}
+      </p>
+
+      {state === "idle" && (
+        <div className="flex gap-2">
+          <button
+            onClick={run}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-400/90 py-2 text-xs font-semibold text-[#1A2332] transition hover:bg-amber-300"
+          >
+            <Send size={12} /> {w.confirmLabel ?? "실행"}
+          </button>
+          <button
+            onClick={() => setState("cancelled")}
+            className="rounded-lg border border-white/10 px-3 py-2 text-xs text-[#9fb0c8] transition hover:bg-white/5"
+          >
+            취소
+          </button>
+        </div>
+      )}
+      {state === "running" && (
+        <p className="flex items-center gap-1.5 text-xs text-amber-200">
+          <Loader2 size={12} className="animate-spin" /> 실행 중…
+        </p>
+      )}
+      {state === "done" && (
+        <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-300">
+          <Check size={13} /> {msg}
+        </p>
+      )}
+      {state === "error" && <p className="text-xs font-medium text-red-300">⚠️ {msg}</p>}
+      {state === "cancelled" && <p className="text-xs text-[#7c8aa0]">취소됨 — 전송하지 않았습니다.</p>}
     </div>
   );
 }
