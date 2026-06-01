@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   X, Send, Copy, ExternalLink, CheckCircle, MessageSquare,
-  ChevronDown, ArrowRight, Sparkles,
+  ChevronDown, ArrowRight, Sparkles, Loader2,
 } from "lucide-react";
 import type { Influencer } from "@/lib/influencerStorage";
 import {
@@ -31,6 +31,8 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
   const [showTemplates, setShowTemplates] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sentConfirmed, setSentConfirmed] = useState(false);
+  const [apiState, setApiState] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [apiNotice, setApiNotice] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 추천 템플릿 자동 세팅
@@ -74,6 +76,36 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
     setSentConfirmed(true);
     setTimeout(() => setSentConfirmed(false), 2000);
     reload();
+  };
+
+  // 답장이 온 단계에서만 API 직접 발송 가능(인스타 24h 답장 윈도우 정책).
+  const canApiSend = ["replied", "negotiating", "confirmed", "shipped", "posted"].includes(inf.status);
+
+  const handleApiSend = async () => {
+    if (apiState === "sending" || !templateText.trim()) return;
+    setApiState("sending");
+    setApiNotice("");
+    try {
+      const res = await fetch("/api/influencer/send-dm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handle: inf.handle, text: templateText }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) {
+        addMessage(inf.id, { direction: "outgoing", content: templateText, isTemplate: true });
+        setApiState("done");
+        setApiNotice(`${j.account ?? "@paulvice.kr"}로 전송됐어요.`);
+        setTimeout(() => setApiState("idle"), 2500);
+        reload();
+      } else {
+        setApiState("error");
+        setApiNotice(j.error ?? `전송 실패 (HTTP ${res.status})`);
+      }
+    } catch (e: any) {
+      setApiState("error");
+      setApiNotice(e?.message ?? "네트워크 오류");
+    }
   };
 
   const handleSubmitReply = () => {
@@ -250,6 +282,39 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
                 rows={5}
                 className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-3 text-xs text-zinc-700 dark:text-zinc-300 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500"
               />
+            </div>
+          )}
+
+          {/* 답장 단계: @paulvice.kr로 API 직접 발송 (복붙 없이) */}
+          {canApiSend && (
+            <div className="px-5 pb-2">
+              <button
+                onClick={handleApiSend}
+                disabled={apiState === "sending" || !templateText.trim()}
+                className={`w-full flex items-center justify-center gap-1.5 font-semibold rounded-xl py-3 text-sm transition-colors disabled:opacity-50 ${
+                  apiState === "done" ? "bg-emerald-500 text-white" : "bg-violet-600 hover:bg-violet-700 text-white"
+                }`}
+              >
+                {apiState === "sending" ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : apiState === "done" ? (
+                  <CheckCircle size={15} />
+                ) : (
+                  <Send size={15} />
+                )}
+                {apiState === "sending"
+                  ? "전송 중…"
+                  : apiState === "done"
+                  ? "전송됐어요!"
+                  : "@paulvice.kr로 바로 전송"}
+              </button>
+              {apiNotice && (
+                <p className={`mt-1.5 text-xs leading-relaxed ${apiState === "error" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  {apiState === "error" ? "⚠️ " : ""}
+                  {apiNotice}
+                </p>
+              )}
+              <p className="mt-1 text-[11px] text-zinc-400">또는 아래로 수동 발송</p>
             </div>
           )}
 
