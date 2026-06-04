@@ -45,11 +45,20 @@ const BRAND_DOT: Record<CsBrandId, string> = {
 };
 
 const DEFAULT_NOTIFY_TEMPLATE =
-  "#{이름}님, 폴바이스입니다 🙂\n" +
-  "맡겨주신 #{모델} 점검이 완료되었습니다.\n" +
-  "• 수리내용: #{수리내역}\n" +
-  "• 비용: #{비용}\n" +
-  "안내 확인 후 발송해 드리겠습니다. 감사합니다!";
+  "안녕하세요 고객님 😊 #{브랜드}입니다!\n\n" +
+  "맡겨주신 #{모델} #{수리내역} 수리가 완료되었어요 🙂\n" +
+  "발송 전 아래 내용 확인 부탁드릴게요!\n\n" +
+  "- 받으실 분 성함\n" +
+  "- 상세주소\n\n" +
+  "[수리비 안내]\n" +
+  "- 수리비 #{수리비}\n" +
+  "- 반송 택배비 #{반송비}\n" +
+  "- 합계 #{합계}\n\n" +
+  "아래 계좌로 입금 부탁드려요.\n" +
+  "우리은행 84917294402001 홍성조\n\n" +
+  "성함·주소 알려주시고 입금 확인되면 바로 발송 준비하겠습니다 😊";
+
+const DEFAULT_SHIPPING_FEE = "3000";
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ko-KR", {
@@ -512,9 +521,14 @@ function NotifyModal({
   onSent: () => void;
 }) {
   const [template, setTemplate] = useState(DEFAULT_NOTIFY_TEMPLATE);
+  const [shippingFeeInput, setShippingFeeInput] = useState(DEFAULT_SHIPPING_FEE);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+
+  const shippingFee = shippingFeeInput.trim()
+    ? Number(shippingFeeInput.replace(/[^0-9]/g, ""))
+    : null;
 
   const withPhone = targets.filter(
     (t) => t.customer_phone && t.customer_phone.trim()
@@ -523,7 +537,7 @@ function NotifyModal({
 
   // 첫 대상 미리보기
   const preview = withPhone[0]
-    ? fillTokens(template, withPhone[0])
+    ? fillTokens(template, withPhone[0], shippingFee)
     : "(연락처 있는 대상이 없습니다)";
 
   async function send() {
@@ -536,6 +550,7 @@ function NotifyModal({
         body: JSON.stringify({
           ids: withPhone.map((t) => t.id),
           template,
+          shippingFee,
         }),
       });
       const data = await res.json();
@@ -572,19 +587,36 @@ function NotifyModal({
           </div>
 
           <label className="block">
+            <span className="text-xs font-medium text-zinc-500 mb-1 block">
+              반송 택배비 (전 건 공통 적용 · #{"{합계}"} = 수리비 + 반송비)
+            </span>
+            <input
+              value={shippingFeeInput}
+              onChange={(e) => setShippingFeeInput(e.target.value)}
+              inputMode="numeric"
+              placeholder="예: 3000 (없으면 비워두기)"
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </label>
+
+          <label className="block">
             <span className="text-xs font-medium text-zinc-500 mb-1 block">메시지 (건별 자동 치환)</span>
             <textarea
               value={template}
               onChange={(e) => setTemplate(e.target.value)}
-              rows={7}
+              rows={12}
               className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
             />
           </label>
 
           <div className="text-[11px] text-zinc-400 leading-relaxed">
-            치환 토큰: <code>#{"{이름}"}</code> <code>#{"{모델}"}</code>{" "}
-            <code>#{"{증상}"}</code> <code>#{"{수리내역}"}</code>{" "}
-            <code>#{"{비용}"}</code> <code>#{"{AS번호}"}</code>
+            치환 토큰: <code>#{"{브랜드}"}</code> <code>#{"{이름}"}</code>{" "}
+            <code>#{"{모델}"}</code> <code>#{"{수리내역}"}</code>{" "}
+            <code>#{"{수리비}"}</code> <code>#{"{반송비}"}</code>{" "}
+            <code>#{"{합계}"}</code> <code>#{"{증상}"}</code>{" "}
+            <code>#{"{AS번호}"}</code>
+            <br />
+            수리비는 각 건의 입력값, 반송비·합계는 위 입력값으로 건별 계산돼요.
           </div>
 
           <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 px-3 py-2">
@@ -614,15 +646,24 @@ function NotifyModal({
   );
 }
 
-// 미리보기용 클라이언트 측 토큰 치환 (서버와 동일 규칙)
-function fillTokens(template: string, r: AsRequest): string {
-  const cost = r.repair_cost != null ? r.repair_cost.toLocaleString("ko-KR") + "원" : "별도 안내";
+// 미리보기용 클라이언트 측 토큰 치환 (서버 /api/as/notify 와 동일 규칙)
+function fillTokens(template: string, r: AsRequest, shippingFee: number | null): string {
+  const won = (n: number) => n.toLocaleString("ko-KR") + "원";
+  const repair = r.repair_cost;
+  const repairStr = repair != null ? won(repair) : "별도 안내";
+  const shipStr = shippingFee != null ? won(shippingFee) : "별도 안내";
+  const totalStr =
+    repair != null && shippingFee != null ? won(repair + shippingFee) : "별도 안내";
   return template
+    .replace(/#\{브랜드\}/g, BRAND_LABEL[r.brand])
     .replace(/#\{이름\}/g, (r.customer_name ?? "").trim() || "고객")
     .replace(/#\{모델\}/g, r.model ?? "제품")
     .replace(/#\{증상\}/g, r.symptom ?? "")
-    .replace(/#\{수리내역\}/g, r.repair_detail ?? "점검 완료")
-    .replace(/#\{비용\}/g, cost)
+    .replace(/#\{수리내역\}/g, r.repair_detail ?? "")
+    .replace(/#\{수리비\}/g, repairStr)
+    .replace(/#\{반송비\}/g, shipStr)
+    .replace(/#\{합계\}/g, totalStr)
+    .replace(/#\{비용\}/g, repairStr) // 하위호환
     .replace(/#\{AS번호\}/g, r.as_number);
 }
 

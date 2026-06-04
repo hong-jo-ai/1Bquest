@@ -7,28 +7,40 @@ import {
 import { logSmsSend } from "@/lib/sms/store";
 import { getAsRequestsByIds, updateAsRequest } from "@/lib/as/store";
 import type { AsRequest } from "@/lib/as/types";
+import { BRAND_LABEL } from "@/lib/cs/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 interface NotifyBody {
   ids: string[];
-  template: string; // #{이름} #{모델} #{증상} #{수리내역} #{비용} #{AS번호}
+  template: string; // #{브랜드}#{이름}#{모델}#{수리내역}#{수리비}#{반송비}#{합계}#{증상}#{AS번호}
+  shippingFee?: number | null; // 반송 택배비 (전 건 공통)
   isTest?: boolean;
 }
 
 /** 건별 토큰 치환 — /as 클라이언트 미리보기와 동일 규칙 */
-function fillTokens(template: string, r: AsRequest): string {
-  const cost =
-    r.repair_cost != null
-      ? r.repair_cost.toLocaleString("ko-KR") + "원"
-      : "별도 안내";
+function fillTokens(
+  template: string,
+  r: AsRequest,
+  shippingFee: number | null
+): string {
+  const won = (n: number) => n.toLocaleString("ko-KR") + "원";
+  const repair = r.repair_cost;
+  const repairStr = repair != null ? won(repair) : "별도 안내";
+  const shipStr = shippingFee != null ? won(shippingFee) : "별도 안내";
+  const totalStr =
+    repair != null && shippingFee != null ? won(repair + shippingFee) : "별도 안내";
   return template
+    .replace(/#\{브랜드\}/g, BRAND_LABEL[r.brand])
     .replace(/#\{이름\}/g, (r.customer_name ?? "").trim() || "고객")
     .replace(/#\{모델\}/g, r.model ?? "제품")
     .replace(/#\{증상\}/g, r.symptom ?? "")
-    .replace(/#\{수리내역\}/g, r.repair_detail ?? "점검 완료")
-    .replace(/#\{비용\}/g, cost)
+    .replace(/#\{수리내역\}/g, r.repair_detail ?? "")
+    .replace(/#\{수리비\}/g, repairStr)
+    .replace(/#\{반송비\}/g, shipStr)
+    .replace(/#\{합계\}/g, totalStr)
+    .replace(/#\{비용\}/g, repairStr) // 하위호환
     .replace(/#\{AS번호\}/g, r.as_number);
 }
 
@@ -47,6 +59,10 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as NotifyBody;
   const template = (body.template ?? "").trim();
+  const shippingFee =
+    typeof body.shippingFee === "number" && Number.isFinite(body.shippingFee)
+      ? body.shippingFee
+      : null;
   if (!template) {
     return Response.json({ ok: false, error: "메시지를 입력하세요" }, { status: 400 });
   }
@@ -74,7 +90,7 @@ export async function POST(req: Request) {
 
   const messages = targets.map((t) => ({
     to: t.customer_phone as string,
-    text: fillTokens(template, t),
+    text: fillTokens(template, t, shippingFee),
   }));
 
   const outcome = await sendMany(messages);
@@ -102,7 +118,7 @@ export async function POST(req: Request) {
   try {
     await logSmsSend({
       messageText: template,
-      messageType: detectMessageType(fillTokens(template, targets[0])),
+      messageType: detectMessageType(fillTokens(template, targets[0], shippingFee)),
       sourceDesc: `AS 수리완료 안내 (${targets.length}건)`,
       recipientCount: targets.length,
       successCount: outcome.successCount,
