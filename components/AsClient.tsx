@@ -45,18 +45,16 @@ const BRAND_DOT: Record<CsBrandId, string> = {
 };
 
 const DEFAULT_NOTIFY_TEMPLATE =
-  "안녕하세요 고객님 😊 #{브랜드}입니다!\n\n" +
-  "맡겨주신 #{모델} #{수리내역} 수리가 완료되었어요 🙂\n" +
+  "안녕하세요 #{이름} 고객님 #{브랜드}입니다!\n\n" +
+  "맡겨주신 #{모델} #{수리내역} 수리가 완료되었어요.\n" +
   "발송 전 아래 내용 확인 부탁드릴게요!\n\n" +
-  "- 받으실 분 성함\n" +
-  "- 상세주소\n\n" +
   "[수리비 안내]\n" +
   "- 수리비 #{수리비}\n" +
   "- 반송 택배비 #{반송비}\n" +
   "- 합계 #{합계}\n\n" +
   "아래 계좌로 입금 부탁드려요.\n" +
   "우리은행 84917294402001 홍성조\n\n" +
-  "성함·주소 알려주시고 입금 확인되면 바로 발송 준비하겠습니다 😊";
+  "입금 확인되면 바로 발송 준비하겠습니다";
 
 const DEFAULT_SHIPPING_FEE = "3000";
 
@@ -656,7 +654,7 @@ function fillTokens(template: string, r: AsRequest, shippingFee: number | null):
     repair != null && shippingFee != null ? won(repair + shippingFee) : "별도 안내";
   return template
     .replace(/#\{브랜드\}/g, BRAND_LABEL[r.brand])
-    .replace(/#\{이름\}/g, (r.customer_name ?? "").trim() || "고객")
+    .replace(/#\{이름\}/g, (r.customer_name ?? "").trim())
     .replace(/#\{모델\}/g, r.model ?? "제품")
     .replace(/#\{증상\}/g, r.symptom ?? "")
     .replace(/#\{수리내역\}/g, r.repair_detail ?? "")

@@ -33,7 +33,7 @@ function fillTokens(
     repair != null && shippingFee != null ? won(repair + shippingFee) : "별도 안내";
   return template
     .replace(/#\{브랜드\}/g, BRAND_LABEL[r.brand])
-    .replace(/#\{이름\}/g, (r.customer_name ?? "").trim() || "고객")
+    .replace(/#\{이름\}/g, (r.customer_name ?? "").trim())
     .replace(/#\{모델\}/g, r.model ?? "제품")
     .replace(/#\{증상\}/g, r.symptom ?? "")
     .replace(/#\{수리내역\}/g, r.repair_detail ?? "")
