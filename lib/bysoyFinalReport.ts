@@ -40,6 +40,10 @@ export interface BysoyFinalReport {
   silverHoldQty: number;       // 실버 배송 대기 수량
   restockOrigin: string;       // 당초 재입고일
   restockDelayed: string;      // 지연된 출고일
+  // 정산 (수수료) — 인플루언서(바이소이/이소연) 지급분
+  commissionRate: number | null;  // 수수료율 (%) — gb_campaigns 또는 opts 에서
+  commissionAmount: number;        // 지급 수수료 (= 순매출 × rate)
+  netToPaulvice: number;           // 폴바이스 귀속 (= 순매출 − 수수료)
 }
 
 function krw(n: number): string { return n.toLocaleString("ko-KR") + "원"; }
@@ -61,9 +65,23 @@ function baseModel(opt: string): string {
 
 export async function buildBysoyFinalReport(
   token: string,
-  opts: { restockOrigin?: string; restockDelayed?: string } = {},
+  opts: { restockOrigin?: string; restockDelayed?: string; commissionRate?: number } = {},
 ): Promise<BysoyFinalReport> {
   const db = getCsSupabase();
+
+  // 정산 수수료율: opts 우선, 없으면 gb_campaigns 의 @bysoy 캠페인에서 조회.
+  let commissionRate: number | null = opts.commissionRate ?? null;
+  if (commissionRate == null) {
+    const { data: camp } = await db
+      .from("gb_campaigns")
+      .select("commission_rate, commission_type")
+      .ilike("influencer_handle", "%bysoy%")
+      .maybeSingle();
+    if (camp?.commission_type === "rate" && camp.commission_rate != null) {
+      commissionRate = Number(camp.commission_rate);
+    }
+  }
+
   const { data: row } = await db.from("kv_store").select("data").eq("key", BYSOY_KV_KEY).maybeSingle();
   const consolidated = row?.data as
     | { createdAt?: string; productNo?: number; productCode?: string; productName?: string }
@@ -160,6 +178,9 @@ export async function buildBysoyFinalReport(
     silverHoldOrders: silverHoldOrders.size, silverHoldQty,
     restockOrigin: opts.restockOrigin ?? "5월 29일",
     restockDelayed: opts.restockDelayed ?? "6월 4일",
+    commissionRate,
+    commissionAmount: commissionRate != null ? Math.round(totalRevenue * commissionRate / 100) : 0,
+    netToPaulvice: commissionRate != null ? totalRevenue - Math.round(totalRevenue * commissionRate / 100) : totalRevenue,
   };
 }
 
@@ -285,8 +306,33 @@ export async function renderBysoyFinalReportPdf(r: BysoyFinalReport): Promise<Bu
     doc.moveDown(1);
   }
 
-  // ── 에끌라 오벌 실버 배송 안내 ──
-  {
+  // ── 정산 (인플루언서 수수료) ──
+  if (r.commissionRate != null) {
+    sectionTitle("정산 — 바이소이(이소연) 수수료");
+    const boxY3 = doc.y;
+    const boxH = 92;
+    doc.rect(M, boxY3, tableW, boxH).fill("#ECFDF5");
+    doc.rect(M, boxY3, 4, boxH).fill("#059669");
+    const lineY = (i: number) => boxY3 + 14 + i * 19;
+    const labelX = M + 16;
+    const valX = M + tableW - 16;
+    const row = (i: number, label: string, val: string, bold = false) => {
+      doc.font("KR").fontSize(10).fillColor("#065F46").text(label, labelX, lineY(i));
+      doc.font(bold ? "KR-Bold" : "KR").fontSize(bold ? 12 : 10).fillColor("#064E3B")
+        .text(val, M, lineY(i) - (bold ? 1 : 0), { width: tableW - 16, align: "right" });
+    };
+    row(0, "순매출 (정산 기준)", krw(r.revenue));
+    row(1, `정산 수수료율`, `${r.commissionRate}%`);
+    row(2, "바이소이 지급 수수료", krw(r.commissionAmount), true);
+    row(3, "폴바이스 귀속 매출", krw(r.netToPaulvice));
+    doc.y = boxY3 + boxH + 8;
+    doc.font("KR").fontSize(9).fillColor("#94A3B8")
+      .text(`※ 수수료 = 순매출 ${krw(r.revenue)} × ${r.commissionRate}% (반품·취소 제외, 교환 포함).`, M);
+    doc.moveDown(1);
+  }
+
+  // ── 에끌라 오벌 실버 배송 안내 (보류 물량이 남아있을 때만) ──
+  if (r.silverHoldQty > 0) {
     const boxY2 = doc.y;
     const boxH = 96;
     doc.rect(M, boxY2, tableW, boxH).fill("#FEF2F2");
@@ -304,10 +350,13 @@ export async function renderBysoyFinalReportPdf(r: BysoyFinalReport): Promise<Bu
   }
 
   // ── 푸터 ──
+  const footer = r.silverHoldQty > 0
+    ? "본 자료는 카페24 결제완료 주문 기준이며 취소·반품 건은 매출에서 제외됩니다. " +
+      "실버 잔여 물량 배송 완료 시점에 최종(2차) 정산 자료를 전달드립니다."
+    : "본 자료는 카페24 결제완료 주문 기준이며 취소·반품 건은 매출에서 제외됩니다. " +
+      "잔여 배송보류 물량이 없어 본 자료로 공구 정산을 마감합니다.";
   doc.fillColor("#94A3B8").font("KR").fontSize(9).text(
-    "본 자료는 카페24 결제완료 주문 기준이며 취소·반품 건은 매출에서 제외됩니다. " +
-    "실버 잔여 물량 배송 완료 시점에 최종(2차) 정산 자료를 전달드립니다.",
-    M, doc.page.height - 64, { width: tableW },
+    footer, M, doc.page.height - 64, { width: tableW },
   );
 
   doc.end();
