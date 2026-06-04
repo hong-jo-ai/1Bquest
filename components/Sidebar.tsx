@@ -13,6 +13,7 @@ import {
   AtSign,
   Gem,
   Inbox,
+  Wrench,
   ShoppingBag,
   Wallet,
   Brain,
@@ -33,6 +34,7 @@ import {
 type AppPage =
   | "dashboard"
   | "inbox"
+  | "as"
   | "inventory"
   | "jewelry"
   | "influencer"
@@ -55,6 +57,7 @@ const NAV_ITEMS: {
   { href: "/finance", label: "재무 관리", icon: Wallet, page: "finance" },
   { href: "/channel-pricing", label: "채널 가격", icon: Tags, page: "pricing" },
   { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
+  { href: "/as", label: "AS 수리 추적", icon: Wrench, page: "as" },
   { href: "/sms", label: "고객 안내 SMS", icon: MessageSquare, page: "sms" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
@@ -70,6 +73,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/finance": "finance",
   "/channel-pricing": "pricing",
   "/inbox": "inbox",
+  "/as": "as",
   "/sms": "sms",
   "/inventory": "inventory",
   "/jewelry-clearance": "jewelry",
@@ -126,6 +130,7 @@ export default function Sidebar({
       finance: 0,
       pricing: 0,
       inbox: 0,
+      as: 0,
       sms: 0,
       inventory: 0,
       jewelry: 0,

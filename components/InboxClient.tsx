@@ -26,7 +26,9 @@ import {
   Menu as MenuIcon,
   X,
   RotateCcw,
+  Wrench,
 } from "lucide-react";
+import AsIntakeForm from "@/components/AsIntakeForm";
 import type {
   CsThread,
   CsMessage,
@@ -161,6 +163,7 @@ export default function InboxClient() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const [asFormOpen, setAsFormOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -528,6 +531,7 @@ export default function InboxClient() {
               onReopen={() => reopenThread("미답변으로 되돌림")}
               onNotCs={() => markNotCs(false)}
               onBlockSender={() => markNotCs(true)}
+              onCreateAs={() => setAsFormOpen(true)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-zinc-400">
@@ -745,6 +749,7 @@ export default function InboxClient() {
             onReopen={() => reopenThread("미답변으로 되돌림")}
             onNotCs={() => markNotCs(false)}
             onBlockSender={() => markNotCs(true)}
+            onCreateAs={() => setAsFormOpen(true)}
           />
         )}
       </section>
@@ -769,6 +774,22 @@ export default function InboxClient() {
       <div className={selectedId ? "hidden md:contents" : "contents"}>
         <BackToHubButton />
       </div>
+
+      {asFormOpen && detail && (
+        <AsIntakeForm
+          initial={{
+            brand: detail.thread.brand,
+            customerName: detail.thread.customer_name,
+            channel: CHANNEL_LABEL[detail.thread.channel],
+            csThreadId: detail.thread.id,
+          }}
+          onClose={() => setAsFormOpen(false)}
+          onCreated={() => {
+            setAsFormOpen(false);
+            showToast("AS 접수 등록됨 — /as 에서 추적");
+          }}
+        />
+      )}
     </>
   );
 }
@@ -860,6 +881,7 @@ function ThreadDetailView({
   onReopen,
   onNotCs,
   onBlockSender,
+  onCreateAs,
 }: {
   detail: ThreadDetail;
   replyText: string;
@@ -875,6 +897,7 @@ function ThreadDetailView({
   onReopen: () => void;
   onNotCs: () => void;
   onBlockSender: () => void;
+  onCreateAs: () => void;
 }) {
   const { thread, messages } = detail;
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
@@ -918,6 +941,14 @@ function ThreadDetailView({
           </div>
           {/* 액션 버튼 — 좁은 폭에서는 아이콘만 보이도록 (lg 이상에서 라벨 표시) */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={onCreateAs}
+              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300 flex items-center gap-1"
+              title="이 대화로 AS 수리 접수 만들기"
+            >
+              <Wrench size={12} />
+              <span className="hidden lg:inline">AS 접수</span>
+            </button>
             {thread.status === "archived" ? (
               <button
                 onClick={onReopen}
@@ -1587,6 +1618,7 @@ function MobileThreadDetailView({
   onReopen,
   onNotCs,
   onBlockSender,
+  onCreateAs,
 }: {
   detail: ThreadDetail;
   context: ContextData | null;
@@ -1606,6 +1638,7 @@ function MobileThreadDetailView({
   onReopen: () => void;
   onNotCs: () => void;
   onBlockSender: () => void;
+  onCreateAs: () => void;
 }) {
   const { thread, messages } = detail;
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
@@ -1660,6 +1693,16 @@ function MobileThreadDetailView({
               onClick={() => setActionsOpen(false)}
             />
             <div className="absolute top-12 right-2 z-50 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 py-1 w-48 animate-in fade-in slide-in-from-top-1">
+              <button
+                onClick={() => {
+                  setActionsOpen(false);
+                  onCreateAs();
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-violet-700 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-900/20"
+              >
+                <Wrench size={14} />
+                AS 수리 접수
+              </button>
               {thread.status === "archived" ? (
                 <button
                   onClick={() => {
