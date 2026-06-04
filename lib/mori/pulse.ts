@@ -21,6 +21,7 @@ import {
 } from "@/lib/mori/utteranceThresholds";
 import { assembleDashboardContext } from "@/lib/mori/context";
 import { loadTodayTasks, kstDateStr } from "@/lib/mori/tasks";
+import { listTodayEvents } from "@/lib/today-hub/calendar";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { getValidC24Token } from "@/lib/cafe24Auth";
@@ -188,7 +189,17 @@ async function detectSignals(state: PulseState): Promise<{ signals: Signal[]; ne
       const poLine = duePos.length
         ? ` / 오늘 입고예정 발주: ${duePos.map((p) => `${p.productName} ${p.qty}개`).join(", ")}`
         : "";
-      signals.push({ type: "morning_brief", key: briefKey, summary: `${taskLine}${poLine}` });
+      let calendarLine = "";
+      try {
+        const events = await listTodayEvents();
+        if (events.length > 0) {
+          calendarLine =
+            ` / 오늘 일정: ${events.slice(0, 4).map((e) => `${e.time} ${e.title}`).join(", ")}`;
+        }
+      } catch {
+        /* degrade */
+      }
+      signals.push({ type: "morning_brief", key: briefKey, summary: `${taskLine}${poLine}${calendarLine}` });
     }
 
     // ② 할일 채찍질: 오후, 미완료 할일 남아 있으면 하루 1회.

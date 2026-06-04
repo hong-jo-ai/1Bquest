@@ -11,6 +11,8 @@ export const TODAY_HUB_CALENDAR_ID = "shong@harriotwatches.com";
 
 export interface CalendarEvent {
   id:       string;
+  /** YYYY-MM-DD (KST) */
+  date:     string;
   /** "HH:MM" 또는 "종일" */
   time:     string;
   title:    string;
@@ -84,11 +86,19 @@ function kstDateStr(offsetDays = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
-function kstDayBoundsRfc3339(): { timeMin: string; timeMax: string } {
-  const today = kstDateStr(0);
+function kstDayBoundsRfc3339(offsetDays = 0): { timeMin: string; timeMax: string } {
+  const today = kstDateStr(offsetDays);
   return {
     timeMin: `${today}T00:00:00+09:00`,
     timeMax: `${today}T23:59:59+09:00`,
+  };
+}
+
+function kstRangeBoundsRfc3339(days: number): { timeMin: string; timeMax: string } {
+  const safeDays = Math.min(14, Math.max(1, Math.round(days)));
+  return {
+    timeMin: `${kstDateStr(0)}T00:00:00+09:00`,
+    timeMax: `${kstDateStr(safeDays - 1)}T23:59:59+09:00`,
   };
 }
 
@@ -101,19 +111,34 @@ function fmtKstHm(iso: string): string {
   return `${hh}:${mm}`;
 }
 
-export async function listTodayEvents(): Promise<CalendarEvent[]> {
+export interface ListCalendarEventsOptions {
+  /** today=오늘, tomorrow=내일, next_7d=오늘 포함 7일 */
+  period?: "today" | "tomorrow" | "next_7d";
+  /** Google Calendar maxResults. 기본 20, 최대 50. */
+  maxResults?: number;
+}
+
+export async function listCalendarEvents(options: ListCalendarEventsOptions = {}): Promise<CalendarEvent[]> {
   const accessToken = await getGoogleAccessTokenFromStore();
   if (!accessToken) {
     throw new Error("Google 미연결 — /analytics 에서 Google 연결 필요");
   }
 
-  const { timeMin, timeMax } = kstDayBoundsRfc3339();
+  const period = options.period ?? "today";
+  const { timeMin, timeMax } =
+    period === "tomorrow"
+      ? kstDayBoundsRfc3339(1)
+      : period === "next_7d"
+        ? kstRangeBoundsRfc3339(7)
+        : kstDayBoundsRfc3339(0);
+  const maxResults = Math.min(50, Math.max(1, Math.round(options.maxResults ?? 20)));
   const params = new URLSearchParams({
     timeMin,
     timeMax,
     singleEvents: "true",
     orderBy:      "startTime",
-    maxResults:   "20",
+    maxResults:   String(maxResults),
+    timeZone:     "Asia/Seoul",
   });
 
   const url = `${CAL_BASE}/calendars/${encodeURIComponent(TODAY_HUB_CALENDAR_ID)}/events?${params}`;
@@ -199,6 +224,7 @@ export async function listTodayEvents(): Promise<CalendarEvent[]> {
       const startIso = e.start?.dateTime ?? `${e.start?.date}T00:00:00+09:00`;
       return {
         id:       e.id,
+        date:     startIso.slice(0, 10),
         time:     isAllDay ? "종일" : fmtKstHm(startIso),
         title:    e.summary?.trim() || "(제목 없음)",
         location: (e.location ?? "").trim(),
@@ -207,4 +233,8 @@ export async function listTodayEvents(): Promise<CalendarEvent[]> {
       };
     })
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
+}
+
+export async function listTodayEvents(): Promise<CalendarEvent[]> {
+  return listCalendarEvents({ period: "today" });
 }

@@ -18,6 +18,7 @@ import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { addTodayTask } from "@/lib/todayHub/addTask";
 import { createPurchaseOrder, restockEta } from "@/lib/purchaseOrders";
 import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
+import { listCalendarEvents, TODAY_HUB_CALENDAR_ID } from "@/lib/today-hub/calendar";
 import type { WidgetEvent, ChartPoint, MetricCard } from "@/lib/mori/widgetTypes";
 
 /** KST 기준 오늘 날짜 YYYY-MM-DD. */
@@ -126,6 +127,23 @@ export const TOOL_DEFS: Anthropic.Tool[] = [
           type: "string",
           enum: ["today", "yesterday", "last_7d"],
           description: "조회 기간. 기본 today.",
+        },
+      },
+    },
+  },
+  {
+    name: "query_calendar",
+    description:
+      "대표님의 Google Calendar 일정을 직접 조회한다. " +
+      "사용자가 '오늘 일정/내일 일정/이번 주 일정/캘린더 봐줘/몇 시 약속 있어?'처럼 일정을 물으면 사용. " +
+      "기간을 특정하지 않으면 today로 조회한다. 조회 결과는 KST 기준이다.",
+    input_schema: {
+      type: "object",
+      properties: {
+        period: {
+          type: "string",
+          enum: ["today", "tomorrow", "next_7d"],
+          description: "조회 기간. today=오늘, tomorrow=내일, next_7d=오늘 포함 7일. 기본 today.",
         },
       },
     },
@@ -433,6 +451,35 @@ async function queryAds(input: any): Promise<{ resultText: string }> {
   };
 }
 
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function dateLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00+09:00`);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${date.slice(5).replace("-", "/")}(${WEEKDAYS[kst.getUTCDay()]})`;
+}
+
+/** Google Calendar 직접 조회 — 오늘/내일/최근 7일. */
+async function queryCalendar(input: unknown): Promise<{ resultText: string }> {
+  const obj = input && typeof input === "object" ? (input as { period?: unknown }) : {};
+  const period =
+    obj.period === "tomorrow" ? "tomorrow" : obj.period === "next_7d" ? "next_7d" : "today";
+  const events = await listCalendarEvents({ period, maxResults: period === "next_7d" ? 50 : 20 });
+  const label = period === "tomorrow" ? "내일" : period === "next_7d" ? "이번 7일" : "오늘";
+  if (events.length === 0) {
+    return { resultText: `${label} 일정 없음. 대상 캘린더: ${TODAY_HUB_CALENDAR_ID}` };
+  }
+
+  const rows = events.map((e) => {
+    const loc = e.location ? ` @ ${e.location}` : "";
+    const day = period === "next_7d" ? `${dateLabel(e.date)} ` : "";
+    return `${day}${e.time} ${e.title}${loc}`;
+  });
+  return {
+    resultText: `${label} 일정 (${events.length}건, KST)\n${rows.join("\n")}`,
+  };
+}
+
 /** tool_use 실행. 알 수 없는 툴은 안전 메시지 반환. */
 export async function executeTool(
   name: string,
@@ -445,6 +492,7 @@ export async function executeTool(
     if (name === "query_inventory") return await queryInventory(input);
     if (name === "query_sales") return await querySales(input);
     if (name === "query_ads") return await queryAds(input);
+    if (name === "query_calendar") return await queryCalendar(input);
     if (name === "add_task") return await addTask(input);
     if (name === "create_purchase_order") return await createPO(input);
     if (name === "propose_owner_telegram") return proposeOwnerTelegram(input);

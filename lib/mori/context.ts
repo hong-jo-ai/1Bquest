@@ -14,6 +14,7 @@ import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { loadTodayTasks } from "@/lib/mori/tasks";
 import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
+import { listTodayEvents } from "@/lib/today-hub/calendar";
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
 
@@ -136,6 +137,19 @@ async function tasksBlock(): Promise<string> {
   return `${head}\n${list}`;
 }
 
+/** 오늘 캘린더 일정 — Google Calendar 읽기 전용. */
+async function calendarBlock(): Promise<string> {
+  const events = await listTodayEvents();
+  if (events.length === 0) return "오늘 등록된 일정 없음";
+  return events
+    .slice(0, 12)
+    .map((e) => {
+      const loc = e.location ? ` @ ${e.location}` : "";
+      return `· ${e.time} ${e.title}${loc}`;
+    })
+    .join("\n");
+}
+
 async function safe(label: string, fn: () => Promise<string>): Promise<string> {
   try {
     return await fn();
@@ -149,7 +163,7 @@ async function safe(label: string, fn: () => Promise<string>): Promise<string> {
  * 매출/재고는 한 번에 묶어 처리하고, 나머지는 병렬.
  */
 export async function assembleDashboardContext(): Promise<string> {
-  const [si, ads, cs, po, tasks] = await Promise.all([
+  const [si, ads, cs, po, tasks, calendar] = await Promise.all([
     salesAndInventoryBlock().catch((e: any) => {
       const fail = `(불러오기 실패: ${e?.message ?? "알 수 없는 오류"})`;
       return { sales: fail, inventory: fail };
@@ -158,6 +172,7 @@ export async function assembleDashboardContext(): Promise<string> {
     safe("cs", csBlock),
     safe("po", purchaseBlock),
     safe("tasks", tasksBlock),
+    safe("calendar", calendarBlock),
   ]);
 
   return `# 지금 대시보드 상태 (실시간 — 폴바이스 기준)
@@ -178,5 +193,8 @@ ${si.inventory}
 ${po}
 
 ## 오늘 할일
-${tasks}`;
+${tasks}
+
+## 오늘 일정 (Google Calendar)
+${calendar}`;
 }

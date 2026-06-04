@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import MoriFloatingLauncher from "@/components/mori/MoriFloatingLauncher";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-zinc-50 dark:bg-zinc-950">
         {children}
+        <MoriFloatingLauncher />
       </body>
     </html>
   );
