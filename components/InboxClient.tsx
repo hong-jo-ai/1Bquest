@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import BackToHubButton from "@/components/BackToHubButton";
 import {
   Mail,
   AtSign,
@@ -405,9 +404,17 @@ export default function InboxClient() {
       <div className="md:hidden flex flex-col h-[calc(100dvh-56px)] bg-zinc-50 dark:bg-zinc-950">
         {/* Top App Bar */}
         <div className="flex-shrink-0 flex items-center gap-1 px-3 h-12 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800">
+          <Link
+            href="/"
+            className="grid size-9 -ml-1 shrink-0 place-items-center rounded-lg text-zinc-700 active:bg-zinc-100 dark:text-zinc-300 dark:active:bg-zinc-800"
+            aria-label="대시보드로 돌아가기"
+            title="대시보드로 돌아가기"
+          >
+            <ArrowLeft size={18} />
+          </Link>
           <button
             onClick={() => setMobileFilterOpen(true)}
-            className="p-2 -ml-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800"
+            className="p-2 rounded-lg active:bg-zinc-100 dark:active:bg-zinc-800"
             aria-label="필터 열기"
           >
             <MenuIcon size={20} className="text-zinc-700 dark:text-zinc-300" />
@@ -768,12 +775,6 @@ export default function InboxClient() {
           {toast}
         </div>
       )}
-
-      {/* 대시보드 복귀 버튼: 모바일 상세 오버레이가 열린 동안에는 답장 입력창과
-          겹치지 않도록 숨기고, 그 외에는 항상 노출한다. */}
-      <div className={selectedId ? "hidden md:contents" : "contents"}>
-        <BackToHubButton />
-      </div>
 
       {asFormOpen && detail && (
         <AsIntakeForm

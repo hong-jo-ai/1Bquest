@@ -24,6 +24,7 @@ export interface PublishedPost {
   publishedAt: string;  // ISO
   postId: string;       // 원본 저장 글 ID
   brand: BrandId;
+  source?: "auto" | "scheduled" | "manual";
 }
 
 function getSupabase() {
@@ -144,6 +145,44 @@ export async function dequeuePostByBrand(brand: BrandId): Promise<QueuedPost | n
   return pick;
 }
 
+export async function dequeueScheduledPostByBrand(brand: BrandId): Promise<QueuedPost | null> {
+  const queue = await getPostQueue();
+  const now = Date.now();
+
+  for (const p of queue) {
+    if (!p.brand) p.brand = "paulvice";
+  }
+
+  const scheduledReady = queue.filter(
+    (p) => p.brand === brand && p.scheduledAt && new Date(p.scheduledAt).getTime() <= now,
+  );
+  if (scheduledReady.length === 0) return null;
+
+  scheduledReady.sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime());
+  const pick = scheduledReady[0];
+  const idx = queue.indexOf(pick);
+  queue.splice(idx, 1);
+  await savePostQueue(queue);
+  return pick;
+}
+
+export async function dequeueAutoPostByBrand(brand: BrandId): Promise<QueuedPost | null> {
+  const queue = await getPostQueue();
+
+  for (const p of queue) {
+    if (!p.brand) p.brand = "paulvice";
+  }
+
+  const candidates = queue.filter((p) => p.brand === brand && !p.scheduledAt);
+  if (candidates.length === 0) return null;
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  const idx = queue.indexOf(pick);
+  queue.splice(idx, 1);
+  await savePostQueue(queue);
+  return pick;
+}
+
 // ── 게시 로그 ──────────────────────────────────────────────────────────────
 
 export async function getPublishedLog(): Promise<PublishedPost[]> {
@@ -214,7 +253,10 @@ export async function shouldPostNow(brand: BrandId, currentHourUTC: number): Pro
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
   const todayPosts = log.filter(
-    (p) => p.brand === brand && new Date(p.publishedAt).getTime() >= todayStart.getTime()
+    (p) =>
+      p.brand === brand &&
+      p.source !== "scheduled" &&
+      new Date(p.publishedAt).getTime() >= todayStart.getTime()
   );
   if (todayPosts.length >= target) return false;
 

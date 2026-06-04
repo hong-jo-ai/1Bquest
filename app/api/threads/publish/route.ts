@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
       publishedAt: new Date().toISOString(),
       postId: "",
       brand: b,
+      source: "manual",
     });
 
     return Response.json({
@@ -115,8 +116,9 @@ export async function POST(req: NextRequest) {
       threadId: result.id,
       username: me.username,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
     console.error("[Threads publish]", e);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: message }, { status: 500 });
   }
 }

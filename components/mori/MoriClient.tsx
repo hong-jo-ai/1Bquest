@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { Mic, Square, Volume2, VolumeX } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
@@ -12,14 +13,22 @@ interface Msg {
   role: "user" | "assistant";
   content: string;
 }
+
+type AudioContextWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
 export default function MoriClient({
   mode,
   nowKst,
   initialHistory = [],
+  mobileHeaderOffset = false,
 }: {
   mode: "office" | "quiet";
   nowKst: string;
   initialHistory?: Msg[];
+  mobileHeaderOffset?: boolean;
 }) {
   const [messages, setMessages] = useState<Msg[]>(initialHistory);
   const [widgets, setWidgets] = useState<MoriWidget[]>([]);
@@ -135,7 +144,8 @@ export default function MoriClient({
   function playAudio(ab: ArrayBuffer): Promise<void> {
     return new Promise(async (resolve) => {
       try {
-        const AC = window.AudioContext || (window as any).webkitAudioContext;
+        const AC = window.AudioContext || (window as AudioContextWindow).webkitAudioContext;
+        if (!AC) throw new Error("AudioContext를 사용할 수 없습니다.");
         const ac = playCtxRef.current ?? new AC();
         playCtxRef.current = ac;
         if (ac.state === "suspended") await ac.resume();
@@ -162,7 +172,6 @@ export default function MoriClient({
   async function chatSend(text: string, source: "voice" | "text" = "text") {
     setMessages((cur) => [...cur, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setOrb("thinking");
-    let full = "";
     // 문장이 완성될 때마다 즉시 합성 시작(병렬), 완성 순서대로 재생 → 첫 문장부터 빨리 말함.
     const audioJobs: Promise<ArrayBuffer | null>[] = [];
     let sentBuf = "";
@@ -221,7 +230,6 @@ export default function MoriClient({
               if (ttsOn) setOrb("speaking"); // 무음(타이핑)일 땐 thinking 유지 → 입력 잠금만
               firstToken = false;
             }
-            full += payload.text;
             sentBuf += payload.text;
             pushSentences(false); // 완성된 문장 즉시 합성 시작
             setMessages((cur) => {
@@ -237,11 +245,12 @@ export default function MoriClient({
           }
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "오류가 발생했습니다.";
       setMessages((cur) => {
         const copy = [...cur];
         const last = copy[copy.length - 1];
-        const msg = `⚠️ ${e?.message ?? "오류가 발생했습니다."}`;
+        const msg = `⚠️ ${message}`;
         if (last?.role === "assistant" && last.content === "") copy[copy.length - 1] = { ...last, content: msg };
         else copy.push({ role: "assistant", content: msg });
         return copy;
@@ -275,7 +284,8 @@ export default function MoriClient({
     streamRef.current = stream;
     // 진폭 분석 그래프를 이 스트림에 한 번만 연결.
     try {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const AC = window.AudioContext || (window as AudioContextWindow).webkitAudioContext;
+      if (!AC) throw new Error("AudioContext를 사용할 수 없습니다.");
       const ac = audioCtxRef.current ?? new AC();
       audioCtxRef.current = ac;
       if (ac.state === "suspended") await ac.resume();
@@ -385,17 +395,26 @@ export default function MoriClient({
         return;
       }
       await handleUserText(text, "voice");
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "네트워크 오류";
       setTranscribing(false);
       setOrb("idle");
-      flashNotice(`⚠️ 음성 전사 오류: ${e?.message ?? "네트워크 오류"}`);
+      flashNotice(`⚠️ 음성 전사 오류: ${message}`);
     }
   }
 
   const total = messages.length;
+  const rootStyle = mobileHeaderOffset
+    ? ({ "--mori-mobile-height": "calc(100dvh - 56px - env(safe-area-inset-top))" } as CSSProperties)
+    : undefined;
 
   return (
-    <div className="relative flex h-[100dvh] flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0]">
+    <div
+      className={`relative flex flex-col bg-gradient-to-b from-[#0d1320] via-[#11192a] to-[#0a0f1a] text-[#E8ECF0] ${
+        mobileHeaderOffset ? "h-[var(--mori-mobile-height)] md:h-[100dvh]" : "h-[100dvh]"
+      }`}
+      style={rootStyle}
+    >
       {/* 대화 스레드 — 화면 전체를 차지하고 카톡/텔레그램식으로 스크롤.
           모리가 띄운 위젯은 우상단 고정 오버레이(대화는 그 아래로 스크롤). */}
       <div className="relative flex-1 overflow-hidden">

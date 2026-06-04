@@ -2,7 +2,14 @@ export const maxDuration = 45;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
-import { dequeuePost, dequeuePostByBrand, addPublishedPost, getPostQueue, shouldPostNow } from "@/lib/threadsScheduler";
+import {
+  dequeueAutoPostByBrand,
+  dequeuePost,
+  dequeueScheduledPostByBrand,
+  addPublishedPost,
+  getPostQueue,
+  shouldPostNow,
+} from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
@@ -19,22 +26,24 @@ export async function GET(request: NextRequest) {
 
   const targetBrand = (request.nextUrl.searchParams.get("brand") ?? "") as BrandId;
 
-  // 설정에 따라 지금 게시할 시간인지 확인
+  const scheduledPost = targetBrand
+    ? await dequeueScheduledPostByBrand(targetBrand)
+    : null;
+
+  // 예약 게시가 없을 때만 자동게시 설정에 따라 지금 게시할 시간인지 확인
   if (targetBrand) {
-    const currentHourUTC = new Date().getUTCHours();
-    const should = await shouldPostNow(targetBrand, currentHourUTC);
-    if (!should) {
+    if (!scheduledPost && !(await shouldPostNow(targetBrand, new Date().getUTCHours()))) {
       return NextResponse.json({
         success: true,
-        message: `${targetBrand}: 이 시간대에는 게시 안 함 (설정 기반)`,
+        message: `${targetBrand}: 예약 글 없음, 자동게시 시간대 아님 (설정 기반)`,
         skipped: true,
       });
     }
   }
 
-  const post = targetBrand
-    ? await dequeuePostByBrand(targetBrand)
-    : await dequeuePost();
+  const post = scheduledPost ?? (targetBrand
+    ? await dequeueAutoPostByBrand(targetBrand)
+    : await dequeuePost());
   if (!post) {
     return NextResponse.json({ success: true, message: `큐에 게시할 글 없음 (${targetBrand || "전체"})`, queueSize: 0 });
   }
@@ -108,6 +117,7 @@ export async function GET(request: NextRequest) {
       publishedAt: new Date().toISOString(),
       postId: post.id,
       brand,
+      source: post.scheduledAt ? "scheduled" : "auto",
     });
 
     const remaining = (await getPostQueue()).length;
@@ -120,8 +130,9 @@ export async function GET(request: NextRequest) {
       text: post.text.slice(0, 50) + "...",
       queueRemaining: remaining,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
     console.error(`[Cron:threads-autopost] ${brand}`, e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
