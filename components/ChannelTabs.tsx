@@ -23,7 +23,7 @@ export default function ChannelTabs({
     : CHANNELS;
 
   return (
-    <div className="min-w-0 flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+    <div className="min-w-0 flex items-center gap-1.5 overflow-x-auto rounded-2xl bg-zinc-100/70 p-1.5 dark:bg-zinc-800/70">
       {channelsToShow.map((ch) => {
         const isActive = activeChannel === ch.id;
         const isUploadable = UPLOADABLE_CHANNELS.includes(ch.id as UploadableChannel);
@@ -36,15 +36,14 @@ export default function ChannelTabs({
             key={ch.id}
             onClick={() => onChange(ch.id)}
             className={`
-              flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0
+              flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 border
               ${isActive
-                ? "bg-white dark:bg-zinc-800 shadow-sm text-zinc-900 dark:text-zinc-100 ring-2"
-                : "text-zinc-500 hover:bg-white/60 dark:hover:bg-zinc-800/60"}
+                ? "border-white bg-white text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                : "border-transparent text-zinc-500 hover:bg-white/70 hover:text-zinc-800 dark:hover:bg-zinc-900/70 dark:hover:text-zinc-200"}
             `}
-            style={isActive ? { boxShadow: `0 0 0 2px ${ch.color}` } : {}}
           >
             <span
-              className="w-2 h-2 rounded-full shrink-0"
+              className="h-2 w-2 rounded-full shrink-0"
               style={{ backgroundColor: ch.color }}
             />
             {ch.name}

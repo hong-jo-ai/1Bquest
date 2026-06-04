@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertCircle, UploadCloud, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  AlertCircle,
+  UploadCloud,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  CheckCircle2,
+  Database,
+  Layers3,
+} from "lucide-react";
 
 import ChannelTabs from "@/components/ChannelTabs";
 import ChannelComparisonChart from "@/components/ChannelComparisonChart";
@@ -76,6 +85,13 @@ const EMPTY_HISTORIES: ChannelHistories = {
   sixshop: [], naver_smartstore: [], sixshop_global: [],
 };
 
+function fmtKrwCompact(n: number): string {
+  const rounded = Math.round(n);
+  if (rounded >= 100_000_000) return `${(rounded / 100_000_000).toFixed(1)}억`;
+  if (rounded >= 10_000) return `${Math.round(rounded / 10_000).toLocaleString("ko-KR")}만`;
+  return rounded.toLocaleString("ko-KR");
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────
 interface Props {
   brand: Brand;
@@ -88,12 +104,6 @@ interface Props {
 export default function DashboardClient({ brand, cafe24Data, isAuthenticated, apiError, now }: Props) {
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
-
-  // 브랜드 변경 시 채널 선택 초기화
-  useEffect(() => {
-    setActiveChannel("all");
-    setShowUpload(false);
-  }, [brand]);
 
   // 현재 브랜드의 채널 ID 목록
   const brandChannelIds = BRAND_CHANNELS[brand];
@@ -147,9 +157,11 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
           restoredHistories[ch] = h ? JSON.parse(h) : [JSON.parse(m)];
         }
       }
-      setUploads((prev) => ({ ...prev, ...restoredUploads }));
-      setMetas((prev) => ({ ...prev, ...restoredMetas }));
-      setHistories((prev) => ({ ...prev, ...restoredHistories }));
+      queueMicrotask(() => {
+        setUploads((prev) => ({ ...prev, ...restoredUploads }));
+        setMetas((prev) => ({ ...prev, ...restoredMetas }));
+        setHistories((prev) => ({ ...prev, ...restoredHistories }));
+      });
     } catch { /* localStorage 접근 불가 시 무시 */ }
 
     // 2단계: 서버 SSOT (모든 기기에서 동일한 데이터)
@@ -280,6 +292,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   const activeMeta         = activeUploadable ? metas[activeUploadable] : null;
   const activeHistory      = activeUploadable ? histories[activeUploadable] : [];
   const activeChannelMeta  = CHANNELS.find(c => c.id === activeChannel);
+  const currentBrandMeta   = BRANDS.find((b) => b.id === brand) ?? BRANDS[0];
 
   // ChannelComparisonChart에 넘길 채널 데이터 (브랜드 채널만)
   const comparisonChannels = useMemo(() => {
@@ -310,6 +323,17 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     }
     return total;
   }, [comparisonChannels, monthPrefix]);
+
+  const overview = useMemo(() => {
+    const todayRevenue = displayData.salesSummary.today.revenue;
+    const todayOrders = displayData.salesSummary.today.orders;
+    const activeChannels = comparisonChannels.filter((c) => {
+      const revenue = c.data.dailyRevenue?.reduce((sum, d) => sum + d.revenue, 0) ?? 0;
+      return revenue > 0;
+    }).length;
+    const lowStock = displayData.inventory?.filter((i) => i.status === "soldout" || i.status === "critical").length ?? 0;
+    return { todayRevenue, todayOrders, activeChannels, lowStock };
+  }, [displayData, comparisonChannels]);
 
   return (
     <>
@@ -373,13 +397,29 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       )}
 
       {/* 메인 */}
-      <main className="w-full min-w-0 max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      <main className="w-full min-w-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.08),transparent_34%),linear-gradient(180deg,rgba(244,244,245,0.9),rgba(250,250,250,1))] px-3 py-4 dark:bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.14),transparent_34%),linear-gradient(180deg,rgba(9,9,11,1),rgba(24,24,27,1))] sm:px-6 sm:py-6">
+        <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
 
-        {/* 브랜드 스위처 */}
-        <BrandSwitcher current={brand} />
+        <DashboardOverview
+          brandName={currentBrandMeta.name}
+          activeChannelName={activeChannelMeta?.name ?? "전체"}
+          now={now}
+          todayRevenue={overview.todayRevenue}
+          todayOrders={overview.todayOrders}
+          monthRevenue={monthRevenue}
+          activeChannels={overview.activeChannels}
+          lowStock={overview.lowStock}
+        />
 
-        {/* 채널 탭 */}
-        <div className="min-w-0 bg-zinc-100/70 dark:bg-zinc-800/50 rounded-2xl p-2">
+        {/* 브랜드/채널 컨트롤 */}
+        <section className="rounded-2xl border border-zinc-200/70 bg-white/85 p-3 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80 dark:shadow-black/20 sm:p-4">
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">View</p>
+              <h2 className="mt-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">브랜드와 채널 범위</h2>
+            </div>
+            <BrandSwitcher current={brand} />
+          </div>
           <ChannelTabs
             activeChannel={activeChannel}
             onChange={ch => { setActiveChannel(ch); setShowUpload(false); }}
@@ -397,7 +437,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
               sixshop_global:   !!uploads.sixshop_global,
             }}
           />
-        </div>
+        </section>
 
         {/* 업로드 패널 — 카카오선물하기는 구글시트 sync, 그 외는 엑셀 업로드 */}
         {isUploadableActive && showUpload && activeChannelMeta && activeUploadable && (
@@ -477,13 +517,109 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
             isReal={(cafe24IsReal && !isUploadableActive) || activeHasUpload}
           />
         </CollapsibleSection>
+        </div>
       </main>
 
       {/* 푸터 */}
-      <footer className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 text-center text-xs text-zinc-300 dark:text-zinc-600">
+      <footer className="bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-300 dark:bg-zinc-900 dark:text-zinc-600 sm:px-6 sm:py-6">
         Harriot Watches · 멀티 브랜드 통합 현황
       </footer>
     </>
+  );
+}
+
+function DashboardOverview({
+  brandName,
+  activeChannelName,
+  now,
+  todayRevenue,
+  todayOrders,
+  monthRevenue,
+  activeChannels,
+  lowStock,
+}: {
+  brandName: string;
+  activeChannelName: string;
+  now: string;
+  todayRevenue: number;
+  todayOrders: number;
+  monthRevenue: number;
+  activeChannels: number;
+  lowStock: number;
+}) {
+  const stats = [
+    {
+      label: "오늘 매출",
+      value: `${fmtKrwCompact(todayRevenue)}원`,
+      sub: `주문 ${todayOrders.toLocaleString("ko-KR")}건`,
+      icon: BarChart3,
+      tone: "text-emerald-600 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/10",
+    },
+    {
+      label: "이번 달 매출",
+      value: `${fmtKrwCompact(monthRevenue)}원`,
+      sub: "선택 브랜드 기준",
+      icon: Database,
+      tone: "text-sky-600 bg-sky-50 dark:text-sky-300 dark:bg-sky-500/10",
+    },
+    {
+      label: "활성 채널",
+      value: `${activeChannels.toLocaleString("ko-KR")}개`,
+      sub: "매출 데이터 감지",
+      icon: Layers3,
+      tone: "text-violet-600 bg-violet-50 dark:text-violet-300 dark:bg-violet-500/10",
+    },
+    {
+      label: "재고 주의",
+      value: `${lowStock.toLocaleString("ko-KR")}종`,
+      sub: lowStock > 0 ? "품절·위험 포함" : "문제 없음",
+      icon: CheckCircle2,
+      tone:
+        lowStock > 0
+          ? "text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-500/10"
+          : "text-emerald-600 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/10",
+    },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-3xl border border-zinc-200/70 bg-white shadow-sm shadow-zinc-200/60 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-black/20">
+      <div className="grid gap-0 lg:grid-cols-[1.08fr_1.6fr]">
+        <div className="border-b border-zinc-100 p-5 dark:border-zinc-800 sm:p-6 lg:border-b-0 lg:border-r">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400">Operations Dashboard</p>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-3xl">
+            {brandName} 운영 현황
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+            매출, 채널, 재고, 광고와 오늘 할 일을 한 화면에서 확인합니다.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+              {activeChannelName}
+            </span>
+            <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+              {now}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-px bg-zinc-100 dark:bg-zinc-800 lg:grid-cols-4">
+          {stats.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div key={s.label} className="min-w-0 bg-white p-4 dark:bg-zinc-900 sm:p-5">
+                <div className={`mb-4 flex h-9 w-9 items-center justify-center rounded-xl ${s.tone}`}>
+                  <Icon size={17} />
+                </div>
+                <p className="text-[11px] font-medium text-zinc-400">{s.label}</p>
+                <p className="mt-1 truncate text-lg font-bold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-xl">
+                  {s.value}
+                </p>
+                <p className="mt-1 truncate text-xs text-zinc-400">{s.sub}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

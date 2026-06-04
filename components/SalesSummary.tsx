@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { TrendingUp, TrendingDown, Clock, Calendar, Activity } from "lucide-react";
 import type { DailyData } from "@/lib/cafe24Data";
 
@@ -66,78 +66,70 @@ interface CardData {
   current: PeriodAgg;
   previous: PeriodAgg;
   compareLabel: string;
-  color: string;
+  accent: string;
+  iconBg: string;
   icon: React.ElementType;
 }
 
 export default function SalesSummary({ daily }: { daily: DailyData[] }) {
-  // 클라이언트 마운트 후에만 날짜 계산 — 서버/클라이언트 hydration mismatch 방지
-  // (서버 렌더 시점과 클라이언트 마운트 시점의 날짜가 자정 부근에서 다를 수 있음)
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted) {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-zinc-100 dark:bg-zinc-800/40 rounded-2xl p-3.5 sm:p-5 animate-pulse h-[140px]"
-          />
-        ))}
-      </div>
-    );
-  }
-
-  const today = kstTodayStr();
-  const yesterday = daysAgoStr(1);
-  const last7Start = daysAgoStr(6); // 오늘 포함 7일
-  const prev7End = daysAgoStr(7);
-  const prev7Start = daysAgoStr(13);
-  const last30Start = daysAgoStr(29); // 오늘 포함 30일
-  const prev30End = daysAgoStr(30);
-  const prev30Start = daysAgoStr(59);
-
-  const thisMonthStart = monthStartStr(0);
-  const dayOfMonth = todayDayOfMonth();
-  const lastMonthStart = monthStartStr(-1);
-  const lastMonthSameDay = dateAddDays(lastMonthStart, dayOfMonth - 1);
+  const [range] = useState(() => {
+    const today = kstTodayStr();
+    const lastMonthStart = monthStartStr(-1);
+    const dayOfMonth = todayDayOfMonth();
+    return {
+      today,
+      yesterday: daysAgoStr(1),
+      last7Start: daysAgoStr(6),
+      prev7End: daysAgoStr(7),
+      prev7Start: daysAgoStr(13),
+      last30Start: daysAgoStr(29),
+      prev30End: daysAgoStr(30),
+      prev30Start: daysAgoStr(59),
+      thisMonthStart: monthStartStr(0),
+      lastMonthStart,
+      lastMonthSameDay: dateAddDays(lastMonthStart, dayOfMonth - 1),
+    };
+  });
 
   const cards: CardData[] = [
     {
       label: "오늘",
-      rangeLabel: today.slice(5),
-      current: aggregate(daily, today, today),
-      previous: aggregate(daily, yesterday, yesterday),
+      rangeLabel: range.today.slice(5),
+      current: aggregate(daily, range.today, range.today),
+      previous: aggregate(daily, range.yesterday, range.yesterday),
       compareLabel: "어제 대비",
-      color: "from-violet-500 to-purple-600",
+      accent: "bg-violet-500",
+      iconBg: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
       icon: Clock,
     },
     {
       label: "최근 7일",
-      rangeLabel: `${last7Start.slice(5)} ~ ${today.slice(5)}`,
-      current: aggregate(daily, last7Start, today),
-      previous: aggregate(daily, prev7Start, prev7End),
+      rangeLabel: `${range.last7Start.slice(5)} ~ ${range.today.slice(5)}`,
+      current: aggregate(daily, range.last7Start, range.today),
+      previous: aggregate(daily, range.prev7Start, range.prev7End),
       compareLabel: "직전 7일 대비",
-      color: "from-blue-500 to-cyan-600",
+      accent: "bg-sky-500",
+      iconBg: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
       icon: Activity,
     },
     {
       label: "최근 30일",
-      rangeLabel: `${last30Start.slice(5)} ~ ${today.slice(5)}`,
-      current: aggregate(daily, last30Start, today),
-      previous: aggregate(daily, prev30Start, prev30End),
+      rangeLabel: `${range.last30Start.slice(5)} ~ ${range.today.slice(5)}`,
+      current: aggregate(daily, range.last30Start, range.today),
+      previous: aggregate(daily, range.prev30Start, range.prev30End),
       compareLabel: "직전 30일 대비",
-      color: "from-emerald-500 to-teal-600",
+      accent: "bg-emerald-500",
+      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
       icon: TrendingUp,
     },
     {
       label: "이번 달",
-      rangeLabel: `${thisMonthStart.slice(5)} ~ ${today.slice(5)}`,
-      current: aggregate(daily, thisMonthStart, today),
-      previous: aggregate(daily, lastMonthStart, lastMonthSameDay),
+      rangeLabel: `${range.thisMonthStart.slice(5)} ~ ${range.today.slice(5)}`,
+      current: aggregate(daily, range.thisMonthStart, range.today),
+      previous: aggregate(daily, range.lastMonthStart, range.lastMonthSameDay),
       compareLabel: "지난 달 동기간 대비",
-      color: "from-amber-500 to-orange-600",
+      accent: "bg-amber-500",
+      iconBg: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300",
       icon: Calendar,
     },
   ];
@@ -152,23 +144,24 @@ export default function SalesSummary({ daily }: { daily: DailyData[] }) {
         return (
           <div
             key={card.label}
-            className={`min-w-0 bg-gradient-to-br ${card.color} rounded-2xl p-3 sm:p-5 text-white shadow-lg overflow-hidden`}
+            className="relative min-w-0 overflow-hidden rounded-2xl border border-zinc-200/70 bg-white p-3 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-black/20 sm:p-5"
           >
+            <span className={`absolute inset-x-0 top-0 h-1 ${card.accent}`} />
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <div className="min-w-0">
-                <div className="text-[11px] sm:text-xs font-semibold opacity-90">
+                <div className="text-[11px] sm:text-xs font-semibold text-zinc-600 dark:text-zinc-300">
                   {card.label}
                 </div>
-                <div className="text-[9px] sm:text-[10px] opacity-60 mt-0.5 truncate">
+                <div className="text-[9px] sm:text-[10px] text-zinc-400 mt-0.5 truncate">
                   {card.rangeLabel}
                 </div>
               </div>
-              <div className="bg-white/20 rounded-xl p-1 sm:p-1.5 flex-shrink-0">
+              <div className={`rounded-xl p-1.5 flex-shrink-0 ${card.iconBg}`}>
                 <Icon size={14} />
               </div>
             </div>
 
-            <div className="text-base sm:text-2xl font-bold mb-1.5 sm:mb-2 tracking-tight leading-none tabular-nums truncate">
+            <div className="text-base sm:text-2xl font-bold mb-1.5 sm:mb-2 tracking-tight leading-none tabular-nums truncate text-zinc-950 dark:text-zinc-50">
               {fmtKrw(card.current.revenue)}
             </div>
 
@@ -179,28 +172,28 @@ export default function SalesSummary({ daily }: { daily: DailyData[] }) {
                 </span>
               ) : (
                 <>
-                  {isPositive && <TrendingUp size={11} className="opacity-95" />}
-                  {isNegative && <TrendingDown size={11} className="opacity-95" />}
+                  {isPositive && <TrendingUp size={11} className="text-emerald-500" />}
+                  {isNegative && <TrendingDown size={11} className="text-red-500" />}
                   <span
                     className={`text-[10px] sm:text-xs font-bold ${
                       isPositive
-                        ? "opacity-100"
+                        ? "text-emerald-600 dark:text-emerald-300"
                         : isNegative
-                          ? "opacity-100"
-                          : "opacity-70"
+                          ? "text-red-600 dark:text-red-300"
+                          : "text-zinc-400"
                     }`}
                   >
                     {isPositive ? "+" : ""}
                     {delta.toFixed(1)}%
                   </span>
-                  <span className="text-[10px] sm:text-xs opacity-70">
+                  <span className="text-[10px] sm:text-xs text-zinc-400">
                     {card.compareLabel}
                   </span>
                 </>
               )}
             </div>
 
-            <div className="text-[10px] sm:text-xs opacity-75">
+            <div className="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400">
               주문 {card.current.orders.toLocaleString("ko-KR")}건
             </div>
           </div>

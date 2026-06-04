@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { saveWithSync, loadFromServer } from "@/lib/syncStorage";
 import {
   Watch,
   LayoutDashboard,
@@ -84,31 +83,10 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
 };
 
 // 외부 도구 (이 앱의 라우트가 아님) — 아이맥 셀프호스팅 엔진, Cloudflare Tunnel 경유.
-// 새 탭으로 열고 progress 게이지/activePage 로직과 엮지 않는다.
+// 새 탭으로 연다.
 const EXTERNAL_ITEMS: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "https://engine.harriot.co.kr", label: "광고 소재 생성", icon: Wand2 },
 ];
-
-const PROGRESS_STEPS = [0, 20, 40, 60, 80, 100];
-const STORAGE_KEY = "paulvice_app_progress";
-
-function getProgressColor(value: number) {
-  if (value === 0) return "bg-zinc-200 dark:bg-zinc-700";
-  if (value <= 20) return "bg-red-400";
-  if (value <= 40) return "bg-orange-400";
-  if (value <= 60) return "bg-yellow-400";
-  if (value <= 80) return "bg-blue-400";
-  return "bg-emerald-400";
-}
-
-function getProgressLabel(value: number) {
-  if (value === 0) return "미시작";
-  if (value <= 20) return "초기";
-  if (value <= 40) return "진행중";
-  if (value <= 60) return "중반";
-  if (value <= 80) return "후반";
-  return "완료";
-}
 
 interface SidebarProps {
   cafe24Connected?: boolean;
@@ -123,44 +101,7 @@ export default function Sidebar({
   const activePage = HREF_TO_PAGE[pathname] ?? "dashboard";
 
   const [collapsed, setCollapsed] = useState(false);
-  const [progress, setProgress] = useState<Record<AppPage, number>>(() => {
-    const defaults: Record<AppPage, number> = {
-      dashboard: 0,
-      mori: 0,
-      finance: 0,
-      pricing: 0,
-      inbox: 0,
-      as: 0,
-      sms: 0,
-      inventory: 0,
-      jewelry: 0,
-      influencer: 0,
-      groupbuying: 0,
-      adsauto: 0,
-      threads: 0,
-    };
-    return defaults;
-  });
-  const [mounted, setMounted] = useState(false);
   const [csUnanswered, setCsUnanswered] = useState(0);
-
-  useEffect(() => {
-    // 1단계: 로컬 캐시로 즉시 복원
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setProgress((prev) => ({ ...prev, ...JSON.parse(stored) }));
-      }
-    } catch {}
-    setMounted(true);
-
-    // 2단계: 서버에서 최신값 동기화 (다른 기기에서 변경한 진척도 반영)
-    loadFromServer<Record<string, number>>(STORAGE_KEY)
-      .then((server) => {
-        if (server) setProgress((prev) => ({ ...prev, ...server }));
-      })
-      .catch(() => { /* 서버 fetch 실패 시 로컬만 사용 */ });
-  }, []);
 
   // CS 미답변 수 폴링
   useEffect(() => {
@@ -182,29 +123,7 @@ export default function Sidebar({
     };
   }, []);
 
-  const updateProgress = (page: AppPage, value: number) => {
-    setProgress((prev) => {
-      const next = { ...prev, [page]: value };
-      saveWithSync(STORAGE_KEY, next);
-      return next;
-    });
-  };
-
-  const cycleProgress = (page: AppPage) => {
-    const current = progress[page];
-    const idx = PROGRESS_STEPS.indexOf(current);
-    const next = PROGRESS_STEPS[(idx + 1) % PROGRESS_STEPS.length];
-    updateProgress(page, next);
-  };
-
-  const totalProgress = Math.round(
-    Object.values(progress).reduce((a, b) => a + b, 0) / Object.keys(progress).length
-  );
-
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // 페이지 이동 시 모바일 메뉴 닫기
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const navContent = (isMobile: boolean) => (
     <>
@@ -232,28 +151,11 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* 전체 진행률 */}
-      {(!collapsed || isMobile) && (
-        <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">전체 진행률</span>
-            <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">{mounted ? `${totalProgress}%` : "—"}</span>
-          </div>
-          <div className="w-full h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500"
-              style={{ width: mounted ? `${totalProgress}%` : "0%" }}
-            />
-          </div>
-        </div>
-      )}
-
       {/* 네비게이션 */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         <div className="space-y-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon, page }) => {
             const isActive = activePage === page;
-            const prog = progress[page];
             const badge = page === "inbox" && csUnanswered > 0 ? csUnanswered : 0;
 
             return (
@@ -263,17 +165,20 @@ export default function Sidebar({
                     href={href}
                     target={isActive ? undefined : "_blank"}
                     rel={isActive ? undefined : "noopener noreferrer"}
-                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    onClick={() => {
+                      if (isMobile) setMobileOpen(false);
+                    }}
+                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                       isActive
-                        ? "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        ? "bg-zinc-950 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950"
+                        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                     }`}
                     title={collapsed && !isMobile ? label : undefined}
                   >
                     <div className="relative">
                       <Icon
                         size={18}
-                        className={isActive ? "text-violet-600 dark:text-violet-400" : "text-zinc-400 dark:text-zinc-500"}
+                        className={isActive ? "text-white dark:text-zinc-950" : "text-zinc-400 dark:text-zinc-500"}
                       />
                       {badge > 0 && collapsed && !isMobile && (
                         <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
@@ -293,41 +198,18 @@ export default function Sidebar({
                     )}
                   </Link>
                 </div>
-
-                {/* 진행도 게이지 */}
-                {(!collapsed || isMobile) && (
-                  <div className="flex items-center gap-1.5 px-3 pb-1 mt-0.5">
-                    <button
-                      onClick={() => cycleProgress(page)}
-                      className="flex items-center gap-0.5 group/gauge"
-                      title={`${prog}% — 클릭하여 변경`}
-                    >
-                      {PROGRESS_STEPS.slice(1).map((step) => (
-                        <div
-                          key={step}
-                          className={`w-5 h-1.5 rounded-full transition-all ${
-                            prog >= step ? getProgressColor(prog) : "bg-zinc-100 dark:bg-zinc-800"
-                          } group-hover/gauge:opacity-80`}
-                        />
-                      ))}
-                    </button>
-                    <span className={`text-[10px] font-medium ml-1 ${prog === 100 ? "text-emerald-500" : prog === 0 ? "text-zinc-400" : "text-zinc-500 dark:text-zinc-400"}`}>
-                      {mounted ? `${prog}%` : "—"}
-                    </span>
-                  </div>
-                )}
               </div>
             );
           })}
 
-          {/* 외부 도구 — 새 탭, progress 게이지 없음 */}
+          {/* 외부 도구 — 새 탭 */}
           {EXTERNAL_ITEMS.map(({ href, label, icon: Icon }) => (
             <a
               key={href}
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
               title={collapsed && !isMobile ? label : undefined}
             >
               <Icon size={18} className="text-zinc-400 dark:text-zinc-500" />
