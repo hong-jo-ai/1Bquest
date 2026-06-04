@@ -780,7 +780,7 @@ function SavedPostCard({ post, onLike, onDelete, onCopy, copied, brand, onPublis
       fetch("/api/threads/queue", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, mediaUrl: undefined, mediaType: undefined }),
+        body: JSON.stringify({ id: post.id, mediaUrl: null, mediaType: null }),
       }).catch(() => {});
     }
     onLike(); // trigger reload
@@ -1091,6 +1091,13 @@ function PublishedTab({ brand }: { brand: BrandId }) {
   const [scheduleTime, setScheduleTime] = useState("");
   const [queuedPosts, setQueuedPosts] = useState<Array<{ id: string; text: string; brand: string; scheduledAt?: string }>>([]);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // 대기/예약 글 인라인 수정 상태
+  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
+  const [editQueueText, setEditQueueText] = useState("");
+  const [editQueueDate, setEditQueueDate] = useState("");
+  const [editQueueTime, setEditQueueTime] = useState("");
+  const [savingQueueId, setSavingQueueId] = useState<string | null>(null);
+  const [editQueueErr, setEditQueueErr] = useState<string | null>(null);
 
   // 인라인 글 생성 상태
   const [inlineGenTopic, setInlineGenTopic] = useState<string | null>(null);
@@ -1368,6 +1375,59 @@ function PublishedTab({ brand }: { brand: BrandId }) {
     setCancellingId(null);
   };
 
+  // ISO(UTC) → KST 입력값(yyyy-mm-dd / HH:mm). compose 의 +09:00 규칙과 대칭.
+  const isoToKstParts = (iso: string) => {
+    const k = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
+    return { date: k.toISOString().slice(0, 10), time: k.toISOString().slice(11, 16) };
+  };
+
+  // 수정 시작
+  const startEditQueued = (q: { id: string; text: string; scheduledAt?: string }) => {
+    setEditingQueueId(q.id);
+    setEditQueueText(q.text);
+    setEditQueueErr(null);
+    if (q.scheduledAt) {
+      const { date, time } = isoToKstParts(q.scheduledAt);
+      setEditQueueDate(date);
+      setEditQueueTime(time);
+    } else {
+      setEditQueueDate("");
+      setEditQueueTime("");
+    }
+  };
+
+  // 수정 저장 — 본문/예약시각 갱신. 날짜·시간 둘 다 비우면 예약 해제(자동게시).
+  const saveQueuedEdit = async (id: string) => {
+    if (!editQueueText.trim()) { setEditQueueErr("내용을 입력하세요"); return; }
+    if ((editQueueDate && !editQueueTime) || (!editQueueDate && editQueueTime)) {
+      setEditQueueErr("예약하려면 날짜와 시간을 모두 선택하세요 (둘 다 비우면 자동게시)");
+      return;
+    }
+    setSavingQueueId(id);
+    setEditQueueErr(null);
+    try {
+      const body: any = { id, text: editQueueText.trim() };
+      body.scheduledAt = editQueueDate && editQueueTime
+        ? new Date(`${editQueueDate}T${editQueueTime}:00+09:00`).toISOString()
+        : null;
+      const res = await fetch("/api/threads/queue", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "수정 실패");
+      setQueuedPosts(prev => prev.map(p =>
+        p.id === id ? { ...p, text: body.text, scheduledAt: body.scheduledAt ?? undefined } : p,
+      ));
+      setEditingQueueId(null);
+    } catch (e: any) {
+      setEditQueueErr(e.message);
+    } finally {
+      setSavingQueueId(null);
+    }
+  };
+
   // 직접 작성 → 큐 추가 (자동게시 또는 예약)
   const composeToQueue = async (scheduled?: boolean) => {
     if (!composeText.trim()) return;
@@ -1614,28 +1674,95 @@ function PublishedTab({ brand }: { brand: BrandId }) {
                 return 0;
               })
               .map((q) => (
-              <div key={q.id} className="px-4 py-3 flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2">{q.text}</p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    {q.scheduledAt ? (
-                      <span className="flex items-center gap-1 text-[11px] text-blue-500 font-medium">
-                        <Clock size={10} />
-                        {new Date(q.scheduledAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-zinc-400">자동게시 대기</span>
-                    )}
+              <div key={q.id} className="px-4 py-3">
+                {editingQueueId === q.id ? (
+                  /* ── 수정 모드 ── */
+                  <div className="space-y-2.5">
+                    <textarea
+                      value={editQueueText}
+                      onChange={(e) => setEditQueueText(e.target.value)}
+                      className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-zinc-700 dark:text-zinc-300 min-h-[80px]"
+                      rows={3}
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="date"
+                        value={editQueueDate}
+                        onChange={(e) => setEditQueueDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        className="px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-zinc-700 dark:text-zinc-300"
+                      />
+                      <input
+                        type="time"
+                        value={editQueueTime}
+                        onChange={(e) => setEditQueueTime(e.target.value)}
+                        className="px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-zinc-700 dark:text-zinc-300"
+                      />
+                      {(editQueueDate || editQueueTime) && (
+                        <button
+                          onClick={() => { setEditQueueDate(""); setEditQueueTime(""); }}
+                          className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline"
+                        >
+                          예약 해제(자동게시)
+                        </button>
+                      )}
+                    </div>
+                    {editQueueErr && <p className="text-[11px] text-red-500">{editQueueErr}</p>}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">{editQueueText.length}자</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEditingQueueId(null)}
+                          className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 px-3 py-1.5"
+                        >
+                          취소
+                        </button>
+                        <button
+                          onClick={() => saveQueuedEdit(q.id)}
+                          disabled={savingQueueId === q.id || !editQueueText.trim()}
+                          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                        >
+                          {savingQueueId === q.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                          저장
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => cancelQueued(q.id)}
-                  disabled={cancellingId === q.id}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex-shrink-0 disabled:opacity-50"
-                >
-                  {cancellingId === q.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
-                  취소
-                </button>
+                ) : (
+                  /* ── 표시 모드 ── */
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2">{q.text}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {q.scheduledAt ? (
+                          <span className="flex items-center gap-1 text-[11px] text-blue-500 font-medium">
+                            <Clock size={10} />
+                            {new Date(q.scheduledAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-zinc-400">자동게시 대기</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => startEditQueued(q)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        <PenLine size={11} />
+                        수정
+                      </button>
+                      <button
+                        onClick={() => cancelQueued(q.id)}
+                        disabled={cancellingId === q.id}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+                      >
+                        {cancellingId === q.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

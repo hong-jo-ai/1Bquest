@@ -29,18 +29,39 @@ export async function POST(req: NextRequest) {
   return Response.json({ ok: true, count: queue.length });
 }
 
+/**
+ * PUT /api/threads/queue — 대기/예약 글 수정 (patch).
+ * 보낸 필드만 갱신:
+ *   text        : 본문 교체 (빈 값 불가)
+ *   scheduledAt : 예약 시각(ISO) 변경. null/"" 이면 예약 해제 → 자동게시 큐로 전환
+ *   mediaUrl/mediaType : 첨부 미디어 변경. null 이면 제거
+ */
 export async function PUT(req: NextRequest) {
-  const { id, mediaUrl, mediaType } = await req.json();
+  const body = await req.json();
+  const { id } = body;
   if (!id) return Response.json({ error: "id 필요" }, { status: 400 });
 
   const queue = await getPostQueue();
   const post = queue.find((p) => p.id === id);
   if (!post) return Response.json({ error: "큐에 없음" }, { status: 404 });
 
-  post.mediaUrl = mediaUrl;
-  post.mediaType = mediaType;
+  if ("text" in body) {
+    if (!body.text?.trim()) {
+      return Response.json({ error: "text는 비울 수 없습니다" }, { status: 400 });
+    }
+    post.text = body.text.trim();
+  }
+  if ("scheduledAt" in body) {
+    if (body.scheduledAt) post.scheduledAt = body.scheduledAt;
+    else delete post.scheduledAt; // 예약 해제 → 자동게시
+  }
+  if ("mediaUrl" in body) {
+    post.mediaUrl = body.mediaUrl ?? undefined;
+    post.mediaType = body.mediaType ?? undefined;
+  }
+
   await savePostQueue(queue);
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, post });
 }
 
 export async function DELETE(req: NextRequest) {
