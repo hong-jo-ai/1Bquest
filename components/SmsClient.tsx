@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   MessageSquare, Filter, ClipboardList, Send, FlaskConical,
-  AlertTriangle, CheckCircle2, XCircle, Loader2, Users, RefreshCw,
+  AlertTriangle, CheckCircle2, XCircle, Loader2, Users, RefreshCw, RotateCcw,
 } from "lucide-react";
 
 // ── 메시지 타입/비용 (lib/sms/solapi.ts 와 동일 규칙) ──────────────────────
@@ -210,6 +210,35 @@ export default function SmsClient() {
     }
   }
 
+  // 원클릭 초기화 — 발송 이력(서버 기록)을 제외한 모든 입력/상태를 기본값으로 되돌림
+  const resetAll = useCallback(() => {
+    setMode("filter");
+    setStartDate(todayKST(-30));
+    setEndDate(todayKST(0));
+    setProductNo("");
+    setOptionContains("");
+    setShipStatus("");
+    setRecipients([]);
+    setSelected(new Set());
+    setRecipError("");
+    setManualText("");
+    setMessage("");
+    setSubject(DEFAULT_SUBJECT);
+    setTestPhone("");
+    setTestSent(false);
+    setTesting(false);
+    setOverrideTest(false);
+    setConfirming(false);
+    setSendResult(null);
+  }, []);
+
+  // 초기 상태(되돌릴 내용이 있는지) — 버튼 활성화 판단용
+  const isDirty =
+    mode !== "filter" || productNo !== "" || optionContains !== "" || shipStatus !== "" ||
+    recipients.length > 0 || manualText !== "" || message !== "" ||
+    subject !== DEFAULT_SUBJECT || testPhone !== "" || testSent || overrideTest ||
+    sendResult !== null;
+
   return (
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 pt-16 md:pt-6 space-y-5">
       {/* 헤더 */}
@@ -221,6 +250,15 @@ export default function SmsClient() {
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">고객 안내 SMS</h1>
           <p className="text-xs text-zinc-500">배송지연 · A/S 등 아웃바운드 공지 발송 (정보성)</p>
         </div>
+        <button
+          onClick={resetAll}
+          disabled={sending || !isDirty}
+          title="대상·문안·테스트 등 모든 입력을 처음 상태로 되돌립니다 (발송 이력은 유지)"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 hover:text-red-500 hover:border-red-300 dark:hover:border-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <RotateCcw size={14} />
+          초기화
+        </button>
       </div>
 
       {!configured && (
