@@ -16,6 +16,7 @@ export interface AsRequest {
   brand: CsBrandId;
   customer_name: string | null;
   customer_phone: string | null;
+  customer_address: string | null;
   channel: string | null;
   model: string | null;
   symptom: string | null;

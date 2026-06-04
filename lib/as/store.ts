@@ -20,6 +20,7 @@ export interface CreateAsInput {
   brand: CsBrandId;
   customerName?: string | null;
   customerPhone?: string | null;
+  customerAddress?: string | null;
   channel?: string | null;
   model?: string | null;
   symptom?: string | null;
@@ -52,6 +53,7 @@ export async function createAsRequest(input: CreateAsInput): Promise<AsRequest> 
       brand: input.brand,
       customer_name: input.customerName ?? null,
       customer_phone: input.customerPhone ?? null,
+      customer_address: input.customerAddress ?? null,
       channel: input.channel ?? null,
       model: input.model ?? null,
       symptom: input.symptom ?? null,
@@ -146,6 +148,7 @@ export interface UpdateAsInput {
   status?: AsStatus;
   customerName?: string | null;
   customerPhone?: string | null;
+  customerAddress?: string | null;
   channel?: string | null;
   model?: string | null;
   symptom?: string | null;
@@ -160,6 +163,7 @@ const FIELD_MAP: Record<keyof UpdateAsInput, string> = {
   status: "status",
   customerName: "customer_name",
   customerPhone: "customer_phone",
+  customerAddress: "customer_address",
   channel: "channel",
   model: "model",
   symptom: "symptom",

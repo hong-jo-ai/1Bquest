@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Hash, Phone, User, Watch, MapPin, Loader2 } from "lucide-react";
+import { X, Hash, Phone, User, Watch, MapPin, Home, Loader2 } from "lucide-react";
 import type { AsDestination } from "@/lib/as/types";
 import { AS_DESTINATION_LABEL } from "@/lib/as/types";
 import { BRAND_LABEL } from "@/lib/cs/types";
@@ -33,6 +33,7 @@ export default function AsIntakeForm({
   const [brand, setBrand] = useState<CsBrandId>(initial?.brand ?? "paulvice");
   const [customerName, setCustomerName] = useState(initial?.customerName ?? "");
   const [customerPhone, setCustomerPhone] = useState(initial?.customerPhone ?? "");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [channel, setChannel] = useState(initial?.channel ?? "");
   const [model, setModel] = useState(initial?.model ?? "");
   const [symptom, setSymptom] = useState(initial?.symptom ?? "");
@@ -52,6 +53,7 @@ export default function AsIntakeForm({
           brand,
           customerName: customerName.trim() || null,
           customerPhone: customerPhone.trim() || null,
+          customerAddress: customerAddress.trim() || null,
           channel: channel.trim() || null,
           model: model.trim() || null,
           symptom: symptom.trim() || null,
@@ -112,6 +114,7 @@ export default function AsIntakeForm({
           <Field label="증상  ★" value={symptom} onChange={setSymptom} placeholder="고객 표현 그대로 (예: 초침이 안 움직임)" />
           <Field label="고객명" value={customerName} onChange={setCustomerName} icon={User} />
           <Field label="연락처" value={customerPhone} onChange={setCustomerPhone} icon={Phone} inputMode="tel" />
+          <Field label="반송 주소" value={customerAddress} onChange={setCustomerAddress} icon={Home} placeholder="송장 블라인드 처리 → 접수 때 받아두기 (도로명+상세주소)" />
           <Field label="접수 채널" value={channel} onChange={setChannel} placeholder="카카오 / 메일 / 게시판 …" />
 
           <div>

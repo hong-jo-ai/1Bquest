@@ -37,6 +37,7 @@ export async function POST(req: Request) {
       brand,
       customerName: body.customerName ?? null,
       customerPhone: body.customerPhone ?? null,
+      customerAddress: body.customerAddress ?? null,
       channel: body.channel ?? null,
       model: body.model ?? null,
       symptom: body.symptom ?? null,

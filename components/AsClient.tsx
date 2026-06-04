@@ -9,6 +9,7 @@ import {
   Phone,
   User,
   Watch,
+  Home,
   Truck,
   ChevronDown,
   ChevronUp,
@@ -413,6 +414,7 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
   const [symptom, setSymptom] = useState(req.symptom ?? "");
   const [customerName, setCustomerName] = useState(req.customer_name ?? "");
   const [customerPhone, setCustomerPhone] = useState(req.customer_phone ?? "");
+  const [customerAddress, setCustomerAddress] = useState(req.customer_address ?? "");
   const [repairDetail, setRepairDetail] = useState(req.repair_detail ?? "");
   const [repairCost, setRepairCost] = useState(
     req.repair_cost != null ? String(req.repair_cost) : ""
@@ -435,6 +437,7 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
           symptom: symptom.trim() || null,
           customerName: customerName.trim() || null,
           customerPhone: customerPhone.trim() || null,
+          customerAddress: customerAddress.trim() || null,
           repairDetail: repairDetail.trim() || null,
           repairCost: repairCost.trim()
             ? Number(repairCost.replace(/[^0-9]/g, ""))
@@ -479,6 +482,9 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
         <Field label="증상" value={symptom} onChange={setSymptom} />
         <Field label="고객명" value={customerName} onChange={setCustomerName} icon={User} />
         <Field label="연락처" value={customerPhone} onChange={setCustomerPhone} icon={Phone} />
+        <div className="col-span-2">
+          <Field label="반송 주소" value={customerAddress} onChange={setCustomerAddress} icon={Home} />
+        </div>
         <Field label="수리내역" value={repairDetail} onChange={setRepairDetail} />
         <Field label="비용(원)" value={repairCost} onChange={setRepairCost} inputMode="numeric" />
         <Field label="반송 송장번호" value={tracking} onChange={setTracking} icon={Truck} />
