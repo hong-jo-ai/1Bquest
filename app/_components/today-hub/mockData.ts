@@ -34,8 +34,22 @@ export const SEED_ROUTINES_PAULVICE: RevenueAction[] = (() => {
   ];
 })();
 
-export const SEED_GOAL_PAULVICE: RevenueGoal = { target: 50_000_000 };
-export const SEED_GOAL_HARRIOT:  RevenueGoal = { target:  5_000_000 };
+export const SEED_GOAL_PAULVICE: RevenueGoal = {
+  target: 80_000_000,
+  annualProfitTarget: 400_000_000,
+  monthlyProfitTarget: 33_333_333,
+  monthlyUnitsTarget: 1_000,
+  annualLaunchTarget: 4,
+  monthlyCampaignTarget: 2,
+};
+export const SEED_GOAL_HARRIOT: RevenueGoal = {
+  target: 5_000_000,
+  annualProfitTarget: 60_000_000,
+  monthlyProfitTarget: 5_000_000,
+  monthlyUnitsTarget: 20,
+  annualLaunchTarget: 2,
+  monthlyCampaignTarget: 1,
+};
 
 /** paulvice 브랜드 초기 시드. harriot 은 빈 배열에서 시작. */
 export const SEED_EVENTS_PAULVICE: BigEvent[] = (() => {

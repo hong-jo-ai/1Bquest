@@ -77,6 +77,11 @@ export interface RevenueAction {
 export interface RevenueGoal {
   /** 이번 달 목표 매출 (원). 브랜드별 분리 저장. 사용자가 위젯에서 편집 가능. */
   target: number;
+  annualProfitTarget?: number;
+  monthlyProfitTarget?: number;
+  monthlyUnitsTarget?: number;
+  annualLaunchTarget?: number;
+  monthlyCampaignTarget?: number;
 }
 
 export interface EventChecklistItem {

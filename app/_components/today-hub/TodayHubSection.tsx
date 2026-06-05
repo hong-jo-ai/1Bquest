@@ -315,6 +315,7 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
             setGoal={setGoal}
             currentRevenue={monthRevenue}
             brandLabel={BRAND_NAMES[brand]}
+            events={events}
           />
           <BigEventsWidget
             events={events}
