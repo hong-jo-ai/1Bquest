@@ -9,6 +9,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const CHANNELS = {
   wconcept: {
     label: "W컨셉",
+    authMethod: "email",   // 2차 인증: 이메일 인증번호 (Gmail에서 자동 수신)
     loginUrl: env("WCONCEPT_LOGIN_URL"),
     ordersUrl: env("WCONCEPT_ORDERS_URL"),
     username: env("WCONCEPT_LOGIN_ID"),
@@ -27,16 +28,18 @@ const CHANNELS = {
   },
   musinsa: {
     label: "무신사",
+    authMethod: "email",   // 2차 인증: 이메일 인증번호 (shong@ Gmail에서 자동 수신)
     loginUrl: env("MUSINSA_LOGIN_URL"),
     ordersUrl: env("MUSINSA_ORDERS_URL"),
     username: env("MUSINSA_LOGIN_ID"),
     password: env("MUSINSA_LOGIN_PASSWORD"),
-    totpSecret: env("MUSINSA_TOTP_SECRET"),
     usernameSelector: env("MUSINSA_ID_SELECTOR"),
     passwordSelector: env("MUSINSA_PASSWORD_SELECTOR"),
     loginButtonSelector: env("MUSINSA_LOGIN_BUTTON_SELECTOR"),
-    otpSelector: env("MUSINSA_OTP_SELECTOR"),
-    otpSubmitSelector: env("MUSINSA_OTP_SUBMIT_SELECTOR"),
+    emailMethodSelector: env("MUSINSA_EMAIL_METHOD_SELECTOR"),  // 2차 인증 '이메일' 탭
+    emailCodeSelector: env("MUSINSA_EMAIL_CODE_SELECTOR"),
+    emailCodeSubmitSelector: env("MUSINSA_EMAIL_CODE_SUBMIT_SELECTOR"),
+    codeViaDashboard: true,  // 인증번호는 대시보드 API가 shong@ Gmail에서 읽어 전달 (로컬에 Google secret 불필요)
     dateStartSelector: env("MUSINSA_DATE_START_SELECTOR"),
     dateEndSelector: env("MUSINSA_DATE_END_SELECTOR"),
     searchButtonSelector: env("MUSINSA_SEARCH_BUTTON_SELECTOR"),
@@ -44,6 +47,7 @@ const CHANNELS = {
   },
   "29cm": {
     label: "29CM",
+    authMethod: "totp",   // 2차 인증: Google OTP (TOTP)
     loginUrl: env("CM29_LOGIN_URL"),
     ordersUrl: env("CM29_ORDERS_URL"),
     username: env("CM29_LOGIN_ID"),
@@ -88,8 +92,9 @@ function missingConfig(channel) {
     "searchButtonSelector",
     "downloadButtonSelector",
   ];
-  if (channel === "wconcept") {
-    required.push("emailCodeSelector", "emailCodeSubmitSelector", "gmailRefreshToken");
+  if (cfg.authMethod === "email") {
+    required.push("emailCodeSelector", "emailCodeSubmitSelector");
+    if (!cfg.codeViaDashboard) required.push("gmailRefreshToken");
   } else {
     required.push("totpSecret", "otpSelector", "otpSubmitSelector");
   }
@@ -142,6 +147,7 @@ async function getMarketplacePage(channel, log) {
   log(`${CHANNELS[channel].label} 전용 Chrome 프로필 시작: ${profileDir}`);
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: false,
+    channel: env("MARKETPLACE_BROWSER_CHANNEL") || "chrome",  // 설치된 시스템 Chrome 사용
     acceptDownloads: true,
     args: [
       "--disable-blink-features=AutomationControlled",
@@ -229,6 +235,29 @@ async function fetchLatestGmailCode(refreshToken, query) {
   return extractCodeFromPayload(msg.payload);
 }
 
+async function fetchCodeFromDashboard(channel, log) {
+  const base = (env("DASHBOARD_URL") || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
+  const token = env("PAULWISE_MCP_TOKEN") || "";
+  const url = `${base}/api/marketplace/verification-code?channel=${encodeURIComponent(channel)}`;
+  let lastErr;
+  // 인증번호 메일이 도착할 때까지 몇 번 재시도
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "x-agent-token": token } });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.code) {
+        log(`대시보드에서 인증번호 수신 (${attempt}회 시도)`);
+        return json.code;
+      }
+      lastErr = new Error(json.error || `코드 조회 실패 (HTTP ${res.status})`);
+    } catch (e) {
+      lastErr = e;
+    }
+    await sleep(4000);
+  }
+  throw lastErr || new Error("대시보드에서 인증번호를 가져오지 못했습니다");
+}
+
 async function ensureLoggedIn(channel, page, log) {
   const cfg = CHANNELS[channel];
   await page.goto(cfg.loginUrl, { waitUntil: "domcontentloaded" });
@@ -243,15 +272,23 @@ async function ensureLoggedIn(channel, page, log) {
     log(`${cfg.label} 로그인 폼 입력 스킵: 이미 로그인 상태일 수 있습니다`);
   }
 
-  if (channel === "wconcept") {
+  if (cfg.authMethod === "email") {
     try {
+      // (무신사 등) 2차 인증 방식 탭이 있으면 '이메일' 선택 → 인증번호 메일 발송
+      if (cfg.emailMethodSelector) {
+        await clickIfConfigured(page, cfg.emailMethodSelector, 8000);
+        log(`${cfg.label} 2차 인증: 이메일 방식 선택`);
+      }
       await page.locator(cfg.emailCodeSelector).first().waitFor({ state: "visible", timeout: 15000 });
-      const code = await fetchLatestGmailCode(cfg.gmailRefreshToken, cfg.gmailQuery);
+      await sleep(5000); // 인증번호 메일 도착 대기
+      const code = cfg.codeViaDashboard
+        ? await fetchCodeFromDashboard(channel, log)
+        : await fetchLatestGmailCode(cfg.gmailRefreshToken, cfg.gmailQuery);
       await fillIfVisible(page, cfg.emailCodeSelector, code, 5000);
       await clickIfConfigured(page, cfg.emailCodeSubmitSelector, 5000);
-      log("W컨셉 이메일 인증번호 자동 입력 완료");
+      log(`${cfg.label} 이메일 인증번호 자동 입력 완료`);
     } catch (err) {
-      log(`W컨셉 이메일 인증 단계 스킵/실패: ${err.message}`);
+      log(`${cfg.label} 이메일 인증 단계 스킵/실패: ${err.message}`);
     }
     return;
   }
