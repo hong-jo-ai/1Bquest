@@ -58,6 +58,11 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isLocalDashboard() {
+  if (typeof window === "undefined") return true;
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
 export default function ExcelUploadPanel({
   channel, channelName, channelColor, onDataLoaded, onClear, onRemoveOne, currentMeta, history,
 }: Props) {
@@ -112,22 +117,35 @@ export default function ExcelUploadPanel({
     setPreview(null);
 
     try {
-      const startRes = await fetch("/api/influencer/agent-start", { method: "POST" });
-      if (!startRes.ok) {
-        const startJson = await startRes.json().catch(() => ({}));
-        throw new Error(startJson.message || startJson.error || "로컬 에이전트 시작 실패");
+      const body = { channel, startDate: autoStartDate, endDate: autoEndDate };
+      let res: Response;
+
+      if (isLocalDashboard()) {
+        const startRes = await fetch("/api/influencer/agent-start", { method: "POST" });
+        if (!startRes.ok) {
+          const startJson = await startRes.json().catch(() => ({}));
+          throw new Error(startJson.message || startJson.error || "로컬 에이전트 시작 실패");
+        }
+
+        res = await fetch("/api/influencer/agent-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: "/sales-sync", ...body }),
+        });
+      } else {
+        const health = await fetch("http://127.0.0.1:7777/health", {
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => null);
+        if (!health?.ok) {
+          throw new Error("배포된 대시보드에서는 로컬 에이전트를 자동 시작할 수 없습니다. Mac에서 `cd local-agent && node agent.js`를 먼저 실행한 뒤 다시 시도하세요.");
+        }
+        res = await fetch("http://127.0.0.1:7777/sales-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
       }
 
-      const res = await fetch("/api/influencer/agent-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: "/sales-sync",
-          channel,
-          startDate: autoStartDate,
-          endDate: autoEndDate,
-        }),
-      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? `자동 가져오기 실패 (${res.status})`);
       setPreview({

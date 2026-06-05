@@ -466,7 +466,18 @@ async function visitAndGetProfile(page, handle, followerMin, followerMax) {
 const app = express();
 app.use(express.json());
 app.use(cors({
-  origin: [DASHBOARD_ORIGIN, "http://localhost:3000", "http://localhost:3001"],
+  origin(origin, callback) {
+    if (
+      !origin ||
+      origin === DASHBOARD_ORIGIN ||
+      /^http:\/\/(localhost|127\.0\.0\.1):300\d$/.test(origin) ||
+      /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)
+    ) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
   methods: ["GET", "POST"],
 }));
 
