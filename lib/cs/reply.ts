@@ -19,16 +19,25 @@ export interface ReplyResult {
   error?: string;
 }
 
+export interface ReplyOptions {
+  sentVia?: string;
+  rawExtra?: Record<string, unknown>;
+}
+
 export async function sendReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
   const { thread } = data;
 
   const dispatchers: Partial<
-    Record<CsChannel, (threadId: string, body: string) => Promise<ReplyResult>>
+    Record<
+      CsChannel,
+      (threadId: string, body: string, options: ReplyOptions) => Promise<ReplyResult>
+    >
   > = {
     gmail: sendGmailReply,
     threads: sendThreadsReply,
@@ -46,7 +55,7 @@ export async function sendReply(
     };
   }
 
-  const result = await fn(threadId, body);
+  const result = await fn(threadId, body, options);
 
   // 답변 송신 성공 시 — 직전 고객 메시지와 페어로 누적해서 다음 AI 초안의 few-shot 으로 활용
   if (result.ok) {
@@ -71,7 +80,8 @@ export async function sendReply(
 
 async function sendGmailReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -147,7 +157,7 @@ async function sendGmailReply(
     bodyText: body,
     sentAt: new Date(),
     direction: "out",
-    raw: { sent_via: "inbox_ui" },
+    raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
   });
 
   // 상태: 내가 답했으므로 waiting으로
@@ -159,7 +169,8 @@ async function sendGmailReply(
 
 async function sendThreadsReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -249,7 +260,11 @@ async function sendThreadsReply(
       bodyText: body,
       sentAt: new Date(),
       direction: "out",
-      raw: { sent_via: "inbox_ui", reply_to_id: replyToId },
+      raw: {
+        sent_via: options.sentVia ?? "inbox_ui",
+        reply_to_id: replyToId,
+        ...(options.rawExtra ?? {}),
+      },
     });
 
     const db = getCsSupabase();
@@ -269,7 +284,8 @@ async function sendThreadsReply(
 
 async function sendCafe24BoardReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -346,7 +362,11 @@ async function sendCafe24BoardReply(
     bodyText: body,
     sentAt: new Date(),
     direction: "out",
-    raw: { sent_via: "inbox_ui", cafe24_response: result },
+    raw: {
+      sent_via: options.sentVia ?? "inbox_ui",
+      cafe24_response: result,
+      ...(options.rawExtra ?? {}),
+    },
   });
 
   const db = getCsSupabase();
@@ -360,7 +380,8 @@ async function sendCafe24BoardReply(
 
 async function sendIgReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -391,7 +412,7 @@ async function sendIgReply(
       bodyText: body,
       sentAt: new Date(),
       direction: "out",
-      raw: { sent_via: "inbox_ui" },
+      raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
     });
     const db = getCsSupabase();
     await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
@@ -403,7 +424,8 @@ async function sendIgReply(
 
 async function sendCrispReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -428,7 +450,7 @@ async function sendCrispReply(
       bodyText: body,
       sentAt: new Date(),
       direction: "out",
-      raw: { sent_via: "inbox_ui" },
+      raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
     });
 
     const db = getCsSupabase();
@@ -445,7 +467,8 @@ async function sendCrispReply(
 
 async function sendRedditReply(
   threadId: string,
-  body: string
+  body: string,
+  options: ReplyOptions = {}
 ): Promise<ReplyResult> {
   const data = await getThread(threadId);
   if (!data) return { ok: false, error: "thread not found" };
@@ -473,7 +496,11 @@ async function sendRedditReply(
       bodyText: body,
       sentAt: new Date(),
       direction: "out",
-      raw: { sent_via: "inbox_ui", in_reply_to: thingId },
+      raw: {
+        sent_via: options.sentVia ?? "inbox_ui",
+        in_reply_to: thingId,
+        ...(options.rawExtra ?? {}),
+      },
     });
 
     const db = getCsSupabase();

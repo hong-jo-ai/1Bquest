@@ -1,9 +1,11 @@
+import { after } from "next/server";
 import { ingestMessage } from "@/lib/cs/store";
+import { maybeAutoReplyToCrispThread } from "@/lib/cs/crispAutoReply";
 import { listCrispAccounts } from "@/lib/cs/crispClient";
 import type { IngestPayload } from "@/lib/cs/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 20;
+export const maxDuration = 60;
 
 interface CrispWebhookEvent {
   website_id: string;
@@ -91,10 +93,16 @@ export async function POST(req: Request) {
       raw: { webhook: true, event },
     };
 
-    await ingestMessage(payload);
+    const ingest = await ingestMessage(payload);
 
     // 수신 메시지면 즉시 이메일 알림 트리거
-    if (!isOut) {
+    if (!isOut && ingest.inserted) {
+      after(async () => {
+        const result = await maybeAutoReplyToCrispThread(ingest.threadId);
+        if (!result.ok) {
+          console.warn("[crisp-webhook] auto reply failed:", result);
+        }
+      });
       fetch(
         `${process.env.NEXT_PUBLIC_APP_URL ?? "https://paulvice-dashboard.vercel.app"}/api/cs/notify/email`,
         { method: "POST" }

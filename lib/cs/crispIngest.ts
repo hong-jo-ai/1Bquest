@@ -1,4 +1,5 @@
 import { getThreadLastMessageMap, ingestMessage, refreshThreadCustomer } from "./store";
+import { maybeAutoReplyToCrispThread } from "./crispAutoReply";
 import {
   extractTextContent,
   fetchCrispMessages,
@@ -13,11 +14,13 @@ export async function syncAllCrispAccounts(): Promise<{
   skipped: number;
   unchanged: number;
   errors: string[];
+  autoReplies: number;
 }> {
   const accounts = await listCrispAccounts();
   let inserted = 0;
   let skipped = 0;
   let unchanged = 0;
+  let autoReplies = 0;
   const errors: string[] = [];
 
   for (const account of accounts) {
@@ -26,6 +29,7 @@ export async function syncAllCrispAccounts(): Promise<{
         perPage: 20,
         pages: 2,
       });
+      const autoReplyThreadIds = new Set<string>();
 
       // 증분 동기화: 이미 가진 마지막 메시지 시각과 비교해, 변경 없는 대화는
       // 메시지 조회(Crisp API 호출)를 생략한다. 매 실행 전량 재조회로 plugin
@@ -87,8 +91,12 @@ export async function syncAllCrispAccounts(): Promise<{
           };
 
           const result = await ingestMessage(payload);
-          if (result.inserted) inserted++;
-          else skipped++;
+          if (result.inserted) {
+            inserted++;
+            if (!isOut) autoReplyThreadIds.add(result.threadId);
+          } else {
+            skipped++;
+          }
         }
 
         // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)
@@ -99,11 +107,19 @@ export async function syncAllCrispAccounts(): Promise<{
           });
         }
       }
+
+      for (const threadId of autoReplyThreadIds) {
+        const auto = await maybeAutoReplyToCrispThread(threadId);
+        if (auto.sent) autoReplies++;
+        if (!auto.ok) {
+          errors.push(`auto reply ${threadId}: ${auto.error ?? auto.reason}`);
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${account.brand}/${account.displayName}: ${msg}`);
     }
   }
 
-  return { accounts: accounts.length, inserted, skipped, unchanged, errors };
+  return { accounts: accounts.length, inserted, skipped, unchanged, errors, autoReplies };
 }
