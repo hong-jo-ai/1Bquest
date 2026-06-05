@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Upload, X, CheckCircle, AlertCircle, FileSpreadsheet,
-  Loader2, Trash2, Info,
+  Loader2, Trash2, Info, Bot,
 } from "lucide-react";
 import type { MultiChannelData } from "@/lib/multiChannelData";
 
@@ -45,11 +45,27 @@ function fmtKRW(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
 
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function firstDateOfMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function ExcelUploadPanel({
   channel, channelName, channelColor, onDataLoaded, onClear, onRemoveOne, currentMeta, history,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading]   = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoStartDate, setAutoStartDate] = useState(firstDateOfMonth);
+  const [autoEndDate, setAutoEndDate] = useState(todayDate);
   const [error, setError]       = useState<string | null>(null);
   const [preview, setPreview]   = useState<{
     fileName: string;
@@ -59,6 +75,7 @@ export default function ExcelUploadPanel({
     data: MultiChannelData;
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const supportsAutoSync = channel === "wconcept" || channel === "musinsa" || channel === "29cm";
 
   const uploadFile = useCallback(async (file: File) => {
     setLoading(true);
@@ -82,12 +99,50 @@ export default function ExcelUploadPanel({
         columns:  json.columns,
         data:     json.data,
       });
-    } catch (e: any) {
-      setError(e.message ?? "업로드 실패");
+    } catch (e: unknown) {
+      setError(errorMessage(e, "업로드 실패"));
     } finally {
       setLoading(false);
     }
   }, [channel]);
+
+  const autoSync = useCallback(async () => {
+    setAutoLoading(true);
+    setError(null);
+    setPreview(null);
+
+    try {
+      const startRes = await fetch("/api/influencer/agent-start", { method: "POST" });
+      if (!startRes.ok) {
+        const startJson = await startRes.json().catch(() => ({}));
+        throw new Error(startJson.message || startJson.error || "로컬 에이전트 시작 실패");
+      }
+
+      const res = await fetch("/api/influencer/agent-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "/sales-sync",
+          channel,
+          startDate: autoStartDate,
+          endDate: autoEndDate,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `자동 가져오기 실패 (${res.status})`);
+      setPreview({
+        fileName: json.fileName ?? json.downloadedFile ?? `${channelName}-auto-sync.xlsx`,
+        rowCount: json.rowCount,
+        period:   json.period,
+        columns:  json.columns,
+        data:     json.data,
+      });
+    } catch (e: unknown) {
+      setError(errorMessage(e, "자동 가져오기 실패"));
+    } finally {
+      setAutoLoading(false);
+    }
+  }, [autoEndDate, autoStartDate, channel, channelName]);
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -238,6 +293,48 @@ export default function ExcelUploadPanel({
             </p>
           </div>
         </div>
+
+        {supportsAutoSync && !preview && (
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Bot size={15} style={{ color: channelColor }} />
+                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                  로컬 에이전트 자동 가져오기
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={autoSync}
+                disabled={autoLoading || loading}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              >
+                {autoLoading ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
+                {autoLoading ? "가져오는 중" : "자동 가져오기"}
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-[10px] font-medium text-zinc-400">
+                시작일
+                <input
+                  type="date"
+                  value={autoStartDate}
+                  onChange={(e) => setAutoStartDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                />
+              </label>
+              <label className="text-[10px] font-medium text-zinc-400">
+                종료일
+                <input
+                  type="date"
+                  value={autoEndDate}
+                  onChange={(e) => setAutoEndDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                />
+              </label>
+            </div>
+          </div>
+        )}
 
         {/* 드래그앤드롭 영역 */}
         {!preview && (

@@ -16,6 +16,11 @@ const Anthropic  = require("@anthropic-ai/sdk");
 const path       = require("path");
 const os         = require("os");
 const fs         = require("fs");
+const {
+  closeMarketplaceBrowsers,
+  missingConfig,
+  syncMarketplaceSales,
+} = require("./marketplaceSync");
 
 // ── 설정 ──────────────────────────────────────────────────────────────
 const PORT        = 7777;
@@ -480,6 +485,37 @@ app.get("/logs", (req, res) => {
   res.json({ logs: logBuffer });
 });
 
+// 셀러센터 매출 자동화 설정 상태
+app.get("/sales-sync/config", (req, res) => {
+  const channels = ["wconcept", "musinsa", "29cm"].map((channel) => ({
+    channel,
+    configured: missingConfig(channel).length === 0,
+    missing:    missingConfig(channel),
+  }));
+  res.json({ success: true, channels });
+});
+
+// W컨셉/무신사/29CM 주문 엑셀 자동 다운로드 → 기존 업로드 파서로 변환
+app.post("/sales-sync", async (req, res) => {
+  const { channel, startDate, endDate } = req.body;
+  if (!channel || !startDate || !endDate) {
+    return res.status(400).json({
+      success: false,
+      error:   "channel, startDate, endDate가 필요합니다",
+    });
+  }
+
+  try {
+    log(`매출 자동 가져오기 시작: ${channel} ${startDate}~${endDate}`, "action");
+    const result = await syncMarketplaceSales({ channel, startDate, endDate }, (msg, type = "info") => log(msg, type));
+    log(`매출 자동 가져오기 완료: ${channel}`, "success");
+    res.json(result);
+  } catch (err) {
+    log(`매출 자동 가져오기 실패 (${channel}): ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 인플루언서 탐색
 app.post("/discover", async (req, res) => {
   const {
@@ -546,6 +582,7 @@ app.post("/close", async (req, res) => {
     page    = null;
     log("브라우저 종료");
   }
+  await closeMarketplaceBrowsers();
   res.json({ success: true });
 });
 
@@ -582,5 +619,6 @@ app.listen(PORT, () => {
 // 종료 처리
 process.on("SIGINT", async () => {
   if (context) await context.close();
+  await closeMarketplaceBrowsers();
   process.exit(0);
 });

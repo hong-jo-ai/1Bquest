@@ -16,11 +16,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const timeoutMs = endpoint === "/sales-sync" ? 10 * 60 * 1000 : 120000;
     const res = await fetch(`${AGENT_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     const data = await res.json();
