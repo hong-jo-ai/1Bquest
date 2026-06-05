@@ -302,6 +302,9 @@ async function ensureLoggedIn(channel, page, log) {
         : await fetchLatestGmailCode(cfg.gmailRefreshToken, cfg.gmailQuery);
       await fillIfVisible(page, cfg.emailCodeSelector, code, 5000);
       await clickIfConfigured(page, cfg.emailCodeSubmitSelector, 5000);
+      // 인증 후 리다이렉트가 끝날 때까지 대기 (바로 이동하면 ERR_ABORTED)
+      await sleep(4000);
+      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
       log(`${cfg.label} 이메일 인증번호 자동 입력 완료`);
     } catch (err) {
       log(`${cfg.label} 이메일 인증 단계 스킵/실패: ${err.message}`);
@@ -323,8 +326,15 @@ async function ensureLoggedIn(channel, page, log) {
 
 async function downloadOrders(channel, page, startDate, endDate, log) {
   const cfg = CHANNELS[channel];
-  await page.goto(cfg.ordersUrl, { waitUntil: "domcontentloaded" });
-  await sleep(1500);
+  // 인증 직후 리다이렉트와 겹치면 ERR_ABORTED 가능 → 1회 재시도
+  try {
+    await page.goto(cfg.ordersUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+  } catch (e) {
+    log(`${cfg.label} 주문페이지 이동 재시도 (${e.message.slice(0, 40)})`);
+    await sleep(2500);
+    await page.goto(cfg.ordersUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+  }
+  await sleep(2000);
 
   await fillIfVisible(page, cfg.dateStartSelector, startDate, 10000);
   await fillIfVisible(page, cfg.dateEndSelector, endDate, 10000);
