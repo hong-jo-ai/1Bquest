@@ -1,6 +1,12 @@
 import { type NextRequest } from "next/server";
 import { getPostQueue, savePostQueue, type QueuedPost } from "@/lib/threadsScheduler";
 
+const THREADS_TEXT_LIMIT = 500;
+
+function countChars(text: string): number {
+  return [...text].length;
+}
+
 /**
  * GET  /api/threads/queue — 현재 큐 조회
  * POST /api/threads/queue — 글 추가 { id, text }
@@ -16,13 +22,21 @@ export async function POST(req: NextRequest) {
   if (!id || !text?.trim()) {
     return Response.json({ error: "id와 text 필요" }, { status: 400 });
   }
+  const trimmedText = text.trim();
+  const charCount = countChars(trimmedText);
+  if (charCount > THREADS_TEXT_LIMIT) {
+    return Response.json(
+      { error: `Threads 글은 ${THREADS_TEXT_LIMIT}자 이하여야 합니다. 현재 ${charCount}자입니다.` },
+      { status: 400 }
+    );
+  }
 
   const queue = await getPostQueue();
   if (queue.some((p) => p.id === id)) {
     return Response.json({ error: "이미 큐에 있습니다" }, { status: 409 });
   }
 
-  const post: QueuedPost = { id, text: text.trim(), brand, mediaUrl, mediaType };
+  const post: QueuedPost = { id, text: trimmedText, brand, mediaUrl, mediaType };
   if (scheduledAt) post.scheduledAt = scheduledAt;
   queue.push(post);
   await savePostQueue(queue);
@@ -46,10 +60,18 @@ export async function PUT(req: NextRequest) {
   if (!post) return Response.json({ error: "큐에 없음" }, { status: 404 });
 
   if ("text" in body) {
-    if (!body.text?.trim()) {
+    const trimmedText = body.text?.trim();
+    if (!trimmedText) {
       return Response.json({ error: "text는 비울 수 없습니다" }, { status: 400 });
     }
-    post.text = body.text.trim();
+    const charCount = countChars(trimmedText);
+    if (charCount > THREADS_TEXT_LIMIT) {
+      return Response.json(
+        { error: `Threads 글은 ${THREADS_TEXT_LIMIT}자 이하여야 합니다. 현재 ${charCount}자입니다.` },
+        { status: 400 }
+      );
+    }
+    post.text = trimmedText;
   }
   if ("scheduledAt" in body) {
     if (body.scheduledAt) post.scheduledAt = body.scheduledAt;

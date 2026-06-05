@@ -8,11 +8,23 @@ import {
   dequeueScheduledPostByBrand,
   addPublishedPost,
   getPostQueue,
+  savePostQueue,
   shouldPostNow,
+  type QueuedPost,
 } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
+const THREADS_TEXT_LIMIT = 500;
+
+async function restoreDequeuedPost(post: QueuedPost): Promise<number> {
+  const queue = await getPostQueue();
+  if (!queue.some((p) => p.id === post.id)) {
+    queue.push(post);
+    await savePostQueue(queue);
+  }
+  return queue.length;
+}
 
 /**
  * 매시간 호출 — 설정된 하루 게시 횟수에 따라 게시 여부를 자동 판단
@@ -49,14 +61,32 @@ export async function GET(request: NextRequest) {
   }
 
   const brand = post.brand ?? "paulvice";
+  if ([...post.text].length > THREADS_TEXT_LIMIT) {
+    const restoredCount = await restoreDequeuedPost(post);
+    return NextResponse.json(
+      {
+        error: `Threads 글은 ${THREADS_TEXT_LIMIT}자 이하여야 합니다. 현재 ${[...post.text].length}자입니다.`,
+        restored: true,
+        queueSize: restoredCount,
+      },
+      { status: 400 }
+    );
+  }
+
   const token = await getThreadsTokenFromStore(brand);
   if (!token) {
+    const restoredCount = await restoreDequeuedPost(post);
     return NextResponse.json(
-      { error: `${brand} Threads 토큰 없음 — 대시보드에서 해당 브랜드 Threads 로그인 필요` },
+      {
+        error: `${brand} Threads 토큰 없음 — 대시보드에서 해당 브랜드 Threads 로그인 필요`,
+        restored: true,
+        queueSize: restoredCount,
+      },
       { status: 401 }
     );
   }
 
+  let publishedThreadId: string | null = null;
   try {
     const meRes = await fetch(
       `${THREADS_BASE}/me?fields=id&access_token=${token}`,
@@ -110,9 +140,11 @@ export async function GET(request: NextRequest) {
     });
     if (!publishRes.ok) throw new Error(`게시 실패: ${await publishRes.text()}`);
     const result = await publishRes.json();
+    const threadId = String(result.id);
+    publishedThreadId = threadId;
 
     await addPublishedPost({
-      threadId: result.id,
+      threadId,
       text: post.text,
       publishedAt: new Date().toISOString(),
       postId: post.id,
@@ -121,18 +153,25 @@ export async function GET(request: NextRequest) {
     });
 
     const remaining = (await getPostQueue()).length;
-    console.log(`[Cron:threads-autopost] ${brand} 게시 완료 threadId=${result.id}, 큐 잔여=${remaining}`);
+    console.log(`[Cron:threads-autopost] ${brand} 게시 완료 threadId=${threadId}, 큐 잔여=${remaining}`);
 
     return NextResponse.json({
       success: true,
       brand,
-      threadId: result.id,
+      threadId,
       text: post.text.slice(0, 50) + "...",
       queueRemaining: remaining,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     console.error(`[Cron:threads-autopost] ${brand}`, e);
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (publishedThreadId) {
+      return NextResponse.json(
+        { error: message, published: true, threadId: publishedThreadId, restored: false },
+        { status: 500 }
+      );
+    }
+    const restoredCount = await restoreDequeuedPost(post);
+    return NextResponse.json({ error: message, restored: true, queueSize: restoredCount }, { status: 500 });
   }
 }

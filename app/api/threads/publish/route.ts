@@ -5,6 +5,7 @@ import { addPublishedPost } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
+const THREADS_TEXT_LIMIT = 500;
 
 /**
  * POST /api/threads/publish
@@ -28,6 +29,14 @@ export async function POST(req: NextRequest) {
   if (!text?.trim() && !mediaUrl) {
     return Response.json({ error: "게시할 텍스트 또는 미디어가 없습니다." }, { status: 400 });
   }
+  const trimmedText = text?.trim() ?? "";
+  const charCount = [...trimmedText].length;
+  if (charCount > THREADS_TEXT_LIMIT) {
+    return Response.json(
+      { error: `Threads 글은 ${THREADS_TEXT_LIMIT}자 이하여야 합니다. 현재 ${charCount}자입니다.` },
+      { status: 400 }
+    );
+  }
 
   try {
     // 0. Threads 사용자 ID 조회
@@ -50,14 +59,14 @@ export async function POST(req: NextRequest) {
     if (mediaUrl && mediaType === "IMAGE") {
       containerParams.media_type = "IMAGE";
       containerParams.image_url = mediaUrl;
-      if (text?.trim()) containerParams.text = text.trim();
+      if (trimmedText) containerParams.text = trimmedText;
     } else if (mediaUrl && mediaType === "VIDEO") {
       containerParams.media_type = "VIDEO";
       containerParams.video_url = mediaUrl;
-      if (text?.trim()) containerParams.text = text.trim();
+      if (trimmedText) containerParams.text = trimmedText;
     } else {
       containerParams.media_type = "TEXT";
-      containerParams.text = text.trim();
+      containerParams.text = trimmedText;
     }
 
     const containerRes = await fetch(`${THREADS_BASE}/${userId}/threads`, {
@@ -104,7 +113,7 @@ export async function POST(req: NextRequest) {
     // 게시 로그에 추가 (게시관리 탭에서 조회용)
     await addPublishedPost({
       threadId: result.id,
-      text: text?.trim() ?? "",
+      text: trimmedText,
       publishedAt: new Date().toISOString(),
       postId: "",
       brand: b,
