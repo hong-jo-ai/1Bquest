@@ -25,8 +25,62 @@ import {
   ADD_TODAY_TASK_TOOL,
   type AddTaskArgs,
 } from "@/lib/todayHub/addTask";
+import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
+import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
+
+const CREATE_AS_REQUEST_TOOL = {
+  name: "create_as_request",
+  description:
+    "고객 AS/수리 접수 정보를 AS 관리 앱에 새 접수로 등록합니다. " +
+    "고객명, 전화번호, 반송 주소, 모델명, AS 사유/증상, 브랜드, 접수 채널을 추출합니다. " +
+    "모르는 필드는 비워두고, 브랜드가 불명확하면 paulvice를 사용합니다.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      brand: {
+        type: "string",
+        enum: ["paulvice", "harriot"],
+        description: "브랜드. 폴바이스/paulvice면 paulvice, 해리엇/harriot이면 harriot. 불명확하면 paulvice.",
+      },
+      customerName: {
+        type: "string",
+        description: "고객 이름. 예: 김민지",
+      },
+      customerPhone: {
+        type: "string",
+        description: "고객 전화번호. 원문 형식을 최대한 유지. 예: 010-1234-5678",
+      },
+      customerAddress: {
+        type: "string",
+        description: "반송 주소. 도로명/지번/상세주소를 한 줄로 합칩니다.",
+      },
+      channel: {
+        type: "string",
+        description: "접수 채널. 텔레그램으로 직접 입력한 경우 '텔레그램'.",
+      },
+      model: {
+        type: "string",
+        description: "제품/모델명. 예: 에끌라 실버, 가양 골드",
+      },
+      symptom: {
+        type: "string",
+        description: "AS 사유/증상. 고객 표현을 최대한 그대로 유지.",
+      },
+      destination: {
+        type: "string",
+        enum: ["office", "center"],
+        description: "간단 배터리/줄 조정 등 사무실 처리면 office, 수리센터 입고 필요하면 center. 불명확하면 생략.",
+      },
+      note: {
+        type: "string",
+        description: "추가 메모. 원문에서 별도 요청사항, 구매처, 주문번호 등이 있으면 기록.",
+      },
+    },
+    required: ["brand"],
+  },
+};
 
 function authOk(req: NextRequest): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -81,6 +135,46 @@ async function sendTelegramReply(
 
 type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function normalizeBrand(raw: unknown): CsBrandId {
+  const value = String(raw ?? "").toLowerCase();
+  if (/harriot|해리엇|harr/i.test(value)) return "harriot";
+  return "paulvice";
+}
+
+function nullableText(raw: unknown): string | null {
+  const value = String(raw ?? "").trim();
+  return value ? value : null;
+}
+
+function normalizeAsDestination(raw: unknown): CreateAsInput["destination"] {
+  const value = String(raw ?? "").toLowerCase();
+  if (value === "office" || /사무실|간단|배터리|줄|스트랩/.test(value)) return "office";
+  if (value === "center" || /센터|수리센터|성북|입고/.test(value)) return "center";
+  return null;
+}
+
+function normalizeAsArgs(args: CreateAsInput): CreateAsInput {
+  return {
+    brand: normalizeBrand(args.brand),
+    customerName: nullableText(args.customerName),
+    customerPhone: nullableText(args.customerPhone),
+    customerAddress: nullableText(args.customerAddress),
+    channel: nullableText(args.channel) ?? "텔레그램",
+    model: nullableText(args.model),
+    symptom: nullableText(args.symptom),
+    destination: normalizeAsDestination(args.destination),
+    note: nullableText(args.note),
+    csThreadId: null,
+  };
+}
+
 async function downloadTelegramPhoto(
   fileId: string,
 ): Promise<{ data: string; mediaType: ImageMediaType } | null> {
@@ -113,7 +207,8 @@ async function downloadTelegramPhoto(
 
 type ExtractedTool =
   | { toolName: "register_influencer"; args: RegisterArgs }
-  | { toolName: "add_today_task";      args: AddTaskArgs };
+  | { toolName: "add_today_task";      args: AddTaskArgs }
+  | { toolName: "create_as_request";   args: CreateAsInput };
 
 async function extractToolCall(
   text: string | undefined,
@@ -143,11 +238,13 @@ async function extractToolCall(
     (text && text.trim()
       ? `사용자 메시지: "${text.trim()}"\n\n`
       : "사용자가 사진만 보냈습니다.\n\n") +
-    "위 정보를 보고 둘 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
+    "위 정보를 보고 셋 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
     "1) register_influencer — 인스타/유튜브/틱톡 프로필 스크린샷이거나 인플루언서/계정 등록 의도인 경우.\n" +
-    "2) add_today_task — '오늘 할 일', '투두', '대시보드에 할일' 같이 본인 작업 등록 의도인 경우.\n\n" +
+    "2) add_today_task — '오늘 할 일', '투두', '대시보드에 할일' 같이 본인 작업 등록 의도인 경우.\n" +
+    "3) create_as_request — 고객 AS/수리 접수 정보인 경우. 이름/전화/주소/모델/증상/AS사유가 들어오면 이 도구를 우선 사용.\n\n" +
     "휴리스틱:\n" +
     "- 이미지가 첨부됐으면 거의 항상 인플루언서 등록.\n" +
+    "- 'AS 접수', '수리 접수', '고객명', '전화번호', '반송 주소', '증상', 'AS 사유'가 있으면 create_as_request.\n" +
     "- 텍스트만이고 '할일'/'todo'/'task'/'할거'/'추가해줘 (작업명)' 같으면 add_today_task.\n" +
     "- '@핸들' 또는 팔로워/플랫폼 언급은 register_influencer.\n\n" +
     "register_influencer 호출 시:\n" +
@@ -158,7 +255,13 @@ async function extractToolCall(
     "- 모르는 필드는 비워두기\n\n" +
     "add_today_task 호출 시:\n" +
     "- title: 할 일 한 줄 (예: '에끌라 영상 컷 편집')\n" +
-    "- category: 디자인/광고/CS/콘텐츠/운영/기타 중 추정. 모르면 기타.";
+    "- category: 디자인/광고/CS/콘텐츠/운영/기타 중 추정. 모르면 기타.\n\n" +
+    "create_as_request 호출 시:\n" +
+    "- brand: 폴바이스/paulvice는 paulvice, 해리엇/harriot은 harriot. 불명확하면 paulvice.\n" +
+    "- customerName/customerPhone/customerAddress/model/symptom을 원문에서 추출.\n" +
+    "- channel은 별도 채널이 없으면 '텔레그램'.\n" +
+    "- destination은 명확할 때만 office 또는 center로 지정. 불명확하면 생략.\n" +
+    "- note에는 주문번호, 구매처, 요청사항처럼 주 필드에 안 들어가는 내용을 기록.";
 
   userContent.push({ type: "text", text: userInstruction });
 
@@ -167,7 +270,7 @@ async function extractToolCall(
     max_tokens: 1024,
     system:
       "너는 paulwise 대시보드의 모바일 도우미야. " +
-      "사용자가 보낸 메시지/이미지를 보고 register_influencer 또는 add_today_task 중 정확히 하나의 도구를 호출해. " +
+      "사용자가 보낸 메시지/이미지를 보고 register_influencer, add_today_task, create_as_request 중 정확히 하나의 도구를 호출해. " +
       "추측 금지 — 명확한 신호로만 판단. 둘 다 애매하면 add_today_task 로 fallback.",
     tools: [
       {
@@ -181,6 +284,12 @@ async function extractToolCall(
         description: ADD_TODAY_TASK_TOOL.description,
         input_schema:
           ADD_TODAY_TASK_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
+      },
+      {
+        name: CREATE_AS_REQUEST_TOOL.name,
+        description: CREATE_AS_REQUEST_TOOL.description,
+        input_schema:
+          CREATE_AS_REQUEST_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
       },
     ],
     tool_choice: { type: "any" },
@@ -200,6 +309,9 @@ async function extractToolCall(
   if (toolUse.name === "add_today_task") {
     return { tool: { toolName: "add_today_task", args: toolUse.input as AddTaskArgs } };
   }
+  if (toolUse.name === "create_as_request") {
+    return { tool: { toolName: "create_as_request", args: toolUse.input as CreateAsInput } };
+  }
   return { tool: null, error: `알 수 없는 도구: ${toolUse.name}` };
 }
 
@@ -210,9 +322,9 @@ function shouldProcess(
   // 사진이 있으면 무조건 등록 시도
   if (hasPhoto) return { process: true };
 
-  // 텍스트만 있으면 의도 키워드 확인 (인플루언서 등록 + 오늘 할일 추가)
+  // 텍스트만 있으면 의도 키워드 확인 (인플루언서 등록 + 오늘 할일 추가 + AS 접수)
   if (text) {
-    if (/등록|추가|저장|add|register|발굴|할일|할\s*일|todo|task|할거|할\s*거/i.test(text)) {
+    if (/등록|추가|저장|add|register|발굴|할일|할\s*일|todo|task|할거|할\s*거|as|a\/s|AS|수리|접수|증상|반송\s*주소|전화번호|연락처/i.test(text)) {
       return { process: true };
     }
     return {
@@ -221,7 +333,8 @@ function shouldProcess(
         "💡 사용법:\n" +
         "• 인스타 스크린샷 첨부 + '등록해줘' → 인플루언서 등록\n" +
         "• '@handle 등록, 패션, 팔로워 5만' → 인플루언서 등록\n" +
-        "• '할일 추가: 에끌라 영상 편집' → 오늘 할일에 추가",
+        "• '할일 추가: 에끌라 영상 편집' → 오늘 할일에 추가\n" +
+        "• 'AS 접수\\n이름: 김민지\\n전화: 010...\\n주소: ...\\n모델: ...\\n증상: ...' → AS 접수",
     };
   }
 
@@ -307,6 +420,23 @@ export async function POST(req: NextRequest) {
       } else {
         reply = `❌ 할일 추가 실패: ${result.error}`;
       }
+    } else if (tool.toolName === "create_as_request") {
+      const args = normalizeAsArgs(tool.args);
+      const request = await createAsRequest(args);
+      const lines = [
+        `✅ AS 접수 완료: <b>${escapeHtml(request.as_number)}</b>`,
+        "",
+        `<b>브랜드</b>: ${request.brand === "harriot" ? "해리엇" : "폴바이스"}`,
+        request.customer_name ? `<b>고객</b>: ${escapeHtml(request.customer_name)}` : null,
+        request.customer_phone ? `<b>전화</b>: ${escapeHtml(request.customer_phone)}` : null,
+        request.customer_address ? `<b>주소</b>: ${escapeHtml(request.customer_address)}` : null,
+        request.model ? `<b>모델</b>: ${escapeHtml(request.model)}` : null,
+        request.symptom ? `<b>증상</b>: ${escapeHtml(request.symptom)}` : null,
+        request.note ? `<b>메모</b>: ${escapeHtml(request.note)}` : null,
+        "",
+        "대시보드 → AS 관리에서 확인할 수 있습니다.",
+      ].filter((l): l is string => l !== null);
+      reply = lines.join("\n");
     } else {
       const args = tool.args;
       const result = await registerInfluencer(args);
