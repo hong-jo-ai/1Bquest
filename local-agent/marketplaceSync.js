@@ -37,6 +37,8 @@ const CHANNELS = {
     passwordSelector: env("MUSINSA_PASSWORD_SELECTOR"),
     loginButtonSelector: env("MUSINSA_LOGIN_BUTTON_SELECTOR"),
     emailMethodSelector: env("MUSINSA_EMAIL_METHOD_SELECTOR"),  // 2차 인증 '이메일' 탭
+    emailSendSelector: env("MUSINSA_EMAIL_SEND_SELECTOR"),      // '인증번호 받기' 버튼 (메일 발송)
+    emailConfirmSelector: env("MUSINSA_EMAIL_CONFIRM_SELECTOR"),// '전송됨' 모달의 확인 (닫아야 입력칸 활성화)
     emailCodeSelector: env("MUSINSA_EMAIL_CODE_SELECTOR"),
     emailCodeSubmitSelector: env("MUSINSA_EMAIL_CODE_SUBMIT_SELECTOR"),
     codeViaDashboard: true,  // 인증번호는 대시보드 API가 shong@ Gmail에서 읽어 전달 (로컬에 Google secret 불필요)
@@ -44,6 +46,9 @@ const CHANNELS = {
     dateEndSelector: env("MUSINSA_DATE_END_SELECTOR"),
     searchButtonSelector: env("MUSINSA_SEARCH_BUTTON_SELECTOR"),
     downloadButtonSelector: env("MUSINSA_DOWNLOAD_BUTTON_SELECTOR"),
+    // 무신사: 보이는 다운로드 버튼이 없고, 그리드 우클릭 → '내려받기' 컨텍스트 메뉴로 다운로드
+    downloadRightClickSelector: env("MUSINSA_DOWNLOAD_RIGHTCLICK_SELECTOR"),
+    downloadMenuSelector: env("MUSINSA_DOWNLOAD_MENU_SELECTOR"),
   },
   "29cm": {
     label: "29CM",
@@ -90,8 +95,10 @@ function missingConfig(channel) {
     "dateStartSelector",
     "dateEndSelector",
     "searchButtonSelector",
-    "downloadButtonSelector",
   ];
+  // 다운로드: 우클릭 컨텍스트 메뉴 방식이면 메뉴 셀렉터, 아니면 일반 버튼
+  if (cfg.downloadRightClickSelector) required.push("downloadMenuSelector");
+  else required.push("downloadButtonSelector");
   if (cfg.authMethod === "email") {
     required.push("emailCodeSelector", "emailCodeSubmitSelector");
     if (!cfg.codeViaDashboard) required.push("gmailRefreshToken");
@@ -274,10 +281,19 @@ async function ensureLoggedIn(channel, page, log) {
 
   if (cfg.authMethod === "email") {
     try {
-      // (무신사 등) 2차 인증 방식 탭이 있으면 '이메일' 선택 → 인증번호 메일 발송
+      // (무신사 등) 2차 인증 방식 탭이 있으면 '이메일' 선택
       if (cfg.emailMethodSelector) {
         await clickIfConfigured(page, cfg.emailMethodSelector, 8000);
         log(`${cfg.label} 2차 인증: 이메일 방식 선택`);
+      }
+      // '인증번호 받기' 버튼이 있으면 클릭 → 메일 발송
+      if (cfg.emailSendSelector) {
+        await clickIfConfigured(page, cfg.emailSendSelector, 8000);
+        log(`${cfg.label} 인증번호 받기 요청`);
+      }
+      // '전송됨' 모달이 뜨면 확인 클릭 → 코드 입력칸 활성화
+      if (cfg.emailConfirmSelector) {
+        await clickIfConfigured(page, cfg.emailConfirmSelector, 8000).catch(() => {});
       }
       await page.locator(cfg.emailCodeSelector).first().waitFor({ state: "visible", timeout: 15000 });
       await sleep(5000); // 인증번호 메일 도착 대기
@@ -313,11 +329,23 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
   await fillIfVisible(page, cfg.dateStartSelector, startDate, 10000);
   await fillIfVisible(page, cfg.dateEndSelector, endDate, 10000);
   await clickIfConfigured(page, cfg.searchButtonSelector, 10000);
-  await sleep(1500);
+  await sleep(2000);
+
+  // 다운로드 트리거: (1) 그리드 우클릭 → 컨텍스트 메뉴 '내려받기' (무신사),
+  // (2) 일반 다운로드 버튼 클릭 (그 외)
+  const triggerDownload = async () => {
+    if (cfg.downloadRightClickSelector) {
+      await page.locator(cfg.downloadRightClickSelector).first().click({ button: "right", timeout: 15000 });
+      await sleep(800);
+      await clickIfConfigured(page, cfg.downloadMenuSelector, 10000);
+    } else {
+      await clickIfConfigured(page, cfg.downloadButtonSelector, 30000);
+    }
+  };
 
   const download = await Promise.all([
     page.waitForEvent("download", { timeout: 120000 }),
-    clickIfConfigured(page, cfg.downloadButtonSelector, 30000),
+    triggerDownload(),
   ]).then(([dl]) => dl);
 
   const suggested = download.suggestedFilename();
@@ -329,6 +357,7 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
   return { filePath, fileName: suggested };
 }
 
+// 인터랙티브(미리보기) — 로컬 대시보드 /api/upload 로 파싱만 (저장 안 함)
 async function parseDownloadedFile(channel, filePath, fileName) {
   const uploadBase = env("DASHBOARD_UPLOAD_BASE_URL") || "http://localhost:3000";
   const buffer = fs.readFileSync(filePath);
@@ -343,7 +372,25 @@ async function parseDownloadedFile(channel, filePath, fileName) {
   return json;
 }
 
-async function syncMarketplaceSales({ channel, startDate, endDate }, log) {
+// 무인(크론) — 배포 대시보드 /api/marketplace/sync-ingest 로 파싱 + 영속 저장 (토큰 인증)
+async function ingestDownloadedFile(channel, filePath, fileName, log) {
+  const base = (env("DASHBOARD_URL") || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
+  const token = env("PAULWISE_MCP_TOKEN") || "";
+  const buffer = fs.readFileSync(filePath);
+  const form = new FormData();
+  form.append("file", new Blob([buffer]), fileName);
+  const res = await fetch(`${base}/api/marketplace/sync-ingest?channel=${encodeURIComponent(channel)}`, {
+    method: "POST",
+    headers: { "x-agent-token": token },
+    body: form,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.ok) throw new Error(json.error || `적재 실패 (HTTP ${res.status})`);
+  log(`${CHANNELS[channel].label} 대시보드 적재 완료: ${json.rowCount}건 (${json.period?.start}~${json.period?.end})`);
+  return json;
+}
+
+async function syncMarketplaceSales({ channel, startDate, endDate, ingest = false }, log) {
   if (!CHANNELS[channel]) throw new Error("지원하지 않는 채널입니다");
   const missing = missingConfig(channel);
   if (missing.length) {
@@ -353,7 +400,10 @@ async function syncMarketplaceSales({ channel, startDate, endDate }, log) {
   const { page } = await getMarketplacePage(channel, log);
   await ensureLoggedIn(channel, page, log);
   const downloaded = await downloadOrders(channel, page, startDate, endDate, log);
-  const parsed = await parseDownloadedFile(channel, downloaded.filePath, downloaded.fileName);
+  // ingest=true(무인): 서버에 파싱+저장 / 그 외(인터랙티브): 파싱만 (미리보기)
+  const parsed = ingest
+    ? await ingestDownloadedFile(channel, downloaded.filePath, downloaded.fileName, log)
+    : await parseDownloadedFile(channel, downloaded.filePath, downloaded.fileName);
   return {
     success: true,
     channel,
