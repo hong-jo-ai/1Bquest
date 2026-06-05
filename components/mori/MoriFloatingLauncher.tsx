@@ -8,6 +8,7 @@ export default function MoriFloatingLauncher() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const inboxOffset = pathname === "/inbox";
 
   const hidden =
     pathname === "/login" ||
@@ -18,7 +19,11 @@ export default function MoriFloatingLauncher() {
   if (hidden) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[80] sm:bottom-5 sm:right-5">
+    <div
+      className={`fixed right-4 z-[80] sm:bottom-5 sm:right-5 ${
+        inboxOffset ? "bottom-[calc(9rem+env(safe-area-inset-bottom))]" : "bottom-4"
+      }`}
+    >
       {open && (
         <section
           className={`mb-3 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 shadow-2xl shadow-black/30 transition-all dark:border-zinc-800 ${
