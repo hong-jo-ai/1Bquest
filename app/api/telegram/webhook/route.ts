@@ -26,6 +26,7 @@ import {
   type AddTaskArgs,
 } from "@/lib/todayHub/addTask";
 import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
+import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -372,6 +373,20 @@ export async function POST(req: NextRequest) {
 
   const text = message.text || message.caption;
   const hasPhoto = !!(message.photo && message.photo.length > 0);
+
+  // W컨셉 등 SMS 인증번호 릴레이 — "wc 123456" 이면 코드 저장 후 종료 (다른 처리로 안 넘김)
+  if (text) {
+    const wcCode = parseWcCodeMessage(text);
+    if (wcCode) {
+      try {
+        await storeSmsCode(wcCode);
+        await sendTelegramReply(message.chat.id, `✅ 인증번호 ${wcCode} 받았어요 (W컨셉 동기화에 사용).`, message.message_id);
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 인증번호 저장 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      }
+      return Response.json({ ok: true, smsCode: true });
+    }
+  }
 
   const decision = shouldProcess(text, hasPhoto);
   if (!decision.process) {
