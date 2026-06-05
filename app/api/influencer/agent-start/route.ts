@@ -3,9 +3,10 @@ import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 
 let agentProcess: ChildProcess | null = null;
+let lastAgentError = "";
 
 const AGENT_SCRIPT = ["agent", "js"].join(".");
-const AGENT_URL = "http://localhost:7777";
+const AGENT_URL = "http://127.0.0.1:7777";
 
 async function isAgentRunning(): Promise<boolean> {
   try {
@@ -21,7 +22,7 @@ async function isAgentRunning(): Promise<boolean> {
 // GET: health check 프록시
 export async function GET() {
   const running = await isAgentRunning();
-  return NextResponse.json({ connected: running });
+  return NextResponse.json({ connected: running, lastError: running ? "" : lastAgentError });
 }
 
 // POST: 자동 시작 + health check
@@ -41,15 +42,21 @@ export async function POST() {
   return new Promise<NextResponse>((resolve) => {
     agentProcess = spawn("node", [AGENT_SCRIPT], {
       cwd: agentDir,
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "pipe"],
       detached: true,
       env: { ...process.env },
     });
 
     agentProcess.unref();
+    lastAgentError = "";
+
+    agentProcess.stderr?.on("data", (chunk: Buffer) => {
+      lastAgentError = `${lastAgentError}${chunk.toString()}`.slice(-4000);
+    });
 
     agentProcess.on("error", (err) => {
       agentProcess = null;
+      lastAgentError = err.message;
       resolve(
         NextResponse.json(
           { status: "error", message: err.message },
@@ -75,7 +82,12 @@ export async function POST() {
           clearInterval(poll);
           resolve(
             NextResponse.json(
-              { status: "timeout", message: "에이전트 시작 시간 초과" },
+              {
+                status:  "timeout",
+                message: lastAgentError
+                  ? `에이전트 시작 시간 초과: ${lastAgentError}`
+                  : "에이전트 시작 시간 초과",
+              },
               { status: 504 }
             )
           );

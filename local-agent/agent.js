@@ -23,7 +23,8 @@ const {
 } = require("./marketplaceSync");
 
 // ── 설정 ──────────────────────────────────────────────────────────────
-const PORT        = 7777;
+const PORT        = Number(process.env.AGENT_PORT || 7777);
+const HOST        = process.env.AGENT_HOST || "127.0.0.1";
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_URL || "https://paulvice-dashboard.vercel.app";
 const ANTHROPIC_KEY    = process.env.ANTHROPIC_API_KEY || "";
 const INSTAGRAM_HANDLE = process.env.INSTAGRAM_HANDLE || ""; // 본인 계정 핸들 (@ 없이)
@@ -597,11 +598,11 @@ app.post("/open-browser", async (req, res) => {
 });
 
 // 서버 시작
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`
 ╔════════════════════════════════════════╗
 ║   PAULVICE 로컬 에이전트 실행 중       ║
-║   http://localhost:${PORT}                ║
+║   http://${HOST}:${PORT}              ║
 ╠════════════════════════════════════════╣
 ║  대시보드에서 "에이전트 연결" 클릭     ║
 ║  Chrome이 자동으로 열립니다           ║

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AGENT_URL = "http://localhost:7777";
+const AGENT_URL = "http://127.0.0.1:7777";
 
 // POST: local-agent의 엔드포인트를 프록시
 // body에 { endpoint, ...params } 형태로 전달
