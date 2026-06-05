@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   loadInfluencers, saveInfluencers, deleteInfluencer,
-  syncInfluencersFromServer,
+  syncInfluencersFromServer, loadExcludedHandles,
   type Influencer, type InfluencerStatus,
 } from "@/lib/influencerStorage";
 import { SEED_INFLUENCERS } from "@/lib/influencerSeedData";
@@ -64,14 +64,19 @@ export default function InfluencerManager() {
   const [conversationTarget, setConversationTarget] = useState<Influencer | null>(null);
   const [shippingTarget, setShippingTarget]         = useState<Influencer | null>(null);
 
-  const SEED_KEY = "paulvice_influencers_seed_v1";
-
   const reload = useCallback(() => {
     setInfluencers(loadInfluencers());
   }, []);
 
-  // 마운트 + 30초 폴링으로 서버 동기화
+  // 마운트 시 localStorage로 즉시 렌더 → 서버를 정본으로 30초 폴링 동기화.
+  //
+  // ⚠️ 시드 자동 주입은 의도적으로 제거됨. 예전에는 SEED_KEY 플래그가 없으면
+  // (캐시 삭제·시크릿창·새 기기 등) 빈 localStorage에 시드 78개를 자동 주입하고,
+  // 그게 saveWithSync로 공유 서버(kv_store)를 통째 덮어써 다른 모든 기기의
+  // 실데이터를 시드 스냅샷으로 되돌리는 사고가 있었다. 시드는 이제 "시트 불러오기"
+  // 버튼으로만 수동 주입한다.
   useEffect(() => {
+    reload();
     const sync = () => {
       syncInfluencersFromServer().then((serverData) => {
         if (serverData && serverData.length > 0) setInfluencers(serverData);
@@ -80,38 +85,29 @@ export default function InfluencerManager() {
     sync();
     const id = setInterval(sync, 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [reload]);
 
-  // 시드 데이터 주입: 버전 키가 없으면 기존 데이터와 병합
+  // 시드 데이터 수동 주입 (버튼 전용). 삭제(제외 목록)된 핸들은 다시 불러오지 않는다.
   const importSeedData = useCallback((forceOverwrite = false) => {
+    const excluded = loadExcludedHandles();
+    const seed = SEED_INFLUENCERS.filter((s) => !excluded.has(s.handle.toLowerCase()));
     const existing = loadInfluencers();
     const existingIds = new Set(existing.map((i) => i.id));
 
     if (forceOverwrite) {
       // 기존 데이터 전체를 시드로 교체
-      saveInfluencers(SEED_INFLUENCERS);
-      localStorage.setItem(SEED_KEY, "1");
+      saveInfluencers(seed);
       reload();
       return;
     }
 
     // 중복 없는 시드 항목만 추가
-    const toAdd = SEED_INFLUENCERS.filter((s) => !existingIds.has(s.id));
+    const toAdd = seed.filter((s) => !existingIds.has(s.id));
     if (toAdd.length > 0) {
       saveInfluencers([...existing, ...toAdd]);
     }
-    localStorage.setItem(SEED_KEY, "1");
     reload();
   }, [reload]);
-
-  useEffect(() => {
-    // 시드가 아직 주입되지 않았으면 자동 주입
-    if (!localStorage.getItem(SEED_KEY)) {
-      importSeedData(false);
-    } else {
-      reload();
-    }
-  }, [importSeedData, reload]);
 
   // 전체 탭 정렬 순서: 발굴됨이 가장 위, 거절/보류가 가장 아래.
   // 같은 status 안에서는 최근 업데이트 순.
