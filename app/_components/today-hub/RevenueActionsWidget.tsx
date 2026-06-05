@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import type { ElementType } from "react";
 import {
-  AlertTriangle, BarChart3, CalendarClock, Check, Flag, Gauge,
-  PackagePlus, Pencil, Plus, Target, TrendingUp, X,
+  AlertTriangle, BarChart3, CalendarClock, Flag, Gauge,
+  PackagePlus, Pencil, Target, TrendingUp,
 } from "lucide-react";
-import { daysUntil, kstWeekStartStr } from "./dateUtils";
-import type { BigEvent, CadenceType, RevenueAction, RevenueGoal } from "./types";
+import { daysUntil } from "./dateUtils";
+import type { BigEvent, RevenueAction, RevenueGoal } from "./types";
 
 function fmtKRW(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억원";
@@ -19,23 +19,6 @@ function fmtCompact(n: number) {
   if (n >= 100_000_000) return `${Math.round(n / 100_000_000)}억`;
   if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
   return n.toLocaleString("ko-KR");
-}
-
-function newId() {
-  return `r${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function makeCadenceLabel(type: CadenceType, target: number): string {
-  return type === "weekly" ? `주 ${target}회` : `월 ${target}회`;
-}
-
-function makeScopeLabel(type: CadenceType): string {
-  return type === "weekly" ? "이번주" : "이번달";
-}
-
-function currentPeriodKey(type: CadenceType): string {
-  if (type === "weekly") return kstWeekStartStr();
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7);
 }
 
 function monthProgressPct() {
@@ -51,6 +34,10 @@ function quarterLabel() {
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const q = Math.floor(now.getUTCMonth() / 3) + 1;
   return `${now.getUTCFullYear()} Q${q}`;
+}
+
+function currentMonthKey() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7);
 }
 
 type LeverKey = "product" | "campaign" | "ads" | "content" | "channel";
@@ -93,6 +80,14 @@ function inferLever(title: string): LeverKey {
   return entries.find(([, v]) => v.words.test(title))?.[0] ?? "channel";
 }
 
+function isCampaignEvent(title: string) {
+  return /공구|공동구매|협찬|인플루언서|콜라보|캠페인|프로모션|이벤트/i.test(title);
+}
+
+function isProductEvent(title: string) {
+  return /상품|신상|신규|출시|샘플|디자인|발주|리오더|재고|컬러|스트랩/i.test(title);
+}
+
 function normalizeGoal(goal: RevenueGoal): Required<RevenueGoal> {
   return {
     target: goal.target || 80_000_000,
@@ -114,22 +109,28 @@ interface Props {
   events: BigEvent[];
 }
 
+type EventSnapshot = {
+  event: BigEvent;
+  daysLeft: number;
+  total: number;
+  done: number;
+  pct: number;
+  lever: LeverKey;
+};
+
+type WeeklyAction = {
+  title: string;
+  source: string;
+  detail: string;
+  tone: "risk" | "review" | "plan";
+};
+
 export default function RevenueActionsWidget({
-  routines, setRoutines, goal, setGoal, currentRevenue, brandLabel, events,
+  goal, setGoal, currentRevenue, brandLabel, events,
 }: Props) {
   const resolvedGoal = normalizeGoal(goal);
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalDraft, setGoalDraft] = useState<string>(String(Math.round(resolvedGoal.target / 10_000)));
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editType, setEditType] = useState<CadenceType>("weekly");
-  const [editTarget, setEditTarget] = useState(1);
-
-  const [addingNew, setAddingNew] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newType, setNewType] = useState<CadenceType>("weekly");
-  const [newTarget, setNewTarget] = useState(1);
 
   const revenuePct = resolvedGoal.target > 0
     ? Math.min(100, Math.round((currentRevenue / resolvedGoal.target) * 100))
@@ -139,52 +140,168 @@ export default function RevenueActionsWidget({
   const estimatedUnits = Math.round(currentRevenue / 82_000);
   const unitsPct = Math.min(100, Math.round((estimatedUnits / resolvedGoal.monthlyUnitsTarget) * 100));
   const expectedPct = monthProgressPct();
+  const monthKey = currentMonthKey();
 
-  const nextEvent = useMemo(() => {
+  const eventSnapshots = useMemo<EventSnapshot[]>(() => {
     return [...events]
       .map((event) => {
         const daysLeft = daysUntil(event.targetDate);
         const total = event.checklist.length;
         const done = event.checklist.filter((c) => c.done).length;
-        return { event, daysLeft, total, done, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+        return {
+          event,
+          daysLeft,
+          total,
+          done,
+          pct: total > 0 ? Math.round((done / total) * 100) : 0,
+          lever: inferLever(event.title),
+        };
       })
-      .filter((e) => e.daysLeft >= -7)
-      .sort((a, b) => a.daysLeft - b.daysLeft)[0] ?? null;
+      .sort((a, b) => a.daysLeft - b.daysLeft);
   }, [events]);
+
+  const upcomingEvents = useMemo(
+    () => eventSnapshots.filter((snapshot) => snapshot.daysLeft >= 0),
+    [eventSnapshots],
+  );
+
+  const nextEvent = upcomingEvents[0] ?? null;
+
+  const recentEndedEvent = useMemo(() => {
+    return eventSnapshots
+      .filter((snapshot) => snapshot.daysLeft < 0 && snapshot.daysLeft >= -30)
+      .sort((a, b) => b.daysLeft - a.daysLeft)[0] ?? null;
+  }, [eventSnapshots]);
+
+  const monthlyCampaignCount = useMemo(() => {
+    return eventSnapshots.filter((snapshot) =>
+      snapshot.event.targetDate.startsWith(monthKey) && isCampaignEvent(snapshot.event.title)
+    ).length;
+  }, [eventSnapshots, monthKey]);
+
+  const weeklyActions = useMemo<WeeklyAction[]>(() => {
+    const actions: WeeklyAction[] = [];
+    if (revenuePct + 8 < expectedPct) {
+      actions.push({
+        title: "매출 회복 레버 1개 확정",
+        source: "매출 속도",
+        detail: `월 매출 ${revenuePct}% / 시간 ${expectedPct}%. 광고 증액, 공구 추가, 채널 프로모션 중 하나를 선택해야 함.`,
+        tone: "risk",
+      });
+    }
+    if (!nextEvent) {
+      actions.push({
+        title: "다음 이벤트 카드 등록",
+        source: "이벤트 카드",
+        detail: "예정된 출시/공구/프로모션이 없어서 성장 운영판이 다음 액션을 계산할 기준이 부족함.",
+        tone: "plan",
+      });
+    }
+    if (monthlyCampaignCount < resolvedGoal.monthlyCampaignTarget) {
+      actions.push({
+        title: "이번 달 캠페인 공백 메우기",
+        source: "이벤트 카드",
+        detail: `캠페인 ${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}. 확정되면 이벤트 카드에 먼저 등록.`,
+        tone: "plan",
+      });
+    }
+    if (!upcomingEvents.some((snapshot) => isProductEvent(snapshot.event.title))) {
+      actions.push({
+        title: "다음 상품/리오더 의사결정",
+        source: "출시 계획",
+        detail: `연 ${resolvedGoal.annualLaunchTarget}회 출시 목표 대비 예정 상품 이벤트가 비어 있음.`,
+        tone: "plan",
+      });
+    }
+    if (recentEndedEvent) {
+      actions.push({
+        title: "종료 이벤트 회고 및 후속 결정",
+        source: recentEndedEvent.event.title,
+        detail: "성과, 재고 소진, 고객 반응을 보고 리오더/재공구/광고 재활용 여부를 결정.",
+        tone: "review",
+      });
+    }
+    return actions.slice(0, 3);
+  }, [
+    expectedPct,
+    monthlyCampaignCount,
+    nextEvent,
+    recentEndedEvent,
+    resolvedGoal.annualLaunchTarget,
+    resolvedGoal.monthlyCampaignTarget,
+    revenuePct,
+    upcomingEvents,
+  ]);
+
+  const leverHealth = useMemo(() => {
+    const nextProduct = upcomingEvents.find((snapshot) => isProductEvent(snapshot.event.title));
+    const nextCampaign = upcomingEvents.find((snapshot) => isCampaignEvent(snapshot.event.title));
+    return {
+      product: {
+        value: nextProduct ? `D-${nextProduct.daysLeft}` : "공백",
+        detail: nextProduct ? nextProduct.event.title : "다음 출시/리오더 카드 필요",
+        pct: nextProduct ? nextProduct.pct : 0,
+      },
+      campaign: {
+        value: `${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}`,
+        detail: nextCampaign ? nextCampaign.event.title : "이번 달 캠페인 카드 부족",
+        pct: Math.min(100, Math.round((monthlyCampaignCount / resolvedGoal.monthlyCampaignTarget) * 100)),
+      },
+      ads: {
+        value: revenuePct + 8 < expectedPct ? "점검" : "유지",
+        detail: "Meta API 연동 후 소재/ROAS 자동 반영",
+        pct: revenuePct,
+      },
+      content: {
+        value: "연동",
+        detail: "인스타/채널 게시 데이터 연결 대상",
+        pct: 0,
+      },
+      channel: {
+        value: recentEndedEvent ? "회고" : "관찰",
+        detail: recentEndedEvent ? `${recentEndedEvent.event.title} 후속 판단` : "채널별 매출/재고 데이터 연결 대상",
+        pct: recentEndedEvent ? recentEndedEvent.pct : revenuePct,
+      },
+    } satisfies Record<LeverKey, { value: string; detail: string; pct: number }>;
+  }, [
+    expectedPct,
+    monthlyCampaignCount,
+    recentEndedEvent,
+    resolvedGoal.monthlyCampaignTarget,
+    revenuePct,
+    upcomingEvents,
+  ]);
 
   const bottlenecks = useMemo(() => {
     const items: Array<{ tone: string; text: string }> = [];
-    for (const event of events) {
-      const left = daysUntil(event.targetDate);
-      for (const c of event.checklist) {
-        const delta = left - c.dDay;
-        if (!c.done && delta < 0) items.push({ tone: "overdue", text: `${event.title}: ${c.title}` });
+    for (const snapshot of eventSnapshots) {
+      for (const c of snapshot.event.checklist) {
+        const delta = snapshot.daysLeft - c.dDay;
+        if (!c.done && delta < 0) items.push({ tone: "overdue", text: `${snapshot.event.title}: ${c.title}` });
       }
     }
     if (revenuePct + 8 < expectedPct) {
       items.push({ tone: "risk", text: `월 매출 속도 ${revenuePct}% / 시간 경과 ${expectedPct}%` });
     }
-    const stale = routines.filter((r) => r.done < r.target).slice(0, 2);
-    for (const r of stale) items.push({ tone: "routine", text: `${r.title} ${r.done}/${r.target}` });
-    return items.slice(0, 3);
-  }, [events, expectedPct, revenuePct, routines]);
-
-  const leverStats = useMemo(() => {
-    const base: Record<LeverKey, { done: number; target: number; routines: RevenueAction[] }> = {
-      product: { done: 0, target: 0, routines: [] },
-      campaign: { done: 0, target: 0, routines: [] },
-      ads: { done: 0, target: 0, routines: [] },
-      content: { done: 0, target: 0, routines: [] },
-      channel: { done: 0, target: 0, routines: [] },
-    };
-    for (const r of routines) {
-      const key = inferLever(r.title);
-      base[key].done += r.done;
-      base[key].target += r.target;
-      base[key].routines.push(r);
+    if (monthlyCampaignCount < resolvedGoal.monthlyCampaignTarget) {
+      items.push({ tone: "plan", text: `이번 달 캠페인 ${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}` });
     }
-    return base;
-  }, [routines]);
+    if (!nextEvent) {
+      items.push({ tone: "plan", text: "다가오는 이벤트 카드 없음" });
+    }
+    if (recentEndedEvent) {
+      items.push({ tone: "review", text: `${recentEndedEvent.event.title} 회고 필요` });
+    }
+    return items.slice(0, 4);
+  }, [
+    eventSnapshots,
+    expectedPct,
+    monthlyCampaignCount,
+    nextEvent,
+    recentEndedEvent,
+    resolvedGoal.monthlyCampaignTarget,
+    revenuePct,
+  ]);
 
   const startGoalEdit = () => {
     setGoalDraft(String(Math.round(resolvedGoal.target / 10_000)));
@@ -197,70 +314,6 @@ export default function RevenueActionsWidget({
       setGoal({ ...resolvedGoal, target: n * 10_000 });
     }
     setEditingGoal(false);
-  };
-
-  const tick = (id: string) =>
-    setRoutines((prev) =>
-      prev.map((a) => {
-        if (a.id !== id) return a;
-        const next = a.done < a.target ? a.done + 1 : 0;
-        return { ...a, done: next };
-      }),
-    );
-
-  const startEdit = (r: RevenueAction) => {
-    setEditingId(r.id);
-    setEditTitle(r.title);
-    setEditType(r.cadenceType);
-    setEditTarget(r.target);
-  };
-
-  const saveEdit = () => {
-    const title = editTitle.trim();
-    const target = Math.max(1, editTarget);
-    if (!title || !editingId) return;
-    setRoutines((prev) =>
-      prev.map((a) =>
-        a.id === editingId
-          ? {
-              ...a,
-              title,
-              target,
-              cadenceType: editType,
-              cadence: makeCadenceLabel(editType, target),
-              scope: makeScopeLabel(editType),
-              done: Math.min(a.done, target),
-              periodKey: a.cadenceType === editType ? a.periodKey : currentPeriodKey(editType),
-            }
-          : a,
-      ),
-    );
-    setEditingId(null);
-  };
-
-  const remove = (id: string) => setRoutines((prev) => prev.filter((a) => a.id !== id));
-
-  const addRoutine = () => {
-    const title = newTitle.trim();
-    const target = Math.max(1, newTarget);
-    if (!title) return;
-    setRoutines((prev) => [
-      ...prev,
-      {
-        id: newId(),
-        title,
-        cadence: makeCadenceLabel(newType, target),
-        scope: makeScopeLabel(newType),
-        cadenceType: newType,
-        target,
-        done: 0,
-        periodKey: currentPeriodKey(newType),
-      },
-    ]);
-    setNewTitle("");
-    setNewTarget(1);
-    setNewType("weekly");
-    setAddingNew(false);
   };
 
   return (
@@ -345,134 +398,60 @@ export default function RevenueActionsWidget({
               </div>
             </div>
           ) : (
-            <p className="text-xs text-zinc-400 py-2">등록된 분기 일정 없음</p>
+            <p className="text-xs text-zinc-400 py-2">예정된 이벤트 카드 없음</p>
           )}
         </div>
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-zinc-500">월간 성장 레버</p>
-            {!addingNew && (
-              <button
-                onClick={() => setAddingNew(true)}
-                className="text-[10px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white inline-flex items-center gap-0.5"
-              >
-                <Plus size={10} /> 추가
-              </button>
-            )}
+            <p className="text-[11px] font-semibold text-zinc-500">자동 성장 레버</p>
+            <span className="text-[10px] text-zinc-400">이벤트·매출 기반</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {(Object.keys(LEVERS) as LeverKey[]).map((key) => {
               const meta = LEVERS[key];
               const Icon = meta.icon;
-              const stat = leverStats[key];
-              const pct = stat.target > 0 ? Math.min(100, Math.round((stat.done / stat.target) * 100)) : 0;
+              const health = leverHealth[key];
               return (
                 <div key={key} className={`rounded-lg border p-2 ${meta.tone}`}>
                   <div className="flex items-center gap-1.5">
                     <Icon size={12} className="shrink-0" />
                     <span className="text-[11px] font-bold flex-1">{meta.label}</span>
-                    <span className="text-[10px] font-semibold tabular-nums">{stat.done}/{stat.target}</span>
+                    <span className="text-[10px] font-semibold tabular-nums">{health.value}</span>
                   </div>
+                  <p className="mt-1 text-[10px] leading-snug opacity-80 truncate">{health.detail}</p>
                   <div className="mt-1.5 h-1 bg-white/60 dark:bg-zinc-900/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-current opacity-70" style={{ width: `${pct}%` }} />
+                    <div className="h-full bg-current opacity-70" style={{ width: `${Math.min(100, Math.max(0, health.pct))}%` }} />
                   </div>
                 </div>
               );
             })}
           </div>
+        </div>
 
-          <ul className="mt-3 space-y-1">
-            {routines.map((a) => {
-              const completed = a.done >= a.target;
-              if (editingId === a.id) {
-                return (
-                  <li key={a.id} className="flex items-center gap-1.5 py-1 bg-zinc-50 dark:bg-zinc-800/50 rounded px-1.5">
-                    <input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingId(null); }}
-                      autoFocus
-                      placeholder="레버 이름"
-                      className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700"
-                    />
-                    <select
-                      value={editType}
-                      onChange={(e) => setEditType(e.target.value as CadenceType)}
-                      className="text-xs px-1.5 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700"
-                    >
-                      <option value="weekly">주</option>
-                      <option value="monthly">월</option>
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editTarget}
-                      onChange={(e) => setEditTarget(parseInt(e.target.value) || 1)}
-                      className="w-12 text-xs px-1.5 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 tabular-nums"
-                    />
-                    <button onClick={saveEdit} className="text-[10px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-2 py-1 rounded">저장</button>
-                    <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600"><X size={12} /></button>
-                  </li>
-                );
-              }
-              return (
-                <li key={a.id} className="group flex items-center gap-2 py-1">
-                  <button
-                    onClick={() => tick(a.id)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
-                      completed ? "bg-zinc-900 border-zinc-900 dark:bg-zinc-100 dark:border-zinc-100" : "border-zinc-300 dark:border-zinc-600 hover:border-zinc-500"
-                    }`}
-                    aria-label={completed ? "리셋" : "완료 카운트 증가"}
-                    title={completed ? "클릭 시 리셋" : "1회 완료"}
-                  >
-                    {completed && <Check size={10} className="text-white dark:text-zinc-900" />}
-                  </button>
-                  <span className={`text-xs flex-1 truncate ${completed ? "opacity-50 line-through" : "text-zinc-700 dark:text-zinc-200"}`}>
-                    {a.title}
-                  </span>
-                  <span className="text-[10px] text-zinc-400 shrink-0 tabular-nums">{a.scope} {a.done}/{a.target}</span>
-                  <button onClick={() => startEdit(a)} className="text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100 opacity-0 group-hover:opacity-100 transition shrink-0" aria-label="편집">
-                    <Pencil size={11} />
-                  </button>
-                  <button onClick={() => remove(a.id)} className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition shrink-0" aria-label="삭제">
-                    <X size={11} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          {addingNew && (
-            <div className="mt-2 flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/50 rounded px-1.5 py-1.5">
-              <input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addRoutine(); if (e.key === "Escape") setAddingNew(false); }}
-                autoFocus
-                placeholder="예: 9월 공구 후보 10명 컨택"
-                className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700"
-              />
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value as CadenceType)}
-                className="text-xs px-1.5 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700"
-              >
-                <option value="weekly">주</option>
-                <option value="monthly">월</option>
-              </select>
-              <input
-                type="number"
-                min={1}
-                value={newTarget}
-                onChange={(e) => setNewTarget(parseInt(e.target.value) || 1)}
-                className="w-12 text-xs px-1.5 py-1 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 tabular-nums"
-              />
-              <button onClick={addRoutine} disabled={!newTitle.trim()} className="text-[10px] font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-2 py-1 rounded disabled:opacity-50">추가</button>
-              <button onClick={() => setAddingNew(false)} className="text-zinc-400 hover:text-zinc-600"><X size={12} /></button>
-            </div>
-          )}
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-zinc-500">이번 주 3대 과제</p>
+            <span className="text-[10px] text-zinc-400">자동 추천</span>
+          </div>
+          <div className="space-y-2">
+            {weeklyActions.map((action) => (
+              <div key={`${action.source}-${action.title}`} className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-2">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    action.tone === "risk" ? "bg-amber-500" : action.tone === "review" ? "bg-violet-500" : "bg-zinc-400"
+                  }`} />
+                  <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 flex-1 truncate">{action.title}</p>
+                  <span className="text-[10px] text-zinc-400 shrink-0">{action.source}</span>
+                </div>
+                <p className="mt-1 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{action.detail}</p>
+              </div>
+            ))}
+            {weeklyActions.length === 0 && (
+              <p className="text-xs text-zinc-400 py-2">이번 주 자동 과제 없음</p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 p-3">
