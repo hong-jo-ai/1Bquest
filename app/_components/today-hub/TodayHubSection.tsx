@@ -17,6 +17,7 @@ import {
 import { kstDateStr, kstMonthStr, kstWeekStartStr, daysUntil } from "./dateUtils";
 import type {
   Task, RevenueAction, RevenueGoal, BigEvent, InjectedEventItem,
+  ChannelRevenueSnapshot, LeverSources,
 } from "./types";
 import type { Brand } from "@/lib/multiChannelData";
 
@@ -71,9 +72,10 @@ interface Props {
   brand: Brand;
   /** 이번 달(KST) 누적 매출. 브랜드의 모든 채널 합산. */
   monthRevenue: number;
+  channelRevenues: ChannelRevenueSnapshot[];
 }
 
-export default function TodayHubSection({ brand, monthRevenue }: Props) {
+export default function TodayHubSection({ brand, monthRevenue, channelRevenues }: Props) {
   const [label, setLabel] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -82,6 +84,7 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
   const [goal,     setGoal]     = useState<RevenueGoal>(() => seedGoal(brand));
   const [events,   setEvents]   = useState<BigEvent[]>(() => seedEvents(brand));
   const [mirroredCampaigns, setMirroredCampaigns] = useState<MirroredCampaign[]>([]);
+  const [leverSources, setLeverSources] = useState<LeverSources | null>(null);
 
   const lastSaved = useRef({ tasks: "", routines: "", goal: "", events: "" });
 
@@ -112,6 +115,28 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
         setMirroredCampaigns(active);
       })
       .catch(() => { /* 실패해도 위젯 정상 동작 */ });
+    return () => { cancelled = true; };
+  }, [brand]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/today-hub/lever-sources?brand=${brand}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j.ok) return;
+        setLeverSources({
+          products: j.products ?? [],
+          campaigns: j.campaigns ?? { activeCount: 0, monthlyCount: 0, next: null },
+          ads: j.ads ?? { connected: false, error: "응답 없음" },
+          content: j.content ?? {
+            instagram: { connected: false, error: "응답 없음" },
+            threads: { connected: false, error: "응답 없음" },
+          },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLeverSources(null);
+      });
     return () => { cancelled = true; };
   }, [brand]);
 
@@ -316,6 +341,8 @@ export default function TodayHubSection({ brand, monthRevenue }: Props) {
             currentRevenue={monthRevenue}
             brandLabel={BRAND_NAMES[brand]}
             events={events}
+            leverSources={leverSources}
+            channelRevenues={channelRevenues}
           />
           <BigEventsWidget
             events={events}

@@ -7,7 +7,9 @@ import {
   PackagePlus, Pencil, Target, TrendingUp,
 } from "lucide-react";
 import { daysUntil } from "./dateUtils";
-import type { BigEvent, RevenueAction, RevenueGoal } from "./types";
+import type {
+  BigEvent, ChannelRevenueSnapshot, LeverSources, RevenueAction, RevenueGoal,
+} from "./types";
 
 function fmtKRW(n: number) {
   if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + "억원";
@@ -39,6 +41,15 @@ function quarterLabel() {
 function currentMonthKey() {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7);
 }
+
+function currentDateKey() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+const PRODUCT_FAST_LEAD_DAYS = 150;
+const PRODUCT_NORMAL_LEAD_DAYS = 180;
+const PRODUCT_PIPELINE_TARGET_6M = 2;
+const MONTHLY_CONTENT_POST_TARGET = 8;
 
 type LeverKey = "product" | "campaign" | "ads" | "content" | "channel";
 
@@ -88,13 +99,19 @@ function isProductEvent(title: string) {
   return /상품|신상|신규|출시|샘플|디자인|발주|리오더|재고|컬러|스트랩/i.test(title);
 }
 
+function addDaysKst(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function normalizeGoal(goal: RevenueGoal): Required<RevenueGoal> {
   return {
     target: goal.target || 80_000_000,
     annualProfitTarget: goal.annualProfitTarget ?? 400_000_000,
     monthlyProfitTarget: goal.monthlyProfitTarget ?? 33_333_333,
     monthlyUnitsTarget: goal.monthlyUnitsTarget ?? 1_000,
-    annualLaunchTarget: goal.annualLaunchTarget ?? 4,
+    annualLaunchTarget: Math.max(goal.annualLaunchTarget ?? 4, 4),
     monthlyCampaignTarget: goal.monthlyCampaignTarget ?? 2,
   };
 }
@@ -107,6 +124,8 @@ interface Props {
   currentRevenue: number;
   brandLabel: string;
   events: BigEvent[];
+  leverSources: LeverSources | null;
+  channelRevenues: ChannelRevenueSnapshot[];
 }
 
 type EventSnapshot = {
@@ -126,11 +145,12 @@ type WeeklyAction = {
 };
 
 export default function RevenueActionsWidget({
-  goal, setGoal, currentRevenue, brandLabel, events,
+  goal, setGoal, currentRevenue, brandLabel, events, leverSources, channelRevenues,
 }: Props) {
   const resolvedGoal = normalizeGoal(goal);
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalDraft, setGoalDraft] = useState<string>(String(Math.round(resolvedGoal.target / 10_000)));
+  const [todayKey] = useState(() => currentDateKey());
 
   const revenuePct = resolvedGoal.target > 0
     ? Math.min(100, Math.round((currentRevenue / resolvedGoal.target) * 100))
@@ -174,10 +194,47 @@ export default function RevenueActionsWidget({
   }, [eventSnapshots]);
 
   const monthlyCampaignCount = useMemo(() => {
-    return eventSnapshots.filter((snapshot) =>
+    const eventCardCount = eventSnapshots.filter((snapshot) =>
       snapshot.event.targetDate.startsWith(monthKey) && isCampaignEvent(snapshot.event.title)
     ).length;
-  }, [eventSnapshots, monthKey]);
+    return Math.max(eventCardCount, leverSources?.campaigns.monthlyCount ?? 0);
+  }, [eventSnapshots, leverSources?.campaigns.monthlyCount, monthKey]);
+
+  const topChannel = useMemo(() => {
+    return [...channelRevenues].sort((a, b) => b.monthRevenue - a.monthRevenue)[0] ?? null;
+  }, [channelRevenues]);
+
+  const productPipeline = useMemo(() => {
+    const sixMonthCutoff = addDaysKst(todayKey, PRODUCT_NORMAL_LEAD_DAYS);
+    const products = leverSources?.products ?? [];
+    const launchesInSixMonths = products.filter((product) =>
+      product.launchDate !== null && product.launchDate >= todayKey && product.launchDate <= sixMonthCutoff
+    );
+    return {
+      today: todayKey,
+      sixMonthCutoff,
+      products,
+      launchesInSixMonths,
+      coveragePct: Math.min(100, Math.round((launchesInSixMonths.length / PRODUCT_PIPELINE_TARGET_6M) * 100)),
+      shortfall: Math.max(0, PRODUCT_PIPELINE_TARGET_6M - launchesInSixMonths.length),
+    };
+  }, [leverSources?.products, todayKey]);
+
+  const connectedContentCount = (leverSources?.content.instagram.connected ? 1 : 0)
+    + (leverSources?.content.threads.connected ? 1 : 0);
+
+  const contentPerformance = useMemo(() => {
+    const instagram = leverSources?.content.instagram;
+    const threads = leverSources?.content.threads;
+    const posts = (instagram?.postsThisMonth ?? 0) + (threads?.postsThisMonth ?? 0);
+    const engagements = (instagram?.engagements ?? 0) + (threads?.likes ?? 0) + (threads?.replies ?? 0);
+    return {
+      posts,
+      engagements,
+      views: threads?.views ?? 0,
+      pct: Math.min(100, Math.round((posts / MONTHLY_CONTENT_POST_TARGET) * 100)),
+    };
+  }, [leverSources?.content.instagram, leverSources?.content.threads]);
 
   const weeklyActions = useMemo<WeeklyAction[]>(() => {
     const actions: WeeklyAction[] = [];
@@ -200,16 +257,54 @@ export default function RevenueActionsWidget({
     if (monthlyCampaignCount < resolvedGoal.monthlyCampaignTarget) {
       actions.push({
         title: "이번 달 캠페인 공백 메우기",
-        source: "이벤트 카드",
-        detail: `캠페인 ${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}. 확정되면 이벤트 카드에 먼저 등록.`,
+        source: "캠페인 트래커",
+        detail: `캠페인 ${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}. 캠페인 트래커 또는 이벤트 카드에 실제 일정을 등록해야 함.`,
         tone: "plan",
       });
     }
-    if (!upcomingEvents.some((snapshot) => isProductEvent(snapshot.event.title))) {
+    if (leverSources?.campaigns.performance?.connected === false && leverSources.campaigns.performance.warnings.length > 0) {
+      actions.push({
+        title: "캠페인 성과 원천 연결",
+        source: "캠페인 매출",
+        detail: leverSources.campaigns.performance.warnings[0],
+        tone: "plan",
+      });
+    }
+    if ((leverSources?.products.length ?? 0) === 0 && !upcomingEvents.some((snapshot) => isProductEvent(snapshot.event.title))) {
       actions.push({
         title: "다음 상품/리오더 의사결정",
-        source: "출시 계획",
-        detail: `연 ${resolvedGoal.annualLaunchTarget}회 출시 목표 대비 예정 상품 이벤트가 비어 있음.`,
+        source: "신제품 로드맵",
+        detail: `분기 1회 출시 목표인데 최소 ${Math.round(PRODUCT_FAST_LEAD_DAYS / 30)}~${Math.round(PRODUCT_NORMAL_LEAD_DAYS / 30)}개월 리드타임을 고려한 신제품 로드맵이 비어 있음.`,
+        tone: "plan",
+      });
+    } else if (productPipeline.shortfall > 0) {
+      actions.push({
+        title: "6개월 제품 파이프라인 보강",
+        source: "제품 리드타임",
+        detail: `분기 1회 출시를 유지하려면 6개월 안 출시/입고 예정 2개가 필요함. 현재 ${productPipeline.launchesInSixMonths.length}/2개.`,
+        tone: "plan",
+      });
+    }
+    if (leverSources?.ads.connected === false) {
+      actions.push({
+        title: "Meta 광고 데이터 연결 복구",
+        source: "Meta API",
+        detail: leverSources.ads.error ? `광고 레버 미연동: ${leverSources.ads.error}` : "광고비/ROAS를 읽지 못해 광고 레버 판단 불가.",
+        tone: "plan",
+      });
+    }
+    if (leverSources && connectedContentCount === 0) {
+      actions.push({
+        title: "콘텐츠 데이터 연결",
+        source: "Instagram/Threads",
+        detail: "인스타그램 또는 Threads 게시 데이터가 연결되지 않아 콘텐츠 레버 판단 불가.",
+        tone: "plan",
+      });
+    } else if (leverSources && contentPerformance.posts < MONTHLY_CONTENT_POST_TARGET) {
+      actions.push({
+        title: "콘텐츠 발행량 보강",
+        source: "콘텐츠 성과",
+        detail: `이번 달 IG+Threads 게시 ${contentPerformance.posts}/${MONTHLY_CONTENT_POST_TARGET}건. 반응 ${contentPerformance.engagements.toLocaleString("ko-KR")}건.`,
         tone: "plan",
       });
     }
@@ -227,49 +322,84 @@ export default function RevenueActionsWidget({
     monthlyCampaignCount,
     nextEvent,
     recentEndedEvent,
-    resolvedGoal.annualLaunchTarget,
     resolvedGoal.monthlyCampaignTarget,
     revenuePct,
     upcomingEvents,
+    leverSources,
+    connectedContentCount,
+    productPipeline,
+    contentPerformance,
   ]);
 
   const leverHealth = useMemo(() => {
     const nextProduct = upcomingEvents.find((snapshot) => isProductEvent(snapshot.event.title));
     const nextCampaign = upcomingEvents.find((snapshot) => isCampaignEvent(snapshot.event.title));
+    const roadmapProduct = leverSources?.products[0] ?? null;
+    const productPct = roadmapProduct && roadmapProduct.totalMilestones > 0
+      ? productPipeline.coveragePct
+      : nextProduct ? nextProduct.pct : 0;
+    const ads = leverSources?.ads ?? null;
+    const instagram = leverSources?.content.instagram ?? null;
+    const threads = leverSources?.content.threads ?? null;
+    const campaignPerformance = leverSources?.campaigns.performance ?? null;
+    const channelPct = currentRevenue > 0 && topChannel
+      ? Math.min(100, Math.round((topChannel.monthRevenue / currentRevenue) * 100))
+      : 0;
+
     return {
       product: {
-        value: nextProduct ? `D-${nextProduct.daysLeft}` : "공백",
-        detail: nextProduct ? nextProduct.event.title : "다음 출시/리오더 카드 필요",
-        pct: nextProduct ? nextProduct.pct : 0,
+        value: roadmapProduct ? `${productPipeline.launchesInSixMonths.length}/2` : nextProduct ? `D-${nextProduct.daysLeft}` : "공백",
+        detail: roadmapProduct
+          ? `6개월 파이프라인 · ${roadmapProduct.name}${roadmapProduct.launchDate ? ` ${roadmapProduct.launchDate}` : ""}`
+          : nextProduct ? nextProduct.event.title : "신제품 로드맵/출시 이벤트 없음",
+        pct: productPct,
       },
       campaign: {
-        value: `${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}`,
-        detail: nextCampaign ? nextCampaign.event.title : "이번 달 캠페인 카드 부족",
-        pct: Math.min(100, Math.round((monthlyCampaignCount / resolvedGoal.monthlyCampaignTarget) * 100)),
+        value: campaignPerformance?.connected
+          ? fmtCompact(campaignPerformance.revenue)
+          : `${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}`,
+        detail: campaignPerformance?.connected
+          ? `주문 ${campaignPerformance.ordersCount}건 · 측정 캠페인 ${campaignPerformance.campaignsMeasured}개`
+          : campaignPerformance?.warnings?.[0] ?? leverSources?.campaigns.next?.name ?? nextCampaign?.event.title ?? "캠페인 트래커/이벤트 카드 없음",
+        pct: campaignPerformance?.connected
+          ? Math.min(100, Math.round((campaignPerformance.ordersCount / 10) * 100))
+          : Math.min(100, Math.round((monthlyCampaignCount / resolvedGoal.monthlyCampaignTarget) * 100)),
       },
       ads: {
-        value: revenuePct + 8 < expectedPct ? "점검" : "유지",
-        detail: "Meta API 연동 후 소재/ROAS 자동 반영",
-        pct: revenuePct,
+        value: !ads ? "확인중" : ads.connected ? `${(ads.roas ?? 0).toFixed(1)}x` : "미연동",
+        detail: !ads
+          ? "Meta 광고 데이터 확인 중"
+          : ads.connected
+            ? `이번 달 지출 ${fmtKRW(ads.spend ?? 0)} · 구매 ${ads.purchaseCount ?? 0}건`
+            : `Meta API 미연동: ${ads.error ?? "토큰/계정 확인 필요"}`,
+        pct: ads?.connected ? Math.min(100, Math.round(((ads.roas ?? 0) / 3) * 100)) : 0,
       },
       content: {
-        value: "연동",
-        detail: "인스타/채널 게시 데이터 연결 대상",
-        pct: 0,
+        value: !leverSources ? "확인중" : `${contentPerformance.posts}건`,
+        detail: !leverSources
+          ? "콘텐츠 데이터 확인 중"
+          : instagram?.connected
+            ? `IG ${instagram.postsThisMonth ?? 0}건/${instagram.engagements ?? 0}반응 · Threads ${threads?.postsThisMonth ?? 0}건/${threads?.views ?? 0}조회`
+            : `Instagram 미연동${threads?.connected ? ` · Threads ${threads.postsThisMonth ?? 0}건` : ""}`,
+        pct: contentPerformance.pct,
       },
       channel: {
-        value: recentEndedEvent ? "회고" : "관찰",
-        detail: recentEndedEvent ? `${recentEndedEvent.event.title} 후속 판단` : "채널별 매출/재고 데이터 연결 대상",
-        pct: recentEndedEvent ? recentEndedEvent.pct : revenuePct,
+        value: topChannel && topChannel.monthRevenue > 0 ? fmtCompact(topChannel.monthRevenue) : "0원",
+        detail: topChannel && topChannel.monthRevenue > 0
+          ? `이번 달 1위 채널: ${topChannel.name}`
+          : "이번 달 채널 매출 데이터 없음",
+        pct: channelPct,
       },
     } satisfies Record<LeverKey, { value: string; detail: string; pct: number }>;
   }, [
-    expectedPct,
+    currentRevenue,
+    leverSources,
     monthlyCampaignCount,
-    recentEndedEvent,
+    productPipeline,
     resolvedGoal.monthlyCampaignTarget,
-    revenuePct,
+    topChannel,
     upcomingEvents,
+    contentPerformance,
   ]);
 
   const bottlenecks = useMemo(() => {
@@ -286,6 +416,20 @@ export default function RevenueActionsWidget({
     if (monthlyCampaignCount < resolvedGoal.monthlyCampaignTarget) {
       items.push({ tone: "plan", text: `이번 달 캠페인 ${monthlyCampaignCount}/${resolvedGoal.monthlyCampaignTarget}` });
     }
+    if (productPipeline.shortfall > 0) {
+      items.push({ tone: "plan", text: `6개월 제품 파이프라인 ${productPipeline.launchesInSixMonths.length}/2` });
+    }
+    if (leverSources?.campaigns.performance?.connected === false && leverSources.campaigns.performance.warnings.length > 0) {
+      items.push({ tone: "plan", text: "캠페인 매출 성과 미연동" });
+    }
+    if (leverSources?.ads.connected === false) {
+      items.push({ tone: "plan", text: `Meta 광고 미연동: ${leverSources.ads.error ?? "토큰/계정 확인 필요"}` });
+    }
+    if (leverSources && connectedContentCount === 0) {
+      items.push({ tone: "plan", text: "콘텐츠 데이터 미연동" });
+    } else if (leverSources && contentPerformance.posts < MONTHLY_CONTENT_POST_TARGET) {
+      items.push({ tone: "plan", text: `콘텐츠 게시 ${contentPerformance.posts}/${MONTHLY_CONTENT_POST_TARGET}` });
+    }
     if (!nextEvent) {
       items.push({ tone: "plan", text: "다가오는 이벤트 카드 없음" });
     }
@@ -301,6 +445,10 @@ export default function RevenueActionsWidget({
     recentEndedEvent,
     resolvedGoal.monthlyCampaignTarget,
     revenuePct,
+    leverSources,
+    connectedContentCount,
+    productPipeline,
+    contentPerformance,
   ]);
 
   const startGoalEdit = () => {
@@ -405,7 +553,7 @@ export default function RevenueActionsWidget({
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-semibold text-zinc-500">자동 성장 레버</p>
-            <span className="text-[10px] text-zinc-400">이벤트·매출 기반</span>
+            <span className="text-[10px] text-zinc-400">실데이터 기반</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

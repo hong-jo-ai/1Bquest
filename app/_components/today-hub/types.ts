@@ -110,3 +110,64 @@ export interface InjectedEventItem {
   daysLeftDelta: number;
   title: string;
 }
+
+export interface ChannelRevenueSnapshot {
+  channelId: string;
+  name: string;
+  monthRevenue: number;
+}
+
+export interface LeverSources {
+  products: Array<{
+    id: string;
+    name: string;
+    nextMilestone: { label: string; date: string; note?: string | null; done?: boolean } | null;
+    launchDate: string | null;
+    doneMilestones: number;
+    totalMilestones: number;
+  }>;
+  campaigns: {
+    activeCount: number;
+    monthlyCount: number;
+    next: { id: string; name: string; startDate: string; endDate: string | null } | null;
+    performance?: {
+      connected: boolean;
+      source: string;
+      campaignsMeasured: number;
+      revenue: number;
+      ordersCount: number;
+      avgOrder: number;
+      warnings: string[];
+    };
+  };
+  ads: {
+    connected: boolean;
+    error?: string;
+    spend?: number;
+    purchaseValue?: number;
+    purchaseCount?: number;
+    roas?: number;
+    campaignsCounted?: number;
+  };
+  content: {
+    instagram: {
+      connected: boolean;
+      error?: string;
+      postsThisMonth?: number;
+      recentPosts?: number;
+      engagements?: number;
+      likes?: number;
+      comments?: number;
+    };
+    threads: {
+      connected: boolean;
+      error?: string;
+      postsThisMonth?: number;
+      recentPosts?: number;
+      likes?: number;
+      replies?: number;
+      views?: number;
+      engagementRate?: number;
+    };
+  };
+}

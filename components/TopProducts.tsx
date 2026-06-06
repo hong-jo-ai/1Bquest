@@ -53,8 +53,8 @@ export default function TopProducts({ today, week, month, isReal }: Props) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
         setQuarterData(data.products ?? []);
-      } catch (e: any) {
-        setQuarterError(e.message || "오류가 발생했습니다");
+      } catch (e: unknown) {
+        setQuarterError(e instanceof Error ? e.message : "오류가 발생했습니다");
       } finally {
         setQuarterLoading(false);
       }
@@ -89,7 +89,7 @@ export default function TopProducts({ today, week, month, isReal }: Props) {
             <span className="text-sm font-normal text-zinc-400 ml-1.5">TOP 10</span>
           </h2>
           {!isReal && (
-            <p className="text-[11px] text-zinc-400 mt-0.5">샘플 데이터</p>
+            <p className="text-[11px] text-zinc-400 mt-0.5">실데이터 없음</p>
           )}
         </div>
 

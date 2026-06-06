@@ -35,13 +35,6 @@ import {
   type UploadableChannel,
   type Brand,
 } from "@/lib/multiChannelData";
-import {
-  salesSummary as dummySales,
-  topProducts as dummyProducts,
-  hourlyOrders as dummyHourly,
-  weeklyRevenue as dummyWeekly,
-  inventory as dummyInventory,
-} from "@/lib/dummyData";
 import type { DashboardData } from "@/lib/cafe24Data";
 
 // ── localStorage 키 ────────────────────────────────────────────────────────
@@ -83,6 +76,29 @@ const EMPTY_HISTORIES: ChannelHistories = {
   wconcept: [], musinsa: [], "29cm": [], groupbuy: [], kakao_gift: [],
   lotte_dutyfree: [], shinsegae_dutyfree: [],
   sixshop: [], naver_smartstore: [], sixshop_global: [],
+};
+const EMPTY_PERIOD = { revenue: 0, orders: 0, avgOrder: 0 };
+const EMPTY_CHANNEL_DATA: MultiChannelData = {
+  salesSummary: {
+    today: EMPTY_PERIOD,
+    week: EMPTY_PERIOD,
+    month: EMPTY_PERIOD,
+    prevMonth: EMPTY_PERIOD,
+  },
+  topProducts: [],
+  hourlyOrders: Array.from({ length: 24 }, (_, h) => ({
+    hour: `${String(h).padStart(2, "0")}시`,
+    orders: 0,
+    revenue: 0,
+  })),
+  weeklyRevenue: ["월", "화", "수", "목", "금", "토", "일"].map((day) => ({
+    day,
+    revenue: 0,
+    orders: 0,
+  })),
+  dailyRevenue: [],
+  dailyCogs: [],
+  inventory: [],
 };
 
 function fmtKrwCompact(n: number): string {
@@ -241,16 +257,16 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 
   // 카페24 데이터를 MultiChannelData 형태로 변환
   const cafe24Channel: MultiChannelData = useMemo(() => ({
-    salesSummary: cafe24Data?.salesSummary ?? dummySales,
-    topProducts:  (cafe24Data?.topProducts?.length ?? 0) > 0 ? cafe24Data!.topProducts : dummyProducts,
-    hourlyOrders: cafe24Data?.hourlyOrders ?? dummyHourly,
-    weeklyRevenue: cafe24Data?.weeklyRevenue ?? dummyWeekly,
+    salesSummary: cafe24Data?.salesSummary ?? EMPTY_CHANNEL_DATA.salesSummary,
+    topProducts: cafe24Data?.topProducts ?? [],
+    hourlyOrders: cafe24Data?.hourlyOrders ?? EMPTY_CHANNEL_DATA.hourlyOrders,
+    weeklyRevenue: cafe24Data?.weeklyRevenue ?? EMPTY_CHANNEL_DATA.weeklyRevenue,
     dailyRevenue: cafe24Data?.dailyRevenue ?? [],
     dailyCogs:    cafe24Data?.dailyCogs ?? [],
-    inventory:    (cafe24Data?.inventory?.length ?? 0) > 0 ? cafe24Data!.inventory : dummyInventory,
+    inventory: cafe24Data?.inventory ?? [],
   }), [cafe24Data]);
 
-  // 실제 표시 데이터 (업로드 > 더미)
+  // 실제 표시 데이터 (업로드 데이터가 없으면 0/빈 상태)
   const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => {
     // 공동구매 = 엑셀 업로드(과거) + 카페24 라이브 공구 상품(226 등) 합산
     const gbParts = [uploads.groupbuy, cafe24Data?.groupBuyLive].filter(Boolean) as MultiChannelData[];
@@ -324,6 +340,16 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     return total;
   }, [comparisonChannels, monthPrefix]);
 
+  const channelRevenues = useMemo(() => {
+    return comparisonChannels.map((ch) => ({
+      channelId: ch.channelId,
+      name: ch.name,
+      monthRevenue: (ch.data.dailyRevenue ?? [])
+        .filter((day) => day.date.startsWith(monthPrefix))
+        .reduce((sum, day) => sum + day.revenue, 0),
+    }));
+  }, [comparisonChannels, monthPrefix]);
+
   const overview = useMemo(() => {
     const todayRevenue = displayData.salesSummary.today.revenue;
     const todayOrders = displayData.salesSummary.today.orders;
@@ -342,7 +368,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl px-4 py-3 text-sm">
             <AlertCircle size={16} className="shrink-0" />
-            카페24 API 오류: {apiError} — 더미 데이터를 표시합니다.
+            카페24 API 오류: {apiError} — 샘플값 없이 빈 상태로 표시합니다.
           </div>
         </div>
       )}
@@ -351,7 +377,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       {!isAuthenticated && brand === "paulvice" && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded-xl px-4 py-3 text-sm">
-            <span>카페24가 연결되지 않았습니다. 현재 더미 데이터를 표시 중입니다.</span>
+            <span>카페24가 연결되지 않았습니다. 샘플값 없이 빈 상태로 표시 중입니다.</span>
             <a href="/api/auth/login" className="ml-4 shrink-0 font-semibold underline underline-offset-2 hover:opacity-70">
               지금 연결하기 →
             </a>
@@ -468,7 +494,7 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 
         {/* 오늘의 운영 허브 — 양 브랜드 공통 (할일/외부약속/이메일은 전사 공통, 매출액션/빅이벤트는 브랜드별) */}
         {/* key={brand} 로 브랜드 전환 시 인스턴스 재생성 → 브랜드별 데이터 새로 로드 */}
-        <TodayHubSection key={brand} brand={brand} monthRevenue={monthRevenue} />
+        <TodayHubSection key={brand} brand={brand} monthRevenue={monthRevenue} channelRevenues={channelRevenues} />
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />
