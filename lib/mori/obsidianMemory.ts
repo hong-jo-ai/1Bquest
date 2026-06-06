@@ -9,8 +9,10 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "fs/promises";
 import type { Dirent } from "fs";
 import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_VAULT_PATH = "/Users/mac/sungjo_ai/MORI Memory";
+const DB_MEMORY_KEY = "mori:obsidian_memory_notes";
 const MAX_FILES = 60;
 const MAX_FILE_CHARS = 1_800;
 const MAX_CONTEXT_CHARS = 12_000;
@@ -59,6 +61,13 @@ export type SaveObsidianMemoryResult =
 
 function vaultPath(): string {
   return process.env.MORI_OBSIDIAN_VAULT?.trim() || DEFAULT_VAULT_PATH;
+}
+
+function memoryDb() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
 }
 
 function stripBom(s: string): string {
@@ -175,6 +184,70 @@ function yamlScalar(s: string): string {
   return JSON.stringify(s);
 }
 
+function asDbNote(row: any): MemoryNote | null {
+  const title = String(row?.title ?? "").trim();
+  const body = normalizeBody(String(row?.body ?? ""));
+  if (!title || !body) return null;
+
+  return {
+    title,
+    relPath: String(row?.relPath ?? row?.rel_path ?? "db/memory.md"),
+    type: normalizeType(row?.type),
+    status: normalizeStatus(row?.status),
+    updatedAt: String(row?.updatedAt ?? row?.updated_at ?? ""),
+    body,
+  };
+}
+
+async function loadDbMemoryNotes(): Promise<MemoryNote[]> {
+  const db = memoryDb();
+  if (!db) return [];
+
+  const { data, error } = await db
+    .from("kv_store")
+    .select("data")
+    .eq("key", DB_MEMORY_KEY)
+    .maybeSingle();
+
+  if (error || !Array.isArray(data?.data)) return [];
+
+  return data.data
+    .map(asDbNote)
+    .filter((note): note is MemoryNote => note !== null && note.status === "active");
+}
+
+async function saveDbMemoryNote(note: MemoryNote): Promise<SaveObsidianMemoryResult> {
+  const db = memoryDb();
+  if (!db) {
+    return { ok: false, error: "Obsidian Vault 접근 실패, Supabase memory fallback 미설정" };
+  }
+
+  const { data } = await db
+    .from("kv_store")
+    .select("data")
+    .eq("key", DB_MEMORY_KEY)
+    .maybeSingle();
+
+  const current = Array.isArray(data?.data)
+    ? data.data.map(asDbNote).filter((n): n is MemoryNote => n !== null)
+    : [];
+  const next = [...current, note].slice(-200);
+
+  const { error } = await db
+    .from("kv_store")
+    .upsert(
+      {
+        key: DB_MEMORY_KEY,
+        data: next,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, relPath: note.relPath, message: `Obsidian 기억 저장 완료(DB): ${note.relPath}` };
+}
+
 export async function saveObsidianMemoryNote(
   input: SaveObsidianMemoryInput,
 ): Promise<SaveObsidianMemoryResult> {
@@ -197,11 +270,18 @@ export async function saveObsidianMemoryNote(
     await writeFile(fullPath, markdown, "utf8");
     return { ok: true, relPath, message: `Obsidian 기억 저장 완료: ${relPath}` };
   } catch (e: any) {
-    return { ok: false, error: e?.message ?? "Obsidian 기억 저장 실패" };
+    return saveDbMemoryNote({
+      title,
+      relPath: `db/${relPath}`,
+      type,
+      status,
+      updatedAt: todayKst(),
+      body,
+    });
   }
 }
 
-export async function loadObsidianMemoryNotes(): Promise<MemoryNote[]> {
+async function loadFileMemoryNotes(): Promise<MemoryNote[]> {
   const root = vaultPath();
   try {
     const s = await stat(root);
@@ -233,6 +313,19 @@ export async function loadObsidianMemoryNotes(): Promise<MemoryNote[]> {
       // 파일 하나가 깨져도 나머지 기억은 계속 읽는다.
     }
   }
+
+  return notes
+    .filter((n) => n.body)
+    .sort((a, b) => {
+      const byPriority = priority(a) - priority(b);
+      if (byPriority !== 0) return byPriority;
+      return b.updatedAt.localeCompare(a.updatedAt) || a.relPath.localeCompare(b.relPath);
+    })
+    .slice(0, MAX_FILES);
+}
+
+export async function loadObsidianMemoryNotes(): Promise<MemoryNote[]> {
+  const notes = [...(await loadFileMemoryNotes()), ...(await loadDbMemoryNotes())];
 
   return notes
     .filter((n) => n.body)

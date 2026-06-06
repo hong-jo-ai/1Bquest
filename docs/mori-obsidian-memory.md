@@ -1,6 +1,7 @@
 # Mori Obsidian Memory
 
 모리의 장기 기억은 서버가 Obsidian Vault의 Markdown 파일을 읽어 system context에 주입한다.
+로컬 개발 환경에서는 Markdown Vault를 우선 사용하고, 배포 환경처럼 파일 Vault에 쓸 수 없는 경우에는 Supabase `kv_store`에 같은 기억을 저장한다.
 
 기본 Vault 경로:
 
@@ -78,3 +79,5 @@ source: manual
 - `memory` 또는 미분류 → `00_Inbox/`
 
 모리가 저장한 파일도 `status: active`면 다음 대화부터 장기 기억으로 읽힌다.
+
+배포 서버에서는 `/Users/mac/...` 로컬 경로에 접근할 수 없으므로 `save_memory`가 실패하지 않도록 `kv_store` fallback을 사용한다. 이 경우 저장 메시지에 `(DB)`가 붙고, 다음 대화부터 장기 기억으로 함께 읽힌다.
