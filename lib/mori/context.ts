@@ -14,6 +14,7 @@ import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { loadTodayTasks } from "@/lib/mori/tasks";
 import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
+import { buildObsidianMemoryContext } from "@/lib/mori/obsidianMemory";
 import { listTodayEvents } from "@/lib/today-hub/calendar";
 
 const won = (n: number) => "₩" + Math.round(n).toLocaleString("ko-KR");
@@ -163,7 +164,7 @@ async function safe(label: string, fn: () => Promise<string>): Promise<string> {
  * 매출/재고는 한 번에 묶어 처리하고, 나머지는 병렬.
  */
 export async function assembleDashboardContext(): Promise<string> {
-  const [si, ads, cs, po, tasks, calendar] = await Promise.all([
+  const [si, ads, cs, po, tasks, calendar, longTermMemory] = await Promise.all([
     salesAndInventoryBlock().catch((e: any) => {
       const fail = `(불러오기 실패: ${e?.message ?? "알 수 없는 오류"})`;
       return { sales: fail, inventory: fail };
@@ -173,9 +174,10 @@ export async function assembleDashboardContext(): Promise<string> {
     safe("po", purchaseBlock),
     safe("tasks", tasksBlock),
     safe("calendar", calendarBlock),
+    buildObsidianMemoryContext().catch(() => ""),
   ]);
 
-  return `# 지금 대시보드 상태 (실시간 — 폴바이스 기준)
+  const liveContext = `# 지금 대시보드 상태 (실시간 — 폴바이스 기준)
 
 ## 매출
 ${si.sales}
@@ -197,4 +199,6 @@ ${tasks}
 
 ## 오늘 일정 (Google Calendar)
 ${calendar}`;
+
+  return longTermMemory ? `${liveContext}\n\n${longTermMemory}` : liveContext;
 }

@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import BackToHubButton from "@/components/BackToHubButton";
 
 export const metadata: Metadata = {
   title:       "MORI — 모리",
@@ -16,5 +15,5 @@ export const viewport: Viewport = {
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <><BackToHubButton />{children}</>;
+  return <>{children}</>;
 }

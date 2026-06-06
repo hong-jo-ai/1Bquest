@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { Headphones, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import MoriWidgets from "@/components/mori/MoriWidgets";
 import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
@@ -19,22 +19,52 @@ type AudioContextWindow = Window &
     webkitAudioContext?: typeof AudioContext;
   };
 
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<{
+    isFinal: boolean;
+    0: { transcript: string };
+  }>;
+}
+
+type SpeechRecognitionWindow = Window &
+  typeof globalThis & {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  };
+
 export default function MoriClient({
   mode,
   nowKst,
   initialHistory = [],
   mobileHeaderOffset = false,
+  currentPath = "",
 }: {
   mode: "office" | "quiet";
   nowKst: string;
   initialHistory?: Msg[];
   mobileHeaderOffset?: boolean;
+  currentPath?: string;
 }) {
   const [messages, setMessages] = useState<Msg[]>(initialHistory);
   const [widgets, setWidgets] = useState<MoriWidget[]>([]);
   const [input, setInput] = useState("");
   const [orb, setOrb] = useState<OrbState>("idle");
   const [speakOn, setSpeakOn] = useState(true);
+  const [handsFree, setHandsFree] = useState(false);
+  const [wakeListening, setWakeListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [arming, setArming] = useState(false); // 마이크 잡는 중(첫 클릭만 잠깐)
   const [clock, setClock] = useState(nowKst);
@@ -44,6 +74,8 @@ export default function MoriClient({
   const recStartRef = useRef<number>(0); // 녹음 시작 시각(진단용)
   const speakRef = useRef(speakOn);
   speakRef.current = speakOn;
+  const handsFreeRef = useRef(handsFree);
+  handsFreeRef.current = handsFree;
   const playCtxRef = useRef<AudioContext | null>(null);
   const busy = orb === "thinking" || orb === "speaking";
   const recording = orb === "listening";
@@ -55,6 +87,15 @@ export default function MoriClient({
   const chunksRef = useRef<Blob[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
+  const autoStopRef = useRef(false);
+  const speechSeenRef = useRef(false);
+  const silenceSinceRef = useRef<number | null>(null);
+  const startRecordingRef = useRef<(autoStop?: boolean) => Promise<void>>(async () => {});
+  const wakeRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const wakeStopRequestedRef = useRef(false);
+  const wakeTriggeredRef = useRef(false);
+  const wakeRestartTimerRef = useRef<number | null>(null);
+  const wakeUnsupportedNotifiedRef = useRef(false);
 
   // 실시간 시계 (KST)
   useEffect(() => {
@@ -71,6 +112,8 @@ export default function MoriClient({
   useEffect(() => {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      if (wakeRestartTimerRef.current != null) window.clearTimeout(wakeRestartTimerRef.current);
+      wakeRecognitionRef.current?.abort();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioCtxRef.current?.close().catch(() => {});
     };
@@ -184,7 +227,7 @@ export default function MoriClient({
       sentBuf = rest;
       for (const s of sents) {
         const txt = s.trim();
-        if (txt) audioJobs.push(synthTts(txt));
+        if (txt && audioJobs.length < 3) audioJobs.push(synthTts(txt));
       }
     };
     const player = (async () => {
@@ -205,7 +248,7 @@ export default function MoriClient({
       const res = await fetch("/api/mori/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, pagePath: currentPath }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: "응답 오류" }));
@@ -264,6 +307,18 @@ export default function MoriClient({
     streamDone = true;
     await player;
     setOrb("idle");
+    restartHandsFreeListening(450);
+  }
+
+  function restartHandsFreeListening(delayMs = 350) {
+    if (!handsFreeRef.current) return;
+    if (wakeRestartTimerRef.current != null) window.clearTimeout(wakeRestartTimerRef.current);
+    wakeRestartTimerRef.current = window.setTimeout(() => {
+      if (!handsFreeRef.current) return;
+      if (document.hidden) return;
+      if (orbRef.current !== "idle") return;
+      startWakeListening();
+    }, delayMs);
   }
 
   function onSendClick() {
@@ -271,6 +326,115 @@ export default function MoriClient({
     if (!t || busy) return;
     setInput("");
     handleUserText(t, "text");
+  }
+
+  function toggleHandsFree() {
+    setHandsFree((v) => {
+      const next = !v;
+      if (next && orbRef.current === "idle") {
+        window.setTimeout(() => startWakeListening(), 0);
+      } else if (!next && recorderRef.current?.state === "recording") {
+        recorderRef.current.stop();
+        stopWakeListening(true);
+      } else if (!next) {
+        stopWakeListening(true);
+      }
+      return next;
+    });
+  }
+
+  function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
+    const w = window as SpeechRecognitionWindow;
+    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+  }
+
+  function isWakeWord(text: string): boolean {
+    const compact = text.toLowerCase().replace(/\s+/g, "");
+    return compact.includes("모리야") || compact.includes("모리아") || compact.includes("moriya") || compact.includes("mori");
+  }
+
+  function stopWakeListening(manual: boolean) {
+    wakeStopRequestedRef.current = manual;
+    if (wakeRestartTimerRef.current != null) window.clearTimeout(wakeRestartTimerRef.current);
+    wakeRestartTimerRef.current = null;
+    const rec = wakeRecognitionRef.current;
+    wakeRecognitionRef.current = null;
+    setWakeListening(false);
+    try {
+      if (manual) rec?.abort();
+      else rec?.stop();
+    } catch {
+      /* noop */
+    }
+  }
+
+  function startWakeListening() {
+    if (!handsFreeRef.current || wakeRecognitionRef.current || orbRef.current !== "idle" || document.hidden) return;
+    const Ctor = recognitionCtor();
+    if (!Ctor) {
+      if (!wakeUnsupportedNotifiedRef.current) {
+        wakeUnsupportedNotifiedRef.current = true;
+        flashNotice("⚠️ 이 브라우저는 '모리야' 대기 호출을 지원하지 않아요. 마이크 버튼으로 말해 주세요.");
+      }
+      return;
+    }
+
+    const rec = new Ctor();
+    wakeRecognitionRef.current = rec;
+    wakeStopRequestedRef.current = false;
+    wakeTriggeredRef.current = false;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "ko-KR";
+    rec.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const heard = event.results[i]?.[0]?.transcript ?? "";
+        if (!isWakeWord(heard)) continue;
+        wakeTriggeredRef.current = true;
+        stopWakeListening(false);
+        acknowledgeWake().then(() => startRecordingRef.current(true));
+        break;
+      }
+    };
+    rec.onerror = () => {
+      /* onend에서 재시작 */
+    };
+    rec.onend = () => {
+      wakeRecognitionRef.current = null;
+      setWakeListening(false);
+      if (handsFreeRef.current && !wakeStopRequestedRef.current && !wakeTriggeredRef.current) {
+        wakeRestartTimerRef.current = window.setTimeout(() => startWakeListening(), 450);
+      }
+    };
+
+    try {
+      rec.start();
+      setWakeListening(true);
+    } catch {
+      wakeRecognitionRef.current = null;
+      setWakeListening(false);
+    }
+  }
+
+  function acknowledgeWake(): Promise<void> {
+    return new Promise((resolve) => {
+      const synth = window.speechSynthesis;
+      if (!synth) return resolve();
+      try {
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance("Yes sir.");
+        u.lang = "en-US";
+        u.rate = 1.06;
+        u.pitch = 0.95;
+        const done = () => resolve();
+        u.onend = done;
+        u.onerror = done;
+        synth.speak(u);
+        window.setTimeout(done, 900);
+      } catch {
+        resolve();
+      }
+    });
   }
 
   // ── 음성: 마이크 토글 녹음 → 전사 ──
@@ -304,7 +468,13 @@ export default function MoriClient({
       recorderRef.current?.stop();
       return;
     }
-    if (busy || arming) return;
+    stopWakeListening(false);
+    startRecordingRef.current(false);
+  }
+
+  async function startRecording(autoStop = false) {
+    if (orbRef.current !== "idle" || arming) return;
+    stopWakeListening(false);
     setArming(true); // 클릭 즉시 시각 피드백(첫 클릭은 마이크 잡느라 잠깐 걸림)
     try {
       const stream = await getMicStream();
@@ -313,13 +483,23 @@ export default function MoriClient({
       const mime = cand.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
+      autoStopRef.current = autoStop;
+      speechSeenRef.current = false;
+      silenceSinceRef.current = null;
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       rec.onstop = async () => {
+        const wasAutoStop = autoStopRef.current;
+        const hadSpeech = speechSeenRef.current;
         stopAmplitude();
+        autoStopRef.current = false;
         // 스트림은 살려둔다(다음 녹음 즉시 시작). 트랙 stop은 언마운트 때만.
         setOrb("idle");
         const durMs = Date.now() - recStartRef.current;
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || mime || "audio/webm" });
+        if (wasAutoStop && !hadSpeech) {
+          restartHandsFreeListening(350);
+          return;
+        }
         if (blob.size === 0) {
           flashNotice("⚠️ 녹음 데이터가 비어있어요. 마이크 권한/입력을 확인해 주세요.");
           return;
@@ -338,6 +518,7 @@ export default function MoriClient({
       setArming(false);
     }
   }
+  startRecordingRef.current = startRecording;
   toggleMicRef.current = toggleMic; // 전역 스페이스바 핸들러가 항상 최신 클로저 호출
 
   // 마이크 진폭(RMS) → 입력창 막대(meterRef). 재사용 analyser를 RAF로 샘플(React 리렌더 없음).
@@ -355,6 +536,28 @@ export default function MoriClient({
       const amp = Math.min(1, Math.sqrt(sum / buf.length) * 3.2);
       // 마이크 버튼 옆 막대를 직접 갱신(상태 없이) — "내 말이 들어가고 있다" 확인용.
       if (meterRef.current) meterRef.current.style.transform = `scaleX(${0.06 + amp * 0.94})`;
+      if (autoStopRef.current && recorderRef.current?.state === "recording") {
+        const now = Date.now();
+        const elapsed = now - recStartRef.current;
+        const speaking = amp > 0.12;
+        if (speaking) {
+          speechSeenRef.current = true;
+          silenceSinceRef.current = null;
+        } else if (speechSeenRef.current && elapsed > 900) {
+          silenceSinceRef.current ??= now;
+          if (now - silenceSinceRef.current > 950) {
+            recorderRef.current.stop();
+            return;
+          }
+        } else if (!speechSeenRef.current && elapsed > 8_000) {
+          recorderRef.current.stop();
+          return;
+        }
+        if (elapsed > 24_000) {
+          recorderRef.current.stop();
+          return;
+        }
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
     loop();
@@ -387,11 +590,13 @@ export default function MoriClient({
       setOrb("idle");
       if (!res.ok || j.error) {
         flashNotice(`⚠️ 음성 전사 실패: ${j.error ?? `HTTP ${res.status}`}\n${diag}`);
+        restartHandsFreeListening(650);
         return;
       }
       const text = (j.text ?? "").trim();
       if (!text) {
         flashNotice("⚠️ 음성을 알아듣지 못했어요. 다시 말씀해 주세요.");
+        restartHandsFreeListening(650);
         return;
       }
       await handleUserText(text, "voice");
@@ -400,6 +605,7 @@ export default function MoriClient({
       setTranscribing(false);
       setOrb("idle");
       flashNotice(`⚠️ 음성 전사 오류: ${message}`);
+      restartHandsFreeListening(650);
     }
   }
 
@@ -443,6 +649,17 @@ export default function MoriClient({
       {/* 입력 + 음성 */}
       <div className="px-4 pb-2 sm:px-10">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
+          <button
+            onClick={toggleHandsFree}
+            title={handsFree ? "'모리야' 대기 호출 켜짐" : "'모리야' 대기 호출 켜기"}
+            className={`rounded-full border p-2.5 transition ${
+              handsFree
+                ? "border-emerald-400/70 bg-emerald-400/15 text-emerald-200"
+                : "border-white/10 bg-white/5 text-[#9fb0c8] hover:text-white"
+            }`}
+          >
+            <Headphones size={16} />
+          </button>
           <button
             onClick={() => setSpeakOn((v) => !v)}
             title={speakOn ? "음성 출력 켜짐" : "음성 출력 꺼짐"}
@@ -490,11 +707,17 @@ export default function MoriClient({
                 arming
                   ? "마이크 켜는 중…"
                   : recording
-                  ? "듣고 있어요… (말이 끝나면 ⏹ 버튼)"
+                  ? handsFree
+                    ? "명령 듣는 중… 말이 끝나면 자동으로 보냅니다"
+                    : "듣고 있어요… (말이 끝나면 ⏹ 버튼)"
                   : transcribing
                   ? "음성 전사 중…"
                   : busy
                   ? "모리가 응답 중…"
+                  : handsFree
+                  ? wakeListening
+                    ? "'모리야'라고 부르면 대답합니다"
+                    : "대기 호출 준비 중"
                   : "모리에게 말하기"
               }
               disabled={busy || recording}
@@ -520,11 +743,11 @@ export default function MoriClient({
         <div className="flex items-center gap-2">
           <span
             className={`inline-block h-2 w-2 rounded-full ${
-              recording ? "bg-indigo-400" : mode === "office" ? "bg-emerald-400" : "bg-zinc-500"
+              recording ? "bg-indigo-400" : wakeListening ? "bg-emerald-400" : handsFree ? "bg-amber-400" : mode === "office" ? "bg-emerald-400" : "bg-zinc-500"
             }`}
-            title={recording ? "듣는 중" : mode === "office" ? "사무실 모드 (활성)" : "조용 모드 (비활성)"}
+            title={recording ? "명령 듣는 중" : wakeListening ? "모리야 대기 중" : handsFree ? "대기 호출 준비 중" : mode === "office" ? "사무실 모드 (활성)" : "조용 모드 (비활성)"}
           />
-          <span>{recording ? "듣는 중" : mode === "office" ? "사무실" : "조용"}</span>
+          <span>{recording ? "명령 듣는 중" : wakeListening ? "모리야 대기" : handsFree ? "대기 준비" : mode === "office" ? "사무실" : "조용"}</span>
           <span className="opacity-50">·</span>
           <span>{clock}</span>
         </div>

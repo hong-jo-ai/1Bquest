@@ -25,6 +25,8 @@ const ALLOW_PREFIX = [
   "/api/cafe24/",      // Cafe24 webhook
   "/api/meta/webhook", // Meta webhook
   "/_next/",
+  "/manifest.webmanifest",
+  "/manifest.json",
 ];
 
 function isAllowed(pathname: string): boolean {

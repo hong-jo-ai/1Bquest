@@ -9,6 +9,7 @@ export default function MoriFloatingLauncher() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const inboxOffset = pathname === "/inbox";
+  const moriSrc = `/mori-embed?from=${encodeURIComponent(pathname)}`;
 
   const hidden =
     pathname === "/login" ||
@@ -64,7 +65,7 @@ export default function MoriFloatingLauncher() {
           </div>
           <iframe
             title="MORI"
-            src="/mori-embed"
+            src={moriSrc}
             className="h-[calc(100%-2.75rem)] w-full border-0 bg-[#0d1320]"
             allow="microphone; autoplay"
           />

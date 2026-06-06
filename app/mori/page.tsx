@@ -10,5 +10,5 @@ export default async function MoriPage() {
   const m = currentMode();
   const history = await loadConversation();
   const initialHistory = history.map((h) => ({ role: h.role, content: h.content }));
-  return <MoriClient mode={m.mode} nowKst={m.nowKst} initialHistory={initialHistory} mobileHeaderOffset />;
+  return <MoriClient mode={m.mode} nowKst={m.nowKst} initialHistory={initialHistory} currentPath="/mori" />;
 }

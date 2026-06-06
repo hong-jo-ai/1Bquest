@@ -20,8 +20,8 @@ import {
   type UtteranceSignalType,
 } from "@/lib/mori/utteranceThresholds";
 import { assembleDashboardContext } from "@/lib/mori/context";
+import { buildOperatingBrief } from "@/lib/mori/operatingBrief";
 import { loadTodayTasks, kstDateStr } from "@/lib/mori/tasks";
-import { listTodayEvents } from "@/lib/today-hub/calendar";
 import { listRecommendations } from "@/lib/mads/dbStore";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { getValidC24Token } from "@/lib/cafe24Auth";
@@ -175,31 +175,22 @@ async function detectSignals(state: PulseState): Promise<{ signals: Signal[]; ne
     // ① 아침 브리핑: 평일 오전, 하루 1회. (date 키 → 한 번 발화하면 그날은 재발화 안 함)
     const briefKey = `brief:morning:${today}`;
     if (hour >= T.coaching.morningBriefFromHour && hour < 12 && !state.cooldowns[briefKey]) {
-      let taskLine = "오늘 할일은 아직 안 적혀 있어요";
+      let briefLine = "";
       try {
-        const { pending, total } = await loadTodayTasks();
-        if (total > 0) {
-          taskLine =
-            `오늘 할일 ${total}개(미완료 ${pending.length})` +
-            (pending.length ? `: ${pending.slice(0, 5).map((t) => t.title).join(", ")}` : " — 전부 끝남");
-        }
+        briefLine = await buildOperatingBrief();
       } catch {
-        /* degrade */
-      }
-      const poLine = duePos.length
-        ? ` / 오늘 입고예정 발주: ${duePos.map((p) => `${p.productName} ${p.qty}개`).join(", ")}`
-        : "";
-      let calendarLine = "";
-      try {
-        const events = await listTodayEvents();
-        if (events.length > 0) {
-          calendarLine =
-            ` / 오늘 일정: ${events.slice(0, 4).map((e) => `${e.time} ${e.title}`).join(", ")}`;
+        try {
+          const { pending, total } = await loadTodayTasks();
+          briefLine =
+            total > 0
+              ? `오늘 할일 ${total}개(미완료 ${pending.length})` +
+                (pending.length ? `: ${pending.slice(0, 5).map((t) => t.title).join(", ")}` : " — 전부 끝남")
+              : "오늘 할일은 아직 안 적혀 있어요";
+        } catch {
+          briefLine = "오늘 운영 브리핑 생성 실패.";
         }
-      } catch {
-        /* degrade */
       }
-      signals.push({ type: "morning_brief", key: briefKey, summary: `${taskLine}${poLine}${calendarLine}` });
+      signals.push({ type: "morning_brief", key: briefKey, summary: briefLine });
     }
 
     // ② 할일 채찍질: 오후, 미완료 할일 남아 있으면 하루 1회.

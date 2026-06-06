@@ -17,6 +17,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest } from "next/server";
 import { buildSystemPrompt } from "@/lib/mori/systemPrompt";
 import { assembleDashboardContext } from "@/lib/mori/context";
+import { buildPageContextBlock } from "@/lib/mori/pageContext";
 import { loadConversation, appendTurn } from "@/lib/mori/memory";
 import { TOOL_DEFS, executeTool } from "@/lib/mori/tools";
 
@@ -31,9 +32,10 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY 없음" }, { status: 500 });
 
-  const { message } = (await req.json()) as { message?: string };
+  const { message, pagePath } = (await req.json()) as { message?: string; pagePath?: string };
   const userText = (message ?? "").trim();
   if (!userText) return Response.json({ error: "message 비어있음" }, { status: 400 });
+  const pageContext = buildPageContextBlock(pagePath);
 
   // 메모리에서 히스토리 로드 + 실시간 컨텍스트 조립(병렬)
   const [history, dashboardContext] = await Promise.all([
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
             system: [
               { type: "text", text: buildSystemPrompt() },
               { type: "text", text: dashboardContext },
+              ...(pageContext ? [{ type: "text" as const, text: pageContext }] : []),
             ],
             tools: TOOL_DEFS,
             messages: convo,

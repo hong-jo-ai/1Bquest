@@ -18,6 +18,8 @@ import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { addTodayTask } from "@/lib/todayHub/addTask";
 import { createPurchaseOrder, restockEta } from "@/lib/purchaseOrders";
 import { fetchAdSummary, todayKstDate } from "@/lib/mori/adsLive";
+import { buildOperatingBrief } from "@/lib/mori/operatingBrief";
+import { saveObsidianMemoryNote } from "@/lib/mori/obsidianMemory";
 import { listCalendarEvents, TODAY_HUB_CALENDAR_ID } from "@/lib/today-hub/calendar";
 import type { WidgetEvent, ChartPoint, MetricCard } from "@/lib/mori/widgetTypes";
 
@@ -146,6 +148,39 @@ export const TOOL_DEFS: Anthropic.Tool[] = [
           description: "조회 기간. today=오늘, tomorrow=내일, next_7d=오늘 포함 7일. 기본 today.",
         },
       },
+    },
+  },
+  {
+    name: "query_daily_briefing",
+    description:
+      "오늘 운영 브리핑을 조회한다. 매출·광고·CS·재고·발주·할일·일정을 한 번에 묶고, " +
+      "지금 대표님이 무엇부터 보면 좋을지 우선순위를 돌려준다. " +
+      "사용자가 '오늘 뭐부터 해?/브리핑해줘/오늘 상황 정리해줘/운영 우선순위'처럼 물으면 사용.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "save_memory",
+    description:
+      "대표님이 '이거 기억해둬/앞으로 이렇게 해/이 기준 저장해/결정으로 남겨'라고 말하면 Obsidian Vault에 장기 기억 Markdown을 저장한다. " +
+      "대표님 선호, 브랜드 규칙, 제품 메모, 결정 기록, 플레이북, 프롬프트를 저장할 때 사용. " +
+      "불확실한 추론은 저장하지 말고, 대표님이 명시적으로 기억하라고 한 내용이나 확정된 결정만 저장한다.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "기억 제목. 예: 광고 예산 변경 기준" },
+        body: { type: "string", description: "저장할 내용. 짧은 불릿 또는 문단." },
+        type: {
+          type: "string",
+          enum: ["owner_preference", "brand_rule", "product_memory", "decision_log", "playbook", "prompt", "memory"],
+          description: "기억 종류. 모르면 memory.",
+        },
+        status: {
+          type: "string",
+          enum: ["active", "draft", "archived"],
+          description: "기본 active. 검토용이면 draft.",
+        },
+      },
+      required: ["title", "body"],
     },
   },
   {
@@ -480,6 +515,21 @@ async function queryCalendar(input: unknown): Promise<{ resultText: string }> {
   };
 }
 
+async function queryDailyBriefing(): Promise<{ resultText: string }> {
+  return { resultText: await buildOperatingBrief() };
+}
+
+async function saveMemory(input: any): Promise<{ resultText: string }> {
+  const r = await saveObsidianMemoryNote({
+    title: input.title,
+    body: input.body,
+    type: input.type,
+    status: input.status,
+    source: "mori",
+  });
+  return { resultText: r.ok ? r.message : `(기억 저장 실패: ${r.error})` };
+}
+
 /** tool_use 실행. 알 수 없는 툴은 안전 메시지 반환. */
 export async function executeTool(
   name: string,
@@ -493,6 +543,8 @@ export async function executeTool(
     if (name === "query_sales") return await querySales(input);
     if (name === "query_ads") return await queryAds(input);
     if (name === "query_calendar") return await queryCalendar(input);
+    if (name === "query_daily_briefing") return await queryDailyBriefing();
+    if (name === "save_memory") return await saveMemory(input);
     if (name === "add_task") return await addTask(input);
     if (name === "create_purchase_order") return await createPO(input);
     if (name === "propose_owner_telegram") return proposeOwnerTelegram(input);
