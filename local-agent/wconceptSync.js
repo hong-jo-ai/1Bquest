@@ -106,7 +106,7 @@ const WC_ORDERS_URL = "https://newpin.wconcept.co.kr/Order/LstOrderMaster";
 const WC_DATE_START = "#strfrom";
 const WC_DATE_END = "#strto";
 const WC_SEARCH = "#btnSearch";
-const WC_DOWNLOAD = 'button:has-text("엑셀 다운로드")';
+const WC_DOWNLOAD = 'button[name="btnDownExcel"]';
 
 async function downloadWconcept(page, startDate, endDate, acc, log) {
   await page.goto(env("WCONCEPT_ORDERS_URL") || WC_ORDERS_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -119,14 +119,20 @@ async function downloadWconcept(page, startDate, endDate, acc, log) {
   }, { s: startDate, e: endDate, ss: WC_DATE_START, es: WC_DATE_END });
   await sleep(500);
   await page.locator(WC_SEARCH).click({ timeout: 10000 }).catch(() => {});
-  await sleep(3000);
+  await sleep(3500);
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
   const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads");
   fs.mkdirSync(dir, { recursive: true });
+
+  // '엑셀 다운로드' → '다운로드 사유 입력' 모달 → 사유(textarea#downReason) 입력 → '등록' → 다운로드
+  await page.locator(WC_DOWNLOAD).first().click({ timeout: 15000 });
+  await page.locator("#downReason").waitFor({ state: "visible", timeout: 10000 });
+  await page.locator("#downReason").fill("월별 매출/정산 관리");
+  await sleep(400);
   const [dl] = await Promise.all([
     page.waitForEvent("download", { timeout: 120000 }),
-    page.locator(WC_DOWNLOAD).first().click({ timeout: 30000 }),
+    page.locator('button:has-text("등록")').first().click({ timeout: 10000 }),
   ]);
   const fp = path.join(dir, `${Date.now()}-wconcept-${acc.key}-${dl.suggestedFilename()}`);
   await dl.saveAs(fp);
