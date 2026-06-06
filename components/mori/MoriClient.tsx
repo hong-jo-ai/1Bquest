@@ -8,6 +8,7 @@ import type { MoriWidget, WidgetEvent } from "@/lib/mori/widgetTypes";
 
 // 응답 단계 상태(입력 잠금·상태표시용). 시각 구체는 제거됨 — 피드백은 말풍선/플레이스홀더/하단 점.
 type OrbState = "idle" | "listening" | "thinking" | "speaking";
+type RealtimeState = "off" | "connecting" | "connected";
 
 interface Msg {
   role: "user" | "assistant";
@@ -39,6 +40,19 @@ interface SpeechRecognitionEventLike {
   }>;
 }
 
+interface RealtimeSecretResponse {
+  value?: string;
+  client_secret?: string | { value?: string };
+  secret?: { value?: string };
+}
+
+interface RealtimeServerEvent {
+  type?: string;
+  transcript?: string;
+  delta?: string;
+  error?: { message?: string };
+}
+
 type SpeechRecognitionWindow = Window &
   typeof globalThis & {
     SpeechRecognition?: new () => SpeechRecognitionLike;
@@ -65,6 +79,7 @@ export default function MoriClient({
   const [speakOn, setSpeakOn] = useState(true);
   const [handsFree, setHandsFree] = useState(false);
   const [wakeListening, setWakeListening] = useState(false);
+  const [realtime, setRealtime] = useState<RealtimeState>("off");
   const [transcribing, setTranscribing] = useState(false);
   const [arming, setArming] = useState(false); // 마이크 잡는 중(첫 클릭만 잠깐)
   const [clock, setClock] = useState(nowKst);
@@ -79,6 +94,7 @@ export default function MoriClient({
   const playCtxRef = useRef<AudioContext | null>(null);
   const busy = orb === "thinking" || orb === "speaking";
   const recording = orb === "listening";
+  const realtimeActive = realtime !== "off";
   const flowRef = useRef<HTMLDivElement>(null);
   const orbRef = useRef(orb);
   orbRef.current = orb;
@@ -96,6 +112,15 @@ export default function MoriClient({
   const wakeTriggeredRef = useRef(false);
   const wakeRestartTimerRef = useRef<number | null>(null);
   const wakeUnsupportedNotifiedRef = useRef(false);
+  const realtimeRef = useRef<RealtimeState>("off");
+  realtimeRef.current = realtime;
+  const realtimePcRef = useRef<RTCPeerConnection | null>(null);
+  const realtimeDcRef = useRef<RTCDataChannel | null>(null);
+  const realtimeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const realtimeStreamRef = useRef<MediaStream | null>(null);
+  const realtimeAssistantOpenRef = useRef(false);
+  const realtimeUserTextRef = useRef("");
+  const realtimeAssistantTextRef = useRef("");
 
   // 실시간 시계 (KST)
   useEffect(() => {
@@ -114,6 +139,7 @@ export default function MoriClient({
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       if (wakeRestartTimerRef.current != null) window.clearTimeout(wakeRestartTimerRef.current);
       wakeRecognitionRef.current?.abort();
+      closeRealtime();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioCtxRef.current?.close().catch(() => {});
     };
@@ -328,6 +354,196 @@ export default function MoriClient({
     handleUserText(t, "text");
   }
 
+  function realtimeNotice(text: string) {
+    setMessages((cur) => [...cur, { role: "assistant", content: text }]);
+  }
+
+  function extractRealtimeSecret(data: RealtimeSecretResponse): string {
+    const clientSecret =
+      typeof data.client_secret === "string" ? data.client_secret : data.client_secret?.value;
+    return String(
+      data?.value ??
+        clientSecret ??
+        data?.secret?.value ??
+        "",
+    );
+  }
+
+  function appendRealtimeAssistantDelta(delta: string) {
+    if (!delta) return;
+    realtimeAssistantTextRef.current += delta;
+    setMessages((cur) => {
+      const copy = [...cur];
+      if (realtimeAssistantOpenRef.current && copy[copy.length - 1]?.role === "assistant") {
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, content: last.content + delta };
+        return copy;
+      }
+      realtimeAssistantOpenRef.current = true;
+      copy.push({ role: "assistant", content: delta });
+      return copy;
+    });
+  }
+
+  async function persistRealtimeTurn() {
+    const user = realtimeUserTextRef.current.trim();
+    const assistant = realtimeAssistantTextRef.current.trim();
+    realtimeUserTextRef.current = "";
+    realtimeAssistantTextRef.current = "";
+    realtimeAssistantOpenRef.current = false;
+    if (!user || !assistant) return;
+    fetch("/api/mori/realtime/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, assistant }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  function handleRealtimeEvent(event: RealtimeServerEvent) {
+    const type = String(event?.type ?? "");
+    if (type === "input_audio_buffer.speech_started") {
+      setOrb("listening");
+      return;
+    }
+    if (type === "input_audio_buffer.speech_stopped") {
+      setOrb("thinking");
+      return;
+    }
+    if (type === "conversation.item.input_audio_transcription.completed") {
+      const transcript = String(event?.transcript ?? "").trim();
+      if (transcript) {
+        realtimeUserTextRef.current = transcript;
+        setMessages((cur) => [...cur, { role: "user", content: transcript }]);
+      }
+      return;
+    }
+    if (type === "response.audio_transcript.delta" || type === "response.text.delta") {
+      appendRealtimeAssistantDelta(String(event?.delta ?? ""));
+      setOrb("speaking");
+      return;
+    }
+    if (type === "response.audio_transcript.done") {
+      const transcript = String(event?.transcript ?? "").trim();
+      if (transcript && !realtimeAssistantTextRef.current.trim()) {
+        appendRealtimeAssistantDelta(transcript);
+      }
+      return;
+    }
+    if (type === "response.done") {
+      setOrb("idle");
+      persistRealtimeTurn();
+      return;
+    }
+    if (type === "error") {
+      realtimeNotice(`⚠️ 음성대화 오류: ${event?.error?.message ?? "Realtime 오류"}`);
+      setOrb("idle");
+    }
+  }
+
+  function closeRealtime() {
+    realtimeDcRef.current?.close();
+    realtimePcRef.current?.close();
+    realtimeStreamRef.current?.getTracks().forEach((t) => t.stop());
+    realtimeDcRef.current = null;
+    realtimePcRef.current = null;
+    realtimeStreamRef.current = null;
+    if (realtimeAudioRef.current) {
+      realtimeAudioRef.current.srcObject = null;
+      realtimeAudioRef.current.remove();
+      realtimeAudioRef.current = null;
+    }
+    realtimeAssistantOpenRef.current = false;
+    setRealtime("off");
+    if (orbRef.current !== "thinking") setOrb("idle");
+  }
+
+  async function startRealtime() {
+    if (realtimeRef.current !== "off") return;
+    stopWakeListening(true);
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    setRealtime("connecting");
+    setOrb("thinking");
+    try {
+      const tokenRes = await fetch("/api/mori/realtime/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pagePath: currentPath }),
+      });
+      const tokenJson = await tokenRes.json().catch(() => ({}));
+      if (!tokenRes.ok) throw new Error(tokenJson.error ?? `HTTP ${tokenRes.status}`);
+      const secret = extractRealtimeSecret(tokenJson);
+      if (!secret) throw new Error("Realtime client secret을 받지 못했습니다.");
+
+      const pc = new RTCPeerConnection();
+      realtimePcRef.current = pc;
+
+      const audio = document.createElement("audio");
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "true");
+      realtimeAudioRef.current = audio;
+      pc.ontrack = (event) => {
+        audio.srcObject = event.streams[0];
+        audio.play().catch(() => {});
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+          closeRealtime();
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      realtimeStreamRef.current = stream;
+      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+
+      const dc = pc.createDataChannel("oai-events");
+      realtimeDcRef.current = dc;
+      dc.addEventListener("message", (message) => {
+        try {
+          handleRealtimeEvent(JSON.parse(message.data));
+        } catch {
+          /* ignore malformed realtime event */
+        }
+      });
+      dc.addEventListener("open", () => {
+        setRealtime("connected");
+        setOrb("idle");
+        realtimeNotice("음성대화 모드입니다. 그냥 말씀하세요.");
+      });
+      dc.addEventListener("close", () => closeRealtime());
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/sdp",
+        },
+      });
+      const answerSdp = await sdpRes.text();
+      if (!sdpRes.ok) throw new Error(answerSdp || "Realtime 연결 실패");
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "음성대화 연결 실패";
+      closeRealtime();
+      realtimeNotice(`⚠️ 음성대화 연결 실패: ${message}`);
+    }
+  }
+
+  function toggleRealtime() {
+    if (realtimeRef.current === "off") startRealtime();
+    else closeRealtime();
+  }
+
   function toggleHandsFree() {
     setHandsFree((v) => {
       const next = !v;
@@ -464,6 +680,7 @@ export default function MoriClient({
   }
 
   async function toggleMic() {
+    if (realtimeRef.current !== "off") return;
     if (recording) {
       recorderRef.current?.stop();
       return;
@@ -650,9 +867,29 @@ export default function MoriClient({
       <div className="px-4 pb-2 sm:px-10">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           <button
+            onClick={toggleRealtime}
+            title={
+              realtime === "connected"
+                ? "음성대화 종료"
+                : realtime === "connecting"
+                  ? "음성대화 연결 중"
+                  : "음성대화 시작"
+            }
+            className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+              realtime === "connected"
+                ? "border-cyan-300/80 bg-cyan-300/15 text-cyan-100"
+                : realtime === "connecting"
+                  ? "animate-pulse border-cyan-300/50 bg-cyan-300/10 text-cyan-100"
+                  : "border-white/10 bg-white/5 text-[#9fb0c8] hover:text-white"
+            }`}
+          >
+            {realtime === "connected" ? "통화 종료" : realtime === "connecting" ? "연결 중" : "음성대화"}
+          </button>
+          <button
             onClick={toggleHandsFree}
+            disabled={realtimeActive}
             title={handsFree ? "'모리야' 대기 호출 켜짐" : "'모리야' 대기 호출 켜기"}
-            className={`rounded-full border p-2.5 transition ${
+            className={`rounded-full border p-2.5 transition disabled:opacity-40 ${
               handsFree
                 ? "border-emerald-400/70 bg-emerald-400/15 text-emerald-200"
                 : "border-white/10 bg-white/5 text-[#9fb0c8] hover:text-white"
@@ -671,7 +908,7 @@ export default function MoriClient({
           </button>
           <button
             onClick={toggleMic}
-            disabled={busy || arming}
+            disabled={busy || arming || realtimeActive}
             title={recording ? "녹음 중지 (스페이스바)" : arming ? "마이크 켜는 중…" : "말하기 (스페이스바)"}
             className={`rounded-full border p-2.5 transition disabled:opacity-50 ${
               recording
@@ -706,6 +943,10 @@ export default function MoriClient({
               placeholder={
                 arming
                   ? "마이크 켜는 중…"
+                  : realtime === "connecting"
+                  ? "음성대화 연결 중…"
+                  : realtime === "connected"
+                  ? "음성대화 중입니다. 그냥 말씀하세요"
                   : recording
                   ? handsFree
                     ? "명령 듣는 중… 말이 끝나면 자동으로 보냅니다"
@@ -720,13 +961,13 @@ export default function MoriClient({
                     : "대기 호출 준비 중"
                   : "모리에게 말하기"
               }
-              disabled={busy || recording}
+              disabled={busy || recording || realtimeActive}
               /* text-[16px]: iOS가 14px 입력에 포커스 시 자동 확대하는 것 방지 */
               className="flex-1 bg-transparent text-[16px] text-[#E8ECF0] placeholder:text-[#5f6e85] focus:outline-none disabled:opacity-50 sm:text-sm"
             />
             <button
               onClick={onSendClick}
-              disabled={busy || recording || !input.trim()}
+              disabled={busy || recording || realtimeActive || !input.trim()}
               className="rounded-full bg-[#F4E4C1] px-4 py-1.5 text-xs font-semibold text-[#1A2332] transition disabled:opacity-30"
             >
               보내기
@@ -743,11 +984,51 @@ export default function MoriClient({
         <div className="flex items-center gap-2">
           <span
             className={`inline-block h-2 w-2 rounded-full ${
-              recording ? "bg-indigo-400" : wakeListening ? "bg-emerald-400" : handsFree ? "bg-amber-400" : mode === "office" ? "bg-emerald-400" : "bg-zinc-500"
+              realtime === "connected"
+                ? "bg-cyan-300"
+                : realtime === "connecting"
+                  ? "bg-cyan-500"
+                  : recording
+                    ? "bg-indigo-400"
+                    : wakeListening
+                      ? "bg-emerald-400"
+                      : handsFree
+                        ? "bg-amber-400"
+                        : mode === "office"
+                          ? "bg-emerald-400"
+                          : "bg-zinc-500"
             }`}
-            title={recording ? "명령 듣는 중" : wakeListening ? "모리야 대기 중" : handsFree ? "대기 호출 준비 중" : mode === "office" ? "사무실 모드 (활성)" : "조용 모드 (비활성)"}
+            title={
+              realtime === "connected"
+                ? "음성대화 연결됨"
+                : realtime === "connecting"
+                  ? "음성대화 연결 중"
+                  : recording
+                    ? "명령 듣는 중"
+                    : wakeListening
+                      ? "모리야 대기 중"
+                      : handsFree
+                        ? "대기 호출 준비 중"
+                        : mode === "office"
+                          ? "사무실 모드 (활성)"
+                          : "조용 모드 (비활성)"
+            }
           />
-          <span>{recording ? "명령 듣는 중" : wakeListening ? "모리야 대기" : handsFree ? "대기 준비" : mode === "office" ? "사무실" : "조용"}</span>
+          <span>
+            {realtime === "connected"
+              ? "음성대화"
+              : realtime === "connecting"
+                ? "연결 중"
+                : recording
+                  ? "명령 듣는 중"
+                  : wakeListening
+                    ? "모리야 대기"
+                    : handsFree
+                      ? "대기 준비"
+                      : mode === "office"
+                        ? "사무실"
+                        : "조용"}
+          </span>
           <span className="opacity-50">·</span>
           <span>{clock}</span>
         </div>
