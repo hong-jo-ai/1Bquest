@@ -5,6 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "대시보드",
     short_name: "대시보드",
     description: "폴바이스·해리엇 운영 대시보드",
+    id: "/?app=dashboard",
     start_url: "/",
     scope: "/",
     display: "standalone",
