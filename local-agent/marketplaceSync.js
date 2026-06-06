@@ -246,10 +246,11 @@ async function fetchLatestGmailCode(refreshToken, query) {
   return extractCodeFromPayload(msg.payload);
 }
 
-async function fetchCodeFromDashboard(channel, log) {
+async function fetchCodeFromDashboard(channel, afterTs, log) {
   const base = (env("DASHBOARD_URL") || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
   const token = env("PAULWISE_MCP_TOKEN") || "";
-  const url = `${base}/api/marketplace/verification-code?channel=${encodeURIComponent(channel)}`;
+  const url = `${base}/api/marketplace/verification-code?channel=${encodeURIComponent(channel)}`
+    + (afterTs ? `&after=${encodeURIComponent(afterTs)}` : "");
   let lastErr;
   // 인증번호 메일이 도착할 때까지 몇 번 재시도
   for (let attempt = 1; attempt <= 6; attempt++) {
@@ -285,6 +286,8 @@ async function ensureLoggedIn(channel, page, log) {
 
   if (cfg.authMethod === "email") {
     try {
+      // 인증번호 발송 시각(=이후 도착 메일만 유효). 시계 오차 대비 15초 버퍼.
+      const codeReqAt = new Date(Date.now() - 15000).toISOString();
       // (무신사 등) 2차 인증 방식 탭이 있으면 '이메일' 선택
       if (cfg.emailMethodSelector) {
         await clickIfConfigured(page, cfg.emailMethodSelector, 8000);
@@ -302,7 +305,7 @@ async function ensureLoggedIn(channel, page, log) {
       await page.locator(cfg.emailCodeSelector).first().waitFor({ state: "visible", timeout: 15000 });
       await sleep(5000); // 인증번호 메일 도착 대기
       const code = cfg.codeViaDashboard
-        ? await fetchCodeFromDashboard(channel, log)
+        ? await fetchCodeFromDashboard(channel, codeReqAt, log)
         : await fetchLatestGmailCode(cfg.gmailRefreshToken, cfg.gmailQuery);
       await fillIfVisible(page, cfg.emailCodeSelector, code, 5000);
       await clickIfConfigured(page, cfg.emailCodeSubmitSelector, 5000);

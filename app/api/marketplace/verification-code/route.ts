@@ -96,6 +96,17 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: `Gmail 메시지 조회 실패 (${msgRes.status})`, code: null }, { status: 502 });
   }
   const msg = await msgRes.json();
+
+  // after(ISO) 보다 오래된(이전 로그인의) 메일이면 무시 → 발송 직후 새 코드만 사용
+  const after = req.nextUrl.searchParams.get("after");
+  if (after) {
+    const internalMs = Number(msg.internalDate || 0);
+    const afterMs = Date.parse(after);
+    if (internalMs && afterMs && internalMs <= afterMs) {
+      return Response.json({ code: null, stale: true });
+    }
+  }
+
   const code = extractCode(msg.payload);
   if (!code) {
     return Response.json({ error: "메일에서 6자리 코드 추출 실패", code: null }, { status: 404 });
