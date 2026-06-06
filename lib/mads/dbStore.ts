@@ -17,30 +17,103 @@ function getDb() {
   return createClient(url, key);
 }
 
+function newerIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return new Date(b).getTime() > new Date(a).getTime() ? b : a;
+}
+
 // ── ad_sets ───────────────────────────────────────────────────────────
-export async function upsertAdSets(rows: AdSetSummary[]): Promise<void> {
-  if (rows.length === 0) return;
+export interface AdSetUpsertResult {
+  metaAdsetId: string;
+  lastBudgetChangeAt: string | null;
+}
+
+export async function upsertAdSets(rows: AdSetSummary[]): Promise<AdSetUpsertResult[]> {
+  if (rows.length === 0) return [];
   const db = getDb();
+  const ids = rows.map((r) => r.metaAdsetId);
+  const { data: existing, error: existingError } = await db
+    .from("mads_ad_sets")
+    .select("meta_adset_id, daily_budget, last_budget_change_at")
+    .in("meta_adset_id", ids);
+  if (existingError) throw new Error("ad_sets existing select: " + existingError.message);
+
+  const existingById = new Map(
+    (existing ?? []).map((r) => [
+      r.meta_adset_id as string,
+      {
+        dailyBudget: r.daily_budget !== null ? Number(r.daily_budget) : null,
+        lastBudgetChangeAt: r.last_budget_change_at as string | null,
+      },
+    ]),
+  );
+  const now = new Date().toISOString();
+  const changeRows: Array<{
+    meta_adset_id: string;
+    action: string;
+    source: string;
+    detail: Record<string, unknown>;
+  }> = [];
+  const upsertResults: AdSetUpsertResult[] = [];
+
   const { error } = await db.from("mads_ad_sets").upsert(
-    rows.map((r) => ({
-      meta_adset_id:         r.metaAdsetId,
-      meta_account_id:       r.metaAccountId,
-      account_name:          r.accountName,
-      campaign_id:           r.campaignId,
-      campaign_name:         r.campaignName,
-      campaign_objective:    r.campaignObjective,
-      name:                  r.name,
-      status:                r.status,
-      daily_budget:          r.dailyBudget,
-      funnel_stage:          r.funnelStage,
-      last_budget_change_at: r.lastBudgetChangeAt,
-      last_synced_at:        new Date().toISOString(),
-      // 미수집(undefined) 시 기존 값 유지 — null로 덮어쓰지 않음
-      ...(r.creativeFormats !== undefined ? { creative_formats: r.creativeFormats } : {}),
-    })),
+    rows.map((r) => {
+      const prev = existingById.get(r.metaAdsetId);
+      const prevBudget = prev?.dailyBudget ?? null;
+      const nextBudget = r.dailyBudget;
+      const budgetChanged =
+        prevBudget !== null &&
+        nextBudget !== null &&
+        prevBudget !== nextBudget;
+      const lastBudgetChangeAt = budgetChanged
+        ? now
+        : newerIso(prev?.lastBudgetChangeAt, r.lastBudgetChangeAt);
+
+      if (budgetChanged) {
+        const deltaPct = prevBudget > 0
+          ? Math.round(((nextBudget - prevBudget) / prevBudget) * 100)
+          : null;
+        changeRows.push({
+          meta_adset_id: r.metaAdsetId,
+          action: "budget_change_detected",
+          source: "meta_ui",
+          detail: {
+            from: prevBudget,
+            to: nextBudget,
+            deltaPct,
+          },
+        });
+      }
+      upsertResults.push({ metaAdsetId: r.metaAdsetId, lastBudgetChangeAt });
+
+      return {
+        meta_adset_id:         r.metaAdsetId,
+        meta_account_id:       r.metaAccountId,
+        account_name:          r.accountName,
+        campaign_id:           r.campaignId,
+        campaign_name:         r.campaignName,
+        campaign_objective:    r.campaignObjective,
+        name:                  r.name,
+        status:                r.status,
+        daily_budget:          r.dailyBudget,
+        funnel_stage:          r.funnelStage,
+        last_budget_change_at: lastBudgetChangeAt,
+        last_synced_at:        now,
+        // 미수집(undefined) 시 기존 값 유지 — null로 덮어쓰지 않음
+        ...(r.creativeFormats !== undefined ? { creative_formats: r.creativeFormats } : {}),
+      };
+    }),
     { onConflict: "meta_adset_id" },
   );
   if (error) throw new Error("ad_sets upsert: " + error.message);
+
+  if (changeRows.length > 0) {
+    const { error: logError } = await db.from("mads_manual_action_logs").insert(changeRows);
+    if (logError) console.warn("[mads] manual_action_logs insert:", logError.message);
+  }
+
+  return upsertResults;
 }
 
 /**

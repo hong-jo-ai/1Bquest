@@ -103,7 +103,12 @@ export async function runEvaluationCycle(): Promise<RunResult> {
     }
 
     try {
-      await upsertAdSets(adsets);
+      const upserted = await upsertAdSets(adsets);
+      const changedById = new Map(upserted.map((r) => [r.metaAdsetId, r.lastBudgetChangeAt]));
+      adsets = adsets.map((adset) => ({
+        ...adset,
+        lastBudgetChangeAt: changedById.get(adset.metaAdsetId) ?? adset.lastBudgetChangeAt,
+      }));
     } catch (e) {
       errors.push({ scope: "ad_sets_upsert", id: acc.id, error: msg(e) });
     }

@@ -73,8 +73,16 @@ interface MetaAdSet {
   name: string;
   status: string;
   daily_budget?: string;
-  campaign?: { id: string; name: string; objective?: string };
+  campaign?: { id: string; name: string; objective?: string; updated_time?: string };
   updated_time?: string;
+}
+
+function latestIso(...values: Array<string | undefined>): string | null {
+  const valid = values.filter((v): v is string => Boolean(v));
+  if (valid.length === 0) return null;
+  return valid.reduce((latest, value) =>
+    new Date(value).getTime() > new Date(latest).getTime() ? value : latest,
+  );
 }
 
 export async function listActiveAdSets(
@@ -83,7 +91,7 @@ export async function listActiveAdSets(
   accountName: string,
 ): Promise<AdSetSummary[]> {
   const data = (await metaGet(`/${accountId}/adsets`, token, {
-    fields: "id,name,status,daily_budget,updated_time,campaign{id,name,objective}",
+    fields: "id,name,status,daily_budget,updated_time,campaign{id,name,objective,updated_time}",
     effective_status: JSON.stringify(["ACTIVE"]),
     limit: "200",
   })) as { data?: MetaAdSet[] };
@@ -99,7 +107,7 @@ export async function listActiveAdSets(
     status:             s.status ?? "ACTIVE",
     dailyBudget:        s.daily_budget ? parseInt(s.daily_budget, 10) : null,
     funnelStage:        guessFunnelStage(s.name ?? "", s.campaign?.name ?? ""),
-    lastBudgetChangeAt: s.updated_time ?? null,
+    lastBudgetChangeAt: latestIso(s.updated_time, s.campaign?.updated_time),
   }));
 }
 
