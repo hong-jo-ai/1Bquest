@@ -101,17 +101,24 @@ async function loginWconcept(ctx, page, acc, log) {
   return ok;
 }
 
+// W컨셉 주문조회 셀렉터 (확정·고정 — .env의 '#' 값은 dotenv가 주석처리하므로 코드에 박음)
+const WC_ORDERS_URL = "https://newpin.wconcept.co.kr/Order/LstOrderMaster";
+const WC_DATE_START = "#strfrom";
+const WC_DATE_END = "#strto";
+const WC_SEARCH = "#btnSearch";
+const WC_DOWNLOAD = 'button:has-text("엑셀 다운로드")';
+
 async function downloadWconcept(page, startDate, endDate, acc, log) {
-  await page.goto(env("WCONCEPT_ORDERS_URL"), { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(env("WCONCEPT_ORDERS_URL") || WC_ORDERS_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   await sleep(4000);
   // 날짜 입력 (readonly 가능성 대비 evaluate로 값 설정 + change 트리거)
   await page.evaluate(({ s, e, ss, es }) => {
     const f = document.querySelector(ss), t = document.querySelector(es);
     if (f) { f.value = s; f.dispatchEvent(new Event("change", { bubbles: true })); }
     if (t) { t.value = e; t.dispatchEvent(new Event("change", { bubbles: true })); }
-  }, { s: startDate, e: endDate, ss: env("WCONCEPT_DATE_START_SELECTOR"), es: env("WCONCEPT_DATE_END_SELECTOR") });
+  }, { s: startDate, e: endDate, ss: WC_DATE_START, es: WC_DATE_END });
   await sleep(500);
-  await page.locator(env("WCONCEPT_SEARCH_BUTTON_SELECTOR")).click({ timeout: 10000 }).catch(() => {});
+  await page.locator(WC_SEARCH).click({ timeout: 10000 }).catch(() => {});
   await sleep(3000);
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
@@ -119,7 +126,7 @@ async function downloadWconcept(page, startDate, endDate, acc, log) {
   fs.mkdirSync(dir, { recursive: true });
   const [dl] = await Promise.all([
     page.waitForEvent("download", { timeout: 120000 }),
-    page.locator(env("WCONCEPT_DOWNLOAD_BUTTON_SELECTOR")).first().click({ timeout: 30000 }),
+    page.locator(WC_DOWNLOAD).first().click({ timeout: 30000 }),
   ]);
   const fp = path.join(dir, `${Date.now()}-wconcept-${acc.key}-${dl.suggestedFilename()}`);
   await dl.saveAs(fp);
