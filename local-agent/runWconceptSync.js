@@ -24,7 +24,7 @@ function ymd(d) {
   log(`W컨셉 매출 동기화 시작: ${start} ~ ${end} (계정 2개, SMS 인증번호 2개 텔레그램 전달 필요)`);
 
   try {
-    const r = await syncWconcept({ startDate: start, endDate: end }, log);
+    const r = await syncWconcept({ startDate: start, endDate: end, ingest: true }, log);
     log(`✅ 완료 — 합산 ${r.combinedRows}행, 적재 ${r.rowCount ?? "?"}건 저장=${r.stored ? "OK" : "?"}`);
   } catch (e) {
     log(`❌ 실패: ${e && e.message ? e.message : e}`, "error");

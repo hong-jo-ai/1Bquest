@@ -161,6 +161,19 @@ function combineXlsxFiles(filePaths) {
   return { outPath, rowCount: dataRows.length };
 }
 
+// 인터랙티브(대시보드 버튼) — 로컬 대시보드 /api/upload 로 파싱만 (미리보기, 저장은 '사용' 클릭 시)
+async function parseCombined(filePath, log) {
+  const uploadBase = env("DASHBOARD_UPLOAD_BASE_URL") || "http://localhost:3000";
+  const buffer = fs.readFileSync(filePath);
+  const form = new FormData();
+  form.append("file", new Blob([buffer]), "wconcept_combined.xlsx");
+  const res = await fetch(`${uploadBase}/api/upload?channel=wconcept`, { method: "POST", body: form });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `파싱 실패 (HTTP ${res.status})`);
+  log(`W컨셉 파싱 완료(미리보기): ${json.rowCount}건`);
+  return json;
+}
+
 async function ingestCombined(filePath, log) {
   const token = env("PAULWISE_MCP_TOKEN");
   const buffer = fs.readFileSync(filePath);
@@ -176,7 +189,7 @@ async function ingestCombined(filePath, log) {
   return json;
 }
 
-async function syncWconcept({ startDate, endDate }, log) {
+async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   for (const a of ACCOUNTS) {
     if (!a.id || !a.pw) throw new Error(`W컨셉 ${a.key}번 계정 ID/PW 미설정`);
   }
@@ -200,8 +213,11 @@ async function syncWconcept({ startDate, endDate }, log) {
   }
   const { outPath, rowCount } = combineXlsxFiles(files);
   log(`두 계정 합산: 데이터 ${rowCount}행 → ${outPath}`);
-  const result = await ingestCombined(outPath, log);
-  return { success: true, channel: "wconcept", combinedRows: rowCount, ...result };
+  // ingest=true(스케줄): 서버에 파싱+저장 / 그 외(대시보드 버튼): 파싱만 (미리보기 → '사용'으로 저장)
+  const result = ingest
+    ? await ingestCombined(outPath, log)
+    : await parseCombined(outPath, log);
+  return { success: true, channel: "wconcept", downloadedFile: "wconcept_combined.xlsx", combinedRows: rowCount, ...result };
 }
 
 module.exports = { syncWconcept };

@@ -21,6 +21,7 @@ const {
   missingConfig,
   syncMarketplaceSales,
 } = require("./marketplaceSync");
+const { syncWconcept } = require("./wconceptSync");
 
 // ── 설정 ──────────────────────────────────────────────────────────────
 const PORT        = Number(process.env.AGENT_PORT || 7777);
@@ -519,7 +520,10 @@ app.post("/sales-sync", async (req, res) => {
 
   try {
     log(`매출 자동 가져오기 시작: ${channel} ${startDate}~${endDate}`, "action");
-    const result = await syncMarketplaceSales({ channel, startDate, endDate }, (msg, type = "info") => log(msg, type));
+    // W컨셉은 2계정 합산 + SMS(텔레그램 릴레이) 전용 흐름. 그 외는 범용 흐름.
+    const result = channel === "wconcept"
+      ? await syncWconcept({ startDate, endDate, ingest: false }, (msg, type = "info") => log(msg, type))
+      : await syncMarketplaceSales({ channel, startDate, endDate }, (msg, type = "info") => log(msg, type));
     log(`매출 자동 가져오기 완료: ${channel}`, "success");
     res.json(result);
   } catch (err) {
