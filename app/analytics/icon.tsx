@@ -1,8 +1,8 @@
-import { appIcon, ICON_CONTENT_TYPE, ICON_SIZE } from "@/lib/appIcon";
+import { HOME_APP_ICON_CONTENT_TYPE, HOME_APP_ICON_SIZE, renderHomeAppIcon } from "@/lib/homeAppIcons";
 
-export const size = ICON_SIZE;
-export const contentType = ICON_CONTENT_TYPE;
+export const size = HOME_APP_ICON_SIZE;
+export const contentType = HOME_APP_ICON_CONTENT_TYPE;
 
 export default function Icon() {
-  return appIcon("📊", ["#38bdf8", "#0284c7"]);
+  return renderHomeAppIcon("dashboard");
 }

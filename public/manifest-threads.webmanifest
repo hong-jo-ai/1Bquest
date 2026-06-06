@@ -1,0 +1,28 @@
+{
+  "name": "쓰레드",
+  "short_name": "쓰레드",
+  "description": "쓰레드 운영 앱",
+  "start_url": "/tools/threads",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#18181B",
+  "theme_color": "#18181B",
+  "icons": [
+    {
+      "src": "/app-icon-threads-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon-threads-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon-threads-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

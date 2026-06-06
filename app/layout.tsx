@@ -16,14 +16,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title:       "Harriotwatches Dashboard",
   description: "해리엇워치스 / 폴바이스 운영 도구",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest-dashboard.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "MORI",
+    title: "대시보드",
     statusBarStyle: "black-translucent",
   },
   icons: {
-    apple: "/mori-icon-192.png",
+    icon: "/app-icon-dashboard-512.png",
+    apple: "/app-icon-dashboard-180.png",
   },
 };
 

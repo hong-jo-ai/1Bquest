@@ -3,6 +3,16 @@ import type { Metadata, Viewport } from "next";
 export const metadata: Metadata = {
   title:       "MORI — 모리",
   description: "해리엇/폴바이스 1인 운영 비서",
+  manifest: "/manifest-mori.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "MORI",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: "/app-icon-mori-512.png",
+    apple: "/app-icon-mori-180.png",
+  },
 };
 
 // 모바일: 노치/홈인디케이터 아래까지 채우고(safe-area 활성화),

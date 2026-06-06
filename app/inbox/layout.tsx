@@ -3,6 +3,16 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title:       "CS 인박스 — PAULVICE",
   description: "Cafe24 · Instagram · Threads · Naver · Crisp 통합 고객 응대",
+  manifest: "/manifest-inbox.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "CS 인박스",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: "/app-icon-inbox-512.png",
+    apple: "/app-icon-inbox-180.png",
+  },
 };
 
 // BackToHubButton 은 InboxClient 내부에서 selectedId 에 따라 조건부 렌더링한다

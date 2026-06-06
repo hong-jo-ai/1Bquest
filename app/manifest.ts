@@ -2,27 +2,27 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "MORI — 운영 비서",
-    short_name: "MORI",
-    description: "해리엇/폴바이스 1인 운영 비서",
-    start_url: "/mori",
+    name: "대시보드",
+    short_name: "대시보드",
+    description: "폴바이스·해리엇 운영 대시보드",
+    start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: "#0d1320",
-    theme_color: "#0d1320",
+    background_color: "#111827",
+    theme_color: "#111827",
     icons: [
       {
-        src: "/mori-icon-192.png",
+        src: "/app-icon-dashboard-192.png",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/mori-icon-512.png",
+        src: "/app-icon-dashboard-512.png",
         sizes: "512x512",
         type: "image/png",
       },
       {
-        src: "/mori-icon-512.png",
+        src: "/app-icon-dashboard-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

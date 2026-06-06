@@ -24,7 +24,9 @@ const ALLOW_PREFIX = [
   "/api/instagram/webhook", // Meta Instagram webhook (검증 + 이벤트)
   "/api/cafe24/",      // Cafe24 webhook
   "/api/meta/webhook", // Meta webhook
+  "/api/app-icons/",   // 홈화면/PWA 아이콘은 로그인 전에도 브라우저가 가져갈 수 있어야 함
   "/_next/",
+  "/manifest-",
   "/manifest.webmanifest",
   "/manifest.json",
 ];
