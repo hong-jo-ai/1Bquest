@@ -52,17 +52,21 @@ const CHANNELS = {
   },
   "29cm": {
     label: "29CM",
-    authMethod: "totp",   // 2차 인증: Google OTP (TOTP)
+    authMethod: "email",   // 무신사와 동일 SSO → 이메일 인증 (plvekorea@gmail.com, 대시보드 자동읽기)
     loginUrl: env("CM29_LOGIN_URL"),
     ordersUrl: env("CM29_ORDERS_URL"),
     username: env("CM29_LOGIN_ID"),
     password: env("CM29_LOGIN_PASSWORD"),
-    totpSecret: env("CM29_TOTP_SECRET"),
-    usernameSelector: env("CM29_ID_SELECTOR"),
-    passwordSelector: env("CM29_PASSWORD_SELECTOR"),
-    loginButtonSelector: env("CM29_LOGIN_BUTTON_SELECTOR"),
-    otpSelector: env("CM29_OTP_SELECTOR"),
-    otpSubmitSelector: env("CM29_OTP_SUBMIT_SELECTOR"),
+    // partner-sso.one.musinsa.com 공통 → 로그인/이메일 인증 셀렉터는 무신사와 동일
+    usernameSelector: "input[name='id']",
+    passwordSelector: "input[name='password']",
+    loginButtonSelector: "button[type='submit']",
+    emailMethodSelector: '.ant-radio-button-wrapper:has-text("이메일")',
+    emailSendSelector: 'button:has-text("인증번호 받기")',
+    emailConfirmSelector: '.ant-modal button:has-text("확인")',
+    emailCodeSelector: "input[name='code']",
+    emailCodeSubmitSelector: "button[type='submit']",
+    codeViaDashboard: true,
     dateStartSelector: env("CM29_DATE_START_SELECTOR"),
     dateEndSelector: env("CM29_DATE_END_SELECTOR"),
     searchButtonSelector: env("CM29_SEARCH_BUTTON_SELECTOR"),

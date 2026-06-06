@@ -10,6 +10,7 @@
  */
 import { type NextRequest } from "next/server";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
+import { getKakaoGiftGmailAccessToken } from "@/lib/finance/kakaoGiftGmailToken";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,14 @@ const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const DEFAULT_QUERY: Record<string, string> = {
   musinsa: "from:(musinsa.com) newer_than:15m",
   wconcept: "from:(wconcept) newer_than:15m",
+  "29cm": "from:(musinsa OR 29cm) newer_than:15m",
 };
+
+// 채널별 수신 메일함: 무신사=shong@(google_refresh_token), 29CM=plvekorea@(kakao_gift_gmail_token)
+async function accessTokenForChannel(channel: string): Promise<string | null> {
+  if (channel === "29cm") return getKakaoGiftGmailAccessToken();
+  return getGoogleAccessTokenFromStore();
+}
 
 type GmailPart = {
   body?: { data?: string };
@@ -55,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   let accessToken: string | null = null;
   try {
-    accessToken = await getGoogleAccessTokenFromStore();
+    accessToken = await accessTokenForChannel(channel);
   } catch (e) {
     return Response.json(
       { error: `Google 토큰 갱신 실패: ${e instanceof Error ? e.message : String(e)}`, code: null },
