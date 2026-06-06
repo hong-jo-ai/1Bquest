@@ -67,6 +67,8 @@ export async function POST(req: NextRequest) {
       fileName: file.name,
       rowCount: result.rowCount,
       period: result.period,
+      columns: result.columns,
+      data: result.data, // 대시보드 미리보기용
       stored: true,
     });
   } catch (e) {

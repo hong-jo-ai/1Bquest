@@ -213,10 +213,9 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   }
   const { outPath, rowCount } = combineXlsxFiles(files);
   log(`두 계정 합산: 데이터 ${rowCount}행 → ${outPath}`);
-  // ingest=true(스케줄): 서버에 파싱+저장 / 그 외(대시보드 버튼): 파싱만 (미리보기 → '사용'으로 저장)
-  const result = ingest
-    ? await ingestCombined(outPath, log)
-    : await parseCombined(outPath, log);
+  // 항상 배포 서버(토큰 엔드포인트)로 파싱+저장 → 로컬 대시보드(:3000) 의존 없음.
+  // 응답에 data 포함 → 대시보드 버튼 클릭 시 미리보기 표시 + '사용' 클릭은 같은 파일명으로 재저장(무해).
+  const result = await ingestCombined(outPath, log);
   return { success: true, channel: "wconcept", downloadedFile: "wconcept_combined.xlsx", combinedRows: rowCount, ...result };
 }
 
