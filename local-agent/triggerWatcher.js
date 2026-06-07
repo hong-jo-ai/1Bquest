@@ -30,6 +30,7 @@ function runSync(channel) {
   return new Promise((resolve) => {
     const script = channel === "wconcept" ? "runWconceptSync.js"
       : channel === "29cm" ? "runCm29Sync.js"
+      : channel === "sixshop" ? "runSixshopSync.js"
       : "runMusinsaSync.js";
     console.log(`[${new Date().toISOString()}] ▶ ${channel} 동기화 실행 (${script})`);
     const cp = execFile(process.execPath, [path.join(__dirname, script)], { cwd: __dirname, env: process.env });
