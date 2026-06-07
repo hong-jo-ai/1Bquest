@@ -12,6 +12,7 @@ import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
 import { storeChannelUpload } from "@/lib/profit/channelUploadStore";
 import { type UploadableChannel } from "@/lib/multiChannelData";
+import { convertUsdToKrw } from "@/lib/finance/forex";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const buffer = await file.arrayBuffer();
-    const result = await parseExcelBuffer(buffer);
+    let result = await parseExcelBuffer(buffer);
+    // 식스샵 글로벌은 USD 결제 → 기준환율로 원화 환산 (다른 채널과 합산되도록)
+    if (channel === "sixshop_global") {
+      result = { ...result, data: convertUsdToKrw(result.data) };
+    }
     const meta = {
       fileName: file.name,
       rowCount: result.rowCount,

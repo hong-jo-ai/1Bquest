@@ -8,7 +8,7 @@ import { getProductCogs, getProductNameAliases } from "./profitSettings";
 const COL_ALIASES = {
   date:        ["주문일시", "결제일시", "주문일", "결제일", "발주일", "날짜"],
   orderId:     ["주문번호", "주문 번호", "order_no", "order_id", "order no", "order id", "ordersn"],
-  name:        ["상품명", "품목명"],
+  name:        ["상품명", "품목명", "상품 이름", "상품이름"],
   sku:         ["상품번호", "상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
   qty:         ["수량", "주문수량", "판매수량"], // "현재수량"(재고) 회피
   revenue:     ["실결제금액", "결제금액", "매출금액", "판매금액", "판매가격", "판매가", "정산금액", "매출", "총매출", "순매출", "금액"],
