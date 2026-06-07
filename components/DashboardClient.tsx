@@ -301,6 +301,19 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     return channelDataMap[activeChannel as UploadableChannel];
   }, [activeChannel, cafe24Channel, channelDataMap, brandChannelIds]);
 
+  const companyChannels = useMemo(() => {
+    const ids = Array.from(new Set(BRANDS.flatMap((b) => BRAND_CHANNELS[b.id]).filter((id) => id !== "all")));
+    return ids.map((id) => {
+      const meta = CHANNELS.find((c) => c.id === id);
+      const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+      return { channelId: id, name: meta?.name ?? id, color: meta?.color ?? "#71717a", data };
+    });
+  }, [cafe24Channel, channelDataMap]);
+
+  const companyData = useMemo(() => {
+    return mergeChannelData(companyChannels.map((ch) => ch.data));
+  }, [companyChannels]);
+
   const cafe24IsReal       = cafe24Data?.isReal === true;
   const isUploadableActive = UPLOADABLE_CHANNELS.includes(activeChannel as UploadableChannel);
   const activeUploadable   = isUploadableActive ? (activeChannel as UploadableChannel) : null;
@@ -308,8 +321,6 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   const activeMeta         = activeUploadable ? metas[activeUploadable] : null;
   const activeHistory      = activeUploadable ? histories[activeUploadable] : [];
   const activeChannelMeta  = CHANNELS.find(c => c.id === activeChannel);
-  const currentBrandMeta   = BRANDS.find((b) => b.id === brand) ?? BRANDS[0];
-
   // ChannelComparisonChart에 넘길 채널 데이터 (브랜드 채널만)
   const comparisonChannels = useMemo(() => {
     const list: { channelId: string; name: string; color: string; data: MultiChannelData }[] = [];
@@ -350,16 +361,40 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     }));
   }, [comparisonChannels, monthPrefix]);
 
+  const companyMonthRevenue = useMemo(() => {
+    let total = 0;
+    for (const ch of companyChannels) {
+      for (const day of ch.data.dailyRevenue ?? []) {
+        if (day.date.startsWith(monthPrefix)) total += day.revenue;
+      }
+    }
+    return total;
+  }, [companyChannels, monthPrefix]);
+
+  const brandMonthRevenues = useMemo(() => {
+    return BRANDS.map((b) => {
+      let monthRevenue = 0;
+      for (const id of BRAND_CHANNELS[b.id]) {
+        if (id === "all") continue;
+        const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+        for (const day of data.dailyRevenue ?? []) {
+          if (day.date.startsWith(monthPrefix)) monthRevenue += day.revenue;
+        }
+      }
+      return { brandId: b.id, name: b.name, monthRevenue };
+    });
+  }, [cafe24Channel, channelDataMap, monthPrefix]);
+
   const overview = useMemo(() => {
-    const todayRevenue = displayData.salesSummary.today.revenue;
-    const todayOrders = displayData.salesSummary.today.orders;
-    const activeChannels = comparisonChannels.filter((c) => {
+    const todayRevenue = companyData.salesSummary.today.revenue;
+    const todayOrders = companyData.salesSummary.today.orders;
+    const activeChannels = companyChannels.filter((c) => {
       const revenue = c.data.dailyRevenue?.reduce((sum, d) => sum + d.revenue, 0) ?? 0;
       return revenue > 0;
     }).length;
-    const lowStock = displayData.inventory?.filter((i) => i.status === "soldout" || i.status === "critical").length ?? 0;
+    const lowStock = companyData.inventory?.filter((i) => i.status === "soldout" || i.status === "critical").length ?? 0;
     return { todayRevenue, todayOrders, activeChannels, lowStock };
-  }, [displayData, comparisonChannels]);
+  }, [companyData, companyChannels]);
 
   return (
     <>
@@ -427,12 +462,11 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
         <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
 
         <DashboardOverview
-          brandName={currentBrandMeta.name}
-          activeChannelName={activeChannelMeta?.name ?? "전체"}
           now={now}
           todayRevenue={overview.todayRevenue}
           todayOrders={overview.todayOrders}
-          monthRevenue={monthRevenue}
+          monthRevenue={companyMonthRevenue}
+          brandMonthRevenues={brandMonthRevenues}
           activeChannels={overview.activeChannels}
           lowStock={overview.lowStock}
         />
@@ -555,43 +589,45 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
 }
 
 function DashboardOverview({
-  brandName,
-  activeChannelName,
   now,
   todayRevenue,
   todayOrders,
   monthRevenue,
+  brandMonthRevenues,
   activeChannels,
   lowStock,
 }: {
-  brandName: string;
-  activeChannelName: string;
   now: string;
   todayRevenue: number;
   todayOrders: number;
   monthRevenue: number;
+  brandMonthRevenues: Array<{ brandId: Brand; name: string; monthRevenue: number }>;
   activeChannels: number;
   lowStock: number;
 }) {
+  const sortedBrands = [...brandMonthRevenues].sort((a, b) => b.monthRevenue - a.monthRevenue);
+  const primaryBrand = sortedBrands[0];
+  const secondaryBrand = sortedBrands[1];
+
   const stats = [
     {
-      label: "오늘 매출",
+      label: "오늘 전체 매출",
       value: `${fmtKrwCompact(todayRevenue)}원`,
       sub: `주문 ${todayOrders.toLocaleString("ko-KR")}건`,
       icon: BarChart3,
       tone: "text-emerald-600 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/10",
     },
     {
-      label: "이번 달 매출",
+      label: "이번 달 전체 매출",
       value: `${fmtKrwCompact(monthRevenue)}원`,
-      sub: "선택 브랜드 기준",
+      sub: "전 브랜드 합산",
       icon: Database,
       tone: "text-sky-600 bg-sky-50 dark:text-sky-300 dark:bg-sky-500/10",
     },
     {
-      label: "활성 채널",
-      value: `${activeChannels.toLocaleString("ko-KR")}개`,
-      sub: "매출 데이터 감지",
+      label: "브랜드 기여",
+      value: primaryBrand ? `${primaryBrand.name} ${fmtKrwCompact(primaryBrand.monthRevenue)}원` : "0원",
+      sub: secondaryBrand ? `${secondaryBrand.name} ${fmtKrwCompact(secondaryBrand.monthRevenue)}원` : "비교 브랜드 없음",
       icon: Layers3,
       tone: "text-violet-600 bg-violet-50 dark:text-violet-300 dark:bg-violet-500/10",
     },
@@ -613,14 +649,17 @@ function DashboardOverview({
         <div className="border-b border-zinc-100 p-5 dark:border-zinc-800 sm:p-6 lg:border-b-0 lg:border-r">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400">Operations Dashboard</p>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-3xl">
-            {brandName} 운영 현황
+            해리엇와치스 운영 현황
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            매출, 채널, 재고, 광고와 오늘 할 일을 한 화면에서 확인합니다.
+            폴바이스와 해리엇의 매출, 채널, 재고, 광고 흐름을 한 화면에서 확인합니다.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
-              {activeChannelName}
+              회사 전체
+            </span>
+            <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+              활성 채널 {activeChannels.toLocaleString("ko-KR")}개
             </span>
             <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
               {now}

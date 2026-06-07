@@ -19,14 +19,14 @@ export default async function Dashboard({ searchParams }: PageProps) {
   let data      = null;
   let apiError: string | null = null;
 
-  // 카페24 데이터는 폴바이스 브랜드일 때만 의미가 있음
-  if (isAuthenticated && brand === "paulvice") {
+  // 최상단 전사 KPI에는 폴바이스 카페24 매출도 항상 포함되어야 한다.
+  if (isAuthenticated) {
     const token = await getValidC24Token();
     if (token) {
       try {
         data = await getDashboardData(token);
-      } catch (e: any) {
-        apiError = e.message;
+      } catch (e: unknown) {
+        apiError = e instanceof Error ? e.message : "카페24 데이터를 불러오지 못했습니다.";
       }
     } else {
       apiError = "카페24 토큰이 만료되었습니다. 재연결이 필요합니다.";
