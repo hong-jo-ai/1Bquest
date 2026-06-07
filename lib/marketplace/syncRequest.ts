@@ -45,5 +45,6 @@ export function parseSyncCommand(text: string): string | null {
   if (!/동기화|sync|가져오기|업로드/i.test(text)) return null;
   if (/w.?컨셉|wconcept|더블유/i.test(text)) return "wconcept";
   if (/무신사|musinsa/i.test(text)) return "musinsa";
+  if (/29\s?cm|29씨엠|이십구씨엠|투에니/i.test(text)) return "29cm";
   return null;
 }

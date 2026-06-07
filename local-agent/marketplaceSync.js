@@ -334,24 +334,30 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
   // ── 29CM: /list 전체 주문 조회 (날짜는 URL 파라미터) → '엑셀 다운로드' → '받기' ──
   if (channel === "29cm") {
     const base = (cfg.ordersUrl || "https://partner-order.29cm.co.kr/list").replace(/\/$/, "");
-    const url = `${base}?fromDate=${startDate}&toDate=${endDate}&dateConditionType=ORDERED_AT&periodTemplate=1&page=1&size=50`;
+    // periodTemplate=31(최근 1개월 프리셋) — periodTemplate=1은 오늘로 덮어써 0건이 됨. 검색하기 불필요(URL로 로드).
+    const url = `${base}?fromDate=${startDate}&toDate=${endDate}&dateConditionType=ORDERED_AT&periodTemplate=31&page=1&size=200`;
     try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }); }
     catch (e) { log(`29CM 주문페이지 이동 재시도 (${e.message.slice(0, 40)})`); await sleep(2500); await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }); }
-    await sleep(3000);
+    await sleep(4000);
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    await page.locator('button:has-text("검색하기")').first().click({ timeout: 8000 }).catch(() => {});
-    await sleep(3500);
 
     const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads");
     fs.mkdirSync(dir, { recursive: true });
+    // '엑셀 다운로드' 드롭다운 → '전체 주문 상품 다운로드'의 '받기' → 다운로드 사유 모달(사유 입력 → 확인)
+    const trigger = async () => {
+      await page.getByRole("button", { name: /엑셀 다운로드/ }).first().click({ timeout: 10000 })
+        .catch(async () => { await page.getByText("엑셀 다운로드", { exact: true }).first().click({ timeout: 10000 }); });
+      await sleep(1200);
+      await page.locator('xpath=//*[normalize-space()="전체 주문 상품 다운로드"]/following::button[normalize-space()="받기"][1]')
+        .first().click({ timeout: 8000 });
+      await sleep(1500);
+      await page.getByPlaceholder(/사유/).first().fill("월별 매출/정산 관리");
+      await sleep(400);
+      await page.getByRole("button", { name: "확인" }).last().click({ timeout: 6000 });
+    };
     const [dl] = await Promise.all([
       page.waitForEvent("download", { timeout: 120000 }),
-      (async () => {
-        await page.getByText("엑셀 다운로드", { exact: false }).first().click({ timeout: 10000 });
-        await sleep(1000);
-        await page.getByRole("button", { name: "받기" }).first().click({ timeout: 8000 })
-          .catch(async () => { await page.getByText("받기", { exact: true }).first().click({ timeout: 8000 }); });
-      })(),
+      trigger(),
     ]);
     const suggested = dl.suggestedFilename();
     const filePath = path.join(dir, `${Date.now()}-29cm-${suggested}`);

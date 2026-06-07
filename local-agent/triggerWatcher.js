@@ -28,7 +28,9 @@ async function fetchRequest() {
 
 function runSync(channel) {
   return new Promise((resolve) => {
-    const script = channel === "wconcept" ? "runWconceptSync.js" : "runMusinsaSync.js";
+    const script = channel === "wconcept" ? "runWconceptSync.js"
+      : channel === "29cm" ? "runCm29Sync.js"
+      : "runMusinsaSync.js";
     console.log(`[${new Date().toISOString()}] ▶ ${channel} 동기화 실행 (${script})`);
     const cp = execFile(process.execPath, [path.join(__dirname, script)], { cwd: __dirname, env: process.env });
     cp.stdout && cp.stdout.on("data", (d) => process.stdout.write(d));
