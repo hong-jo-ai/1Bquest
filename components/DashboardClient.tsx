@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   UploadCloud,
@@ -10,6 +11,7 @@ import {
   CheckCircle2,
   Database,
   Layers3,
+  RefreshCw,
 } from "lucide-react";
 
 import ChannelTabs from "@/components/ChannelTabs";
@@ -100,6 +102,8 @@ const EMPTY_CHANNEL_DATA: MultiChannelData = {
   dailyCogs: [],
   inventory: [],
 };
+const PULL_REFRESH_TRIGGER = 82;
+const PULL_REFRESH_MAX = 116;
 
 function fmtKrwCompact(n: number): string {
   const rounded = Math.round(n);
@@ -118,8 +122,17 @@ interface Props {
 }
 
 export default function DashboardClient({ brand, cafe24Data, isAuthenticated, apiError, now }: Props) {
+  const router = useRouter();
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [, startRefreshTransition] = useTransition();
+  const touchStartYRef = useRef(0);
+  const pullActiveRef = useRef(false);
+  const pullDistanceRef = useRef(0);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 현재 브랜드의 채널 ID 목록
   const brandChannelIds = BRAND_CHANNELS[brand];
@@ -155,6 +168,44 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     []
   );
 
+  const syncChannelUploads = useCallback(async () => {
+    try {
+      const r = await fetch("/api/profit/channel-uploads", { cache: "no-store" });
+      const j = await r.json();
+      if (!j.ok) return;
+      for (const ch of UPLOADABLE_CHANNELS) {
+        const entry = j.uploads?.[ch];
+        if (entry?.data && entry?.meta) {
+          applyChannelEntry(ch, entry);
+        }
+      }
+    } catch {
+      /* 서버 fetch 실패 시 로컬 캐시만 사용 */
+    }
+  }, [applyChannelEntry]);
+
+  const refreshDashboard = useCallback(async () => {
+    if (refreshing) return;
+
+    setRefreshing(true);
+    setPulling(false);
+    pullDistanceRef.current = PULL_REFRESH_TRIGGER;
+    setPullDistance(PULL_REFRESH_TRIGGER);
+
+    await syncChannelUploads();
+    startRefreshTransition(() => {
+      router.refresh();
+    });
+
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      setRefreshing(false);
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      refreshTimerRef.current = null;
+    }, 700);
+  }, [refreshing, router, syncChannelUploads, startRefreshTransition]);
+
   // 1) localStorage에서 즉시 복원 (서버 응답 전 빠른 표시)
   // 2) 서버 동기화 (다른 기기에서 업로드한 데이터 가져오기 — SSOT)
   useEffect(() => {
@@ -180,20 +231,63 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       });
     } catch { /* localStorage 접근 불가 시 무시 */ }
 
-    // 2단계: 서버 SSOT (모든 기기에서 동일한 데이터)
-    fetch("/api/profit/channel-uploads")
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j.ok) return;
-        for (const ch of UPLOADABLE_CHANNELS) {
-          const entry = j.uploads?.[ch];
-          if (entry?.data && entry?.meta) {
-            applyChannelEntry(ch, entry);
-          }
-        }
-      })
-      .catch(() => { /* 서버 fetch 실패 시 로컬 캐시만 사용 */ });
-  }, [applyChannelEntry]);
+    queueMicrotask(() => {
+      void syncChannelUploads();
+    });
+  }, [syncChannelUploads]);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, []);
+
+  const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    if (refreshing || window.scrollY > 0 || document.documentElement.scrollTop > 0) return;
+
+    touchStartYRef.current = event.touches[0]?.clientY ?? 0;
+    pullActiveRef.current = true;
+  }, [refreshing]);
+
+  const handleTouchMove = useCallback((event: React.TouchEvent) => {
+    if (!pullActiveRef.current || refreshing) return;
+    if (window.scrollY > 0 || document.documentElement.scrollTop > 0) {
+      pullActiveRef.current = false;
+      setPulling(false);
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      return;
+    }
+
+    const currentY = event.touches[0]?.clientY ?? 0;
+    const delta = currentY - touchStartYRef.current;
+    if (delta <= 0) {
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      setPulling(false);
+      return;
+    }
+
+    event.preventDefault();
+    const nextPullDistance = Math.min(PULL_REFRESH_MAX, delta * 0.56);
+    pullDistanceRef.current = nextPullDistance;
+    setPulling(true);
+    setPullDistance(nextPullDistance);
+  }, [refreshing]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!pullActiveRef.current) return;
+
+    pullActiveRef.current = false;
+    setPulling(false);
+
+    if (pullDistanceRef.current >= PULL_REFRESH_TRIGGER) {
+      void refreshDashboard();
+    } else {
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+    }
+  }, [refreshDashboard]);
 
   // 업로드 데이터 저장 — 서버에서 누적 머지 후 응답으로 받은 결과를 그대로 사용
   const handleDataLoaded = useCallback(
@@ -397,7 +491,35 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
   }, [companyData, companyChannels]);
 
   return (
-    <>
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
+      <div
+        aria-live="polite"
+        className={`pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[35] flex -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-600 shadow-lg shadow-zinc-200/60 backdrop-blur transition-all duration-200 dark:border-zinc-800 dark:bg-zinc-900/95 dark:text-zinc-300 dark:shadow-black/30 ${
+          pullDistance > 8 || refreshing ? "opacity-100" : "opacity-0"
+        }`}
+        style={{
+          transform: `translate(-50%, ${Math.max(0, pullDistance - 34)}px)`,
+        }}
+      >
+        <RefreshCw
+          size={15}
+          className={refreshing ? "animate-spin text-sky-500" : "text-zinc-400"}
+          style={!refreshing ? { transform: `rotate(${pullDistance * 2.4}deg)` } : undefined}
+        />
+        {refreshing ? "새로고침 중" : pullDistance >= PULL_REFRESH_TRIGGER ? "놓으면 새로고침" : "아래로 당겨 새로고침"}
+      </div>
+      <div
+        className="transition-transform duration-200 ease-out"
+        style={{
+          transform: pullDistance > 0 || refreshing ? `translateY(${refreshing ? 28 : Math.min(42, pullDistance * 0.35)}px)` : undefined,
+          transitionDuration: pulling ? "0ms" : undefined,
+        }}
+      >
       {/* API 오류 배너 (폴바이스 카페24만) */}
       {apiError && brand === "paulvice" && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
@@ -584,7 +706,8 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       <footer className="bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-300 dark:bg-zinc-900 dark:text-zinc-600 sm:px-6 sm:py-6">
         Harriot Watches · 멀티 브랜드 통합 현황
       </footer>
-    </>
+      </div>
+    </div>
   );
 }
 
