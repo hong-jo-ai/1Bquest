@@ -67,10 +67,7 @@ const CHANNELS = {
     emailCodeSelector: "input[name='code']",
     emailCodeSubmitSelector: "button[type='submit']",
     codeViaDashboard: true,
-    dateStartSelector: env("CM29_DATE_START_SELECTOR"),
-    dateEndSelector: env("CM29_DATE_END_SELECTOR"),
-    searchButtonSelector: env("CM29_SEARCH_BUTTON_SELECTOR"),
-    downloadButtonSelector: env("CM29_DOWNLOAD_BUTTON_SELECTOR"),
+    customDownload: true,  // /list 페이지 + URL 날짜 + '엑셀 다운로드'→'받기' (downloadOrders 29cm 분기)
   },
 };
 
@@ -96,13 +93,13 @@ function missingConfig(channel) {
     "usernameSelector",
     "passwordSelector",
     "loginButtonSelector",
-    "dateStartSelector",
-    "dateEndSelector",
-    "searchButtonSelector",
   ];
-  // 다운로드: 우클릭 컨텍스트 메뉴 방식이면 메뉴 셀렉터, 아니면 일반 버튼
-  if (cfg.downloadRightClickSelector) required.push("downloadMenuSelector");
-  else required.push("downloadButtonSelector");
+  // customDownload(29CM 등)는 날짜/검색/다운로드 셀렉터 대신 전용 흐름을 씀
+  if (!cfg.customDownload) {
+    required.push("dateStartSelector", "dateEndSelector", "searchButtonSelector");
+    if (cfg.downloadRightClickSelector) required.push("downloadMenuSelector");
+    else required.push("downloadButtonSelector");
+  }
   if (cfg.authMethod === "email") {
     required.push("emailCodeSelector", "emailCodeSubmitSelector");
     if (!cfg.codeViaDashboard) required.push("gmailRefreshToken");
@@ -333,6 +330,36 @@ async function ensureLoggedIn(channel, page, log) {
 
 async function downloadOrders(channel, page, startDate, endDate, log) {
   const cfg = CHANNELS[channel];
+
+  // ── 29CM: /list 전체 주문 조회 (날짜는 URL 파라미터) → '엑셀 다운로드' → '받기' ──
+  if (channel === "29cm") {
+    const base = (cfg.ordersUrl || "https://partner-order.29cm.co.kr/list").replace(/\/$/, "");
+    const url = `${base}?fromDate=${startDate}&toDate=${endDate}&dateConditionType=ORDERED_AT&periodTemplate=1&page=1&size=50`;
+    try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }); }
+    catch (e) { log(`29CM 주문페이지 이동 재시도 (${e.message.slice(0, 40)})`); await sleep(2500); await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }); }
+    await sleep(3000);
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.locator('button:has-text("검색하기")').first().click({ timeout: 8000 }).catch(() => {});
+    await sleep(3500);
+
+    const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads");
+    fs.mkdirSync(dir, { recursive: true });
+    const [dl] = await Promise.all([
+      page.waitForEvent("download", { timeout: 120000 }),
+      (async () => {
+        await page.getByText("엑셀 다운로드", { exact: false }).first().click({ timeout: 10000 });
+        await sleep(1000);
+        await page.getByRole("button", { name: "받기" }).first().click({ timeout: 8000 })
+          .catch(async () => { await page.getByText("받기", { exact: true }).first().click({ timeout: 8000 }); });
+      })(),
+    ]);
+    const suggested = dl.suggestedFilename();
+    const filePath = path.join(dir, `${Date.now()}-29cm-${suggested}`);
+    await dl.saveAs(filePath);
+    log(`29CM 엑셀 다운로드 완료: ${filePath}`);
+    return { filePath, fileName: suggested };
+  }
+
   // 인증 직후 리다이렉트와 겹치면 ERR_ABORTED 가능 → 1회 재시도
   try {
     await page.goto(cfg.ordersUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
