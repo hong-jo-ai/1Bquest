@@ -71,6 +71,21 @@ const STATUS_STYLE: Record<string, string> = {
 
 const BIZ_EPOST_PRINT = "https://biz.epost.go.kr/ui/index.jsp";
 
+// 판매처별 아주 옅은 행 배경 (구분용 · 과하지 않게 50/70)
+const CHANNEL_TINT: Record<string, string> = {
+  "카페24": "bg-sky-50/70",
+  "W컨셉": "bg-rose-50/70",
+  "29CM": "bg-violet-50/70",
+  "식스샵": "bg-amber-50/70",
+  "무신사": "bg-lime-50/70",
+  "식스샵글로벌": "bg-amber-50/40",
+  AS: "bg-teal-50/70",
+  influencer: "bg-fuchsia-50/70",
+  엑셀: "bg-slate-50",
+  manual: "bg-slate-50",
+  반품: "bg-orange-50/70",
+};
+
 export default function ShippingClient() {
   const [tab, setTab] = useState<"1" | "2">("1");
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -446,7 +461,7 @@ export default function ShippingClient() {
               </tr>
             ) : (
               filtered.map((s) => (
-                <tr key={s.id} className="border-b border-slate-100 last:border-0">
+                <tr key={s.id} className={`border-b border-slate-100 last:border-0 ${CHANNEL_TINT[s.channel] || ""}`}>
                   <td className="px-3 py-2 text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
                   <td className="px-3 py-2 text-slate-700">{s.recipient_name}</td>
