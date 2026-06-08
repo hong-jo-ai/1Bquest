@@ -33,10 +33,10 @@ async function tg(msg) {
   }).catch(() => {});
 }
 
-// after(ISO) 이후 새 SMS 코드를 최대 4분 폴링
+// after(ISO) 이후 새 SMS 코드를 최대 8분 폴링
 async function pollSmsCode(afterTs) {
   const token = env("PAULWISE_MCP_TOKEN");
-  for (let i = 0; i < 48; i++) {
+  for (let i = 0; i < 96; i++) {
     try {
       const r = await fetch(`${base()}/api/marketplace/sms-code?after=${encodeURIComponent(afterTs)}`, {
         headers: { "x-agent-token": token },
@@ -82,8 +82,8 @@ async function loginWconcept(ctx, page, acc, log) {
   // 인증번호 발송 → SMS
   await popup.locator('button:has-text("인증번호 발송"), button:has-text("발송")').first()
     .click({ timeout: 8000 }).catch((e) => log(`발송 버튼 클릭 실패: ${e.message.slice(0, 40)}`));
-  await tg(`🔐 W컨셉 ${acc.key}번 계정(${acc.id}) 인증발송했어요. 휴대폰 SMS를 'wc 코드'로 보내주세요.`);
-  log(`W컨셉 ${acc.key}번: SMS 코드 대기 (텔레그램으로 'wc 코드' 전송 요망, 최대 4분)`);
+  await tg(`🔐 W컨셉 ${acc.key}번 계정(${acc.id}) 인증번호 발송했어요!\n지금 휴대폰 SMS를 텔레그램에 'wc 코드' (예: wc 123456)로 보내주세요. ⏰ 8분 내`);
+  log(`W컨셉 ${acc.key}번: SMS 코드 대기 (텔레그램으로 'wc 코드' 전송 요망, 최대 8분)`);
 
   const code = await pollSmsCode(startTs);
   if (!code) { log(`W컨셉 ${acc.key}번: 인증번호 미수신 (시간초과)`); return false; }
@@ -193,6 +193,8 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   for (const a of ACCOUNTS) {
     if (!a.id || !a.pw) throw new Error(`W컨셉 ${a.key}번 계정 ID/PW 미설정`);
   }
+  // '먼저' 알림 — 인증번호 2개가 곧 필요함을 미리 고지(자동 17시 실행 시 대비용)
+  await tg("📦 W컨셉 매출 동기화를 시작합니다.\n곧 2개 계정 인증번호(SMS) 2개가 필요해요 — 휴대폰 확인하고, 오는 즉시 텔레그램에 'wc 코드'로 보내주세요. (각 8분 내)");
   const files = [];
   for (const acc of ACCOUNTS) {
     const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
@@ -219,4 +221,4 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   return { success: true, channel: "wconcept", downloadedFile: "wconcept_combined.xlsx", combinedRows: rowCount, ...result };
 }
 
-module.exports = { syncWconcept };
+module.exports = { syncWconcept, loginWconcept, ACCOUNTS };
