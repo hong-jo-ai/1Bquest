@@ -28,6 +28,7 @@ import {
   Sparkles,
   Wand2,
   ExternalLink,
+  Truck,
 } from "lucide-react";
 
 type AppPage =
@@ -43,6 +44,7 @@ type AppPage =
   | "finance"
   | "pricing"
   | "sms"
+  | "shipping"
   | "mori";
 
 const NAV_ITEMS: {
@@ -57,6 +59,7 @@ const NAV_ITEMS: {
   { href: "/channel-pricing", label: "채널 가격", icon: Tags, page: "pricing" },
   { href: "/inbox", label: "CS 인박스", icon: Inbox, page: "inbox" },
   { href: "/as", label: "AS 수리 추적", icon: Wrench, page: "as" },
+  { href: "/shipping", label: "우체국 발송", icon: Truck, page: "shipping" },
   { href: "/sms", label: "고객 안내 SMS", icon: MessageSquare, page: "sms" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
@@ -73,6 +76,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/channel-pricing": "pricing",
   "/inbox": "inbox",
   "/as": "as",
+  "/shipping": "shipping",
   "/sms": "sms",
   "/inventory": "inventory",
   "/jewelry-clearance": "jewelry",

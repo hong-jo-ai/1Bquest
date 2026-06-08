@@ -423,6 +423,35 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
   const [note, setNote] = useState(req.note ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 우체국 접수 (수리완료 발송)
+  const [zip, setZip] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postMsg, setPostMsg] = useState<string | null>(null);
+
+  async function registerPost() {
+    setPosting(true);
+    setErr(null);
+    setPostMsg(null);
+    try {
+      const res = await fetch("/api/postparcel/as-ship", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asId: req.id, zip: zip.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "접수 실패");
+      const isTest = data.regiNo === "TESTREGINOAPI";
+      if (!isTest && data.regiNo) setTracking(data.regiNo);
+      setPostMsg(
+        `${isTest ? "[테스트] " : ""}접수 완료 — ${data.regipoNm ?? ""} ${data.price ? data.price + "원" : ""} (송장 ${data.regiNo})`
+      );
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPosting(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -499,6 +528,28 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
           보낸 곳: {AS_DESTINATION_LABEL[req.destination]}
         </div>
       )}
+
+      {/* 우체국 접수 (수리완료 → 고객 발송) */}
+      <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/30 p-2.5 space-y-2">
+        <div className="flex items-end gap-2">
+          <div className="w-28">
+            <Field label="우편번호" value={zip} onChange={setZip} inputMode="numeric" />
+          </div>
+          <button
+            onClick={registerPost}
+            disabled={posting || !customerName.trim() || !customerAddress.trim()}
+            className="flex-1 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-lg active:scale-95 transition flex items-center justify-center gap-1.5"
+            title="고객에게 보낼 송장을 우체국에 접수합니다"
+          >
+            {posting ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+            우체국 접수
+          </button>
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          우편번호는 비우면 주소에서 5자리를 자동 추출합니다. 접수 후 송장번호가 위 ‘반송 송장번호’에 채워지고 상태가 발송완료로 바뀝니다.
+        </p>
+        {postMsg && <div className="text-xs text-sky-700 dark:text-sky-300">{postMsg}</div>}
+      </div>
 
       {err && <div className="text-xs text-red-600">{err}</div>}
 

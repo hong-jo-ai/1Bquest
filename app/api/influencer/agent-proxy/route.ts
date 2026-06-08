@@ -16,7 +16,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const timeoutMs = endpoint === "/sales-sync" ? 10 * 60 * 1000 : 120000;
+    const longRunning =
+      endpoint === "/sales-sync" ||
+      endpoint === "/postparcel/register-outbound" ||
+      endpoint === "/postparcel/return";
+    const timeoutMs = longRunning ? 10 * 60 * 1000 : 120000;
     const res = await fetch(`${AGENT_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Download, MapPin, Phone, User, Package, Hash, FileText } from "lucide-react";
+import { X, Save, Download, MapPin, Phone, User, Package, Hash, FileText, Truck, Loader2 } from "lucide-react";
 import { updateInfluencer } from "@/lib/influencerStorage";
 import { generateSingleShippingCSV, downloadCSV } from "@/lib/shippingExport";
 import type { Influencer, ShippingInfo } from "@/lib/influencerStorage";
@@ -52,6 +52,51 @@ export default function ShippingModal({ influencer, onUpdate, onClose }: Props) 
   const handleSaveAndDownload = () => {
     handleSave();
     setTimeout(handleDownload, 100);
+  };
+
+  // 우체국 접수 (확인 한 번으로 협찬 발송 접수)
+  const [posting, setPosting] = useState(false);
+  const [postMsg, setPostMsg] = useState<string | null>(null);
+  const [postErr, setPostErr] = useState<string | null>(null);
+
+  const handleRegister = async () => {
+    setPosting(true);
+    setPostMsg(null);
+    setPostErr(null);
+    try {
+      const res = await fetch("/api/postparcel/register-one", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order: `INF-${influencer.id}`,
+          name: recipientName,
+          addr1: address,
+          addr2: addressDetail,
+          zip: postalCode,
+          mobile: phone,
+          prod: productName,
+          qty: quantity,
+          msg: memo,
+          source: "influencer",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "접수 실패");
+      const isTest = data.regiNo === "TESTREGINOAPI";
+      const info = buildShippingInfo();
+      updateInfluencer(influencer.id, {
+        shippingInfo: { ...info, trackingNo: isTest ? info.trackingNo : data.regiNo },
+        status: "shipped",
+      });
+      onUpdate();
+      setPostMsg(
+        `${isTest ? "[테스트] " : ""}접수 완료 — ${data.regipoNm ?? ""} ${data.price ? data.price + "원" : ""} (송장 ${data.regiNo})`
+      );
+    } catch (e) {
+      setPostErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (
@@ -181,19 +226,31 @@ export default function ShippingModal({ influencer, onUpdate, onClose }: Props) 
         </div>
 
         {/* 버튼 */}
-        <div className="flex gap-2 px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
-          <button onClick={handleSave} disabled={!isValid}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-zinc-800 dark:bg-zinc-700 hover:bg-zinc-700 dark:hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors"
+        <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 shrink-0 space-y-2">
+          {postMsg && <div className="text-xs text-sky-700 dark:text-sky-300">{postMsg}</div>}
+          {postErr && <div className="text-xs text-red-600">{postErr}</div>}
+          {/* 우체국 접수 — 확인 한 번으로 발송 */}
+          <button onClick={handleRegister} disabled={!isValid || posting}
+            className="w-full flex items-center justify-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors"
+            title="저장 후 우체국에 협찬 발송을 접수합니다"
           >
-            <Save size={14} />
-            저장
+            {posting ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+            우체국 접수
           </button>
-          <button onClick={handleSaveAndDownload} disabled={!isValid}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors"
-          >
-            <Download size={14} />
-            저장 + CSV 다운로드
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={!isValid}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-zinc-800 dark:bg-zinc-700 hover:bg-zinc-700 dark:hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors"
+            >
+              <Save size={14} />
+              저장
+            </button>
+            <button onClick={handleSaveAndDownload} disabled={!isValid}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors"
+            >
+              <Download size={14} />
+              저장 + CSV
+            </button>
+          </div>
         </div>
       </div>
     </div>

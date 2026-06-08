@@ -35,6 +35,7 @@ export interface ShippingInfo {
   productName: string;
   quantity: number;
   memo: string;
+  trackingNo?: string;   // 우체국 접수 운송장(등기)번호
 }
 
 export interface Influencer {

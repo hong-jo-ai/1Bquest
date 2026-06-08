@@ -612,6 +612,87 @@ app.post("/open-browser", async (req, res) => {
   }
 });
 
+// ─────────── 우체국 계약소포 (소포신청/반품/취소/셋업) ───────────
+// register 모듈은 buildPostOffice(→Playwright)를 끌어오므로 핸들러 안에서 lazy require.
+
+// 1회 셋업: 고객번호·승인번호 조회
+app.get("/postparcel/setup", async (req, res) => {
+  try {
+    const { getCustNo, getApprNo } = require("./postParcel/client");
+    const custNo = process.env.POSTPARCEL_CUST_NO || (await getCustNo());
+    const appr = await getApprNo(custNo);
+    res.json({ success: true, custNo, ...appr });
+  } catch (err) {
+    log(`우체국 셋업 오류: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
+// 출고대기 일괄 접수 (일반소포)
+app.post("/postparcel/register-outbound", async (req, res) => {
+  try {
+    const { limit } = req.body || {};
+    log(`우체국 일괄 접수 시작 (limit ${limit ?? "전체"}, test=${process.env.POSTPARCEL_TEST_YN ?? "Y"})`, "action");
+    const { registerOutbound } = require("./postParcel/register");
+    const result = await registerOutbound({ limit });
+    log(`우체국 일괄 접수 완료: ok ${result.ok}/skip ${result.skipped}/fail ${result.failed}`, "success");
+    res.json({ success: true, ...result });
+  } catch (err) {
+    log(`우체국 일괄 접수 실패: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
+// 단발 접수 (다른 앱 연계: 인플루언서 협찬발송, AS 수리완료 발송 등)
+app.post("/postparcel/register-one", async (req, res) => {
+  try {
+    const { reqType, source, ...order } = req.body || {};
+    if (!order.order || !order.name || !(order.addr || order.addr1) || !order.zip) {
+      return res.status(400).json({ success: false, error: "order, name, addr, zip 필요" });
+    }
+    const { registerSingle } = require("./postParcel/register");
+    const result = await registerSingle(order, { reqType, source });
+    log(`우체국 단발 접수[${source || order.seller || "manual"}]: ${order.order} → ${result.regiNo}`, "success");
+    res.json({ success: true, ...result });
+  } catch (err) {
+    log(`우체국 단발 접수 실패: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
+// 단건 반품 접수 (원클릭)
+app.post("/postparcel/return", async (req, res) => {
+  try {
+    const ret = req.body || {};
+    if (!ret.order || !ret.name || !(ret.addr || ret.addr1) || !ret.zip) {
+      return res.status(400).json({ success: false, error: "order, name, addr, zip 필요" });
+    }
+    const { registerReturn } = require("./postParcel/register");
+    const result = await registerReturn(ret);
+    log(`우체국 반품 접수: ${ret.order} → ${result.regiNo}`, "success");
+    res.json({ success: true, ...result });
+  } catch (err) {
+    log(`우체국 반품 접수 실패: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
+// 접수 취소
+app.post("/postparcel/cancel", async (req, res) => {
+  try {
+    const { order_number, channel, req_type, delYn } = req.body || {};
+    if (!order_number || !channel) {
+      return res.status(400).json({ success: false, error: "order_number, channel 필요" });
+    }
+    const { cancelShipment } = require("./postParcel/register");
+    const result = await cancelShipment({ order_number, channel, req_type, delYn });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    log(`우체국 접수 취소 실패: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
 // 서버 시작
 app.listen(PORT, HOST, () => {
   console.log(`
