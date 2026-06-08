@@ -21,6 +21,16 @@ const HEADER = ["수취인명","수취인 이동통신","수취인 전화번호"
 const clean = (v) => { const s = String(v??"").trim(); return s==="-" ? "" : s; };
 const isMobile = (p) => /^01[016789]/.test(String(p||"").replace(/\D/g,""));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
+// 카페24 각인(추가 입력 옵션) 추출: additional_option_value="라벨=값" → 값. 비면 "".
+function engravingOf(it){
+  let raw = clean(it.additional_option_value);
+  if(!raw && Array.isArray(it.additional_option_values)){
+    const a = it.additional_option_values.find(x=>x&&x.value);
+    if(a) raw = (a.name?`${a.name}=`:"")+a.value;
+  }
+  if(!raw) return "";
+  return raw.includes("=") ? raw.split("=").slice(1).join("=").trim() : raw.trim();
+}
 
 // ── 카페24 (API) ──
 const MALL=()=>process.env.CAFE24_MALL_ID, BASE=()=>`https://${MALL()}.cafe24api.com`;
@@ -48,7 +58,8 @@ async function cafe24Rows(){
     const ship=(o.items??[]).filter(it=>String(it.status_text||"")==="배송준비중");
     const mob=clean(r.cellphone||r.phone);
     for(const it of ship){
-      const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"");
+      const eng=engravingOf(it);
+      const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
       rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:"카페24"});
     }
@@ -87,18 +98,20 @@ async function sendTelegram(filePath, caption){
   const token=process.env.TELEGRAM_BOT_TOKEN, chat=process.env.TELEGRAM_CHAT_ID;
   if(!token||!chat){ log("텔레그램 미설정 — 전송 생략"); return; }
   const buf=fs.readFileSync(filePath);
-  for(let attempt=1; attempt<=3; attempt++){
+  // 멀티파트 업로드가 간헐적 ETIMEDOUT — 5회 재시도 + 45s 타임아웃
+  for(let attempt=1; attempt<=5; attempt++){
     try{
       const form=new FormData();
       form.append("chat_id", chat);
       form.append("caption", caption);
       form.append("document", new Blob([buf]), path.basename(filePath));
-      const res=await fetch(`https://api.telegram.org/bot${token}/sendDocument`,{method:"POST",body:form});
-      if(res.ok){ log("텔레그램 전송 성공"); return; }
-      log(`텔레그램 전송 실패(${attempt}/3) HTTP ${res.status}`);
-    }catch(e){ log(`텔레그램 전송 예외(${attempt}/3): ${e.message}`); }
-    await new Promise(r=>setTimeout(r,3000));
+      const res=await fetch(`https://api.telegram.org/bot${token}/sendDocument`,{method:"POST",body:form,signal:AbortSignal.timeout(45000)});
+      if(res.ok){ log(`텔레그램 전송 성공(시도 ${attempt})`); return; }
+      log(`텔레그램 전송 실패(${attempt}/5) HTTP ${res.status}`);
+    }catch(e){ log(`텔레그램 전송 예외(${attempt}/5): ${e.cause&&e.cause.code||e.message}`); }
+    await new Promise(r=>setTimeout(r,5000));
   }
+  log("텔레그램 전송 5회 모두 실패");
 }
 
 // plvekorea@gmail.com 으로 우체국 파일 첨부 메일 발송 (cs_accounts gmail 계정 + GOOGLE 클라이언트로 갱신)

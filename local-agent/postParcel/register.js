@@ -73,13 +73,38 @@ async function persist(client, record) {
   if (error) log(`pp_shipments 저장 실패(${record.order_number}): ${error.message}`);
 }
 
+/**
+ * 동일 주문(판매처+주문번호)의 여러 상품 행을 한 건으로 묶음.
+ * 한 사람=한 박스=운송장 1개. **goodsNm 에 주문한 모든 상품명(+각인)을 결합**해
+ * 송장에 전부 인쇄되게 함(포장 기준이 송장이므로 필수). 수량은 합산.
+ */
+function groupByOrder(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    if (!r.order) continue;
+    const key = `${r.seller}|${r.order}`;
+    if (!map.has(key)) map.set(key, { ...r, _prods: [], _qty: 0 });
+    const g = map.get(key);
+    const p = String(r.prod || "").trim();
+    if (p && !g._prods.includes(p)) g._prods.push(p);
+    g._qty += Number(String(r.qty).replace(/\D/g, "")) || 1;
+    if (!g.msg && r.msg) g.msg = r.msg;
+  }
+  return [...map.values()].map((g) => {
+    let prod = g._prods.join(" / ");
+    if (prod.length > 400) prod = prod.slice(0, 397) + "..."; // goodsNm 최대 400byte
+    return { ...g, prod, qty: String(g._qty || 1) };
+  });
+}
+
 /** 이미 수집된 행 배열을 접수 (12:30 빌더가 집계한 rows 재사용). opts: { skipExisting=true } */
 async function registerRows(rows, opts = {}) {
   const client = sb();
-  log(`접수 대상 ${rows.length}행 — test=${isTestMode()}`);
+  const grouped = groupByOrder(rows);
+  log(`접수 대상 ${rows.length}행 → ${grouped.length}건(주문별 묶음) — test=${isTestMode()}`);
 
   const results = [];
-  for (const row of rows) {
+  for (const row of grouped) {
     if (!row.order) { log("주문번호 없는 행 스킵"); continue; }
     try {
       if (opts.skipExisting !== false) {
@@ -105,7 +130,7 @@ async function registerRows(rows, opts = {}) {
   const ok = results.filter((r) => r.regiNo && !r.skipped).length;
   const skipped = results.filter((r) => r.skipped).length;
   const failed = results.filter((r) => r.error).length;
-  return { total: rows.length, ok, skipped, failed, results };
+  return { total: grouped.length, rows: rows.length, ok, skipped, failed, results };
 }
 
 /** 출고대기 전체 집계 → 접수. opts: { limit, skipExisting=true } */
@@ -192,7 +217,7 @@ async function cancelShipment({ order_number, channel, req_type = "1", delYn = "
   return { cancelled, ...res };
 }
 
-module.exports = { registerOutbound, registerRows, registerSingle, registerReturn, cancelShipment };
+module.exports = { registerOutbound, registerRows, registerSingle, registerReturn, cancelShipment, groupByOrder };
 
 // CLI: node local-agent/postParcel/register.js [limit]
 if (require.main === module) {
