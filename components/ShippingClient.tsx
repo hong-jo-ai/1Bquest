@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Package,
   Truck,
@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Plus,
   X,
+  FileUp,
 } from "lucide-react";
 
 interface TrackScan {
@@ -149,6 +150,30 @@ export default function ShippingClient() {
     }
   }
 
+  // 엑셀 파일 접수
+  const fileRef = useRef<HTMLInputElement>(null);
+  async function uploadExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일 재선택 허용
+    if (!f) return;
+    setBusy("upload");
+    setError(null);
+    setNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch("/api/postparcel/register-batch", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || "엑셀 접수 실패");
+      setNotice(`엑셀 접수 완료 — ${data.parsedRows ?? "?"}행 → 성공 ${data.ok} / 스킵 ${data.skipped} / 실패 ${data.failed}`);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // 등기번호 직접 배송조회
   async function trackByNumber() {
     const n = trackNo.replace(/\D/g, "");
@@ -234,6 +259,22 @@ export default function ShippingClient() {
           >
             <Plus className="h-4 w-4" />
             단건 접수
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={uploadExcel}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={!!busy}
+            title="우체국송장양식 엑셀(수취인명·주소·우편번호·상품명·주문번호·판매처 등)을 올려 일괄 접수"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-600 bg-white px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+          >
+            {busy === "upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+            엑셀 파일 접수
           </button>
           <button
             onClick={registerOutbound}

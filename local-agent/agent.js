@@ -465,7 +465,7 @@ async function visitAndGetProfile(page, handle, followerMin, followerMax) {
 
 // ── Express 서버 ─────────────────────────────────────────────────────
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "15mb" })); // 엑셀 파일접수 행 배열 대비
 app.use(cors({
   origin(origin, callback) {
     if (
@@ -639,6 +639,24 @@ app.post("/postparcel/register-outbound", async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     log(`우체국 일괄 접수 실패: ${err.message}`, "error");
+    res.status(500).json({ success: false, error: err.message, code: err.code });
+  }
+});
+
+// 엑셀 파일접수 — 파싱된 행 배열(우체국송장양식)을 일괄 접수 (주문별 묶음)
+app.post("/postparcel/register-batch", async (req, res) => {
+  try {
+    const { rows } = req.body || {};
+    if (!Array.isArray(rows) || !rows.length) {
+      return res.status(400).json({ success: false, error: "rows(행 배열)가 필요합니다" });
+    }
+    log(`우체국 엑셀 일괄 접수 시작 (${rows.length}행, test=${process.env.POSTPARCEL_TEST_YN ?? "Y"})`, "action");
+    const { registerRows } = require("./postParcel/register");
+    const result = await registerRows(rows);
+    log(`우체국 엑셀 일괄 접수 완료: ok ${result.ok}/skip ${result.skipped}/fail ${result.failed}`, "success");
+    res.json({ success: true, ...result });
+  } catch (err) {
+    log(`우체국 엑셀 일괄 접수 실패: ${err.message}`, "error");
     res.status(500).json({ success: false, error: err.message, code: err.code });
   }
 });
