@@ -447,8 +447,15 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) throw new Error(data.error ?? "발송 실패");
-      setSmsMsg(data.failCount ? `발송 실패 (${data.failCount})` : `문자 발송 완료 → ${req.customer_phone}`);
-      if (!data.failCount) setSmsOpen(false);
+      if (!data.failCount) {
+        // 발송 성공 → 안내완료로 자동 전환 (서버도 notified 처리함) + 목록 갱신
+        setStatus("notified");
+        setSmsMsg(`문자 발송 완료 · 안내완료 처리 → ${req.customer_phone}`);
+        setSmsOpen(false);
+        onSaved();
+      } else {
+        setSmsMsg(`발송 실패 (${data.failCount})`);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
