@@ -64,6 +64,8 @@ export default function ShippingClient() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showSingle, setShowSingle] = useState(false);
+  const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState<"all" | "today" | "7d" | "30d">("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +164,20 @@ export default function ShippingClient() {
 
   const hasTest = shipments.some((s) => s.is_test);
 
+  // 발송내역 검색/기간 필터 (클라이언트)
+  const periodMs: Record<string, number> = { today: 1, "7d": 7, "30d": 30, all: 0 };
+  const filtered = shipments.filter((s) => {
+    if (period !== "all" && s.registered_at) {
+      const days = period === "today" ? 1 : periodMs[period];
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      if (new Date(s.registered_at).getTime() < cutoff) return false;
+    }
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return [s.recipient_name, s.order_number, s.regi_no, s.product_name, s.channel]
+      .some((v) => String(v || "").toLowerCase().includes(q));
+  });
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* 헤더 */}
@@ -248,6 +264,35 @@ export default function ShippingClient() {
         ))}
       </div>
 
+      {/* 검색 / 기간 필터 */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="수취인 · 주문번호 · 운송장 · 상품 검색"
+          className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+        />
+        <div className="flex gap-1">
+          {([
+            ["all", "전체"],
+            ["today", "오늘"],
+            ["7d", "7일"],
+            ["30d", "30일"],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setPeriod(v)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                period === v ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-slate-400">{filtered.length}건</span>
+      </div>
+
       {/* 목록 */}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -270,14 +315,16 @@ export default function ShippingClient() {
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td>
               </tr>
-            ) : shipments.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
-                  접수 내역이 없습니다. {tab === "1" && "‘출고 일괄 접수’를 눌러 출고대기 주문을 접수하세요."}
+                  {shipments.length === 0
+                    ? `접수 내역이 없습니다. ${tab === "1" ? "‘출고 일괄 접수’ 또는 ‘단건 접수’로 등록하세요." : ""}`
+                    : "검색 결과가 없습니다."}
                 </td>
               </tr>
             ) : (
-              shipments.map((s) => (
+              filtered.map((s) => (
                 <tr key={s.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-2 text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
