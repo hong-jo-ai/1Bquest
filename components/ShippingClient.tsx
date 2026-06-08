@@ -15,6 +15,21 @@ import {
   X,
 } from "lucide-react";
 
+interface TrackScan {
+  date?: string;
+  status?: string;
+  location?: string;
+}
+interface TrackResult {
+  rgist: string;
+  found: boolean;
+  state?: string;
+  senderName?: string;
+  receiverName?: string;
+  scans: TrackScan[];
+  error?: string;
+}
+
 interface Shipment {
   id: string;
   order_number: string;
@@ -66,6 +81,10 @@ export default function ShippingClient() {
   const [showSingle, setShowSingle] = useState(false);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState<"all" | "today" | "7d" | "30d">("all");
+  // 등기번호 직접 조회 (과거/수기 발송 포함)
+  const [trackNo, setTrackNo] = useState("");
+  const [trackBusy, setTrackBusy] = useState(false);
+  const [trackResult, setTrackResult] = useState<TrackResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,6 +146,22 @@ export default function ShippingClient() {
       setError((e as Error).message);
     } finally {
       setBusy(null);
+    }
+  }
+
+  // 등기번호 직접 배송조회
+  async function trackByNumber() {
+    const n = trackNo.replace(/\D/g, "");
+    if (!n) return;
+    setTrackBusy(true);
+    setTrackResult(null);
+    try {
+      const res = await fetch(`/api/postparcel/track?rgist=${n}`, { cache: "no-store" });
+      setTrackResult(await res.json());
+    } catch (e) {
+      setTrackResult({ rgist: n, found: false, scans: [], error: (e as Error).message });
+    } finally {
+      setTrackBusy(false);
     }
   }
 
@@ -291,6 +326,51 @@ export default function ShippingClient() {
           ))}
         </div>
         <span className="text-xs text-slate-400">{filtered.length}건</span>
+      </div>
+
+      {/* 등기번호 직접 배송조회 (과거/수기 발송 포함) */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">등기번호 배송조회</span>
+          <input
+            value={trackNo}
+            onChange={(e) => setTrackNo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && trackByNumber()}
+            placeholder="등기번호 13자리 (시스템에 없는 과거 발송도 조회)"
+            inputMode="numeric"
+            className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          <button
+            onClick={trackByNumber}
+            disabled={trackBusy || !trackNo.replace(/\D/g, "")}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {trackBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            조회
+          </button>
+        </div>
+        {trackResult && (
+          <div className="mt-2 text-sm">
+            {trackResult.found ? (
+              <>
+                <div className="mb-1 text-slate-700">
+                  <span className="font-semibold">{trackResult.state || "조회됨"}</span>
+                  {trackResult.receiverName && <span className="text-slate-500"> · 받는분 {trackResult.receiverName}</span>}
+                  <span className="text-xs text-slate-400"> · {trackResult.rgist}</span>
+                </div>
+                <ol className="space-y-0.5">
+                  {trackResult.scans.map((s, i) => (
+                    <li key={i} className="text-xs text-slate-600">
+                      <span className="text-slate-400">{s.date}</span> {s.location} — {s.status}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <div className="text-xs text-slate-500">{trackResult.error || "조회 결과가 없습니다."}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 목록 */}
