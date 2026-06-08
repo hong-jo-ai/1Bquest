@@ -427,6 +427,34 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
   const [zip, setZip] = useState("");
   const [posting, setPosting] = useState(false);
   const [postMsg, setPostMsg] = useState<string | null>(null);
+  // 문자 발송 (카드에서 바로)
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsTemplate, setSmsTemplate] = useState(DEFAULT_NOTIFY_TEMPLATE);
+  const [smsFeeInput, setSmsFeeInput] = useState(DEFAULT_SHIPPING_FEE);
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsMsg, setSmsMsg] = useState<string | null>(null);
+  const smsFee = smsFeeInput.trim() ? Number(smsFeeInput.replace(/[^0-9]/g, "")) : null;
+
+  async function sendSms() {
+    setSmsSending(true);
+    setSmsMsg(null);
+    setErr(null);
+    try {
+      const res = await fetch("/api/as/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [req.id], template: smsTemplate, shippingFee: smsFee }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error ?? "발송 실패");
+      setSmsMsg(data.failCount ? `발송 실패 (${data.failCount})` : `문자 발송 완료 → ${req.customer_phone}`);
+      if (!data.failCount) setSmsOpen(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSmsSending(false);
+    }
+  }
 
   async function registerPost() {
     setPosting(true);
@@ -549,6 +577,63 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
           우편번호는 비우면 주소에서 5자리를 자동 추출합니다. 접수 후 송장번호가 위 ‘반송 송장번호’에 채워지고 상태가 발송완료로 바뀝니다.
         </p>
         {postMsg && <div className="text-xs text-sky-700 dark:text-sky-300">{postMsg}</div>}
+      </div>
+
+      {/* 문자 발송 (고객안내 SMS 앱 안 열고 카드에서 바로) */}
+      <div className="rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/30 p-2.5 space-y-2">
+        {!smsOpen ? (
+          <button
+            onClick={() => { setSmsTemplate(DEFAULT_NOTIFY_TEMPLATE); setSmsMsg(null); setSmsOpen(true); }}
+            disabled={!(req.customer_phone && req.customer_phone.trim())}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-lg active:scale-95 transition flex items-center justify-center gap-1.5"
+            title="고객안내 SMS 앱을 열지 않고 이 고객에게 바로 문자 발송"
+          >
+            <MessageSquare size={14} />
+            문자 발송 {req.customer_phone?.trim() ? `(${req.customer_phone})` : "(연락처 없음 — 저장 필요)"}
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-zinc-500 whitespace-nowrap">반송비</span>
+              <input
+                value={smsFeeInput}
+                onChange={(e) => setSmsFeeInput(e.target.value)}
+                inputMode="numeric"
+                placeholder="3000 (없으면 비움)"
+                className="w-28 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <span className="text-[11px] text-zinc-400">받는 사람: {req.customer_phone}</span>
+            </div>
+            <textarea
+              value={smsTemplate}
+              onChange={(e) => setSmsTemplate(e.target.value)}
+              rows={6}
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <div className="rounded-lg bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800 p-2 text-[11px] text-zinc-500 whitespace-pre-wrap">
+              <span className="font-semibold text-zinc-400">미리보기 </span>
+              {fillTokens(smsTemplate, req, smsFee)}
+            </div>
+            <p className="text-[11px] text-zinc-400">최신 수리비/내역을 넣으려면 먼저 ‘저장’ 후 발송하세요.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSmsOpen(false)}
+                className="flex-1 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 text-sm font-semibold py-2 rounded-lg"
+              >
+                취소
+              </button>
+              <button
+                onClick={sendSms}
+                disabled={smsSending}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-lg active:scale-95 transition flex items-center justify-center gap-1.5"
+              >
+                {smsSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                발송
+              </button>
+            </div>
+          </>
+        )}
+        {smsMsg && <div className="text-xs text-blue-700 dark:text-blue-300">{smsMsg}</div>}
       </div>
 
       {err && <div className="text-xs text-red-600">{err}</div>}
