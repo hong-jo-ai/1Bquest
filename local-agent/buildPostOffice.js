@@ -143,6 +143,18 @@ async function sendEmail(filePath, subject, body){
 }
 
 // 채널별 출고대기 주문 집계 → 정규화 행 배열. (우체국 API 접수/엑셀 빌더 공용)
+// 이미 우체국 접수된 주문 키 집합 (재탕 방지). 채널 캐시/export 가 발송완료 건을 안 비워도
+// pp_shipments(실접수·송장有) 기준으로 양식·접수에서 제외한다. seller|order 매칭.
+async function alreadyRegisteredKeys(){
+  try {
+    const { createClient } = require(path.join(DASH,"node_modules/@supabase/supabase-js"));
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await sb.from("pp_shipments").select("order_number,channel")
+      .eq("is_test",false).eq("status","submitted").not("regi_no","is",null);
+    return new Set((data||[]).map(r=>`${r.channel}|${r.order_number}`));
+  } catch(e){ log("pp_shipments 조회 실패 — 재탕 필터 생략: "+e.message); return new Set(); }
+}
+
 async function collectOutboundRows(){
   let cafe=[], six=[], cm=[], wc=[];
   try { cafe=await cafe24Rows(); log(`카페24 ${cafe.length}행`); } catch(e){ log("카페24 실패: "+e.message); }
@@ -150,10 +162,18 @@ async function collectOutboundRows(){
   try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
   await closeMarketplaceBrowsers().catch(()=>{});
-  return { rows:[...cafe,...six,...cm,...wc], counts:{cafe:cafe.length,six:six.length,cm:cm.length,wc:wc.length} };
+
+  // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
+  const all=[...cafe,...six,...cm,...wc];
+  const done=await alreadyRegisteredKeys();
+  const rows=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
+  const skipped=all.length-rows.length;
+  if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
+  const cnt=(s)=>rows.filter(r=>r.seller===s).length;
+  return { rows, counts:{cafe:cnt("카페24"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉")} };
 }
 
-module.exports = { collectOutboundRows };
+module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER };
 
 // CLI: 엑셀 빌드 + 텔레그램/이메일 발송 (기존 동작)
 async function main(){
