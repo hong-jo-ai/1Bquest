@@ -180,14 +180,18 @@ export default function ShippingClient() {
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch("/api/influencer/agent-proxy", {
+      const res = await fetch("/api/postparcel/register-outbound", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: "/postparcel/register-outbound" }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || "접수 실패 (에이전트 실행 중인지 확인)");
-      setNotice(`접수 완료 — 성공 ${data.ok} / 스킵 ${data.skipped} / 실패 ${data.failed}`);
+      if (!res.ok) throw new Error(data.error || "출고 일괄 접수 실패");
+      setNotice("출고 일괄 접수 요청 — 처리 중…");
+      const job = await pollRegisterJob("/api/postparcel/register-outbound", data.jobId);
+      if (job.status === "error") throw new Error(job.error || "출고 일괄 접수 실패");
+      const r = (job.result ?? {}) as { ok?: number; skipped?: number; failed?: number };
+      setNotice(`접수 완료 — 성공 ${r.ok ?? 0} / 스킵 ${r.skipped ?? 0} / 실패 ${r.failed ?? 0}`);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -267,11 +271,10 @@ export default function ShippingClient() {
     setBusy(`return-${s.id}`);
     setError(null);
     try {
-      const res = await fetch("/api/influencer/agent-proxy", {
+      const res = await fetch("/api/postparcel/return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          endpoint: "/postparcel/return",
           order: s.order_number,
           seller: s.channel,
           name: s.recipient_name,
@@ -283,8 +286,12 @@ export default function ShippingClient() {
         }),
       });
       const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || "반품 접수 실패");
-      setNotice(`반품 접수 완료 → ${data.regiNo}`);
+      if (!res.ok) throw new Error(data.error || "반품 접수 실패");
+      setNotice("반품 접수 요청 — 처리 중…");
+      const job = await pollRegisterJob("/api/postparcel/return", data.jobId);
+      if (job.status === "error") throw new Error(job.error || "반품 접수 실패");
+      const r = (job.result ?? {}) as { regiNo?: string };
+      setNotice(`반품 접수 완료 → ${r.regiNo ?? ""}`);
       await load();
     } catch (e) {
       setError((e as Error).message);
