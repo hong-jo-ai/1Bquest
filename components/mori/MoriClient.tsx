@@ -51,6 +51,12 @@ interface RealtimeServerEvent {
   transcript?: string;
   delta?: string;
   error?: { message?: string };
+  item?: {
+    type?: string;
+    name?: string;
+    call_id?: string;
+    arguments?: string;
+  };
 }
 
 type SpeechRecognitionWindow = Window &
@@ -386,18 +392,54 @@ export default function MoriClient({
   }
 
   async function persistRealtimeTurn() {
-    const user = realtimeUserTextRef.current.trim();
     const assistant = realtimeAssistantTextRef.current.trim();
+    // 도구만 호출하고 음성 답변이 아직 없는 응답(function_call 전용)이면 유저 발화를 보존해
+    // 이어지는 실제 음성 답변 턴과 함께 저장한다.
+    if (!assistant) return;
+    const user = realtimeUserTextRef.current.trim();
     realtimeUserTextRef.current = "";
     realtimeAssistantTextRef.current = "";
     realtimeAssistantOpenRef.current = false;
-    if (!user || !assistant) return;
+    if (!user) return;
     fetch("/api/mori/realtime/turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user, assistant }),
       keepalive: true,
     }).catch(() => {});
+  }
+
+  /** 음성모드 도구 호출 — executeTool 실행 → 위젯 렌더 + 결과를 모델에 되먹임 → 음성 응답 재개. */
+  async function handleRealtimeFunctionCall(item: NonNullable<RealtimeServerEvent["item"]>) {
+    const dc = realtimeDcRef.current;
+    if (!dc || dc.readyState !== "open" || !item.call_id || !item.name) return;
+    let input: unknown = {};
+    try {
+      input = item.arguments ? JSON.parse(item.arguments) : {};
+    } catch {
+      /* 인자 파싱 실패 시 빈 객체로 시도 */
+    }
+    let resultText = "(도구 실행 실패)";
+    try {
+      const res = await fetch("/api/mori/realtime/tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: item.name, input }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.widget) applyWidget(json.widget as WidgetEvent);
+      if (typeof json?.resultText === "string") resultText = json.resultText;
+    } catch {
+      resultText = "(도구 실행 중 오류가 발생했습니다)";
+    }
+    if (dc.readyState !== "open") return;
+    dc.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: item.call_id, output: resultText },
+      }),
+    );
+    dc.send(JSON.stringify({ type: "response.create" }));
   }
 
   function handleRealtimeEvent(event: RealtimeServerEvent) {
@@ -418,15 +460,24 @@ export default function MoriClient({
       }
       return;
     }
-    if (type === "response.audio_transcript.delta" || type === "response.text.delta") {
+    // 모리 답변 트랜스크립트 — GA(response.output_audio_transcript.*)/구버전(response.audio_transcript.*)
+    // 및 텍스트 모달리티(response.output_text.*/response.text.*) 이벤트명을 모두 수용.
+    if (type.startsWith("response.") && (type.endsWith("transcript.delta") || type.endsWith("text.delta"))) {
       appendRealtimeAssistantDelta(String(event?.delta ?? ""));
       setOrb("speaking");
       return;
     }
-    if (type === "response.audio_transcript.done") {
+    if (type.startsWith("response.") && (type.endsWith("transcript.done") || type.endsWith("text.done"))) {
       const transcript = String(event?.transcript ?? "").trim();
       if (transcript && !realtimeAssistantTextRef.current.trim()) {
         appendRealtimeAssistantDelta(transcript);
+      }
+      return;
+    }
+    if (type === "response.output_item.done") {
+      if (event.item?.type === "function_call") {
+        setOrb("thinking");
+        void handleRealtimeFunctionCall(event.item);
       }
       return;
     }

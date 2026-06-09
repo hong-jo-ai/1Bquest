@@ -3,6 +3,15 @@ import { buildSystemPrompt } from "@/lib/mori/systemPrompt";
 import { assembleDashboardContext } from "@/lib/mori/context";
 import { buildPageContextBlock } from "@/lib/mori/pageContext";
 import { loadConversation } from "@/lib/mori/memory";
+import { TOOL_DEFS } from "@/lib/mori/tools";
+
+/** Anthropic Tool(input_schema) → Realtime function tool(parameters) 변환. 같은 도구셋을 음성에서도 쓴다. */
+const REALTIME_TOOLS = TOOL_DEFS.map((t) => ({
+  type: "function" as const,
+  name: t.name,
+  description: t.description,
+  parameters: t.input_schema,
+}));
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -41,7 +50,9 @@ export async function POST(req: NextRequest) {
     `# Realtime 음성대화 규칙
 - 지금은 통화형 음성대화입니다. 한 답변은 보통 한두 문장으로 짧게 끝내세요.
 - 대표님이 끼어들거나 말을 바꾸면 바로 멈추고 새 요청을 따르세요.
-- 화면 조작 도구는 이 모드에서 아직 직접 실행하지 못합니다. 실행이 필요하면 짧게 확인하고, 텍스트 모드에서 처리할 수 있다고 안내하세요.`,
+- 도구(조회/차트/할일등록/발주생성/기억저장 등)를 텍스트 모드와 똑같이 직접 호출할 수 있습니다. 요청받은 작업은 말로만 하지 말고 반드시 해당 도구를 호출해 실제로 처리하세요. 결과는 도구 실행 결과를 근거로 사실대로 짧게 말하세요.
+- 아직 실행하지 못했거나 확실치 않은 일을 "해뒀다/처리했다"라고 말하지 마세요.
+- 텔레그램 발송처럼 되돌리기 어려운 작업은 propose_owner_telegram 으로 확인 카드를 띄우고, 대표님이 화면에서 [실행]을 눌러야 실제로 나간다고 안내하세요. 음성만으로 보내지 마세요.`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -58,6 +69,8 @@ export async function POST(req: NextRequest) {
         model: MODEL,
         output_modalities: ["audio"],
         instructions,
+        tools: REALTIME_TOOLS,
+        tool_choice: "auto",
         audio: {
           input: {
             turn_detection: {
