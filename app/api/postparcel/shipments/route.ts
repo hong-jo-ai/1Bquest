@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
   const { data: targets, error } = await q.limit(200);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const results = [];
   for (const t of targets ?? []) {
     const tr = await trackOne(t.regi_no);
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", t.id);
     results.push({ id: t.id, rgist: t.regi_no, state: tr.state, found: tr.found, error: tr.error });
+    // 우체국 OpenAPI 연속 호출 throttle 회피 (한 번에 23건이 같은 초에 몰리면 빈 응답)
+    await sleep(400);
   }
   return Response.json({ checked: results.length, results });
 }

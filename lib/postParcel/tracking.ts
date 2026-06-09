@@ -46,13 +46,17 @@ function tag(xml: string, name: string): string | undefined {
   const m = xml.match(new RegExp(`<${name}\\s*>((?:(?!<\\/?[a-zA-Z])[\\s\\S])*?)<\\/${name}>`));
   return m ? decode(m[1]) : undefined;
 }
-// leaf 태그 모든 값 (이벤트별 반복)
-function allTags(xml: string, name: string): string[] {
-  const re = new RegExp(`<${name}\\s*>((?:(?!<\\/?[a-zA-Z])[\\s\\S])*?)<\\/${name}>`, "g");
+// <item>…</item> 블록 본문 추출 (이벤트별 1개)
+function itemBlocks(xml: string): string[] {
+  const re = /<item>([\s\S]*?)<\/item>/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) out.push(decode(m[1]));
+  while ((m = re.exec(xml)) !== null) out.push(m[1]);
   return out;
+}
+// "2026.06.09 08:33" → 202606090833 (이벤트 시간 비교용)
+function dtNum(s?: string): number {
+  return s ? Number(s.replace(/\D/g, "")) : 0;
 }
 
 function buildUrl(rgist: string): string {
@@ -87,21 +91,19 @@ export async function trackOne(rgist: string): Promise<TrackResult> {
       return { rgist, found: false, scans: [], error: msg, raw: process.env.NODE_ENV === "development" ? xml.slice(0, 1500) : undefined };
     }
 
-    // 이벤트별 필드 zip (컨테이너 구조 무관, leaf 발생 순서로 묶음)
-    const ymd = allTags(xml, "eventymd");
-    const hms = allTags(xml, "eventhms");
-    const nm = allTags(xml, "eventnm");
-    const loc = allTags(xml, "eventregiponm");
-    const n = Math.max(ymd.length, nm.length, loc.length);
-    const scans: TrackScan[] = [];
-    for (let i = 0; i < n; i++) {
-      scans.push({
-        date: [ymd[i], hms[i]].filter(Boolean).join(" ").trim() || undefined,
-        status: nm[i],
-        location: loc[i],
-      });
-    }
-    const state = tag(xml, "tracestatus") || (scans.length ? scans[scans.length - 1].status : undefined);
+    // 실제 응답 구조: <itemlist><item> 안에 sortingdate/eventhms/eventregiponm/tracestatus.
+    // (이벤트는 시간순이지만 showRec=Y가 붙이는 "접수" 항목이 목록 끝에 시간 무관하게 추가됨)
+    const scans: TrackScan[] = itemBlocks(xml).map((it) => ({
+      date: [tag(it, "sortingdate"), tag(it, "eventhms")].filter(Boolean).join(" ").trim() || undefined,
+      status: tag(it, "tracestatus"),
+      location: tag(it, "eventregiponm"),
+    }));
+    // 최신 배송상태: "접수"(showRec 부가정보) 제외, 처리일시가 가장 늦은 이벤트
+    const delivery = scans.filter((s) => s.status && s.status !== "접수");
+    const latest = delivery.length
+      ? delivery.reduce((a, b) => (dtNum(b.date) >= dtNum(a.date) ? b : a))
+      : scans[scans.length - 1];
+    const state = latest?.status;
     const found = scans.length > 0 || !!state;
     return {
       rgist,
