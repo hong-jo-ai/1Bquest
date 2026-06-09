@@ -56,18 +56,21 @@ export async function POST(req: NextRequest) {
   const results = [];
   for (const t of targets ?? []) {
     const tr = await trackOne(t.regi_no);
-    await client
-      .from("pp_shipments")
-      .update({
-        tracking_state: tr.state ?? null,
-        tracking_detail: tr.scans?.length ? tr.scans : null,
-        tracking_checked_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", t.id);
+    // 실제 배송상태가 조회됐을 때만 갱신. 결과없음(ERR-001, 갓 접수해 이벤트 없음)·일시적
+    // 에러일 땐 기존 상태를 보존한다(예전 정상 상태를 "-"로 덮어쓰지 않도록). checked_at 은 항상 기록.
+    const patch: Record<string, unknown> = {
+      tracking_checked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (tr.found && tr.state) {
+      patch.tracking_state = tr.state;
+      patch.tracking_detail = tr.scans?.length ? tr.scans : null;
+    }
+    await client.from("pp_shipments").update(patch).eq("id", t.id);
     results.push({ id: t.id, rgist: t.regi_no, state: tr.state, found: tr.found, error: tr.error });
     // 우체국 OpenAPI 연속 호출 throttle 회피 (한 번에 23건이 같은 초에 몰리면 빈 응답)
     await sleep(400);
   }
-  return Response.json({ checked: results.length, results });
+  const updated = results.filter((r) => r.found && r.state).length;
+  return Response.json({ checked: results.length, updated, results });
 }
