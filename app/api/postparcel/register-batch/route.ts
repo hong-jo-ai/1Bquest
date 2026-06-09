@@ -7,7 +7,7 @@
  */
 import { type NextRequest } from "next/server";
 import * as XLSX from "xlsx";
-import { callAgent } from "@/lib/postParcel/agentCall";
+import { enqueueJob, getJob } from "@/lib/postParcel/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -78,16 +78,19 @@ export async function POST(req: NextRequest) {
 
   if (!rows.length) return Response.json({ error: "데이터 행이 없습니다" }, { status: 400 });
 
+  // 접수는 iMac 로컬에서만 가능 → 큐에 적재, 워커가 폴링해 실제 접수. 결과는 jobId 로 폴링.
   try {
-    const result = await callAgent("/postparcel/register-batch", { rows }, 10 * 60 * 1000);
-    if (result.success === false) {
-      return Response.json({ error: result.error || "접수 실패", code: result.code }, { status: 502 });
-    }
-    return Response.json({ parsedRows: rows.length, ...result });
+    const jobId = await enqueueJob("batch", { rows });
+    return Response.json({ queued: true, jobId, parsedRows: rows.length });
   } catch (e) {
-    return Response.json(
-      { error: (e as Error).message || "에이전트 호출 실패 (로컬 에이전트 실행 확인)" },
-      { status: 502 }
-    );
+    return Response.json({ error: (e as Error).message || "접수 요청 적재 실패" }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest) {
+  const jobId = req.nextUrl.searchParams.get("jobId");
+  if (!jobId) return Response.json({ error: "jobId 필요" }, { status: 400 });
+  const job = await getJob(jobId);
+  if (!job) return Response.json({ error: "해당 접수 요청을 찾을 수 없습니다" }, { status: 404 });
+  return Response.json({ job });
 }

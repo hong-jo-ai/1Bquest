@@ -113,6 +113,31 @@ const CHANNEL_TINT: Record<string, string> = {
   반품: "bg-orange-50/70",
 };
 
+/**
+ * 접수 큐 job 폴링 — POST 로 적재한 jobId 를 GET 으로 done/error 까지 폴링.
+ * 접수는 iMac 워커가 처리하므로 결과가 즉시 오지 않는다.
+ */
+async function pollRegisterJob(
+  base: string,
+  jobId: string,
+  timeoutMs = 120000
+): Promise<{ status: string; result?: Record<string, unknown> | null; error?: string | null }> {
+  const start = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(`${base}?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.job && (data.job.status === "done" || data.job.status === "error")) return data.job;
+    } catch {
+      /* 일시적 네트워크 오류는 무시하고 계속 폴링 */
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("접수 처리 시간 초과 — iMac 접수 워커 실행 여부를 확인하세요");
+    }
+  }
+}
+
 export default function ShippingClient() {
   const [tab, setTab] = useState<"1" | "2">("1");
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -206,8 +231,12 @@ export default function ShippingClient() {
       fd.append("file", f);
       const res = await fetch("/api/postparcel/register-batch", { method: "POST", body: fd });
       const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || "엑셀 접수 실패");
-      setNotice(`엑셀 접수 완료 — ${data.parsedRows ?? "?"}행 → 성공 ${data.ok} / 스킵 ${data.skipped} / 실패 ${data.failed}`);
+      if (!res.ok) throw new Error(data.error || "엑셀 접수 실패");
+      setNotice(`엑셀 ${data.parsedRows ?? "?"}행 접수 요청 — 처리 중…`);
+      const job = await pollRegisterJob("/api/postparcel/register-batch", data.jobId);
+      if (job.status === "error") throw new Error(job.error || "엑셀 접수 실패");
+      const r = (job.result ?? {}) as { ok?: number; skipped?: number; failed?: number };
+      setNotice(`엑셀 접수 완료 — ${data.parsedRows ?? "?"}행 → 성공 ${r.ok ?? 0} / 스킵 ${r.skipped ?? 0} / 실패 ${r.failed ?? 0}`);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -614,9 +643,13 @@ function SingleRegisterModal({ onClose, onDone }: { onClose: () => void; onDone:
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "접수 실패");
-      const isTest = data.regiNo === "TESTREGINOAPI";
+      setResult("접수 요청 전송 — 처리 중…");
+      const job = await pollRegisterJob("/api/postparcel/register-one", data.jobId);
+      if (job.status === "error") throw new Error(job.error || "접수 실패");
+      const r = (job.result ?? {}) as { regiNo?: string; regipoNm?: string; price?: string | number };
+      const isTest = r.regiNo === "TESTREGINOAPI";
       setResult(
-        `${isTest ? "[테스트] " : ""}접수 완료 — ${data.regipoNm ?? ""} ${data.price ? data.price + "원" : ""} (송장 ${data.regiNo})`
+        `${isTest ? "[테스트] " : ""}접수 완료 — ${r.regipoNm ?? ""} ${r.price ? r.price + "원" : ""} (송장 ${r.regiNo})`
       );
       onDone();
     } catch (e) {
