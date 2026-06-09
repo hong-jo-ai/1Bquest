@@ -493,7 +493,8 @@ export default function ShippingClient() {
       </div>
 
       {/* 목록 */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      {/* 데스크탑: 표 */}
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
@@ -572,6 +573,63 @@ export default function ShippingClient() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* 모바일: 카드 리스트 */}
+      <div className="space-y-2 md:hidden">
+        {loading ? (
+          <div className="flex justify-center rounded-xl border border-slate-200 bg-white py-10 text-slate-400">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
+            {shipments.length === 0
+              ? `접수 내역이 없습니다.${tab === "1" ? " ‘출고 일괄 접수’ 또는 ‘단건 접수’로 등록하세요." : ""}`
+              : "검색 결과가 없습니다."}
+          </div>
+        ) : (
+          filtered.map((s) => (
+            <div
+              key={s.id}
+              className={`rounded-xl border border-slate-200 p-3 ${isDelivered(s.tracking_state) ? "bg-emerald-50" : CHANNEL_TINT[s.channel] || "bg-white"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-xs font-medium text-slate-600">{s.channel}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
+                    {STATUS_LABEL[s.status] || s.status}
+                  </span>
+                </div>
+                <TrackingBadge state={s.tracking_state} />
+              </div>
+              <div className="mt-2 flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-slate-800">{s.recipient_name}</span>
+                <span className="shrink-0 font-mono text-xs text-slate-500">{s.order_number}</span>
+              </div>
+              {s.product_name && <div className="mt-1 text-sm text-slate-600">{s.product_name}</div>}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-slate-500">
+                  {s.regi_no === "TESTREGINOAPI" ? <span className="text-amber-600">테스트</span> : s.regi_no || "—"}
+                </span>
+                {tab === "1" && s.status !== "cancelled" && s.regi_no && (
+                  <button
+                    onClick={() => registerReturn(s)}
+                    disabled={!!busy}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600 active:scale-95 disabled:opacity-50"
+                  >
+                    {busy === `return-${s.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                    반품
+                  </button>
+                )}
+              </div>
+              {s.error_message && (
+                <div className="mt-1 text-xs text-rose-500">
+                  {s.error_code}: {s.error_message}
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
 
       <p className="mt-4 text-xs text-slate-400">
