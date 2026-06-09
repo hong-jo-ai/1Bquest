@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Trash2,
   MessageSquare,
   CheckSquare,
   Square,
@@ -422,6 +423,7 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
   const [tracking, setTracking] = useState(req.return_tracking_no ?? "");
   const [note, setNote] = useState(req.note ?? "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // 우체국 접수 (수리완료 발송)
   const [zip, setZip] = useState("");
@@ -517,6 +519,22 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function remove() {
+    const label = `${req.as_number}${req.customer_name ? ` · ${req.customer_name}` : ""}`;
+    if (!window.confirm(`이 AS 접수를 삭제할까요?\n\n${label}\n\n삭제하면 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/as/requests/${req.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error ?? "삭제 실패");
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setDeleting(false);
     }
   }
 
@@ -652,6 +670,15 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
       >
         {saving && <Loader2 size={14} className="animate-spin" />}
         저장
+      </button>
+
+      <button
+        onClick={remove}
+        disabled={deleting}
+        className="w-full mt-1 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 text-xs font-medium py-1.5 rounded-lg active:scale-95 transition flex items-center justify-center gap-1.5"
+      >
+        {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+        접수 삭제 (중복·오등록)
       </button>
     </div>
   );

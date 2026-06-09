@@ -202,3 +202,10 @@ export async function updateAsRequest(
   if (error || !data) throw new Error(`AS 갱신 실패: ${error?.message}`);
   return data as AsRequest;
 }
+
+/** AS 접수 삭제 (중복/오등록 제거용). */
+export async function deleteAsRequest(id: string): Promise<void> {
+  const db = getCsSupabase();
+  const { error } = await db.from(TABLE).delete().eq("id", id);
+  if (error) throw new Error(`AS 삭제 실패: ${error.message}`);
+}
