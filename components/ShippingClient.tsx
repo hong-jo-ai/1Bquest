@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   FileUp,
+  CheckCircle2,
 } from "lucide-react";
 
 interface TrackScan {
@@ -68,6 +69,32 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled: "bg-slate-500 text-white",
   error: "bg-rose-500 text-white",
 };
+
+// 종추적 상태 배지: 배달완료는 초록 ✓로 한눈에, 배달준비/출발은 옅은 앰버
+function isDelivered(state?: string | null): boolean {
+  return !!state && state.includes("배달완료");
+}
+function TrackingBadge({ state }: { state: string | null }) {
+  if (!state) return <span className="text-slate-400">—</span>;
+  if (isDelivered(state)) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {state}
+      </span>
+    );
+  }
+  const outForDelivery = state.includes("배달준비") || state.includes("배달출발");
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+        outForDelivery ? "bg-amber-100 text-amber-700" : "text-slate-600"
+      }`}
+    >
+      {state}
+    </span>
+  );
+}
 
 const BIZ_EPOST_PRINT = "https://biz.epost.go.kr/ui/index.jsp";
 
@@ -461,7 +488,7 @@ export default function ShippingClient() {
               </tr>
             ) : (
               filtered.map((s) => (
-                <tr key={s.id} className={`border-b border-slate-100 last:border-0 ${CHANNEL_TINT[s.channel] || ""}`}>
+                <tr key={s.id} className={`border-b border-slate-100 last:border-0 ${isDelivered(s.tracking_state) ? "bg-emerald-50" : CHANNEL_TINT[s.channel] || ""}`}>
                   <td className="px-3 py-2 text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
                   <td className="px-3 py-2 text-slate-700">{s.recipient_name}</td>
@@ -485,7 +512,9 @@ export default function ShippingClient() {
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-slate-600">{s.tracking_state || "—"}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <TrackingBadge state={s.tracking_state} />
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {tab === "1" && s.status !== "cancelled" && s.regi_no && (
                       <button
