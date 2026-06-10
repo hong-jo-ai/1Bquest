@@ -470,6 +470,7 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
     setErr(null);
     setPostMsg(null);
     try {
+      // 1) 접수 요청 적재 (iMac 워커가 실제 우체국 접수). 직접 접수가 아니라 큐 경유.
       const res = await fetch("/api/postparcel/as-ship", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -477,10 +478,29 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "접수 실패");
-      const isTest = data.regiNo === "TESTREGINOAPI";
-      if (!isTest && data.regiNo) setTracking(data.regiNo);
+      const jobId = data.jobId as string;
+      if (!jobId) throw new Error("접수 요청 ID 없음");
+      setPostMsg("접수 요청 전송됨 — 우체국 접수 처리 중…");
+
+      // 2) 결과 폴링 (워커 4초 폴링 + 우체국 API 왕복 고려해 최대 ~90초)
+      let job: { status: string; result?: { regiNo?: string; regipoNm?: string; price?: string }; error?: string } | null = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const pr = await fetch(`/api/postparcel/as-ship?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+        const pj = await pr.json();
+        if (!pr.ok) throw new Error(pj.error ?? "상태 조회 실패");
+        job = pj.job;
+        if (job && (job.status === "done" || job.status === "error")) break;
+      }
+      if (!job || job.status !== "done") {
+        throw new Error(job?.status === "error" ? (job.error ?? "접수 실패") : "접수 처리 시간 초과 — 잠시 후 이력에서 확인해주세요");
+      }
+
+      const r = job.result ?? {};
+      const isTest = r.regiNo === "TESTREGINOAPI";
+      if (!isTest && r.regiNo) setTracking(r.regiNo);
       setPostMsg(
-        `${isTest ? "[테스트] " : ""}접수 완료 — ${data.regipoNm ?? ""} ${data.price ? data.price + "원" : ""} (송장 ${data.regiNo})`
+        `${isTest ? "[테스트] " : ""}접수 완료 — ${r.regipoNm ?? ""} ${r.price ? r.price + "원" : ""} (송장 ${r.regiNo})`
       );
       onSaved();
     } catch (e) {
