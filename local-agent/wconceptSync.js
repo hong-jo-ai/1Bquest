@@ -13,6 +13,7 @@ const path = require("path");
 const fs = require("fs");
 const XLSX = require("xlsx");
 const { chromium } = require("playwright");
+const { waitForWconceptCode } = require("./wconceptSmsCode");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -80,12 +81,21 @@ async function loginWconcept(ctx, page, acc, log) {
   await sleep(1500);
 
   // 인증번호 발송 → SMS
+  const sentAtMs = Date.now();
   await popup.locator('button:has-text("인증번호 발송"), button:has-text("발송")').first()
     .click({ timeout: 8000 }).catch((e) => log(`발송 버튼 클릭 실패: ${e.message.slice(0, 40)}`));
-  await tg(`🔐 W컨셉 ${acc.key}번 계정(${acc.id}) 인증번호 발송했어요!\n지금 휴대폰 SMS를 텔레그램에 'wc 코드' (예: wc 123456)로 보내주세요. ⏰ 8분 내`);
-  log(`W컨셉 ${acc.key}번: SMS 코드 대기 (텔레그램으로 'wc 코드' 전송 요망, 최대 8분)`);
 
-  const code = await pollSmsCode(startTs);
+  // 1차: iMac Messages(chat.db)에서 자동 추출 (발송 이후 도착분만, 최대 40초)
+  let code = await waitForWconceptCode({ windowSec: 180, timeoutMs: 40000, sinceMs: sentAtMs });
+  if (code) {
+    log(`W컨셉 ${acc.key}번: 인증번호 자동 수신 (chat.db)`);
+  } else {
+    // 2차: 자동 실패 시에만 사장님께 텔레그램 요청 (폴백)
+    log(`W컨셉 ${acc.key}번: 자동 추출 실패 → 텔레그램 폴백`);
+    await tg(`🔐 W컨셉 ${acc.key}번 계정(${acc.id}) 인증번호 발송했어요!\n자동 추출이 안 돼서 그래요 — 휴대폰 SMS를 텔레그램에 'wc 코드' (예: wc 123456)로 보내주세요. ⏰ 8분 내`);
+    log(`W컨셉 ${acc.key}번: SMS 코드 대기 (텔레그램으로 'wc 코드' 전송 요망, 최대 8분)`);
+    code = await pollSmsCode(startTs);
+  }
   if (!code) { log(`W컨셉 ${acc.key}번: 인증번호 미수신 (시간초과)`); return false; }
   log(`W컨셉 ${acc.key}번: 인증번호 수신`);
 
@@ -193,8 +203,8 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   for (const a of ACCOUNTS) {
     if (!a.id || !a.pw) throw new Error(`W컨셉 ${a.key}번 계정 ID/PW 미설정`);
   }
-  // '먼저' 알림 — 인증번호 2개가 곧 필요함을 미리 고지(자동 17시 실행 시 대비용)
-  await tg("📦 W컨셉 매출 동기화를 시작합니다.\n곧 2개 계정 인증번호(SMS) 2개가 필요해요 — 휴대폰 확인하고, 오는 즉시 텔레그램에 'wc 코드'로 보내주세요. (각 8분 내)");
+  // '먼저' 알림 — SMS는 iMac Messages(chat.db)에서 자동 추출 시도. 자동 실패 시에만 텔레그램 요청이 옴.
+  await tg("📦 W컨셉 매출 동기화를 시작합니다.\nSMS 인증번호는 iMac에서 자동으로 읽을게요 — 자동이 안 되면 'wc 코드' 요청 메시지를 보낼 테니 그때만 보내주세요.");
   const files = [];
   for (const acc of ACCOUNTS) {
     const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
@@ -209,6 +219,14 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
       const ok = await loginWconcept(ctx, page, acc, log);
       if (!ok) throw new Error(`W컨셉 ${acc.key}번 로그인/인증 실패`);
       files.push(await downloadWconcept(page, startDate, endDate, acc, log));
+      // 같은 로그인 세션에서 송장입력까지(SMS 1회로 매출+송장). 실패해도 매출엔 영향 없게 guard.
+      if ((process.env.WC_DISPATCH_INVOICES ?? "1") !== "0") {
+        try {
+          const { dispatchInvoicesOnPage } = require("./wconceptInvoice");
+          const r = await dispatchInvoicesOnPage(page, log);
+          log(`W컨셉 ${acc.key}번 송장입력: ${r.filled}건${r.saved ? " 저장" : ""}`);
+        } catch (e) { log(`W컨셉 ${acc.key}번 송장입력 실패(매출엔 영향 없음): ${e.message}`); }
+      }
     } finally {
       await ctx.close().catch(() => {});
     }
