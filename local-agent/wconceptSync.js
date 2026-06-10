@@ -85,8 +85,11 @@ async function loginWconcept(ctx, page, acc, log) {
   await popup.locator('button:has-text("인증번호 발송"), button:has-text("발송")').first()
     .click({ timeout: 8000 }).catch((e) => log(`발송 버튼 클릭 실패: ${e.message.slice(0, 40)}`));
 
-  // 1차: iMac Messages(chat.db)에서 자동 추출 (발송 이후 도착분만, 최대 40초)
-  let code = await waitForWconceptCode({ windowSec: 180, timeoutMs: 40000, sinceMs: sentAtMs });
+  // 1차: iMac Messages(chat.db)에서 자동 추출.
+  // sinceMs 는 발송시각에서 30초 빼서 사용 — W컨셉 2FA 팝업이 '발송' 클릭 직전(팝업 오픈 시)
+  // 자동으로 SMS를 보내, 코드가 sentAtMs 보다 수십~수천 ms 먼저 도착하는 레이스를 흡수한다.
+  // (계정 간 간격은 30초보다 훨씬 크므로 이전 계정 코드 오인 위험 없음.)
+  let code = await waitForWconceptCode({ windowSec: 180, timeoutMs: 40000, sinceMs: sentAtMs - 30000 });
   if (code) {
     log(`W컨셉 ${acc.key}번: 인증번호 자동 수신 (chat.db)`);
   } else {

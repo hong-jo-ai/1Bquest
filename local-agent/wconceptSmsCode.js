@@ -25,8 +25,10 @@ function readWconceptCode(windowSec = 60, sinceMs = 0) {
   let db;
   try {
     db = new DatabaseSync(CHAT_DB, { readOnly: true });
-  } catch {
-    return null; // chat.db 접근 불가(권한/부재)
+  } catch (e) {
+    // chat.db 열기 실패 = 보통 '전체 디스크 접근 권한(FDA)' 없음. '코드 없음'과 구분되게 1회 경고.
+    console.error(`[wconceptSmsCode] chat.db 열기 실패(전체 디스크 접근 권한 확인): ${e && e.message}`);
+    return null;
   }
   try {
     // chat.db date = Apple epoch(2001-01-01) 기준 나노초. 값이 2^53을 넘으므로 BigInt로 계산.
