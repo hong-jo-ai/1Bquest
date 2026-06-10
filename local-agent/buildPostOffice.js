@@ -76,7 +76,9 @@ function sixshopRows(){
   const C={name:0,phone:1,zip:2,addr:3,req:14,order:6,status:8,pname:47,qty:49,opt:50};
   const rows=[];
   for(let i=1;i<data.length;i++){
-    if(!/결제\s?완료/.test(String(data[i][C.status]||"")))continue;
+    // 결제완료 + 배송준비 둘 다 출고대상(송장 미발급). 배송중/완료/구매확정/취소·반품·교환은 제외.
+    // 이미 접수된 건은 buildPostOffice의 pp_shipments dedup이 거른다.
+    if(!/(결제\s?완료|배송\s?준비)/.test(String(data[i][C.status]||"")))continue;
     const opt=clean(data[i][C.opt]); const mob=clean(data[i][C.phone]);
     rows.push({name:clean(data[i][C.name]),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:clean(data[i][C.addr]),zip:clean(data[i][C.zip]),prod:clean(data[i][C.pname])+(opt?" "+opt:""),color:"",qty:clean(data[i][C.qty])||"1",msg:clean(data[i][C.req]),order:clean(data[i][C.order]),seller:"식스샵"});
   }
