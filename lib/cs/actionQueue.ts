@@ -9,9 +9,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 export type CsActionKind =
-  | "sixshop_reply"            // 문의 게시판 댓글 답변
-  | "sixshop_return_confirm"   // 반품/교환 수락
-  | "sixshop_return_received"; // 회수 도착 → 완료 처리
+  | "sixshop_reply"   // 문의 게시판 댓글 답변
+  | "sixshop_claim";  // 반품/교환/취소 클레임 처리(주문목록 체크박스→툴바 버튼)
 
 export type CsActionStatus = "pending" | "processing" | "done" | "error";
 

@@ -74,9 +74,47 @@ async function doSixshopReply(page, p) {
   return { posted: true };
 }
 
+// ── 식스샵 반품/교환/취소 클레임 처리: 주문목록 체크박스 → 툴바 버튼(예 '수거 완료 처리') → 확인 ──
+// (발송처리와 동일 메커니즘 — 검증됨. payload: { orderNumber, buttonText })
+async function doSixshopClaim(page, p) {
+  if (!p.orderNumber || !p.buttonText) throw new Error("orderNumber/buttonText 필요");
+  await page.goto("https://www.sixshop.com/dashboard/shop-orders", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
+  await sleep(5000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
+  // 주문 행 체크박스 클릭(라벨 경유) — 발송처리와 동일
+  const chk = await page.evaluate((order) => {
+    const node = [...document.querySelectorAll("*")].find((e) => e.children.length === 0 && (e.textContent||"").trim() === order);
+    if (!node) return "noorder";
+    let row = node; for (let i=0;i<10&&row;i++){ if(row.querySelector&&row.querySelector('input[type=checkbox]')) break; row=row.parentElement; }
+    const cb = row && row.querySelector && row.querySelector('input[type=checkbox]');
+    if (!cb) return "nocb";
+    const lab = cb.id ? document.querySelector(`label[for="${cb.id}"]`) : null;
+    (lab || cb).click();
+    return "ok";
+  }, p.orderNumber);
+  if (chk === "noorder") throw new Error("주문을 목록에서 못 찾음(클레임 상태 필터/기간 확인)");
+  if (chk !== "ok") throw new Error("체크박스 못 찾음");
+  await sleep(1500);
+  if (process.env.CS_ACTION_DRYRUN === "1") return { done: false, dryRun: true };
+  // 툴바에서 buttonText(예 '수거 완료 처리') 보이는 버튼 클릭
+  const clicked = await page.evaluate((bt) => {
+    const b = [...document.querySelectorAll("button")].find((x) => (x.innerText||"").replace(/\s+/g," ").trim() === bt && x.getBoundingClientRect().height > 0);
+    if (b) { b.click(); return true; }
+    return false;
+  }, p.buttonText);
+  if (!clicked) throw new Error(`'${p.buttonText}' 버튼 안나타남(주문 미선택/상태 불일치)`);
+  await sleep(2500);
+  // 확인 모달: 처리하기(js-operate) 또는 확인 — 보이는 것 클릭
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /처리하기|확인/.test(x.innerText||"") && !/취소/.test(x.innerText||"") && x.getBoundingClientRect().height > 0);
+    b && b.click();
+  });
+  await sleep(3000); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
+  return { done: true };
+}
+
 const HANDLERS = {
   sixshop_reply: doSixshopReply,
-  // sixshop_return_confirm / sixshop_return_received 는 Phase 2b 에서 추가
+  sixshop_claim: doSixshopClaim,
 };
 
 async function processWithBrowser(jobs) {

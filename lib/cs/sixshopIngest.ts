@@ -105,3 +105,18 @@ export async function upsertSixshopClaim(
 
   return { threadId, inserted: !existing };
 }
+
+/** 스레드의 반품 클레임 조회 (상세에서 액션버튼 렌더용). */
+export async function getReturnByThread(threadId: string): Promise<import("./types").CsReturn | null> {
+  const db = getCsSupabase();
+  const { data } = await db.from("cs_returns").select("*").eq("thread_id", threadId).maybeSingle();
+  return (data as import("./types").CsReturn) ?? null;
+}
+
+/** 클레임 처리 후 라이프사이클 상태 갱신 + 스레드 상태 동기화(done/rejected→resolved). */
+export async function setReturnStatus(threadId: string, status: import("./types").CsReturnStatus): Promise<void> {
+  const db = getCsSupabase();
+  await db.from("cs_returns").update({ status, updated_at: new Date().toISOString() }).eq("thread_id", threadId);
+  const threadStatus = status === "done" || status === "rejected" ? "resolved" : "unanswered";
+  await db.from("cs_threads").update({ status: threadStatus }).eq("id", threadId);
+}

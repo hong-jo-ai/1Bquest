@@ -34,8 +34,9 @@ import type {
   CsStatus,
   CsChannel,
   CsBrandId,
+  CsReturn,
 } from "@/lib/cs/types";
-import { BRAND_LABEL, CHANNEL_LABEL } from "@/lib/cs/types";
+import { BRAND_LABEL, CHANNEL_LABEL, CLAIM_TYPE_LABEL, RETURN_STATUS_LABEL } from "@/lib/cs/types";
 
 // ── 채널별 시각 스타일 ──────────────────────────────────────────────
 const CHANNEL_STYLE: Record<
@@ -124,6 +125,7 @@ type StatusFilter = CsStatus | "all";
 interface ThreadDetail {
   thread: CsThread;
   messages: CsMessage[];
+  csReturn?: CsReturn | null;
 }
 
 interface ContextData {
@@ -372,6 +374,29 @@ export default function InboxClient() {
     await loadThreads();
     setSelectedId(null);
     showToast("해결됨으로 표시");
+  };
+
+  // 반품 액션(회수 도착/완료/거부) — iMac 워커가 식스샵에 처리. 완료까지 대기 후 새로고침.
+  const [returnBusy, setReturnBusy] = useState<string | null>(null);
+  const onReturnAction = async (action: string) => {
+    if (!selectedId) return;
+    setReturnBusy(action);
+    try {
+      const res = await fetch(`/api/cs/returns/${selectedId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "처리 실패");
+      showToast("처리 완료 — 식스샵 반영됨");
+      await loadThreads();
+      await loadDetail(selectedId);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "처리 실패");
+    } finally {
+      setReturnBusy(null);
+    }
   };
 
   // 해결 취소 / 보관 되돌리기 — 다시 처리할 거리로 미답변 복귀.
@@ -762,6 +787,8 @@ export default function InboxClient() {
             onNotCs={() => markNotCs(false)}
             onBlockSender={() => markNotCs(true)}
             onCreateAs={() => setAsFormOpen(true)}
+            returnBusy={returnBusy}
+            onReturnAction={onReturnAction}
           />
         )}
       </section>
@@ -888,6 +915,8 @@ function ThreadDetailView({
   onNotCs,
   onBlockSender,
   onCreateAs,
+  returnBusy,
+  onReturnAction,
 }: {
   detail: ThreadDetail;
   replyText: string;
@@ -904,8 +933,10 @@ function ThreadDetailView({
   onNotCs: () => void;
   onBlockSender: () => void;
   onCreateAs: () => void;
+  returnBusy?: string | null;
+  onReturnAction?: (action: string) => void;
 }) {
-  const { thread, messages } = detail;
+  const { thread, messages, csReturn } = detail;
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
   const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
@@ -1011,10 +1042,14 @@ function ThreadDetailView({
 
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
         {isReturn ? (
-          <div className="max-w-md mx-auto rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-5 space-y-2 text-sm">
+          <div className="max-w-md mx-auto rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-5 space-y-1.5 text-sm">
             <div className="font-semibold text-zinc-800 dark:text-zinc-200">{thread.subject || "반품/교환"}</div>
             <div className="text-zinc-600 dark:text-zinc-400">고객: {customerName}</div>
-            <div className="text-zinc-600 dark:text-zinc-400">상태: {thread.last_message_preview}</div>
+            {csReturn && <div className="text-zinc-600 dark:text-zinc-400">주문번호: {csReturn.order_number}</div>}
+            <div className="text-zinc-600 dark:text-zinc-400">
+              상태: {csReturn ? `${CLAIM_TYPE_LABEL[csReturn.claim_type]} · ${RETURN_STATUS_LABEL[csReturn.status]}` : thread.last_message_preview}
+            </div>
+            {csReturn?.reason && <div className="text-zinc-600 dark:text-zinc-400">사유: {csReturn.reason}</div>}
           </div>
         ) : (
           messages.map((m) => (
@@ -1029,8 +1064,28 @@ function ThreadDetailView({
       </div>
 
       {isReturn ? (
-        <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 text-center text-xs text-zinc-500">
-          반품/교환 처리 버튼(수락·회수 도착 확인)은 다음 단계에서 활성화됩니다.
+        <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+          {csReturn && (csReturn.status === "done" || csReturn.status === "rejected") ? (
+            <div className="text-center text-xs text-zinc-500">처리 완료됨 · {RETURN_STATUS_LABEL[csReturn.status]}</div>
+          ) : csReturn ? (
+            <div className="flex items-center gap-2 justify-center flex-wrap">
+              <button onClick={() => onReturnAction?.("received")} disabled={!!returnBusy}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                {returnBusy === "received" ? "처리 중…" : "회수 도착 확인"}
+              </button>
+              <button onClick={() => onReturnAction?.("complete")} disabled={!!returnBusy}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                {returnBusy === "complete" ? "처리 중…" : `${CLAIM_TYPE_LABEL[csReturn.claim_type]} 완료`}
+              </button>
+              <button onClick={() => onReturnAction?.("reject")} disabled={!!returnBusy}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50">
+                {returnBusy === "reject" ? "처리 중…" : "거부"}
+              </button>
+            </div>
+          ) : (
+            <div className="text-center text-xs text-zinc-500">반품 정보를 불러오는 중…</div>
+          )}
+          <p className="text-center text-[11px] text-zinc-400 mt-2">버튼을 누르면 식스샵에 자동 반영됩니다(처리 ~20초)</p>
         </div>
       ) : (
       <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
