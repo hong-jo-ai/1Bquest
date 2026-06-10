@@ -16,6 +16,8 @@ export interface SmsResult {
   status: "success" | "fail";
   messageId?: string;
   error?: string;
+  name?: string;   // #{이름} 치환에 쓰인 수신자명 (이력 상세용)
+  text?: string;   // 실제 발송된 본문(치환 완료) (이력 상세용)
 }
 
 export interface SendOutcome {
@@ -117,7 +119,7 @@ export async function sendMany(
 
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok) {
-    return { ok: false, results: messages.map((m) => ({ phone: m.to, status: "fail" as const, error: json?.errorMessage ?? `HTTP ${res.status}` })),
+    return { ok: false, results: messages.map((m) => ({ phone: m.to, status: "fail" as const, error: json?.errorMessage ?? `HTTP ${res.status}`, text: m.text })),
       successCount: 0, failCount: messages.length,
       error: json?.errorMessage ?? `Solapi HTTP ${res.status}` };
   }
@@ -136,8 +138,8 @@ export async function sendMany(
     const to = m.to.replace(/\D/g, "");
     const err = failedSet.get(to);
     return err
-      ? { phone: m.to, status: "fail" as const, error: err }
-      : { phone: m.to, status: "success" as const, messageId: groupId };
+      ? { phone: m.to, status: "fail" as const, error: err, text: m.text }
+      : { phone: m.to, status: "success" as const, messageId: groupId, text: m.text };
   });
   const failCount = results.filter((r) => r.status === "fail").length;
   return { ok: failCount < results.length, groupId, results,

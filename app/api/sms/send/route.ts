@@ -56,6 +56,14 @@ export async function POST(req: Request) {
 
   const outcome = await sendMany(messages);
 
+  // 수신자명을 건별 결과에 합쳐 이력 상세에서 '이름/실제 발송본문'을 볼 수 있게 한다.
+  const nameByPhone = new Map<string, string>();
+  for (const r of recipients) nameByPhone.set((r.phone ?? "").replace(/\D/g, ""), (r.name ?? "").trim());
+  const enrichedResults = outcome.results.map((res) => ({
+    ...res,
+    name: res.name ?? nameByPhone.get((res.phone ?? "").replace(/\D/g, "")) ?? "",
+  }));
+
   // 이력 기록 (실패해도 발송 결과는 반환)
   try {
     await logSmsSend({
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
       failCount: outcome.failCount,
       estCost: estimateCost(message, recipients.length),
       groupId: outcome.groupId,
-      results: outcome.results,
+      results: enrichedResults,
       isTest: !!body.isTest,
     });
   } catch (e) {

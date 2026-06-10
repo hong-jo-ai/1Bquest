@@ -55,3 +55,21 @@ export async function listSmsSends(limit = 30): Promise<SmsHistoryRow[]> {
   if (error) throw new Error(`listSmsSends 실패: ${error.message}`);
   return (data ?? []) as SmsHistoryRow[];
 }
+
+export interface SmsSendDetail extends SmsHistoryRow {
+  group_id: string | null;
+  results: SmsResult[];   // 건별: phone, status, name, text(실제 발송본문), error
+}
+
+/** 단건 발송 이력 + 건별 결과(results) 조회 — 이력 상세용. */
+export async function getSmsSend(id: string): Promise<SmsSendDetail | null> {
+  const db = getCsSupabase();
+  const { data, error } = await db
+    .from("sms_sends")
+    .select("id, created_at, message_text, message_type, source_desc, recipient_count, success_count, fail_count, est_cost, is_test, group_id, results")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`getSmsSend 실패: ${error.message}`);
+  if (!data) return null;
+  return { ...(data as Omit<SmsSendDetail, "results"> & { results: SmsResult[] | null }), results: (data as { results: SmsResult[] | null }).results ?? [] };
+}

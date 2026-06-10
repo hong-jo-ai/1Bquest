@@ -23,6 +23,12 @@ function todayKST(offsetDays = 0): string {
 }
 const won = (n: number) => n.toLocaleString("ko-KR") + "원";
 
+/** #{이름} 토큰을 실제 표시값으로 치환 — 이름 없으면 "고객님"(발송 로직과 동일). */
+const renderMsg = (tmpl: string, name?: string) => {
+  const d = (name ?? "").trim() || "고객님";
+  return (tmpl ?? "").replace(/#\{이름\}/g, d).replace(/#\{name\}/gi, d);
+};
+
 interface Recipient { name: string; phone: string; orderIds: string[]; sample: string }
 
 const TEMPLATES: { label: string; subject: string; text: string }[] = [
@@ -42,6 +48,12 @@ interface HistoryRow {
   source_desc: string | null; recipient_count: number; success_count: number;
   fail_count: number; est_cost: number | null; is_test: boolean;
 }
+
+interface ResultItem {
+  phone: string; status: "success" | "fail";
+  name?: string; text?: string; error?: string; messageId?: string;
+}
+interface SendDetail extends HistoryRow { group_id: string | null; results: ResultItem[]; }
 
 export default function SmsClient() {
   const [configured, setConfigured] = useState(true);
@@ -77,6 +89,20 @@ export default function SmsClient() {
   const [sendResult, setSendResult] = useState<{ ok: boolean; successCount: number; failCount: number; error?: string } | null>(null);
 
   const [history, setHistory] = useState<HistoryRow[]>([]);
+
+  // 발송 이력 상세 모달
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detail, setDetail] = useState<SendDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetail = useCallback(async (id: string) => {
+    setDetailOpen(true); setDetail(null); setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/sms/history/${id}`, { cache: "no-store" });
+      const json = await res.json();
+      if (json.ok) setDetail(json.detail);
+    } catch { /* 무시 */ } finally { setDetailLoading(false); }
+  }, []);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -453,6 +479,63 @@ export default function SmsClient() {
         </div>
       )}
 
+      {/* 발송 이력 상세 모달 */}
+      {detailOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailOpen(false)}>
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
+              <h3 className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><MessageSquare size={16} className="text-emerald-500" /> 발송 상세</h3>
+              <button onClick={() => setDetailOpen(false)} className="text-zinc-400 hover:text-zinc-600"><XCircle size={18} /></button>
+            </div>
+
+            {detailLoading || !detail ? (
+              <div className="flex items-center justify-center py-12 text-zinc-400"><Loader2 size={20} className="animate-spin" /></div>
+            ) : (
+              <div className="p-4 space-y-3 overflow-y-auto">
+                {/* 요약 */}
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="tabular-nums">{detail.created_at.slice(0, 16).replace("T", " ")}</span>
+                  {detail.is_test && <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">테스트</span>}
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">{detail.message_type}</span>
+                  <span className="text-emerald-600">성공 {detail.success_count}</span>
+                  {detail.fail_count > 0 && <span className="text-red-500">실패 {detail.fail_count}</span>}
+                  {detail.est_cost != null && <span>· {won(detail.est_cost)}</span>}
+                </div>
+                {detail.source_desc && <p className="text-xs text-zinc-500">대상: {detail.source_desc}</p>}
+
+                {/* 문안 템플릿 */}
+                <div>
+                  <p className="text-[11px] text-zinc-400 mb-1">문안(템플릿)</p>
+                  <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">{detail.message_text}</div>
+                </div>
+
+                {/* 건별 수신자 — 실제 발송 본문 */}
+                <div>
+                  <p className="text-[11px] text-zinc-400 mb-1">수신자 {detail.results.length}명 · 실제 발송 내용</p>
+                  <div className="space-y-2">
+                    {detail.results.length === 0 ? (
+                      <p className="text-xs text-zinc-400">건별 기록이 없습니다.</p>
+                    ) : detail.results.map((r, i) => (
+                      <div key={i} className="rounded-lg border border-zinc-100 dark:border-zinc-800 p-2.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="font-medium text-zinc-700 dark:text-zinc-200">{(r.name ?? "").trim() || "고객님"}</span>
+                          <span className="text-zinc-400 tabular-nums">{r.phone}</span>
+                          {r.status === "success"
+                            ? <span className="ml-auto flex items-center gap-1 text-emerald-600"><CheckCircle2 size={12} /> 성공</span>
+                            : <span className="ml-auto flex items-center gap-1 text-red-500"><XCircle size={12} /> 실패</span>}
+                        </div>
+                        <p className="mt-1.5 text-xs text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">{r.text || renderMsg(detail.message_text, r.name)}</p>
+                        {r.error && <p className="mt-1 text-[11px] text-red-500">사유: {r.error}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 4. 이력 */}
       <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 p-4 space-y-2">
         <div className="flex items-center justify-between">
@@ -467,7 +550,8 @@ export default function SmsClient() {
         ) : (
           <div className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
             {history.map((h) => (
-              <div key={h.id} className="py-2 text-sm">
+              <button key={h.id} type="button" onClick={() => openDetail(h.id)}
+                className="w-full text-left py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/40 rounded-lg px-1 -mx-1 transition-colors">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-zinc-400 tabular-nums">{h.created_at.slice(5, 16).replace("T", " ")}</span>
                   {h.is_test && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">테스트</span>}
@@ -476,8 +560,8 @@ export default function SmsClient() {
                   {h.fail_count > 0 && <span className="text-red-500 text-xs">실패 {h.fail_count}</span>}
                   {h.est_cost != null && <span className="ml-auto text-[11px] text-zinc-400">{won(h.est_cost)}</span>}
                 </div>
-                <p className="text-zinc-500 dark:text-zinc-400 text-xs truncate mt-0.5">{h.source_desc} · {h.message_text}</p>
-              </div>
+                <p className="text-zinc-500 dark:text-zinc-400 text-xs truncate mt-0.5">{h.source_desc ? `${h.source_desc} · ` : ""}{renderMsg(h.message_text)}</p>
+              </button>
             ))}
           </div>
         )}
