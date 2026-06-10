@@ -34,15 +34,10 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "고객명/주소 누락 (AS 접수에 반송주소 입력 필요)" }, { status: 400 });
   }
 
-  // 우편번호: 직접 전달 > 주소에 박힌 5자리 > juso 자동조회
+  // 우편번호: 직접 전달 > 주소에 박힌 5자리 > juso 자동조회(빠른 경로).
+  // 여기서 못 구해도 막지 않고 빈 값으로 적재 → iMac 워커(한국 IP+운영키)가 접수 직전 재조회한다.
   let zipCode = String(zip || (addr.match(/\b\d{5}\b/)?.[0] ?? "")).replace(/\D/g, "");
   if (!zipCode) zipCode = (await addrToZip(addr)) ?? "";
-  if (!zipCode) {
-    return Response.json(
-      { error: "우편번호 자동조회 실패 — 우편번호를 직접 입력해주세요" },
-      { status: 400 },
-    );
-  }
 
   try {
     const jobId = await enqueueJob("one", {

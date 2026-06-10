@@ -14,6 +14,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env"), override: t
 
 const { collectOutboundRows } = require("../buildPostOffice");
 const { mapOutbound, mapReturn } = require("./orderMapper");
+const { addrToZip } = require("./addrToZip");
 const { insertOrder, cancelOrder, PostParcelError } = require("./client");
 const { createClient } = require(path.join(
   "/Users/mac/sungjo_ai/paulwise-dashboard",
@@ -152,6 +153,12 @@ async function registerSingle(order, opts = {}) {
   const channel = order.seller || opts.source || "manual";
   const row = { ...order, seller: channel };
   if (!row.order) throw new Error("주문/참조번호(order) 필요");
+  // 우편번호가 비었으면 주소로 자동 조회 (워커=한국 IP+검증된 운영키 — 배포 라우트 환경/리전 우회)
+  if (!String(row.zip || "").replace(/\D/g, "")) {
+    const fullAddr = row.addr || [row.addr1, row.addr2].filter(Boolean).join(" ");
+    const z = await addrToZip(fullAddr);
+    if (z) { row.zip = z; console.log(`[${new Date().toISOString()}] 우편번호 자동조회: ${z} ← ${fullAddr}`); }
+  }
   if (opts.skipExisting !== false) {
     const exists = await alreadyRegistered(client, row.order, channel, reqType);
     if (exists && exists.regi_no) {
