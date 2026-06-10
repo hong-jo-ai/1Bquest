@@ -126,4 +126,4 @@ async function syncSixshop(_opts, log) {
   }
 }
 
-module.exports = { syncSixshop };
+module.exports = { syncSixshop, loginSixshop, ensureStore, exportOrders };
