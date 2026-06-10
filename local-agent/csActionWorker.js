@@ -14,6 +14,7 @@ loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local")
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
 const { chromium } = require("playwright");
 const { loginSixshop, ensureStore } = require("./sixshopSync");
+const { loginWconcept, ACCOUNTS: WC_ACCOUNTS } = require("./wconceptSync");
 
 const PREFIX = "cs_action_job:";
 const POLL_MS = 4000;
@@ -112,15 +113,50 @@ async function doSixshopClaim(page, p) {
   return { done: true };
 }
 
-const HANDLERS = {
+// ── W컨셉 반품 회수완료: 교환/반품 접수내역에서 주문행 체크 → '회수완료' 버튼 → 확인 ──
+async function doWconceptClaim(page, p) {
+  if (!p.orderNumber) throw new Error("orderNumber 필요");
+  const buttonText = (p.buttonText || "회수완료").replace(/\s+/g, "");
+  await page.goto("https://newpin.wconcept.co.kr/Order/OrderReturnManageShipping?type=return", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
+  await sleep(5000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
+  // 주문번호(Z..) 행 체크박스 체크
+  const chk = await page.evaluate((order) => {
+    const tr = [...document.querySelectorAll("tr")].find((t) => t.querySelector("input[type=checkbox]") && (t.innerText||"").includes(order));
+    if (!tr) return "noorder";
+    const cb = tr.querySelector("input[type=checkbox]");
+    if (!cb) return "nocb";
+    cb.click(); cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true }));
+    return "ok";
+  }, p.orderNumber);
+  if (chk === "noorder") throw new Error(`반품건(${p.orderNumber})을 목록에서 못 찾음(이미 처리/기간외)`);
+  if (chk !== "ok") throw new Error("체크박스 못 찾음");
+  await sleep(1200);
+  if (process.env.CS_ACTION_DRYRUN === "1") return { done: false, dryRun: true };
+  // 회수완료 버튼 클릭 (JS confirm 다이얼로그는 ctx 핸들러가 자동수락)
+  const clicked = await page.evaluate((bt) => {
+    const b = [...document.querySelectorAll("button,a,input[type=button],input[type=submit]")].find((x) => ((x.value||x.innerText||"").replace(/\s+/g,"")) === bt && x.getBoundingClientRect().height > 0);
+    if (b) { b.click(); return true; }
+    return false;
+  }, buttonText);
+  if (!clicked) throw new Error(`'${p.buttonText}' 버튼 못 찾음`);
+  await sleep(2500);
+  // 커스텀 확인 모달이면 확인 클릭(네이티브 confirm은 이미 자동수락됨)
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x)=>/확인|처리|예/.test(x.innerText||"") && !/취소/.test(x.innerText||"") && x.getBoundingClientRect().height>0); b && b.click(); }).catch(()=>{});
+  await sleep(3000); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
+  return { done: true };
+}
+
+const SIXSHOP_HANDLERS = {
   sixshop_reply: doSixshopReply,
   sixshop_claim: doSixshopClaim,
 };
+const WCONCEPT_HANDLERS = {
+  wconcept_claim: doWconceptClaim,
+};
 
-async function processWithBrowser(jobs) {
-  // 전용 프로필 — 스케줄 동기화(sixshop 프로필)와 동시 실행 시 Chrome 프로필 락 충돌 방지.
-  const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", "sixshop-csaction");
-  const ctx = await chromium.launchPersistentContext(profileDir, {
+// 플랫폼별 브라우저 1회 로그인 후 해당 잡들 처리. 전용 프로필(스케줄 동기화와 락 충돌 방지).
+async function processGroup(jobs, { profile, handlers, login }) {
+  const ctx = await chromium.launchPersistentContext(path.join(os.homedir(), ".paulvice-marketplace-agent", profile), {
     headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
     args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"],
     ignoreDefaultArgs: ["--enable-automation"],
@@ -128,10 +164,10 @@ async function processWithBrowser(jobs) {
   ctx.on("page", (pg) => pg.on("dialog", (d) => d.accept().catch(()=>{})));
   try {
     const page = ctx.pages()[0] || (await ctx.newPage());
-    if (!(await loginSixshop(page, log))) throw new Error("식스샵 로그인 실패");
-    await ensureStore(page, "harriotwatches", log);
+    page.on("dialog", (d) => d.accept().catch(()=>{}));
+    await login(ctx, page);
     for (const job of jobs) {
-      const handler = HANDLERS[job.kind];
+      const handler = handlers[job.kind];
       log(`CS 액션 [${job.kind}] ${job.id}`);
       try {
         if (!handler) throw new Error(`미지원 kind: ${job.kind}`);
@@ -144,12 +180,29 @@ async function processWithBrowser(jobs) {
       }
     }
   } catch (e) {
-    // 로그인 등 공통 실패 — 잡들을 error 처리(브라우저 세션 단위)
     for (const job of jobs) await writeJob(job, { status: "error", error: "세션 실패: " + (e && e.message) });
     log("세션 실패: " + (e && e.message));
   } finally {
     await ctx.close().catch(()=>{});
   }
+}
+
+async function processSixshop(jobs) {
+  await processGroup(jobs, {
+    profile: "sixshop-csaction", handlers: SIXSHOP_HANDLERS,
+    login: async (ctx, page) => { if (!(await loginSixshop(page, log))) throw new Error("식스샵 로그인 실패"); await ensureStore(page, "harriotwatches", log); },
+  });
+}
+async function processWconcept(jobs) {
+  await processGroup(jobs, {
+    profile: "wconcept-csaction", handlers: WCONCEPT_HANDLERS,
+    login: async (ctx, page) => {
+      const acc = WC_ACCOUNTS[0];
+      await page.goto("https://newpin.wconcept.co.kr/Order/OrderReturnManageShipping?type=return", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
+      await sleep(3000);
+      if (/Auth\/Login/i.test(page.url())) { if (!(await loginWconcept(ctx, page, acc, log))) throw new Error("W컨셉 로그인 실패"); }
+    },
+  });
 }
 
 async function tick() {
@@ -158,10 +211,12 @@ async function tick() {
   const jobs = (data || []).map((r) => r.data).filter(Boolean);
   const pending = jobs.filter((j) => j.status === "pending").sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
   if (pending.length) {
-    // 선점
     const claimed = [];
     for (const job of pending) { claimed.push(await writeJob(job, { status: "processing" })); }
-    await processWithBrowser(claimed);
+    const wc = claimed.filter((j) => String(j.kind).startsWith("wconcept_"));
+    const ss = claimed.filter((j) => !String(j.kind).startsWith("wconcept_"));
+    if (ss.length) await processSixshop(ss);
+    if (wc.length) await processWconcept(wc);
   }
   const now = Date.now();
   for (const j of jobs) {

@@ -31,17 +31,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { action } = (await req.json().catch(() => ({}))) as { action?: string };
   const ret = await getReturnByThread(id);
   if (!ret) return Response.json({ error: "반품 정보 없음" }, { status: 404 });
-  const map = resolveButton(action || "", ret.claim_type);
-  if (!map) return Response.json({ error: `알 수 없는 action: ${action}` }, { status: 400 });
+
+  // 채널별 잡 종류/버튼 매핑. W컨셉 반품은 '회수완료' 단일 액션(회수는 자동, 도착 후 회수완료 → 완료).
+  let kind: "sixshop_claim" | "wconcept_claim";
+  let buttonText: string;
+  let next: CsReturnStatus;
+  if (ret.channel === "wconcept") {
+    kind = "wconcept_claim"; buttonText = "회수완료"; next = "done";
+  } else {
+    const map = resolveButton(action || "", ret.claim_type);
+    if (!map) return Response.json({ error: `알 수 없는 action: ${action}` }, { status: 400 });
+    kind = "sixshop_claim"; buttonText = map.buttonText; next = map.next;
+  }
 
   try {
-    const jobId = await enqueueCsAction("sixshop_claim", { orderNumber: ret.order_number, buttonText: map.buttonText });
+    const jobId = await enqueueCsAction(kind, { orderNumber: ret.order_number, buttonText });
     const job = await waitCsAction(jobId);
     if (!job || job.status !== "done") {
       return Response.json({ ok: false, error: job?.error || "처리 시간초과 — 잠시 후 확인" }, { status: 502 });
     }
-    await setReturnStatus(id, map.next);
-    return Response.json({ ok: true, status: map.next });
+    await setReturnStatus(id, next);
+    return Response.json({ ok: true, status: next });
   } catch (e) {
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }

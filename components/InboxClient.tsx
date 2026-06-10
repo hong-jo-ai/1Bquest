@@ -1072,6 +1072,14 @@ function ThreadDetailView({
         <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
           {csReturn && (csReturn.status === "done" || csReturn.status === "rejected") ? (
             <div className="text-center text-xs text-zinc-500">처리 완료됨 · {RETURN_STATUS_LABEL[csReturn.status]}</div>
+          ) : csReturn && csReturn.channel === "wconcept" ? (
+            // W컨셉: 회수는 자동, 택배 도착 후 '회수 완료' 단일 처리
+            <div className="flex items-center justify-center">
+              <button onClick={() => onReturnAction?.("complete")} disabled={!!returnBusy}
+                className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                {returnBusy ? "처리 중…" : "회수 완료"}
+              </button>
+            </div>
           ) : csReturn ? (
             <div className="flex items-center gap-2 justify-center flex-wrap">
               <button onClick={() => onReturnAction?.("received")} disabled={!!returnBusy}
