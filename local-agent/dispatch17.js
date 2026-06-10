@@ -33,8 +33,8 @@ async function tg(msg) {
   const r2 = await run("kakaoGiftReplySend.js", {});
   const c24 = (r1.out.match(/성공 (\d+)/) || [,"?"])[1];
   const cm = /출고처리 시도 완료|✏️/.test(r3.out) ? (r3.out.match(/✏️/g)||[]).length+"건 처리" : (/대상 없음|행수: 0/.test(r3.out) ? "대상없음" : "확인필요");
-  const six = r4.out.match(/완료: 성공 (\d+) \/ 스킵 (\d+) \/ 네이버페이 (\d+)/);
-  const sixMsg = six ? `성공 ${six[1]}건${+six[3]?`, 네이버페이 ${six[3]}건(별도)`:""}` : (/대상 없음/.test(r4.out) ? "대상없음" : "확인필요");
+  const six = r4.out.match(/완료: 성공 (\d+)건\(네이버페이 (\d+)\) \/ 스킵 (\d+)/);
+  const sixMsg = six ? `성공 ${six[1]}건${+six[2]?`(네이버페이 ${six[2]})`:""}` : (/대상 없음/.test(r4.out) ? "대상없음" : "확인필요");
   const kakao = /카카오 회신 발송/.test(r2.out) ? "발송" : (/스킵|채울 건 없음|메일 없음/.test(r2.out) ? "스킵" : "확인필요");
   await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 식스샵: ${sixMsg}\n- 카카오선물: ${kakao}`);
   log("=== 완료 ===");
