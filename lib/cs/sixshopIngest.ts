@@ -14,6 +14,7 @@ import {
 
 export interface SixshopClaimInput {
   brand?: CsBrandId;          // 기본 paulvice (상품이 폴바이스)
+  channel?: "sixshop" | "wconcept"; // 마켓 채널 (기본 sixshop)
   orderNumber: string;
   claimType: CsClaimType;     // return | exchange | cancel
   status: CsReturnStatus;
@@ -25,12 +26,12 @@ export interface SixshopClaimInput {
   raw?: unknown;
 }
 
-/** 클레임 1건 upsert → { threadId, inserted, skipped }. */
+/** 클레임 1건 upsert → { threadId, inserted, skipped }. 식스샵/W컨셉 공용(channel). */
 export async function upsertSixshopClaim(
   c: SixshopClaimInput,
 ): Promise<{ threadId: string | null; inserted: boolean; skipped?: boolean }> {
   const db = getCsSupabase();
-  const channel = "sixshop";
+  const channel = c.channel ?? "sixshop";
   const brand: CsBrandId = c.brand ?? "paulvice";
   const externalThreadId = `return:${c.orderNumber}:${c.claimType}`;
   const at = c.requestedAt ?? new Date().toISOString();

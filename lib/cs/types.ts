@@ -13,7 +13,8 @@ export type CsChannel =
   | "cafe24_board"
   | "sixshop_board"
   | "reddit"
-  | "sixshop";
+  | "sixshop"
+  | "wconcept";
 
 export type CsStatus = "unanswered" | "waiting" | "resolved" | "archived";
 export type CsDirection = "in" | "out";
@@ -104,6 +105,7 @@ export const CHANNEL_LABEL: Record<CsChannel, string> = {
   sixshop_board: "식스샵 게시판",
   reddit: "Reddit",
   sixshop: "식스샵",
+  wconcept: "W컨셉",
 };
 
 export const BRAND_LABEL: Record<CsBrandId, string> = {

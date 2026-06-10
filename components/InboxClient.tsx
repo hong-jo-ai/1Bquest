@@ -98,6 +98,11 @@ const CHANNEL_STYLE: Record<
     color: "text-violet-600 dark:text-violet-400",
     bg: "bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-900/40",
   },
+  wconcept: {
+    icon: ShoppingBag,
+    color: "text-zinc-800 dark:text-zinc-200",
+    bg: "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
