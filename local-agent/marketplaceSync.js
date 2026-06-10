@@ -267,6 +267,42 @@ async function fetchCodeFromDashboard(channel, afterTs, log) {
   throw lastErr || new Error("대시보드에서 인증번호를 가져오지 못했습니다");
 }
 
+// 무신사 로그인 직후 뜨는 공지(인증확인) 페이지 — 처리해야 주문확인/출고/매출 진입 가능.
+// 공지 본문·확인 컨트롤은 bizest iframe(operations/partner/pat04/detail) 안:
+//   체크박스 input[name=STATE]("…모든 인증 처리를 완료하였습니다.") 체크 → 확인(a.btn_big_primary).
+// 공지는 1개일 수도 여러 개일 수도 있고, 모두 처리될 때까지 계속 나온다 → 없을 때까지 반복.
+const musinsaNoticeFrame = (page) => page.frames().find((f) => /operations\/partner\/pat04\/detail/.test(f.url()));
+
+async function handleMusinsaNotices(page, log) {
+  const onDialog = (d) => d.accept().catch(() => {});
+  page.on("dialog", onDialog);
+  try {
+    await page.goto("https://partner.musinsa.com/", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    await sleep(3000);
+    let prev = null, empty = 0;
+    for (let i = 0; i < 12; i++) {
+      await sleep(2000);
+      const fr = musinsaNoticeFrame(page);
+      const has = fr ? await fr.locator('input[name="STATE"]').count().then((n) => n > 0).catch(() => false) : false;
+      if (!has) { if (++empty >= 2) { log("무신사 공지 없음/처리완료"); break; } continue; }
+      empty = 0;
+      const no = (fr.url().match(/NOTICE_NO=(\d+)/) || [, "?"])[1];
+      if (no === prev) { log(`무신사 공지 #${no} 진행 안 됨 — 중단`); break; }
+      prev = no;
+      await fr.locator('input[name="STATE"]').check({ force: true, timeout: 6000 }).catch(() => {});
+      await sleep(400);
+      await Promise.all([
+        page.waitForNavigation({ timeout: 15000 }).catch(() => {}),
+        fr.locator('a.btn_big_primary:has-text("확인")').first().click({ timeout: 8000 }).catch(() => {}),
+      ]);
+      log(`무신사 공지 #${no} 확인 처리`);
+      await sleep(2500);
+    }
+  } finally {
+    page.off("dialog", onDialog);
+  }
+}
+
 async function ensureLoggedIn(channel, page, log) {
   const cfg = CHANNELS[channel];
   await page.goto(cfg.loginUrl, { waitUntil: "domcontentloaded" });
@@ -312,6 +348,9 @@ async function ensureLoggedIn(channel, page, log) {
       log(`${cfg.label} 이메일 인증번호 자동 입력 완료`);
     } catch (err) {
       log(`${cfg.label} 이메일 인증 단계 스킵/실패: ${err.message}`);
+    }
+    if (channel === "musinsa") {
+      await handleMusinsaNotices(page, log).catch((e) => log("무신사 공지 처리 예외: " + (e && e.message)));
     }
     return;
   }
@@ -472,7 +511,9 @@ async function closeMarketplaceBrowsers() {
 module.exports = {
   CHANNELS,
   closeMarketplaceBrowsers,
+  ensureLoggedIn,
   generateTotp,
+  getMarketplacePage,
   missingConfig,
   syncMarketplaceSales,
 };
