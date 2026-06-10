@@ -116,33 +116,34 @@ async function doSixshopClaim(page, p) {
 // ── W컨셉 반품 회수완료: 교환/반품 접수내역에서 주문행 체크 → '회수완료' 버튼 → 확인 ──
 async function doWconceptClaim(page, p) {
   if (!p.orderNumber) throw new Error("orderNumber 필요");
-  const buttonText = (p.buttonText || "회수완료").replace(/\s+/g, "");
   await page.goto("https://newpin.wconcept.co.kr/Order/OrderReturnManageShipping?type=return", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
   await sleep(5000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
-  // 주문번호(Z..) 행 체크박스 체크
+  // ⚠️ W컨셉 그리드는 고정 좌측열 복제 DOM(.freeze-multi-scroll-left) 사용. 회수완료(UpdateReturnBuyConfirm)는
+  //    $(".chk:checked", ".freeze-multi-scroll-left") 를 읽으므로 그 패널의 체크박스를 Semantic UI API로 체크해야 한다.
   const chk = await page.evaluate((order) => {
-    const tr = [...document.querySelectorAll("tr")].find((t) => t.querySelector("input[type=checkbox]") && (t.innerText||"").includes(order));
-    if (!tr) return "noorder";
-    const cb = tr.querySelector("input[type=checkbox]");
-    if (!cb) return "nocb";
-    cb.click(); cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true }));
-    return "ok";
+    const jq = window.jQuery || window.$;
+    let cb = null;
+    for (const pane of document.querySelectorAll(".freeze-multi-scroll-left")) {
+      const tr = [...pane.querySelectorAll("tr")].find((t) => (t.innerText||"").includes(order));
+      if (tr) { cb = tr.querySelector("input.chk"); break; }
+    }
+    if (!cb) return "noorder";
+    const box = cb.closest(".ui.checkbox");
+    if (jq && jq.fn && jq.fn.checkbox && box) jq(box).checkbox("check");
+    else { cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true })); }
+    return document.querySelectorAll(".freeze-multi-scroll-left .chk:checked").length > 0 ? "ok" : "notchecked";
   }, p.orderNumber);
   if (chk === "noorder") throw new Error(`반품건(${p.orderNumber})을 목록에서 못 찾음(이미 처리/기간외)`);
-  if (chk !== "ok") throw new Error("체크박스 못 찾음");
-  await sleep(1200);
+  if (chk !== "ok") throw new Error("체크박스 선택 반영 안 됨");
+  await sleep(800);
   if (process.env.CS_ACTION_DRYRUN === "1") return { done: false, dryRun: true };
-  // 회수완료 버튼 클릭 (JS confirm 다이얼로그는 ctx 핸들러가 자동수락)
-  const clicked = await page.evaluate((bt) => {
-    const b = [...document.querySelectorAll("button,a,input[type=button],input[type=submit]")].find((x) => ((x.value||x.innerText||"").replace(/\s+/g,"")) === bt && x.getBoundingClientRect().height > 0);
-    if (b) { b.click(); return true; }
-    return false;
-  }, buttonText);
-  if (!clicked) throw new Error(`'${p.buttonText}' 버튼 못 찾음`);
-  await sleep(2500);
-  // 커스텀 확인 모달이면 확인 클릭(네이티브 confirm은 이미 자동수락됨)
-  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x)=>/확인|처리|예/.test(x.innerText||"") && !/취소/.test(x.innerText||"") && x.getBoundingClientRect().height>0); b && b.click(); }).catch(()=>{});
-  await sleep(3000); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
+  // 회수완료 클릭 (confirm 다이얼로그는 ctx/page 핸들러가 자동수락; 성공="확인 처리가 완료되었습니다")
+  page._csDialogs = [];
+  await page.locator('button:has-text("회수완료")').first().click({ timeout: 6000 }).catch((e) => { throw new Error("회수완료 클릭 실패: " + e.message); });
+  await sleep(4500); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
+  const dlgs = page._csDialogs || [];
+  if (dlgs.some((m) => /선택된 주문이 없|선택하세요/.test(m))) throw new Error("선택 미반영(고정패널 체크 실패)");
+  if (!dlgs.some((m) => /완료되었습니다/.test(m))) throw new Error("회수완료 확인 메시지 없음 — 미처리 의심");
   return { done: true };
 }
 
@@ -164,7 +165,8 @@ async function processGroup(jobs, { profile, handlers, login }) {
   ctx.on("page", (pg) => pg.on("dialog", (d) => d.accept().catch(()=>{})));
   try {
     const page = ctx.pages()[0] || (await ctx.newPage());
-    page.on("dialog", (d) => d.accept().catch(()=>{}));
+    page._csDialogs = [];
+    page.on("dialog", (d) => { try { (page._csDialogs ||= []).push(d.message()); } catch {} d.accept().catch(()=>{}); });
     await login(ctx, page);
     for (const job of jobs) {
       const handler = handlers[job.kind];
