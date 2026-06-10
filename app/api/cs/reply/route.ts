@@ -1,6 +1,6 @@
 import { sendReply } from "@/lib/cs/reply";
 
-export const maxDuration = 30;
+export const maxDuration = 60; // sixshop 등 큐 경유 채널은 워커 완료까지 동기 대기
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {

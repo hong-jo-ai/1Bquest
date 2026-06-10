@@ -11,6 +11,7 @@ import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import { cafe24Post, cafe24Put } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import { addReplyExample } from "./replyExamples";
+import { enqueueCsAction, waitCsAction } from "./actionQueue";
 import type { CsBrandId, CsChannel } from "./types";
 
 export interface ReplyResult {
@@ -45,6 +46,7 @@ export async function sendReply(
     reddit: sendRedditReply,
     ig_dm: sendIgReply,
     cafe24_board: sendCafe24BoardReply,
+    sixshop: sendSixshopReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -76,6 +78,43 @@ export async function sendReply(
   }
 
   return result;
+}
+
+/**
+ * 식스샵 문의 답변 — 게시판은 브라우저로만 댓글 등록 가능. 큐에 적재 후 iMac 워커(csActionWorker)가
+ * 실제 게시판 글을 찾아 댓글을 단다. 서버는 done 까지 폴링(최대 ~50s, maxDuration 내)해 동기 반환.
+ */
+async function sendSixshopReply(
+  threadId: string,
+  body: string,
+  options: ReplyOptions = {}
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread, messages } = data;
+  const email = (thread.external_thread_id.match(/^qna:([^:]+):/) || [, ""])[1];
+
+  const jobId = await enqueueCsAction("sixshop_reply", {
+    threadId, email, title: thread.subject ?? "", body,
+  });
+  const job = await waitCsAction(jobId);
+  if (!job || job.status !== "done") {
+    return { ok: false, error: job?.error || "댓글 등록 시간초과 — 잠시 후 다시 확인해 주세요(워커 처리 중일 수 있음)" };
+  }
+
+  await ingestMessage({
+    brand: thread.brand as CsBrandId,
+    channel: "sixshop",
+    externalThreadId: thread.external_thread_id,
+    externalMessageId: `${thread.external_thread_id}:reply:${job.id}`,
+    bodyText: body,
+    sentAt: new Date(),
+    direction: "out",
+    raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
+  });
+  const db = getCsSupabase();
+  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+  return { ok: true };
 }
 
 async function sendGmailReply(
