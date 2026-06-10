@@ -92,6 +92,11 @@ const CHANNEL_STYLE: Record<
     color: "text-orange-600 dark:text-orange-400",
     bg: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-900/40",
   },
+  sixshop: {
+    icon: ShoppingBag,
+    color: "text-violet-600 dark:text-violet-400",
+    bg: "bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-900/40",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
@@ -904,6 +909,7 @@ function ThreadDetailView({
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
   const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
+  const isReturn = thread.item_type === "return";
 
   return (
     <>
@@ -1004,16 +1010,29 @@ function ThreadDetailView({
       </header>
 
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
-        {messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            customerName={customerName}
-            brand={thread.brand}
-          />
-        ))}
+        {isReturn ? (
+          <div className="max-w-md mx-auto rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-5 space-y-2 text-sm">
+            <div className="font-semibold text-zinc-800 dark:text-zinc-200">{thread.subject || "반품/교환"}</div>
+            <div className="text-zinc-600 dark:text-zinc-400">고객: {customerName}</div>
+            <div className="text-zinc-600 dark:text-zinc-400">상태: {thread.last_message_preview}</div>
+          </div>
+        ) : (
+          messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              customerName={customerName}
+              brand={thread.brand}
+            />
+          ))
+        )}
       </div>
 
+      {isReturn ? (
+        <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 text-center text-xs text-zinc-500">
+          반품/교환 처리 버튼(수락·회수 도착 확인)은 다음 단계에서 활성화됩니다.
+        </div>
+      ) : (
       <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
         <div className="px-6 py-3 border-b border-zinc-100 dark:border-zinc-800/60">
           <textarea
@@ -1062,6 +1081,7 @@ function ThreadDetailView({
           </div>
         </div>
       </div>
+      )}
     </>
   );
 }

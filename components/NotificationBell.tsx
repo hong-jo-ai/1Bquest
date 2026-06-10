@@ -25,6 +25,7 @@ const CHANNEL_ICON: Record<CsChannel, React.ElementType> = {
   cafe24_board: Store,
   sixshop_board: ShoppingBag,
   reddit: MessageCircle,
+  sixshop: ShoppingBag,
 };
 
 const BRAND_COLOR: Record<CsBrandId, string> = {
