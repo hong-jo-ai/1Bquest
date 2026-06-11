@@ -28,7 +28,7 @@ import {
 import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
 import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
-import { parseClaudeCommand, enqueueClaudeTask } from "@/lib/claudeBridge/queue";
+import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
 import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -389,12 +389,32 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true, smsCode: true });
     }
 
+    // Claude 확인 게이트 — 위험작업 대기중일 때 "예/아니오" 응답 처리 (다른 명령보다 먼저)
+    const yn = parseYesNo(text);
+    if (yn !== null) {
+      try {
+        const action = await resolveClaudeConfirm(yn);
+        if (action) {
+          await sendTelegramReply(
+            message.chat.id,
+            yn ? `✅ 승인했습니다. 작업을 진행합니다.\n"${action.slice(0, 80)}"` : `❌ 취소했습니다. 작업을 진행하지 않습니다.`,
+            message.message_id,
+          );
+          return Response.json({ ok: true, claudeConfirm: yn ? "approved" : "denied" });
+        }
+        // 대기중인 확인요청이 없으면 일반 메시지로 흘려보냄(아래 처리 계속)
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 확인 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+        return Response.json({ ok: true, claudeConfirm: "error" });
+      }
+    }
+
     // Claude Code 브리지 — "클로드 <지시>" → 큐 적재, 아이맥 워처가 헤드리스 수행 후 결과 보고
     const claudeTask = parseClaudeCommand(text);
     if (claudeTask) {
       try {
         await enqueueClaudeTask(claudeTask, message.chat.id);
-        await sendTelegramReply(message.chat.id, `🤖 작업 받았습니다, 진행할게요.\n"${claudeTask.slice(0, 60)}"\n(읽기·조회 작업만 — 잠시 후 결과 보고. 아이맥이 켜져 있어야 합니다)`, message.message_id);
+        await sendTelegramReply(message.chat.id, `🤖 작업 받았습니다, 진행할게요.\n"${claudeTask.slice(0, 60)}"\n(코드 수정·실행까지 수행 — 발송·배포·삭제 등 위험작업은 실행 전 "예/아니오"로 확인 요청. 아이맥이 켜져 있어야 합니다)`, message.message_id);
       } catch (e) {
         await sendTelegramReply(message.chat.id, `⚠️ 작업 접수 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
       }
