@@ -57,6 +57,29 @@ function ymd(d) { return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(
 async function kvGet(sb, key) { const { data } = await sb.from("kv_store").select("data").eq("key", key).maybeSingle(); return data?.data ?? null; }
 async function kvSet(sb, key, data) { await sb.from("kv_store").upsert({ key, data, updated_at: new Date().toISOString() }, { onConflict: "key" }); }
 async function tg(msg) { const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID; if (!t || !c) return; await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {}); }
+// PDF 첨부 전송 (멀티파트, 재시도, 429 retry_after 존중). displayName 으로 NFC 파일명 사용.
+async function tgDoc(filePath, displayName, caption) {
+  const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID;
+  if (!t || !c) return false;
+  let buf; try { buf = fs.readFileSync(filePath); } catch { return false; }
+  let lastErr = "";
+  for (let a = 1; a <= 5; a++) {
+    try {
+      const form = new FormData();
+      form.append("chat_id", c);
+      if (caption) form.append("caption", caption);
+      form.append("document", new Blob([buf]), displayName || path.basename(filePath));
+      const r = await fetch(`https://api.telegram.org/bot${t}/sendDocument`, { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+      if (r.ok) return true;
+      const j = await r.json().catch(() => ({}));
+      lastErr = `HTTP ${r.status} ${j.description || ""}`;
+      const ra = j.parameters && j.parameters.retry_after;
+      await new Promise((res) => setTimeout(res, ra ? (ra + 1) * 1000 : 4000));
+    } catch (e) { lastErr = (e.cause && e.cause.code) || e.message; await new Promise((res) => setTimeout(res, 4000)); }
+  }
+  log(`    첨부 오류(${displayName}): ${lastErr}`);
+  return false;
+}
 
 (async () => {
   const ssArg = arg("sinsegae"), ltArg = arg("lotte");
@@ -91,18 +114,16 @@ async function tg(msg) { const t = process.env.TELEGRAM_BOT_TOKEN, c = process.e
     catch (e) { log("generate.py 실패: " + (e.stdout || "") + (e.message || e)); await tg("📦 면세점 발주 처리 실패: PDF 생성 오류"); return; }
   }
 
-  // ④ 드라이브 폴더에 저장
+  // ④ 드라이브 폴더에 저장 (PDF 경로는 텔레그램 첨부용으로 보존 → 정리는 ⑥ 이후)
   const saved = [];
+  let pdfPaths = [];
   if (!DRY) {
-    const pdfs = fs.readdirSync(outDir).filter((f) => /\.pdf$/i.test(f));
-    for (const f of pdfs) {
-      const nf = nfc(f);
-      const isLotte = nf.includes("롯데");
-      const dest = isLotte ? LOTTE_OUT : SINSEGAE_OUT;
-      try { fs.mkdirSync(dest, { recursive: true }); fs.copyFileSync(path.join(outDir, f), path.join(dest, f)); saved.push(nf); log(`  저장: ${nf} → ${isLotte ? "롯데" : "신세계"} 패킹리스트`); }
-      catch (e) { log(`  저장 실패 ${nf}: ${e.message}`); }
+    pdfPaths = fs.readdirSync(outDir).filter((f) => /\.pdf$/i.test(f)).map((f) => ({ f, p: path.join(outDir, f), nf: nfc(f), isLotte: nfc(f).includes("롯데") }));
+    for (const x of pdfPaths) {
+      const dest = x.isLotte ? LOTTE_OUT : SINSEGAE_OUT;
+      try { fs.mkdirSync(dest, { recursive: true }); fs.copyFileSync(x.p, path.join(dest, x.f)); saved.push(x.nf); log(`  저장: ${x.nf} → ${x.isLotte ? "롯데" : "신세계"} 패킹리스트`); }
+      catch (e) { log(`  저장 실패 ${x.nf}: ${e.message}`); }
     }
-    fs.rmSync(outDir, { recursive: true, force: true });
   } else log(`[DRY] PDF 저장 생략`);
 
   // ⑤ 부자재(면세점 박스) 차감 + 출고 이력 (멱등: date+store)
@@ -130,12 +151,22 @@ async function tg(msg) { const t = process.env.TELEGRAM_BOT_TOKEN, c = process.e
   } else boxMsg = "[DRY] 박스 미차감";
   log("  " + boxMsg);
 
-  // ⑥ 텔레그램
+  // ⑥ 텔레그램: 요약 + PDF 첨부(인쇄용)
   const lines = ["📦 면세점 발주 처리 (출고일 " + date.replace(/(\d{4})(\d{2})(\d{2})/, "$1.$2.$3") + ")"];
   if (ss) lines.push(`• 신세계: ${ssN}품목 / ${ssQ}pcs`);
   if (lt) lines.push(`• 롯데: ${ltN}품목 / ${ltQ}pcs`);
-  if (saved.length) lines.push(`• 서류 ${saved.length}건 생성·드라이브 저장`);
+  if (saved.length) lines.push(`• 서류 ${saved.length}건 생성·드라이브 저장 (아래 첨부 — 인쇄용)`);
   lines.push(`• ${boxMsg}`);
   await tg(lines.join("\n"));
+  // 첨부: 패킹리스트 → 박스라벨 → 거래명세서 순으로 정렬
+  const order = (n) => (/패킹리스트/.test(n) ? 0 : /부착/.test(n) ? 1 : 2);
+  const sortedPdfs = [...pdfPaths].sort((a, b) => order(a.nf) - order(b.nf));
+  for (let i = 0; i < sortedPdfs.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1800)); // 연속 전송 레이트리밋 회피
+    const x = sortedPdfs[i];
+    const ok = await tgDoc(x.p, x.nf, x.nf.replace(/\.pdf$/i, ""));
+    log(`  텔레그램 첨부 ${ok ? "✓" : "실패"}: ${x.nf}`);
+  }
+  if (!DRY && fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true });
   log("완료");
 })().catch((e) => { console.error("ERR", e); process.exit(1); });
