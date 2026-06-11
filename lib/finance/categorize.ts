@@ -20,6 +20,7 @@ export type TxCategory =
   | "식비"
   | "교통/연료"
   | "송금"
+  | "개인"
   | "기타";
 
 interface Rule {
@@ -213,8 +214,9 @@ export function categorizeMerchant(text: string): TxCategory {
   // 임대료
   if (/임대료|월세|관리비|렌트/.test(t)) return "임대료";
 
-  // 세금
+  // 세금 / 공과 (상표·특허 관납료 포함 = 업무비용)
   if (/국세|부가세|소득세|법인세|건강보험|국민연금|고용보험|산재보험/.test(t)) return "세금";
+  if (/특허청|특허|상표|변리|특허법인|디자인등록/.test(t)) return "세금";
 
   // 식비 (식당 / 카페 / 마트 / 편의점 / 배달앱)
   if (/스타벅스|커피|이디야|투썸|파스쿠치|메가커피|던킨|버거킹|맥도날드|롯데리아|서브웨이/.test(t)) return "식비";
@@ -229,6 +231,13 @@ export function categorizeMerchant(text: string): TxCategory {
 
   // 경조사 (식비도 광고비도 아닌 일회성)
   if (/꽃다발|화환|근조|축하|결혼|장례|조의|부고|개업/.test(t)) return "기타";
+
+  // 개인 생활비 (1인기업/개인사업자 카드 혼용 — 명확한 개인지출은 회사비용에서 제외)
+  // 업무성이 조금이라도 있으면 위에서 이미 업무 카테고리로 분류됨. 여기 오는 건 명백한 생활비만.
+  if (/치과|의원|병원|약국|한의원|피부과|정형외과|이비인후과|안과|성형|클리닉|의료원|한방/.test(t)) return "개인";
+  if (/학원|교습소|어린이집|유치원|과외|키즈|어린이|놀이방|소아/.test(t)) return "개인";
+  if (/미용실|헤어|네일|이발|왁싱|에스테틱|뷰티|스파|마사지/.test(t)) return "개인";
+  if (/댄스|던스|필라테스|요가|골프|헬스|클라이밍|수영/.test(t)) return "개인";
 
   return "기타";
 }
@@ -249,5 +258,6 @@ export const CATEGORY_COLOR: Record<TxCategory, string> = {
   식비: "#f97316",
   "교통/연료": "#84cc16",
   송금: "#0ea5e9",
+  개인: "#fb7185",
   기타: "#a1a1aa",
 };
