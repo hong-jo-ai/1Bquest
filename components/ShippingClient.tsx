@@ -530,10 +530,10 @@ export default function ShippingClient() {
             ) : (
               filtered.map((s) => (
                 <tr key={s.id} className={`border-b border-slate-100 last:border-0 ${isDelivered(s.tracking_state) ? "bg-emerald-50" : CHANNEL_TINT[s.channel] || ""}`}>
-                  <td className="px-3 py-2 text-slate-600">{s.channel}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{fmtRegAt(s.registered_at)}</td>
-                  <td className="px-3 py-2 text-slate-700">{s.recipient_name}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-700">{s.recipient_name}</td>
                   <td className="px-3 py-2 max-w-[200px] truncate text-slate-600" title={s.product_name || ""}>
                     {s.product_name}
                   </td>
@@ -544,8 +544,8 @@ export default function ShippingClient() {
                       s.regi_no || "—"
                     )}
                   </td>
-                  <td className="px-3 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
                       {STATUS_LABEL[s.status] || s.status}
                     </span>
                     {s.error_message && (
@@ -554,15 +554,15 @@ export default function ShippingClient() {
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs">
                     <TrackingBadge state={s.tracking_state} />
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     {tab === "1" && s.status !== "cancelled" && s.regi_no && (
                       <button
                         onClick={() => registerReturn(s)}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                       >
                         {busy === `return-${s.id}` ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
