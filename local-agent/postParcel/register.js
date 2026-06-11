@@ -17,7 +17,7 @@ const { mapOutbound, mapReturn } = require("./orderMapper");
 const { addrToZip } = require("./addrToZip");
 const { insertOrder, cancelOrder, PostParcelError } = require("./client");
 const { createClient } = require(path.join(
-  "/Users/mac/sungjo_ai/paulwise-dashboard",
+  path.resolve(__dirname, "..", ".."),
   "node_modules/@supabase/supabase-js"
 ));
 

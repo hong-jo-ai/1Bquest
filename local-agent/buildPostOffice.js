@@ -10,7 +10,7 @@
 require("dotenv").config({ override: true }); // local-agent/.env (CM29_*, PAULWISE_MCP_TOKEN 등)
 const fs = require("fs"), path = require("path");
 const XLSX = require("xlsx");
-const DASH = "/Users/mac/sungjo_ai/paulwise-dashboard";
+const DASH = path.resolve(__dirname, "..");
 function loadEnv(p){ try { for(const line of fs.readFileSync(p,"utf8").split("\n")){const m=line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(!m)continue;let v=m[2].trim().replace(/^["']|["']$/g,"");if(!(m[1] in process.env))process.env[m[1]]=v;} } catch {} }
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
