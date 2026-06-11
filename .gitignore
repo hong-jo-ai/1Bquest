@@ -48,3 +48,6 @@ crisp plugin identifier*
 
 # 개인 비즈니스 계획 문서
 business-plan-*.md
+
+# Moloco RMP 광고비 동기화 브라우저 세션 프로필
+local-agent/.moloco-ads-*
