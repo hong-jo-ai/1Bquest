@@ -237,7 +237,7 @@ export function lineItemRevenue(it: {
  *   - 비어있더라도 `actual_payment_amount > 0` 이면 결제됨 (외부 PG 케이스).
  *   - 둘 다 없으면 미결제 → 매출에서 제외.
  *
- * (입금 후 취소된 N40/N41 케이스는 환불이 별도로 회계 처리되는 구조라 여기선 제외하지 않는다.)
+ * (결제 후 취소는 isCanceledOrder 로 별도 제외 — 아래 참조. 매출 기준은 결제일 그대로.)
  */
 export function isPaidOrder(o: {
   payment_date?: string | null;
@@ -246,6 +246,23 @@ export function isPaidOrder(o: {
   if (typeof o.payment_date === "string" && o.payment_date.trim() !== "") return true;
   const paid = parseFloat(String(o.actual_payment_amount ?? "0"));
   return Number.isFinite(paid) && paid > 0;
+}
+
+/**
+ * 전체취소된 주문 — 매출에서 제외.
+ *
+ * 카페24 주문의 `canceled` 플래그: "F"=정상, "T"=전체취소, "M"=부분취소.
+ * 결제 후 취소돼도 `payment_date`/`total_amount` 가 그대로 남아 매출이 과대계상되던 문제를
+ * 막기 위해, "T"(전체취소)는 통째로 제외한다.
+ *
+ * "M"(부분취소/교환)은 주문이 살아있고 order_price_amount·payment_amount 가 이미 취소·교환분을
+ * 반영한 실결제액이라(검증: 교환주문 20260505-0000028 payment_amount=31,000), orderRevenue 그대로 사용.
+ * 라인아이템 netting 은 actual_quantity 누락 시 교환분을 이중계상해 오히려 부정확 → 쓰지 않는다.
+ *
+ * (배송완료 후 반품/교환은 canceled 가 "T"로 안 바뀔 수 있어 여기선 못 거른다 — 추후 claim/refund 신호 보완.)
+ */
+export function isCanceledOrder(o: { canceled?: string | null }): boolean {
+  return o.canceled === "T";
 }
 
 // ── 공동구매 채널 분리 ────────────────────────────────────────────────────
@@ -386,8 +403,10 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
 
   // 입금전(N00) 주문은 매출에서 제외 — 무통장 입금 미완료로 자동 취소되는 케이스가 잦음.
   // 입금 확인 후 배송준비중(N10) 이상으로 넘어간 주문만 진짜 매출로 본다.
-  const monthOrders     = rawMonthOrders.filter(isPaidOrder);
-  const prevMonthOrders = rawPrevMonthOrders.filter(isPaidOrder);
+  // 추가: 결제 후 전체취소(canceled="T")도 제외 — 과대계상 방지. (부분취소 M은 살림 — payment_amount가 이미 실결제분 반영)
+  const keep = (o: any) => isPaidOrder(o) && !isCanceledOrder(o);
+  const monthOrders     = rawMonthOrders.filter(keep);
+  const prevMonthOrders = rawPrevMonthOrders.filter(keep);
 
   // ── 공동구매 채널 분리 — 공구 상품(226 등)은 카페24에서 빼고 공구로 ──────
   const gbNos = await getGroupBuyProductNos();
