@@ -244,6 +244,15 @@ export default function ShippingClient() {
     }
   }
 
+  // 앱 접속 시 배송조회 1회 자동 갱신 (이후는 '배송조회 갱신' 버튼으로만)
+  const didAutoTrack = useRef(false);
+  useEffect(() => {
+    if (didAutoTrack.current) return;
+    didAutoTrack.current = true;
+    refreshTracking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 엑셀 파일 접수
   const fileRef = useRef<HTMLInputElement>(null);
   async function uploadExcel(e: React.ChangeEvent<HTMLInputElement>) {
@@ -328,7 +337,15 @@ export default function ShippingClient() {
   // 검색은 서버가 처리(기본 1주일 / 검색 시 보관 포함 전체). 클라이언트는 즉시 반응용 텍스트 필터만.
   const filtered = shipments.filter((s) => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
+    if (!q) {
+      // 기본 목록: 배송완료 후 3일 지난 건은 숨김(배달완료건은 재조회 안 하므로 checked_at≈배달감지시점).
+      // 검색 시엔 보관분 포함 전부 노출되므로 이 숨김은 검색 안 할 때만 적용.
+      if (isDelivered(s.tracking_state) && s.tracking_checked_at &&
+          Date.now() - new Date(s.tracking_checked_at).getTime() > 3 * 24 * 60 * 60 * 1000) {
+        return false;
+      }
+      return true;
+    }
     return [s.recipient_name, s.order_number, s.regi_no, s.product_name, s.channel]
       .some((v) => String(v || "").toLowerCase().includes(q));
   });
@@ -507,7 +524,6 @@ export default function ShippingClient() {
               <th className="px-3 py-2 font-medium">수취인</th>
               <th className="px-3 py-2 font-medium">상품</th>
               <th className="px-3 py-2 font-medium">운송장번호</th>
-              <th className="px-3 py-2 font-medium">상태</th>
               <th className="px-3 py-2 font-medium">배송상태</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
@@ -515,13 +531,13 @@ export default function ShippingClient() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-slate-400">
+                <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-slate-400">
+                <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
                   {shipments.length === 0
                     ? `접수 내역이 없습니다. ${tab === "1" ? "‘출고 일괄 접수’ 또는 ‘단건 접수’로 등록하세요." : ""}`
                     : "검색 결과가 없습니다."}
@@ -544,18 +560,17 @@ export default function ShippingClient() {
                       s.regi_no || "—"
                     )}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
-                      {STATUS_LABEL[s.status] || s.status}
-                    </span>
-                    {s.error_message && (
-                      <div className="mt-0.5 text-xs text-rose-500" title={s.error_message}>
-                        {s.error_code}
-                      </div>
-                    )}
-                  </td>
                   <td className="px-3 py-2 whitespace-nowrap text-xs">
-                    <TrackingBadge state={s.tracking_state} />
+                    {/* 접수완료는 목록에 있다는 것 자체로 자명 → 배지 생략. 오류/취소만 표시, 그 외엔 배송상태. */}
+                    {s.status === "error" ? (
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 font-semibold text-rose-600" title={s.error_message || ""}>
+                        접수실패{s.error_code ? ` (${s.error_code})` : ""}
+                      </span>
+                    ) : s.status === "cancelled" ? (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-500">취소됨</span>
+                    ) : (
+                      <TrackingBadge state={s.tracking_state} />
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {tab === "1" && s.status !== "cancelled" && s.regi_no && (
@@ -601,9 +616,12 @@ export default function ShippingClient() {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-xs font-medium text-slate-600">{s.channel}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
-                    {STATUS_LABEL[s.status] || s.status}
-                  </span>
+                  {/* 접수완료 배지는 생략(목록에 있음=접수완료). 오류/취소만 표시. */}
+                  {(s.status === "error" || s.status === "cancelled") && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[s.status] || "bg-slate-300"}`}>
+                      {STATUS_LABEL[s.status] || s.status}
+                    </span>
+                  )}
                 </div>
                 <TrackingBadge state={s.tracking_state} />
               </div>
