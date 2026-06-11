@@ -1,16 +1,21 @@
 /**
  * 식스샵 반품/교환/취소 클레임 처리 — 인박스 반품 카드의 액션 버튼.
- * POST { action: 'received' | 'complete' | 'reject' }
- *   action → 식스샵 주문목록 툴바 버튼 텍스트 매핑(클레임 종류별) → 큐 적재 → 워커가 처리 → cs_returns 상태 갱신.
- * 브라우저 액션이라 iMac 워커(csActionWorker) 경유. done 까지 폴링(maxDuration 60).
+ * POST { action: 'pickup' | 'received' | 'complete' | 'reject' }
+ *   - pickup: 우체국 반품 회수 접수(출고 수령주소를 회수지로) → in_transit(대기중). 우체국 큐 워커 경유.
+ *   - received|complete|reject: 식스샵 주문목록 툴바 버튼 매핑 → cs_action 큐 → 브라우저 워커(csActionWorker).
+ * done 까지 폴링(maxDuration 60).
  */
 import { type NextRequest } from "next/server";
 import { enqueueCsAction, waitCsAction } from "@/lib/cs/actionQueue";
 import { getReturnByThread, setReturnStatus } from "@/lib/cs/sixshopIngest";
-import type { CsClaimType, CsReturnStatus } from "@/lib/cs/types";
+import { getCsSupabase } from "@/lib/cs/store";
+import { enqueueJob, getJob } from "@/lib/postParcel/queue";
+import { CHANNEL_LABEL, type CsClaimType, type CsReturnStatus, type CsReturn } from "@/lib/cs/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // 액션 → (클레임종류별 식스샵 버튼텍스트, 처리 후 상태)
 function resolveButton(action: string, claim: CsClaimType): { buttonText: string; next: CsReturnStatus } | null {
@@ -26,11 +31,68 @@ function resolveButton(action: string, claim: CsClaimType): { buttonText: string
   return null;
 }
 
+/** 우체국 반품 회수 접수 — 출고 수령주소(pp_shipments)를 회수지로 큐 적재 → 워커 → in_transit(대기중).
+ *  우체국 API 는 한국 IP·보안키가 필요해 iMac register-queue 워커가 실행. 서버측 폴링으로 결과 대기. */
+async function handlePickup(threadId: string, ret: CsReturn) {
+  const db = getCsSupabase();
+  const channelLabel = CHANNEL_LABEL[ret.channel] ?? ret.channel; // sixshop→식스샵
+  const { data: pp } = await db
+    .from("pp_shipments")
+    .select("recipient_name,recipient_addr,recipient_zip,recipient_mobile,recipient_tel,regi_no")
+    .eq("order_number", ret.order_number)
+    .eq("channel", channelLabel)
+    .eq("req_type", "1")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!pp || !pp.recipient_addr || !pp.recipient_zip) {
+    return Response.json({ ok: false, error: "회수 주소를 찾을 수 없습니다(출고 기록 없음) — 수동 접수 필요" }, { status: 422 });
+  }
+  const jobId = await enqueueJob("return", {
+    order: ret.order_number,
+    seller: channelLabel,
+    name: pp.recipient_name || ret.customer_name || "",
+    addr: pp.recipient_addr,
+    zip: pp.recipient_zip,
+    mobile: pp.recipient_mobile || "",
+    tel: pp.recipient_tel || "",
+    prod: ret.product || "",
+    retOrigRegiNo: pp.regi_no || "",
+  });
+  let job = null;
+  for (let i = 0; i < 25; i++) {
+    await sleep(2000);
+    job = await getJob(jobId);
+    if (job && (job.status === "done" || job.status === "error")) break;
+  }
+  if (!job || job.status !== "done") {
+    return Response.json({ ok: false, error: job?.error || "우체국 접수 시간초과 — 잠시 후 다시 시도" }, { status: 502 });
+  }
+  const regiNo = (job.result as { regiNo?: string } | null)?.regiNo || "";
+  const isReal = !!regiNo && regiNo !== "TESTREGINOAPI";
+  await setReturnStatus(threadId, "in_transit", isReal ? { recoveryTrackingNo: regiNo } : undefined);
+  return Response.json({
+    ok: true,
+    status: "in_transit",
+    regiNo,
+    message: isReal ? `우체국 회수 접수 완료 — 회수송장 ${regiNo} · 대기중으로 이동` : "우체국 회수 접수(테스트) · 대기중으로 이동",
+  });
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { action } = (await req.json().catch(() => ({}))) as { action?: string };
   const ret = await getReturnByThread(id);
   if (!ret) return Response.json({ error: "반품 정보 없음" }, { status: 404 });
+
+  // 우체국 반품 회수 접수(대기중으로) — 브라우저 워커 아님, 우체국 큐 경유.
+  if (action === "pickup") {
+    try {
+      return await handlePickup(id, ret);
+    } catch (e) {
+      return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
+    }
+  }
 
   // 채널별 잡 종류/버튼 매핑. W컨셉 반품은 '회수완료' 단일 액션(회수는 자동, 도착 후 회수완료 → 완료).
   let kind: "sixshop_claim" | "wconcept_claim";

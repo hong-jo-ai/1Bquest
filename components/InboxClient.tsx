@@ -399,7 +399,7 @@ export default function InboxClient() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "처리 실패");
-      showToast("처리 완료 — 식스샵 반영됨");
+      showToast(data.message || "처리 완료 — 식스샵 반영됨");
       await loadThreads();
       await loadDetail(selectedId);
     } catch (e) {
@@ -1087,14 +1087,24 @@ function ThreadDetailView({
             </div>
           ) : csReturn ? (
             <div className="flex items-center gap-2 justify-center flex-wrap">
-              <button onClick={() => onReturnAction?.("received")} disabled={!!returnBusy}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
-                {returnBusy === "received" ? "처리 중…" : "회수 도착 확인"}
-              </button>
-              <button onClick={() => onReturnAction?.("complete")} disabled={!!returnBusy}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                {returnBusy === "complete" ? "처리 중…" : `${CLAIM_TYPE_LABEL[csReturn.claim_type]} 완료`}
-              </button>
+              {csReturn.status === "requested" ? (
+                // 신청 단계: 우체국 반품 회수 접수 → 대기중(택배 도착까지 알람 끔)
+                <button onClick={() => onReturnAction?.("pickup")} disabled={!!returnBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                  {returnBusy === "pickup" ? "우체국 접수 중…" : "우체국 회수 접수"}
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => onReturnAction?.("received")} disabled={!!returnBusy}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                    {returnBusy === "received" ? "처리 중…" : "회수 도착 확인"}
+                  </button>
+                  <button onClick={() => onReturnAction?.("complete")} disabled={!!returnBusy}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {returnBusy === "complete" ? "처리 중…" : `${CLAIM_TYPE_LABEL[csReturn.claim_type]} 완료`}
+                  </button>
+                </>
+              )}
               <button onClick={() => onReturnAction?.("reject")} disabled={!!returnBusy}
                 className="px-4 py-2 rounded-lg text-sm font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50">
                 {returnBusy === "reject" ? "처리 중…" : "거부"}
@@ -1103,7 +1113,11 @@ function ThreadDetailView({
           ) : (
             <div className="text-center text-xs text-zinc-500">반품 정보를 불러오는 중…</div>
           )}
-          <p className="text-center text-[11px] text-zinc-400 mt-2">버튼을 누르면 식스샵에 자동 반영됩니다(처리 ~20초)</p>
+          <p className="text-center text-[11px] text-zinc-400 mt-2">
+            {csReturn?.status === "requested"
+              ? "우체국에 반품 회수를 접수하고 대기중으로 이동합니다 (~10초). 택배 도착 후 회수 도착 확인을 누르세요."
+              : "버튼을 누르면 식스샵에 자동 반영됩니다(처리 ~20초)"}
+          </p>
         </div>
       ) : (
       <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">

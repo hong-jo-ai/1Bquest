@@ -10,7 +10,18 @@ import {
   type CsBrandId,
   type CsClaimType,
   type CsReturnStatus,
+  type CsStatus,
 } from "./types";
+
+// 반품 라이프사이클 → 인박스 스레드 상태(탭/알람).
+//  requested(우체국 회수 접수 필요)·received(반품완료 처리 필요) = unanswered(미답변·알람)
+//  in_transit(회수 중)·confirmed(수락) = waiting(대기중 — 알람 끔, 택배 도착 대기)
+//  done·rejected = resolved
+export function threadStatusForReturn(status: string): CsStatus {
+  if (status === "done" || status === "rejected") return "resolved";
+  if (status === "in_transit" || status === "confirmed") return "waiting";
+  return "unanswered";
+}
 
 export interface SixshopClaimInput {
   brand?: CsBrandId;          // 기본 paulvice (상품이 폴바이스)
@@ -37,8 +48,7 @@ export async function upsertSixshopClaim(
   const at = c.requestedAt ?? new Date().toISOString();
   const subject = `[${CLAIM_TYPE_LABEL[c.claimType]}] ${c.product ?? c.orderNumber}`;
   const previewText = `${CLAIM_TYPE_LABEL[c.claimType]} · ${RETURN_STATUS_LABEL[c.status]}`;
-  // 완료/거부 = resolved, 그 외(요청·수락·회수중·도착) = unanswered(처리 필요)
-  const threadStatus = c.status === "done" || c.status === "rejected" ? "resolved" : "unanswered";
+  const threadStatus = threadStatusForReturn(c.status);
 
   const { data: existing } = await db
     .from("cs_threads")
@@ -114,10 +124,16 @@ export async function getReturnByThread(threadId: string): Promise<import("./typ
   return (data as import("./types").CsReturn) ?? null;
 }
 
-/** 클레임 처리 후 라이프사이클 상태 갱신 + 스레드 상태 동기화(done/rejected→resolved). */
-export async function setReturnStatus(threadId: string, status: import("./types").CsReturnStatus): Promise<void> {
+/** 클레임 처리 후 라이프사이클 상태 갱신 + 스레드 상태 동기화([[threadStatusForReturn]]).
+ *  extra 로 cs_returns 추가 컬럼(회수송장 등) 동시 갱신. */
+export async function setReturnStatus(
+  threadId: string,
+  status: import("./types").CsReturnStatus,
+  extra?: { recoveryTrackingNo?: string },
+): Promise<void> {
   const db = getCsSupabase();
-  await db.from("cs_returns").update({ status, updated_at: new Date().toISOString() }).eq("thread_id", threadId);
-  const threadStatus = status === "done" || status === "rejected" ? "resolved" : "unanswered";
-  await db.from("cs_threads").update({ status: threadStatus }).eq("id", threadId);
+  const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  if (extra?.recoveryTrackingNo) patch.recovery_tracking_no = extra.recoveryTrackingNo;
+  await db.from("cs_returns").update(patch).eq("thread_id", threadId);
+  await db.from("cs_threads").update({ status: threadStatusForReturn(status) }).eq("id", threadId);
 }
