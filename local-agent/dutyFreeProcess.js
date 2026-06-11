@@ -31,6 +31,12 @@ const LOTTE_OUT = process.env.DUTYFREE_LOTTE_DIR || path.join(DRIVE, "제이에�
 const PY = process.env.DUTYFREE_PYTHON || "/usr/bin/python3"; // launchd 최소 PATH 대비 절대경로 (openpyxl 설치된 시스템 python)
 const SUPPLIES_KEY = "paulwise:supplies:v1";
 const SHIPLOG_KEY = "paulwise:dutyfree-shipments:v1";
+const { registerSingle } = require("./postParcel/register");
+// 면세점 입고처(우체국 송장 받는분). zip 비우면 registerSingle 이 주소로 자동조회. 전화는 유선(032)→tel.
+const RECIPIENTS = {
+  신세계: { name: "신세계면세점", addr: "인천광역시 중구 자유무역로107번길 25(운서동) 은산물류창고내 신세계면세점(토산)", tel: "032-744-0866", zip: "" },
+  롯데: { name: "롯데면세점", addr: "인천광역시 중구 공항동로296번길 97-26(운서동) 한국면세점협회 제2통합물류창고 자유무역지역 E1부지", tel: "032-743-0444", zip: "" },
+};
 
 function arg(name, def) { const i = process.argv.indexOf("--" + name); return i >= 0 ? (process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[i + 1] : true) : def; }
 const DRY = !!arg("dry", false);
@@ -126,13 +132,34 @@ async function tgDoc(filePath, displayName, caption) {
     }
   } else log(`[DRY] PDF 저장 생략`);
 
-  // ⑤ 부자재(면세점 박스) 차감 + 출고 이력 (멱등: date+store)
+  // ⑤ 우체국 송장 발급 + 부자재 박스 차감 + 출고 이력 (멱등: 박스=date+store / 송장=registerSingle dedup)
   let boxMsg = "";
+  const invoiceMsg = [];
   if (!DRY) {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
     const shipLog = (await kvGet(sb, SHIPLOG_KEY)) || [];
     const supplies = await kvGet(sb, SUPPLIES_KEY);
     const newStores = stores.filter((s) => !shipLog.some((e) => e.date === date && e.store === s));
+
+    // 우체국 송장 발급 (처리한 면세점 박스당 1송장, 받는분=면세점 입고처. registerSingle alreadyRegistered 로 멱등)
+    const regiByStore = {};
+    for (const s of stores) {
+      const rc = RECIPIENTS[s];
+      const it = s === "신세계" ? (items.sinsegae || []) : (items.lotte || []);
+      const qty = it.reduce((a, i) => a + i.qty, 0);
+      if (!rc) { invoiceMsg.push(`${s} 송장: 입고처 미설정`); continue; }
+      try {
+        const r = await registerSingle(
+          { name: rc.name, addr: rc.addr, zip: rc.zip || "", mobile: "", tel: rc.tel, prod: `면세점입고 주얼리 ${qty}점`, color: "", qty: String(qty || 1), order: `DF-${s}-${date}`, seller: "면세점" },
+          { reqType: "1", source: "면세점" },
+        );
+        regiByStore[s] = r.regiNo;
+        invoiceMsg.push(`${s} ${r.regiNo}${r.skipped ? "(기존)" : r.test ? "(TEST)" : ""}`);
+        log(`  우체국 송장 ${s}: ${r.regiNo}${r.skipped ? " (이미 발급)" : ""}`);
+      } catch (e) { invoiceMsg.push(`${s} 송장 발급 실패`); log(`  우체국 송장 ${s} 실패: ${e.message}`); }
+    }
+
+    // 부자재 박스 차감
     if (supplies && Array.isArray(supplies)) {
       const box = supplies.find((x) => x.id === "box-dutyfree");
       if (box && newStores.length) {
@@ -142,13 +169,14 @@ async function tgDoc(filePath, displayName, caption) {
         boxMsg = `면세점 박스 −${newStores.length} (${before}→${box.currentStock}${before - newStores.length < 0 ? ", ⚠️박스 부족" : ""})`;
       } else if (!newStores.length) boxMsg = "박스 차감: 이미 처리됨(멱등 스킵)";
     } else { boxMsg = "⚠️ 부자재 미초기화(대시보드 1회 열어 시드 필요) — 박스 미차감"; }
-    // 출고 이력 적재
+
+    // 출고 이력 적재 (송장번호 포함)
     for (const s of newStores) {
       const it = s === "신세계" ? (items.sinsegae || []) : (items.lotte || []);
-      shipLog.push({ date, store: s, boxes: 1, itemCount: it.length, qty: it.reduce((a, i) => a + i.qty, 0), items: it, at: new Date().toISOString() });
+      shipLog.push({ date, store: s, boxes: 1, itemCount: it.length, qty: it.reduce((a, i) => a + i.qty, 0), regiNo: regiByStore[s] || null, items: it, at: new Date().toISOString() });
     }
     if (newStores.length) await kvSet(sb, SHIPLOG_KEY, shipLog);
-  } else boxMsg = "[DRY] 박스 미차감";
+  } else boxMsg = "[DRY] 박스 미차감 / 송장 미발급";
   log("  " + boxMsg);
 
   // ⑥ 텔레그램: 요약 + PDF 첨부(인쇄용)
@@ -156,6 +184,7 @@ async function tgDoc(filePath, displayName, caption) {
   if (ss) lines.push(`• 신세계: ${ssN}품목 / ${ssQ}pcs`);
   if (lt) lines.push(`• 롯데: ${ltN}품목 / ${ltQ}pcs`);
   if (saved.length) lines.push(`• 서류 ${saved.length}건 생성·드라이브 저장 (아래 첨부 — 인쇄용)`);
+  if (invoiceMsg.length) lines.push(`• 🏷️ 우체국 송장: ${invoiceMsg.join(" / ")}`);
   lines.push(`• ${boxMsg}`);
   await tg(lines.join("\n"));
   // 첨부: 패킹리스트 → 박스라벨 → 거래명세서 순으로 정렬
