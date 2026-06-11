@@ -72,6 +72,7 @@ function fmtDate(iso: string): string {
 const CARD_SOURCE_LABEL: Record<string, string> = {
   card_hyundai: "현대카드",
   card_kb: "KB국민카드",
+  card_woori_sms: "우리카드",
   npay: "네이버페이",
 };
 
