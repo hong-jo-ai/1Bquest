@@ -63,7 +63,7 @@ async function tgDoc(filePath, displayName, caption) {
   if (!t || !c) return false;
   let buf; try { buf = fs.readFileSync(filePath); } catch { return false; }
   let lastErr = "";
-  for (let a = 1; a <= 5; a++) {
+  for (let a = 1; a <= 6; a++) {
     try {
       const form = new FormData();
       form.append("chat_id", c);
@@ -74,8 +74,8 @@ async function tgDoc(filePath, displayName, caption) {
       const j = await r.json().catch(() => ({}));
       lastErr = `HTTP ${r.status} ${j.description || ""}`;
       const ra = j.parameters && j.parameters.retry_after;
-      await new Promise((res) => setTimeout(res, ra ? (ra + 1) * 1000 : 4000));
-    } catch (e) { lastErr = (e.cause && e.cause.code) || e.message; await new Promise((res) => setTimeout(res, 4000)); }
+      await new Promise((res) => setTimeout(res, ra ? (ra + 1) * 1000 : 6000));
+    } catch (e) { lastErr = (e.cause && e.cause.code) || e.message; await new Promise((res) => setTimeout(res, 6000)); }
   }
   log(`    첨부 오류(${displayName}): ${lastErr}`);
   return false;
@@ -162,7 +162,7 @@ async function tgDoc(filePath, displayName, caption) {
   const order = (n) => (/패킹리스트/.test(n) ? 0 : /부착/.test(n) ? 1 : 2);
   const sortedPdfs = [...pdfPaths].sort((a, b) => order(a.nf) - order(b.nf));
   for (let i = 0; i < sortedPdfs.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 1800)); // 연속 전송 레이트리밋 회피
+    if (i > 0) await new Promise((r) => setTimeout(r, 3000)); // 연속 전송 레이트리밋/단절 회피
     const x = sortedPdfs[i];
     const ok = await tgDoc(x.p, x.nf, x.nf.replace(/\.pdf$/i, ""));
     log(`  텔레그램 첨부 ${ok ? "✓" : "실패"}: ${x.nf}`);
