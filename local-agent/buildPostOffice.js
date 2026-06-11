@@ -16,6 +16,7 @@ loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local")
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
 const { getCm29OutboundRows } = require("./cm29Outbound");
 const { getMusinsaGlobalRows } = require("./musinsaGlobalOutbound");
+const { getMusinsaDomesticRows } = require("./musinsaDomesticOutbound");
 const { closeMarketplaceBrowsers } = require("./marketplaceSync");
 
 const HEADER = ["수취인명","수취인 이동통신","수취인 전화번호","수취인 주소","수취인 우편번호","상품명","색상","수량","배송메세지","주문번호","판매처"];
@@ -159,17 +160,18 @@ async function alreadyRegisteredKeys(){
 }
 
 async function collectOutboundRows(){
-  let cafe=[], six=[], cm=[], wc=[], mg=[];
+  let cafe=[], six=[], cm=[], wc=[], mg=[], md=[];
   try { cafe=await cafe24Rows(); log(`카페24 ${cafe.length}행`); } catch(e){ log("카페24 실패: "+e.message); }
   try { six=sixshopRows(); log(`식스샵 ${six.length}행`); } catch(e){ log("식스샵 실패: "+e.message); }
   try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
-  // 무신사 글로벌(국내 무신사 창고로 발송 → 우체국). 일반 주문은 무신사 풀필먼트 배송이라 대상 아님.
+  // 무신사: 글로벌·일반 모두 국내 우체국 발송. 일반은 상품준비중 변경 후 배송출고처리 엑셀에서 주소 수집.
   try { mg=await getMusinsaGlobalRows({}, log); log(`무신사글로벌 ${mg.length}행`); } catch(e){ log("무신사글로벌 실패: "+e.message); }
+  try { md=await getMusinsaDomesticRows({}, log); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); }
   await closeMarketplaceBrowsers().catch(()=>{});
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
-  const all=[...cafe,...six,...cm,...wc,...mg];
+  const all=[...cafe,...six,...cm,...wc,...mg,...md];
   const done=await alreadyRegisteredKeys();
   const rows=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
   const skipped=all.length-rows.length;
