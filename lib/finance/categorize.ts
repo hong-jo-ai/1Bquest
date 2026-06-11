@@ -196,11 +196,13 @@ export function categorizeMerchant(text: string): TxCategory {
   if (/^[A-Z]형\s*\d/.test(t)) return "매입"; // "A형 280x260x120"
 
   // 광고비
-  if (/광고|마케팅|배너|상위노출|키워드|facebook|meta|google\s*ads|kakao.*ad|naver.*ad|tiktok/i.test(t)) return "광고비";
+  if (/광고|마케팅|배너|상위노출|키워드|facebook|facebk|meta|google\s*ads|kakao.*ad|naver.*ad|tiktok/i.test(t)) return "광고비";
 
-  // 소프트웨어 / SaaS / 촬영장비
+  // 소프트웨어 / SaaS / AI 구독 (해외 결제 대부분이 여기)
   if (/saas|구독|월정액|cloud|aws|github|notion|figma|chatgpt|claude|openai|anthropic|vercel|supabase/i.test(t)) return "소프트웨어";
-  if (/dji|드론|카메라|액션캠|마이크|렌즈|카드리더|hdmi/i.test(t)) return "소프트웨어";
+  if (/canva|midjourney|gamsgo|google\s*digital|perplexity|cursor|adobe|dropbox|\bzoom\b|elevenlabs|heygen|runway|grammarly|replit|openrouter|apple\.com\/bill|itunes/i.test(t)) return "소프트웨어";
+  // 촬영장비(카메라/드론 등)는 소프트웨어가 아니라 매입(자산)
+  if (/dji|드론|카메라|액션캠|마이크|렌즈|카드리더|hdmi/i.test(t)) return "매입";
 
   // 통신비
   if (/skt|sk\s*텔레콤|kt\s|lgu\+|엘지유플러스|sk브로드밴드|통신/i.test(t)) return "통신비";
