@@ -77,6 +77,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
   const [metaLinked, setMetaLinked] = useState(false);
   const [wconceptAdsDaily, setWconceptAdsDaily] = useState<{ date: string; spend: number }[]>([]);
   const [categorySpend, setCategorySpend] = useState<Record<string, { amount: number; count: number }>>({});
+  const [invoiceByCategory, setInvoiceByCategory] = useState<Record<string, { amount: number; count: number }>>({});
 
   // 설정 불러오기
   useEffect(() => {
@@ -140,7 +141,10 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
     fetch(`/api/profit/category-spend?${params}`)
       .then((r) => r.json())
       .then((j) => {
-        if (j.ok) setCategorySpend(j.perCategory ?? {});
+        if (j.ok) {
+          setCategorySpend(j.perCategory ?? {});
+          setInvoiceByCategory(j.invoiceByCategory ?? {});
+        }
       })
       .catch(() => { /* 재무 데이터 없으면 0 처리 */ });
   }, [startDate, endDate]);
@@ -249,12 +253,23 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           : 0;
     const fixedAllocated = fullPeriodFixed * channelShare;
 
-    // 재무 자동 고정비 — 기간 내 실제 발생액 (월 환산 안 함, 그대로 안분 적용)
-    const autoFixedItems = AUTO_FIXED_CATEGORIES
-      .map((cat) => ({ cat, amount: categorySpend[cat]?.amount ?? 0, count: categorySpend[cat]?.count ?? 0 }))
+    // 재무 자동 고정비 — 기간 내 실제 발생액 (카드+통장 / 월 환산 안 함, 그대로 안분 적용)
+    // + 세금계산서(매입) 실비 보강: 추정치(채널수수료·배송비)와 겹치는 수수료/택배비·매입(COGS)·비용아닌 것은 제외.
+    const INVOICE_OVERLAP = new Set<string>(["수수료", "택배비", "매입", "매출", "카드결제", "송금"]);
+    const autoFixedItems: { cat: string; amount: number; count: number }[] = AUTO_FIXED_CATEGORIES
+      .map((cat) => {
+        const inv = INVOICE_OVERLAP.has(cat) ? 0 : (invoiceByCategory[cat]?.amount ?? 0);
+        const invCnt = INVOICE_OVERLAP.has(cat) ? 0 : (invoiceByCategory[cat]?.count ?? 0);
+        return { cat: cat as string, amount: (categorySpend[cat]?.amount ?? 0) + inv, count: (categorySpend[cat]?.count ?? 0) + invCnt };
+      })
       .filter((x) => x.amount > 0);
+    // 세금계산서 광고비(구글·네이버·무신사 등) — Meta/W컨셉과 별개 플랫폼이라 별도 가산
+    const invoiceAds = invoiceByCategory["광고비"]?.amount ?? 0;
+    if (invoiceAds > 0) autoFixedItems.push({ cat: "광고비(세금계산서)", amount: invoiceAds, count: invoiceByCategory["광고비"]?.count ?? 0 });
     const autoFixedTotal = autoFixedItems.reduce((s, x) => s + x.amount, 0);
     const autoFixedAllocated = autoFixedTotal * channelShare;
+    // 매입 세금계산서(상품제작·원가) — COGS 판매시점 매칭 대기(상품 원가 미설정). 손익 차감 안 함, 표시만.
+    const pendingCogsInvoice = invoiceByCategory["매입"]?.amount ?? 0;
 
     const operatingProfit = grossProfit - fixedAllocated - autoFixedAllocated;
     const margin = totalRev > 0 ? (operatingProfit / totalRev) * 100 : 0;
@@ -320,13 +335,14 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
       autoFixedItems,
       autoFixedTotal,
       autoFixedAllocated,
+      pendingCogsInvoice,
       channelShare,
       operatingProfit,
       margin,
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend, invoiceByCategory]);
 
   return (
     <section className="space-y-4 min-w-0">

@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   const sinceTs = `${since}T00:00:00+09:00`;
   const untilTs = `${until}T23:59:59+09:00`;
 
-  const [bankRes, cardRes] = await Promise.all([
+  const [bankRes, cardRes, invRes] = await Promise.all([
     db
       .from("finance_bank_tx")
       .select("category, withdrawal")
@@ -53,6 +53,13 @@ export async function GET(req: NextRequest) {
       .select("category, amount, cancel_amount")
       .gte("use_date", sinceTs)
       .lte("use_date", untilTs),
+    // 매입 전자세금계산서(현금이체 비용) — write_date 기준. 통장 미업로드분의 실비 보강.
+    db
+      .from("finance_tax_invoices")
+      .select("category, total_amount, write_date")
+      .eq("invoice_type", "purchase")
+      .gte("write_date", since)
+      .lte("write_date", until),
   ]);
 
   if (bankRes.error) {
@@ -79,12 +86,26 @@ export async function GET(req: NextRequest) {
     add(r.category as string | null, net);
   }
 
+  // 세금계산서(매입)는 별도 버킷으로 — 추정치(수수료%·배송비)와 중복될 수 있어
+  // 소비측(ProfitDashboard)이 카테고리별로 가산 여부를 결정한다.
+  const invoiceByCategory: Record<string, { amount: number; count: number }> = {};
+  for (const r of invRes.data ?? []) {
+    const amt = Number(r.total_amount) || 0;
+    if (amt <= 0) continue;
+    const c = (r.category as string | null) || "기타";
+    if (!invoiceByCategory[c]) invoiceByCategory[c] = { amount: 0, count: 0 };
+    invoiceByCategory[c].amount += amt;
+    invoiceByCategory[c].count += 1;
+  }
+
   return Response.json({
     ok: true,
     perCategory,
+    invoiceByCategory,
     since,
     until,
     bankCount: bankRes.data?.length ?? 0,
     cardCount: cardRes.data?.length ?? 0,
+    invoiceCount: invRes.data?.length ?? 0,
   });
 }

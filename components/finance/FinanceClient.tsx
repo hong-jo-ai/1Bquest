@@ -282,6 +282,86 @@ function CardExpenses() {
   );
 }
 
+interface TaxInvoiceRow {
+  id: string;
+  invoice_type: string;
+  write_date: string | null;
+  partner_name: string | null;
+  total_amount: number;
+  supply_amount: number;
+  tax_amount: number;
+  category: string | null;
+}
+
+/** 매입 전자세금계산서 (메일 자동수집) — 현금이체 비용을 업로드 없이 표시. */
+function TaxInvoices() {
+  const [items, setItems] = useState<TaxInvoiceRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/finance/tax-invoices?type=purchase&limit=200`);
+      const j = await res.json();
+      if (j.ok) setItems(j.invoices ?? []);
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const total = useMemo(() => items.reduce((s, it) => s + (Number(it.total_amount) || 0), 0), [items]);
+  const byCat = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const it of items) m[it.category || "미분류"] = (m[it.category || "미분류"] || 0) + (Number(it.total_amount) || 0);
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  }, [items]);
+
+  return (
+    <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 min-w-0 text-left">
+          {open ? <ChevronUp size={16} className="text-zinc-400 shrink-0" /> : <ChevronDown size={16} className="text-zinc-400 shrink-0" />}
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">매입 세금계산서 <span className="text-emerald-600 dark:text-emerald-400">자동수집</span></h2>
+            <p className="text-[11px] text-zinc-500 truncate">현금이체 비용 — 메일에서 자동 수집(업로드 불필요) · {items.length}건 · 합계 {fmtKrw(total)}</p>
+          </div>
+        </button>
+        <button onClick={load} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 shrink-0" title="새로고침">
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+      {open && (
+        items.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-zinc-400">{loading ? "불러오는 중…" : "수집된 매입 세금계산서가 없습니다."}</p>
+        ) : (
+          <>
+            {byCat.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+                {byCat.map(([cat, v]) => (
+                  <span key={cat} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">{cat}</span>
+                    <span className="tabular-nums text-zinc-500">{fmtKrw(v)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-[420px] overflow-auto">
+              {items.map((it) => (
+                <li key={it.id} className="flex items-center gap-2 px-4 py-2 text-sm">
+                  <span className="text-[11px] text-zinc-400 tabular-nums w-16 shrink-0">{it.write_date?.slice(5) || "-"}</span>
+                  <span className="flex-1 min-w-0 truncate text-zinc-800 dark:text-zinc-200">{it.partner_name || "(미상)"}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 shrink-0">{it.category || "미분류"}</span>
+                  <span className="tabular-nums shrink-0 text-zinc-700 dark:text-zinc-300 font-medium">{fmtKrw(Number(it.total_amount))}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      )}
+    </section>
+  );
+}
+
 export default function FinanceClient() {
   const [txs, setTxs] = useState<BankTx[]>([]);
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
@@ -327,7 +407,7 @@ export default function FinanceClient() {
             재무 관리
           </h1>
           <p className="text-xs text-zinc-500 mt-1">
-            은행 거래내역 업로드 + 자동 분류 — 어디에 돈을 쓰고 어디서 돈이 들어오는지 한눈에
+            카드(우리카드 SMS)·전자세금계산서·광고비는 자동 수집 — 아래 업로드는 보조용
           </p>
         </div>
         <button
@@ -376,7 +456,7 @@ export default function FinanceClient() {
         />
         <UploadCard
           title="홈택스 매입세금계산서"
-          hint="전자세금계산서 → 매입 → 다운로드"
+          hint="이제 메일에서 자동수집 — 보조용(누락분 보완)"
           accept=".xls,.xlsx"
           uploadUrl="/api/finance/tax-invoices?type=purchase"
           multiple
@@ -396,7 +476,7 @@ export default function FinanceClient() {
         />
         <UploadCard
           title="W컨셉 광고 일별 리포트"
-          hint="W컨셉 광고센터 → 일별 성과 → CSV 다운로드"
+          hint="이제 Moloco에서 매일 자동집계 — 보조용(수동 보정)"
           accept=".csv"
           uploadUrl="/api/finance/ad-spend?source=wconcept"
           onSuccess={(j) =>
@@ -407,6 +487,9 @@ export default function FinanceClient() {
 
       {/* 카드 지출 — SMS 자동수집 (업로드 불필요) */}
       <CardExpenses />
+
+      {/* 매입 세금계산서 — 메일 자동수집 (현금이체 비용) */}
+      <TaxInvoices />
 
       {/* 요약 카드 — 모바일에선 세로 쌓기 (큰 금액이 잘리지 않도록) */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
