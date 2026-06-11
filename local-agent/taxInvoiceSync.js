@@ -58,6 +58,21 @@ const b64u = (s) => Buffer.from(String(s).replace(/-/g, "+").replace(/_/g, "/"),
 
 const num = (s) => Number(String(s == null ? "" : s).replace(/[^\d.-]/g, "")) || 0;
 
+// lib/finance/hometaxParser.ts categorizeInvoice 의 JS 미러 (이메일 수집분 분류)
+function catInvoice(partnerName, itemNames) {
+  const text = `${partnerName || ""} ${(itemNames || []).join(" ")}`;
+  if (/세무|회계법인|회계사무소|기장|세무사/i.test(text)) return "세금";
+  if (/카페24|토스페이먼츠|KG이니시스|KCP|네이버파이낸셜|NICE/i.test(text)) return "수수료";
+  if (/패키지|박스|포장|인쇄/i.test(text)) return "매입";
+  if (/광고|마케팅|페이스북|구글|카카오|네이버광고|tiktok/i.test(text)) return "광고비";
+  if (/택배|배송|운송|CJ대한통운|한진택배|로젠|쿠팡로지스/i.test(text)) return "택배비";
+  if (/임대|월세|관리비/i.test(text)) return "임대료";
+  if (/통신|전화|인터넷|SKT|KT|LGU/i.test(text)) return "통신비";
+  if (/aws|cloud|github|vercel|notion|figma|saas|소프트웨어/i.test(text)) return "소프트웨어";
+  if (/위탁|정산|반품|매출/i.test(text)) return "매출";
+  return "매입";
+}
+
 // 복호화된 NTS 세금계산서 텍스트 → 구조화
 function parseNts(text) {
   const t = text.replace(/ /g, " ").replace(/[ \t]+/g, " ");
@@ -160,7 +175,7 @@ async function main() {
           business_id: biz.id, invoice_type: "purchase", approval_no: inv.approval,
           write_date: inv.writeDate, partner_reg_no: inv.supplierReg, partner_name: inv.supplierName, partner_rep: inv.supplierRep,
           supply_amount: inv.supply, tax_amount: inv.tax, total_amount: inv.total,
-          category: "매입", category_source: "email",
+          category: catInvoice(inv.supplierName, (inv.items || []).map((i) => i.name)), category_source: "email",
           raw: { source: "email_nts", mailbox: mb.label, buyerReg: inv.buyerReg, items: inv.items, businessMatched: biz.matched },
         }, { onConflict: "business_id,approval_no", ignoreDuplicates: true }).select("id");
         if (error) { log(`  적재 오류: ${error.message}`); continue; }

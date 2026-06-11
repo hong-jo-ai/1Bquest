@@ -256,6 +256,7 @@ export function parseHometaxExcel(
 export function categorizeInvoice(inv: ParsedInvoice, items: ParsedInvoiceItem[]): string {
   const text = `${inv.partnerName} ${items.map((i) => i.itemName).join(" ")}`;
 
+  if (/세무|회계법인|회계사무소|기장|세무사/i.test(text)) return "세금"; // 세무·기장 등 전문서비스 운영비
   if (/카페24|토스페이먼츠|KG이니시스|KCP|네이버파이낸셜|NICE/i.test(text)) return "수수료";
   if (/패키지|박스|포장|인쇄/i.test(text)) return "매입"; // 패키지 제작
   if (/광고|마케팅|페이스북|구글|카카오|네이버광고|tiktok/i.test(text)) return "광고비";
