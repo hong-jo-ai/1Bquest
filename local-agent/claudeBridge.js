@@ -17,6 +17,7 @@ const DASH = path.resolve(__dirname, "..");
 function le(p) { try { for (const l of fs.readFileSync(p, "utf8").split("\n")) { const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if (!m) continue; let v = m[2].trim().replace(/^["']|["']$/g, ""); if (!(m[1] in process.env)) process.env[m[1]] = v; } } catch {} }
 le(path.join(DASH, ".env.supabase")); le(path.join(DASH, ".env.local")); le(path.join(__dirname, ".env"));
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
+const { speak } = require("./voice");
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 const CLAUDE = process.env.CLAUDE_BIN || "/Users/mac/.local/bin/claude";
@@ -43,12 +44,13 @@ async function tg(msg, chatId) {
 }
 
 // 헤드리스 Claude Code 실행 (Sonnet · 가드훅 · 쓰기/실행 + 확인게이트). resume 로 대화 연속 가능.
-function runTask(instruction, resumeId, chatId) {
+function runTask(instruction, resumeId, chatId, viaVoice) {
   const args = ["-p", instruction, "--model", MODEL, "--output-format", "json", "--settings", SETTINGS,
     "--allowedTools", "Read,Grep,Glob,Bash,Edit,Write,MultiEdit", "--append-system-prompt", SAFETY];
   if (resumeId) args.push("--resume", resumeId);
-  // 확인 게이트(claudeBridgeConfirm.js)가 어느 채팅으로 질문을 보낼지 + 가드훅이 쓸 node 경로 전달
-  const env = { ...process.env, CLAUDE_BRIDGE_CHATID: String(chatId || process.env.TELEGRAM_CHAT_ID || ""), CLAUDE_BRIDGE_NODE: process.execPath };
+  // 확인 게이트(claudeBridgeConfirm.js)가 어느 채팅으로 질문을 보낼지 + 가드훅이 쓸 node 경로,
+  // 그리고 음성지시면 확인질문도 음성으로(CLAUDE_BRIDGE_VOICE) 전달.
+  const env = { ...process.env, CLAUDE_BRIDGE_CHATID: String(chatId || process.env.TELEGRAM_CHAT_ID || ""), CLAUDE_BRIDGE_NODE: process.execPath, CLAUDE_BRIDGE_VOICE: viaVoice ? "1" : "" };
   const out = execFileSync(CLAUDE, args, { cwd: DASH, encoding: "utf8", maxBuffer: 64 << 20, timeout: 1500000, env });
   const j = JSON.parse(out);
   return { result: j.result || "(결과 없음)", cost: j.total_cost_usd || 0, sessionId: j.session_id, isError: !!j.is_error, denials: (j.permission_denials || []).length };
@@ -58,9 +60,11 @@ async function processTask(id, task) {
   const client = sb();
   log(`▶ 작업 [${id}]: ${task.instruction.slice(0, 60)}`);
   try {
-    const r = runTask(task.instruction, task.resumeId, task.chatId);
+    const r = runTask(task.instruction, task.resumeId, task.chatId, task.viaVoice);
     const foot = `\n\n— 🤖 비용 $${r.cost.toFixed(3)}${r.denials ? ` · 차단 ${r.denials}건(안전)` : ""}`;
     await tg(r.result + foot, task.chatId);
+    // 음성으로 받은 지시는 결과도 음성노트로(텍스트는 위에 그대로). 길면 앞부분만.
+    if (task.viaVoice) await speak(task.chatId, r.result.slice(0, 700)).catch(() => {});
     await client.from("kv_store").upsert({ key: KEY_PREFIX + id, data: { ...task, status: "done", result: r.result, cost: r.cost, sessionId: r.sessionId, updatedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: "key" });
     log(`◀ 완료 [${id}] $${r.cost.toFixed(3)}`);
   } catch (e) {

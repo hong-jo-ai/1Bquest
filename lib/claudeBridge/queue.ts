@@ -8,9 +8,12 @@ function sb() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-/** "클로드 ..." / "코드 ..." / "cc ..." 접두 명령 → 지시 텍스트 추출 (아니면 null). */
+/**
+ * "클로드 ..." / "코드 ..." / "cc ..." 접두 명령 → 지시 텍스트 추출 (아니면 null).
+ * 음성(STT)이 "클로드"를 클로즈/클라우드/크로드 등으로 잘못 듣는 경우도 폭넓게 인식.
+ */
 export function parseClaudeCommand(text: string): string | null {
-  const m = text.match(/^\s*(클로드|코드|cc)\s+([\s\S]+)/i);
+  const m = text.match(/^\s*(클로드|클로즈|클라우드|크로드|끌로드|클로\s?드|코드|cc|claude)\s*[,.]?\s+([\s\S]+)/i);
   const task = m ? m[2].trim() : null;
   return task && task.length >= 2 ? task : null;
 }
@@ -43,14 +46,18 @@ export async function resolveClaudeConfirm(approved: boolean): Promise<string | 
   return target.data.action || "(작업)";
 }
 
-export async function enqueueClaudeTask(instruction: string, chatId: number | string): Promise<string> {
+export async function enqueueClaudeTask(
+  instruction: string,
+  chatId: number | string,
+  viaVoice = false,
+): Promise<string> {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const { error } = await sb()
     .from("kv_store")
     .upsert(
       {
         key: `claude_task:${id}`,
-        data: { instruction, chatId, status: "pending", createdAt: new Date().toISOString() },
+        data: { instruction, chatId, viaVoice, status: "pending", createdAt: new Date().toISOString() },
         updated_at: new Date().toISOString(),
       },
       { onConflict: "key" },

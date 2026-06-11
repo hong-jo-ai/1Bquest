@@ -27,6 +27,10 @@ async function tg(msg) {
   const key = "claude_confirm:" + id;
   await sb.from("kv_store").upsert({ key, data: { action, status: "waiting", chatId, createdAt: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: "key" });
   await tg(`⚠️ Claude가 다음 작업을 실행하려 합니다:\n\n${action.slice(0, 600)}\n\n실행하려면 "예", 취소하려면 "아니오" 를 보내세요. (5분 내 미응답 시 자동 취소)`);
+  // 음성으로 받은 지시면 확인질문도 음성노트로(사장님이 바로 듣고 "예/아니오" 답).
+  if (process.env.CLAUDE_BRIDGE_VOICE) {
+    try { await require("./voice").speak(chatId, `다음 작업을 실행할까요? ${action.slice(0, 200)}. 진행하려면 예, 취소하려면 아니오라고 답해주세요.`); } catch {}
+  }
 
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {

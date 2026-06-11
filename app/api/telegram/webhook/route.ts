@@ -29,6 +29,7 @@ import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
 import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
+import { transcribeAudio } from "@/lib/mori/stt";
 import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -108,6 +109,8 @@ interface TelegramMessage {
   text?: string;
   caption?: string;
   photo?: TelegramPhoto[]; // smallest → largest
+  voice?: { file_id: string; duration?: number; mime_type?: string };
+  audio?: { file_id: string; duration?: number; mime_type?: string };
 }
 
 interface TelegramUpdate {
@@ -206,6 +209,33 @@ async function downloadTelegramPhoto(
   else if (lower.endsWith(".gif")) mediaType = "image/gif";
 
   return { data: buf.toString("base64"), mediaType };
+}
+
+/** 텔레그램 음성/오디오 파일 다운로드 → base64 + mimeType (전사용). */
+async function downloadTelegramAudio(
+  fileId: string,
+  mimeHint?: string,
+): Promise<{ data: string; mimeType: string } | null> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+  const getFileRes = await fetch(
+    `${TELEGRAM_API}/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`,
+  );
+  if (!getFileRes.ok) return null;
+  const getFileJson = (await getFileRes.json()) as { result?: { file_path?: string } };
+  const filePath = getFileJson?.result?.file_path;
+  if (!filePath) return null;
+  const fileRes = await fetch(`${TELEGRAM_API}/file/bot${token}/${filePath}`);
+  if (!fileRes.ok) return null;
+  const buf = Buffer.from(await fileRes.arrayBuffer());
+  // 텔레그램 음성메시지는 .oga(ogg/opus). 확장자로 mime 추정, 힌트가 있으면 우선.
+  const lower = filePath.toLowerCase();
+  let mimeType = mimeHint || "audio/ogg";
+  if (lower.endsWith(".oga") || lower.endsWith(".ogg")) mimeType = "audio/ogg";
+  else if (lower.endsWith(".mp3") || lower.endsWith(".mpeg")) mimeType = "audio/mpeg";
+  else if (lower.endsWith(".m4a") || lower.endsWith(".mp4")) mimeType = "audio/mp4";
+  else if (lower.endsWith(".wav")) mimeType = "audio/wav";
+  return { data: buf.toString("base64"), mimeType };
 }
 
 type ExtractedTool =
@@ -373,7 +403,28 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const text = message.text || message.caption;
+  let text = message.text || message.caption;
+  // 음성메시지(STT): 텔레그램 voice/audio → 한국어 전사 → 아래 모든 명령에 그대로 흘려보냄.
+  // viaVoice 플래그로 "음성 입력 → 음성 답변" 연결(클로드 브리지가 결과를 음성으로도 회신).
+  let viaVoice = false;
+  const audioFile = message.voice || message.audio;
+  if (!text && audioFile?.file_id) {
+    try {
+      const dl = await downloadTelegramAudio(audioFile.file_id, audioFile.mime_type);
+      if (dl) {
+        const heard = await transcribeAudio(dl.data, dl.mimeType);
+        if (heard) {
+          text = heard;
+          viaVoice = true;
+          await sendTelegramReply(message.chat.id, `🎤 "${heard.slice(0, 200)}"`, message.message_id);
+        }
+      }
+      if (!text) await sendTelegramReply(message.chat.id, "🎤 음성을 알아듣지 못했어요. 다시 말씀해 주세요.", message.message_id);
+    } catch (e) {
+      await sendTelegramReply(message.chat.id, `🎤 음성 인식 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      return Response.json({ ok: true, voiceError: true });
+    }
+  }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
 
   // W컨셉 등 SMS 인증번호 릴레이 — "wc 123456" 이면 코드 저장 후 종료 (다른 처리로 안 넘김)
@@ -413,7 +464,7 @@ export async function POST(req: NextRequest) {
     const claudeTask = parseClaudeCommand(text);
     if (claudeTask) {
       try {
-        await enqueueClaudeTask(claudeTask, message.chat.id);
+        await enqueueClaudeTask(claudeTask, message.chat.id, viaVoice);
         await sendTelegramReply(message.chat.id, `🤖 작업 받았습니다, 진행할게요.\n"${claudeTask.slice(0, 60)}"\n(코드 수정·실행까지 수행 — 발송·배포·삭제 등 위험작업은 실행 전 "예/아니오"로 확인 요청. 아이맥이 켜져 있어야 합니다)`, message.message_id);
       } catch (e) {
         await sendTelegramReply(message.chat.id, `⚠️ 작업 접수 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
