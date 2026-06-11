@@ -19,6 +19,7 @@ export type TxCategory =
   | "카드결제"
   | "식비"
   | "교통/연료"
+  | "접대비"
   | "송금"
   | "개인"
   | "기타";
@@ -231,8 +232,8 @@ export function categorizeMerchant(text: string): TxCategory {
   if (/카카오T|kakaomobility|kakao\s*t|택시|TADA|타다/i.test(t)) return "교통/연료";
   if (/지하철|버스|코레일|KTX|SRT|하이패스|highway|톨게이트/i.test(t)) return "교통/연료";
 
-  // 경조사 (식비도 광고비도 아닌 일회성)
-  if (/꽃다발|화환|근조|축하|결혼|장례|조의|부고|개업/.test(t)) return "기타";
+  // 경조사·선물성 = 접대비(기업업무추진비). 백화점/명품은 선물·샘플·개인 혼재라 자동분류 X(기타→사장님 태그)
+  if (/꽃다발|화환|근조|축하|결혼|장례|조의|부고|개업|선물|기프트|gift/.test(t)) return "접대비";
 
   // 개인 생활비 (1인기업/개인사업자 카드 혼용 — 명확한 개인지출은 회사비용에서 제외)
   // 업무성이 조금이라도 있으면 위에서 이미 업무 카테고리로 분류됨. 여기 오는 건 명백한 생활비만.
@@ -259,6 +260,7 @@ export const CATEGORY_COLOR: Record<TxCategory, string> = {
   카드결제: "#71717a",
   식비: "#f97316",
   "교통/연료": "#84cc16",
+  접대비: "#e11d48",
   송금: "#0ea5e9",
   개인: "#fb7185",
   기타: "#a1a1aa",

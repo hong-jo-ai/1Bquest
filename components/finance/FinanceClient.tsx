@@ -57,7 +57,7 @@ interface AggEntry { withdrawal: number; deposit: number; count: number }
 const CATEGORIES: TxCategory[] = [
   "매출", "광고비", "매입", "인건비", "임대료", "통신비",
   "소프트웨어", "택배비", "수수료", "세금",
-  "카드결제", "식비", "교통/연료", "송금", "개인", "기타",
+  "카드결제", "식비", "교통/연료", "접대비", "송금", "개인", "기타",
 ];
 
 function fmtKrw(n: number): string {

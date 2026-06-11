@@ -63,7 +63,7 @@ function daysBetween(start: string, end: string): number {
  */
 const AUTO_FIXED_CATEGORIES = [
   "임대료", "인건비", "통신비", "소프트웨어",
-  "세금", "수수료", "택배비", "식비", "교통/연료",
+  "세금", "수수료", "택배비", "식비", "교통/연료", "접대비",
 ] as const;
 
 export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedNames, brand }: Props) {
