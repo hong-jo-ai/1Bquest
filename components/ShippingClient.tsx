@@ -177,8 +177,11 @@ export default function ShippingClient() {
       const term = query.trim();
       if (term) qs.set("q", term);
       const res = await fetch(`/api/postparcel/shipments?${qs.toString()}`, { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "조회 실패");
+      // 서버가 비정상(비-JSON/빈 본문)으로 응답해도 화면이 깨지지 않게 안전 파싱.
+      const text = await res.text();
+      let data: { shipments?: Shipment[]; counts?: Record<string, number>; error?: string } = {};
+      try { data = text ? JSON.parse(text) : {}; } catch { /* 비-JSON 응답 → 아래에서 오류 처리 */ }
+      if (!res.ok) throw new Error(data.error || `조회 실패 (서버 오류 ${res.status}) — 잠시 후 다시 시도해 주세요`);
       setShipments(data.shipments || []);
       setCounts(data.counts || {});
     } catch (e) {

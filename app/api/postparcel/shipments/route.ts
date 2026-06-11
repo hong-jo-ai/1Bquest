@@ -18,6 +18,7 @@ function sb() {
 }
 
 export async function GET(req: NextRequest) {
+ try {
   const sp = req.nextUrl.searchParams;
   const status = sp.get("status");
   const channel = sp.get("channel");
@@ -50,6 +51,10 @@ export async function GET(req: NextRequest) {
   const counts: Record<string, number> = {};
   for (const r of data ?? []) counts[r.status] = (counts[r.status] ?? 0) + 1;
   return Response.json({ shipments: data ?? [], counts });
+ } catch (e) {
+  // 어떤 경우에도 JSON 으로 응답 (클라이언트 res.json() 깨짐 방지)
+  return Response.json({ error: (e as Error)?.message || "접수내역 조회 중 오류" }, { status: 500 });
+ }
 }
 
 export async function POST(req: NextRequest) {
