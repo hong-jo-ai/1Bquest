@@ -15,6 +15,7 @@ function loadEnv(p){ try { for(const line of fs.readFileSync(p,"utf8").split("\n
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
 const { getCm29OutboundRows } = require("./cm29Outbound");
+const { getMusinsaGlobalRows } = require("./musinsaGlobalOutbound");
 const { closeMarketplaceBrowsers } = require("./marketplaceSync");
 
 const HEADER = ["수취인명","수취인 이동통신","수취인 전화번호","수취인 주소","수취인 우편번호","상품명","색상","수량","배송메세지","주문번호","판매처"];
@@ -158,21 +159,23 @@ async function alreadyRegisteredKeys(){
 }
 
 async function collectOutboundRows(){
-  let cafe=[], six=[], cm=[], wc=[];
+  let cafe=[], six=[], cm=[], wc=[], mg=[];
   try { cafe=await cafe24Rows(); log(`카페24 ${cafe.length}행`); } catch(e){ log("카페24 실패: "+e.message); }
   try { six=sixshopRows(); log(`식스샵 ${six.length}행`); } catch(e){ log("식스샵 실패: "+e.message); }
   try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
+  // 무신사 글로벌(국내 무신사 창고로 발송 → 우체국). 일반 주문은 무신사 풀필먼트 배송이라 대상 아님.
+  try { mg=await getMusinsaGlobalRows({}, log); log(`무신사글로벌 ${mg.length}행`); } catch(e){ log("무신사글로벌 실패: "+e.message); }
   await closeMarketplaceBrowsers().catch(()=>{});
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
-  const all=[...cafe,...six,...cm,...wc];
+  const all=[...cafe,...six,...cm,...wc,...mg];
   const done=await alreadyRegisteredKeys();
   const rows=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
   const skipped=all.length-rows.length;
   if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, counts:{cafe:cnt("카페24"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉")} };
+  return { rows, counts:{cafe:cnt("카페24"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER };
@@ -185,7 +188,7 @@ async function main(){
   const aoa=[HEADER, ...rows.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
-  const summary=`총 ${rows.length}행 (카페24 ${counts.cafe}, 식스샵 ${counts.six}, 29CM ${counts.cm}, W컨셉 ${counts.wc})`;
+  const summary=`총 ${rows.length}행 (카페24 ${counts.cafe}, 식스샵 ${counts.six}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
   rows.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
