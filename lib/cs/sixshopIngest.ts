@@ -14,7 +14,7 @@ import {
 
 export interface SixshopClaimInput {
   brand?: CsBrandId;          // 기본 paulvice (상품이 폴바이스)
-  channel?: "sixshop" | "wconcept"; // 마켓 채널 (기본 sixshop)
+  channel?: "sixshop" | "wconcept" | "musinsa"; // 마켓 채널 (기본 sixshop)
   orderNumber: string;
   claimType: CsClaimType;     // return | exchange | cancel
   status: CsReturnStatus;

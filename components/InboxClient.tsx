@@ -103,6 +103,11 @@ const CHANNEL_STYLE: Record<
     color: "text-zinc-800 dark:text-zinc-200",
     bg: "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700",
   },
+  musinsa: {
+    icon: ShoppingBag,
+    color: "text-zinc-900 dark:text-zinc-100",
+    bg: "bg-zinc-200/70 dark:bg-zinc-700/40 border-zinc-400 dark:border-zinc-600",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
