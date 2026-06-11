@@ -26,11 +26,17 @@ function getDb() {
 function b64urlDecode(s: string): string {
   return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
 }
+interface GmailPart {
+  mimeType?: string;
+  body?: { data?: string; size?: number; attachmentId?: string };
+  parts?: GmailPart[];
+}
+
 // Gmail payload에서 본문(plain 우선, 없으면 html) 추출
-function extractBody(payload: any): string {
+function extractBody(payload: GmailPart | undefined): string {
   if (!payload) return "";
   if (payload.body?.data) return b64urlDecode(payload.body.data);
-  const parts: any[] = payload.parts || [];
+  const parts: GmailPart[] = payload.parts || [];
   const plain = parts.find((p) => p.mimeType === "text/plain" && p.body?.data);
   if (plain) return b64urlDecode(plain.body.data);
   const html = parts.find((p) => p.mimeType === "text/html" && p.body?.data);
@@ -64,7 +70,7 @@ export async function POST(req: NextRequest) {
     .gte("use_date", since)
     .order("use_date", { ascending: false })
     .limit(300);
-  const pending = (rows ?? []).filter((r) => !(r.raw as any)?.npayEnriched);
+  const pending = (rows ?? []).filter((r) => !(r.raw as Record<string, unknown> | null)?.npayEnriched);
   if (!pending.length) return Response.json({ ok: true, candidates: 0, emails: 0, enriched: 0, skipped: 0 });
 
   // 2) 메일함에서 네이버페이 결제메일 수집 (대상행 기간 + 여유 1일)
@@ -77,7 +83,7 @@ export async function POST(req: NextRequest) {
   const emails: ParsedNaverPayEmail[] = [];
   for (const m of list.messages ?? []) {
     try {
-      const full = await gmail<any>(accessToken, `/messages/${m.id}?format=full`);
+      const full = await gmail<{ payload?: GmailPart }>(accessToken, `/messages/${m.id}?format=full`);
       const parsed = parseNaverPayEmail(extractBody(full.payload));
       if (parsed && parsed.merchant && (parsed.cardAmount || parsed.totalAmount)) emails.push(parsed);
     } catch { /* skip one */ }
@@ -85,7 +91,7 @@ export async function POST(req: NextRequest) {
 
   // 3) 카드행 ↔ 메일 매칭 (금액 일치 + 결제일시 ±30분)
   let enriched = 0;
-  const preview: any[] = [];
+  const preview: Array<{ from: string; to: string; amount: number; category: string }> = [];
   const used = new Set<string>();
   for (const row of pending) {
     const rowAmt = Number(row.amount) || 0;
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
         merchant: newMerchant,
         category,
         category_source: "email",
-        raw: { ...(row.raw as any), npayEnriched: best.payNo || true, npayMerchant: best.merchant, npayMethod: best.method },
+        raw: { ...(row.raw as Record<string, unknown>), npayEnriched: best.payNo || true, npayMerchant: best.merchant, npayMethod: best.method },
       })
       .eq("id", row.id);
     if (!error) { enriched++; preview.push({ from: row.merchant, to: newMerchant, amount: rowAmt, category }); }
