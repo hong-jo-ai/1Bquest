@@ -222,7 +222,9 @@ export function categorizeMerchant(text: string): TxCategory {
   if (/스타벅스|커피|이디야|투썸|파스쿠치|메가커피|던킨|버거킹|맥도날드|롯데리아|서브웨이/.test(t)) return "식비";
   if (/식당|숯불|구이|국밥|한식|중식|일식|치킨|피자|면|밥|식탁|식사/.test(t)) return "식비";
   if (/배달의민족|배민|쿠팡이츠|요기요/.test(t)) return "식비";
+  // 마트·창고형(사무실 소모품·간식=복리후생/소모품으로 업무처리) — 개인사업자 카드 기준
   if (/이마트|홈플러스|롯데마트|편의점|GS25|CU\b|세븐일레븐|마켓컬리|컬리/.test(t)) return "식비";
+  if (/코스트코|costco|트레이더스|하나로마트|농협하나로|노브랜드|한살림|생협|초록마을|아이쿱/i.test(t)) return "식비";
 
   // 교통/연료
   if (/주유소|GS칼텍스|SK에너지|S-OIL|현대오일/.test(t)) return "교통/연료";
