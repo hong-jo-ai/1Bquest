@@ -282,7 +282,7 @@ export async function computeInventoryLevels(token: string): Promise<InventoryLe
       sku,
       initialStock: e.initialStock,
       totalSold,
-      currentStock: Math.max(0, e.initialStock + e.manualAdjustment - totalSold),
+      currentStock: Math.max(0, e.initialStock + e.manualAdjustment - totalSold - (e.dutyfreeOut ?? 0)),
     };
   });
 }
@@ -331,7 +331,7 @@ export async function runInventorySync(
     const cafe24Sold = cafe24SalesBySku[sku] ?? 0;
     const otherSold = otherChannelsSales[sku] ?? 0;
     const totalSold = cafe24Sold + otherSold;
-    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold);
+    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold - (entry.dutyfreeOut ?? 0));
 
     const productNo = productNoMap.get(sku);
     if (!productNo) {

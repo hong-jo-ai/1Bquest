@@ -62,6 +62,45 @@ function ymd(d) { return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(
 
 async function kvGet(sb, key) { const { data } = await sb.from("kv_store").select("data").eq("key", key).maybeSingle(); return data?.data ?? null; }
 async function kvSet(sb, key, data) { await sb.from("kv_store").upsert({ key, data, updated_at: new Date().toISOString() }, { onConflict: "key" }); }
+
+// cafe24 토큰 (kv_store refresh_token, 만료 시 갱신)
+async function cafe24Token(sb) {
+  const BASE = `https://${process.env.CAFE24_MALL_ID}.cafe24api.com`;
+  const { data } = await sb.from("kv_store").select("data").eq("key", "cafe24_refresh_token").maybeSingle();
+  let t = data && data.data; if (typeof t === "string") t = { access_token: "", refresh_token: t, expires_at: 0 };
+  if (!t) throw new Error("cafe24 refresh_token 없음");
+  if (t.access_token && t.expires_at && t.expires_at - 90000 > Date.now()) return t.access_token;
+  const res = await fetch(`${BASE}/api/v2/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: "Basic " + Buffer.from(`${process.env.CAFE24_CLIENT_ID}:${process.env.CAFE24_CLIENT_SECRET}`).toString("base64") }, body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(t.refresh_token)}` });
+  const j = await res.json(); if (!j.access_token) throw new Error("cafe24 refresh 실패");
+  await sb.from("kv_store").upsert({ key: "cafe24_refresh_token", data: { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + 110 * 60 * 1000 }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  return j.access_token;
+}
+
+// 면세점 출고분을 완제품 재고 dutyfreeOut 에 누적 (ref→자체상품코드→product_code, 재고 엔트리 있는 것만)
+async function applyDutyfreeOut(sb, items, log) {
+  if (!items.length) return { applied: 0, skipped: 0 };
+  const BASE = `https://${process.env.CAFE24_MALL_ID}.cafe24api.com`;
+  let tk; try { tk = await cafe24Token(sb); } catch (e) { log("  cafe24 토큰 실패 — 완제품 재고차감 스킵: " + e.message); return { applied: 0, skipped: items.length, err: true }; }
+  const custom = new Map();
+  for (let off = 0, p = 0; p < 30; p++, off += 100) {
+    const r = await fetch(`${BASE}/api/v2/admin/products?fields=product_code,custom_product_code&limit=100&offset=${off}`, { headers: { Authorization: `Bearer ${tk}` } });
+    const b = (await r.json()).products || [];
+    for (const x of b) if (x.custom_product_code) custom.set(x.custom_product_code, x.product_code);
+    if (b.length < 100) break;
+  }
+  const inv = (await kvGet(sb, "paulvice_inventory_v1")) || {};
+  const byRef = {};
+  for (const it of items) byRef[it.ref] = (byRef[it.ref] || 0) + it.qty;
+  let applied = 0; const skip = [];
+  for (const [ref, qty] of Object.entries(byRef)) {
+    const pc = custom.get(ref);
+    if (pc && inv[pc]) { inv[pc].dutyfreeOut = (inv[pc].dutyfreeOut || 0) + qty; applied++; }
+    else skip.push(ref);
+  }
+  if (applied) await kvSet(sb, "paulvice_inventory_v1", inv);
+  if (skip.length) log(`  완제품 재고 미추적/면세점전용: ${skip.join(",")}`);
+  return { applied, skipped: skip.length };
+}
 async function tg(msg) { const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID; if (!t || !c) return; await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {}); }
 // PDF 첨부 전송 (멀티파트, 재시도, 429 retry_after 존중). displayName 으로 NFC 파일명 사용.
 async function tgDoc(filePath, displayName, caption) {
@@ -133,7 +172,7 @@ async function tgDoc(filePath, displayName, caption) {
   } else log(`[DRY] PDF 저장 생략`);
 
   // ⑤ 우체국 송장 발급 + 부자재 박스 차감 + 출고 이력 (멱등: 박스=date+store / 송장=registerSingle dedup)
-  let boxMsg = "";
+  let boxMsg = "", invMsg = "";
   const invoiceMsg = [];
   if (!DRY) {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -170,12 +209,21 @@ async function tgDoc(filePath, displayName, caption) {
       } else if (!newStores.length) boxMsg = "박스 차감: 이미 처리됨(멱등 스킵)";
     } else { boxMsg = "⚠️ 부자재 미초기화(대시보드 1회 열어 시드 필요) — 박스 미차감"; }
 
-    // 출고 이력 적재 (송장번호 포함)
+    // 출고 이력 적재 (송장번호 포함) + 완제품 재고 차감용 품목 수집
+    const newItems = [];
     for (const s of newStores) {
       const it = s === "신세계" ? (items.sinsegae || []) : (items.lotte || []);
+      newItems.push(...it);
       shipLog.push({ date, store: s, boxes: 1, itemCount: it.length, qty: it.reduce((a, i) => a + i.qty, 0), regiNo: regiByStore[s] || null, items: it, at: new Date().toISOString() });
     }
     if (newStores.length) await kvSet(sb, SHIPLOG_KEY, shipLog);
+
+    // 완제품 재고 차감 (면세점 출고분 dutyfreeOut)
+    if (newItems.length) {
+      const r = await applyDutyfreeOut(sb, newItems, log);
+      invMsg = `완제품 재고 차감 ${r.applied}품목${r.skipped ? ` (면세점전용/미추적 ${r.skipped} 제외)` : ""}`;
+      log("  " + invMsg);
+    }
   } else boxMsg = "[DRY] 박스 미차감 / 송장 미발급";
   log("  " + boxMsg);
 
@@ -186,6 +234,7 @@ async function tgDoc(filePath, displayName, caption) {
   if (saved.length) lines.push(`• 서류 ${saved.length}건 생성·드라이브 저장 (아래 첨부 — 인쇄용)`);
   if (invoiceMsg.length) lines.push(`• 🏷️ 우체국 송장: ${invoiceMsg.join(" / ")}`);
   lines.push(`• ${boxMsg}`);
+  if (invMsg) lines.push(`• ${invMsg}`);
   await tg(lines.join("\n"));
   // 첨부: 패킹리스트 → 박스라벨 → 거래명세서 순으로 정렬
   const order = (n) => (/패킹리스트/.test(n) ? 0 : /부착/.test(n) ? 1 : 2);

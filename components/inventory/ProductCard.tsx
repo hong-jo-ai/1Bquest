@@ -57,6 +57,7 @@ export default function ProductCard({
   const aging = AGING_CONFIG[product.agingStatus];
   const stockSt = STOCK_STATUS(product.currentStock, product.stockPct);
   const isNotSetup = product.entry.initialStock === 0;
+  const isHideOnly = !product.isManual || product.sku.startsWith("PV-ARCH-");
 
   const saveCogs = async () => {
     if (!onCogsChange) return;
@@ -137,10 +138,10 @@ export default function ProductCard({
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-10 rounded-t-2xl p-4">
             <Trash2 size={20} className="text-red-400" />
             <p className="text-white text-xs font-semibold text-center leading-snug">
-              {product.isManual ? "이 상품을 목록에서 삭제할까요?" : "이 상품을 목록에서 숨길까요?"}
+              {isHideOnly ? "이 상품을 목록에서 숨길까요?" : "이 상품을 목록에서 삭제할까요?"}
             </p>
             <p className="text-zinc-400 text-[10px] text-center">
-              {product.isManual ? "삭제 후 되돌릴 수 없습니다" : "상단 '숨김 해제' 버튼으로 복원 가능합니다"}
+              {isHideOnly ? "상단 '숨김 해제' 버튼으로 복원 가능합니다" : "삭제 후 되돌릴 수 없습니다"}
             </p>
             <div className="flex gap-2 w-full">
               <button onClick={handleCancel}
@@ -149,7 +150,7 @@ export default function ProductCard({
               </button>
               <button onClick={handleConfirm}
                 className="flex-1 text-xs font-medium bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg transition-colors">
-                {product.isManual ? "삭제" : "숨기기"}
+                {isHideOnly ? "숨기기" : "삭제"}
               </button>
             </div>
           </div>
@@ -272,7 +273,7 @@ export default function ProductCard({
           <button
             onClick={handleDeleteClick}
             className="flex items-center justify-center gap-1 text-xs font-medium text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 border border-zinc-200 dark:border-zinc-700 hover:border-red-200 dark:hover:border-red-800 rounded-xl px-3 py-2 transition-colors"
-            title={product.isManual ? "삭제" : "목록에서 숨기기"}
+            title={isHideOnly ? "목록에서 숨기기" : "삭제"}
           >
             <Trash2 size={12} />
           </button>

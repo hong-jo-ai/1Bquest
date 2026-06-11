@@ -18,6 +18,7 @@ export interface InventoryEntry {
   notes: string;
   categoryOverride: string; // 대시보드에서 직접 지정한 카테고리 (빈 문자열 = Cafe24 기본값 사용)
   discontinued?: boolean;   // 단종 — 저재고/품절이어도 재입고 알림 제외
+  dutyfreeOut?: number;     // 면세점 출고 누적 차감(매출과 별개, 발주제안서 출고분)
 }
 
 export type AgingStatus = "normal" | "caution" | "urgent" | "critical";
@@ -33,12 +34,231 @@ export interface InventoryProduct extends ProductInfo {
   stockPct: number;
 }
 
+const ARCHIVE_STOCK_DATE = "2024-01-01";
+
+const ARCHIVE_NOTES_PREFIX =
+  "2026-06-09 사진 실사 기준으로 추가한 이전 인기 모델 아카이브 재고입니다. 모델명/SKU 확정 전까지 외형별 임시 그룹으로 관리합니다.";
+
+const ARCHIVE_PRODUCTS: ProductInfo[] = [
+  {
+    sku: "PV-ARCH-SQ-LTH-RG",
+    name: "아카이브 사각 가죽 워치 - 로즈골드 케이스",
+    image: "/inventory/archive/archive-square-leather-rosegold.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-SQ-LTH-SV",
+    name: "아카이브 사각 가죽 워치 - 실버 케이스",
+    image: "/inventory/archive/archive-square-leather-silver.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-SQ-MESH-GD",
+    name: "아카이브 사각 메쉬 워치 - 골드",
+    image: "/inventory/archive/archive-square-mesh-gold.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-SQ-MESH-RG",
+    name: "아카이브 사각 메쉬 워치 - 로즈골드",
+    image: "/inventory/archive/archive-square-mesh-rosegold.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-SQ-MESH-SV",
+    name: "아카이브 사각 메쉬 워치 - 실버",
+    image: "/inventory/archive/archive-square-mesh-silver.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-BRC-SV",
+    name: "아카이브 라운드 브레이슬릿 워치 - 실버",
+    image: "/inventory/archive/archive-round-bracelet-silver.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-BRC-GD",
+    name: "아카이브 라운드 브레이슬릿 워치 - 골드/로즈골드",
+    image: "/inventory/archive/archive-round-bracelet-gold.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-STR-PK",
+    name: "아카이브 라운드 패턴 스트랩 워치 - 핑크/누드",
+    image: "/inventory/archive/archive-round-strap-pink.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-STR-GN",
+    name: "아카이브 라운드 텍스처 스트랩 워치 - 그린",
+    image: "/inventory/archive/archive-round-strap-green.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-STR-BK",
+    name: "아카이브 라운드 텍스처 스트랩 워치 - 블랙",
+    image: "/inventory/archive/archive-round-strap-black.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+  {
+    sku: "PV-ARCH-RD-STR-BR",
+    name: "아카이브 라운드 텍스처 스트랩 워치 - 브라운",
+    image: "/inventory/archive/archive-round-strap-brown.jpg",
+    category: "아카이브 워치",
+    isManual: true,
+  },
+];
+
+const ARCHIVE_ENTRIES: Record<string, InventoryEntry> = {
+  "PV-ARCH-SQ-LTH-RG": {
+    ...defaultEntry("PV-ARCH-SQ-LTH-RG"),
+    initialStock: 6,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 사각 가죽 로즈골드 케이스 6개(브라운 스트랩 3, 블랙 스트랩 3)로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-SQ-LTH-SV": {
+    ...defaultEntry("PV-ARCH-SQ-LTH-SV"),
+    initialStock: 2,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 사각 가죽 실버 케이스 2개(화이트 다이얼 1, 블랙 다이얼 1)로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-SQ-MESH-GD": {
+    ...defaultEntry("PV-ARCH-SQ-MESH-GD"),
+    initialStock: 2,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 사각 골드 메쉬 2개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-SQ-MESH-RG": {
+    ...defaultEntry("PV-ARCH-SQ-MESH-RG"),
+    initialStock: 2,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 사각 로즈골드 메쉬 2개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-SQ-MESH-SV": {
+    ...defaultEntry("PV-ARCH-SQ-MESH-SV"),
+    initialStock: 1,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 사각 실버 메쉬 1개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-BRC-SV": {
+    ...defaultEntry("PV-ARCH-RD-BRC-SV"),
+    initialStock: 3,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 실버 브레이슬릿 3개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-BRC-GD": {
+    ...defaultEntry("PV-ARCH-RD-BRC-GD"),
+    initialStock: 4,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 골드/로즈골드 브레이슬릿 4개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-STR-PK": {
+    ...defaultEntry("PV-ARCH-RD-STR-PK"),
+    initialStock: 2,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 핑크/누드 패턴 스트랩 2개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-STR-GN": {
+    ...defaultEntry("PV-ARCH-RD-STR-GN"),
+    initialStock: 2,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 그린 텍스처 스트랩 2개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-STR-BK": {
+    ...defaultEntry("PV-ARCH-RD-STR-BK"),
+    initialStock: 1,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 블랙 텍스처 스트랩 1개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+  "PV-ARCH-RD-STR-BR": {
+    ...defaultEntry("PV-ARCH-RD-STR-BR"),
+    initialStock: 1,
+    stockInDate: ARCHIVE_STOCK_DATE,
+    notes: `${ARCHIVE_NOTES_PREFIX} 라운드 브라운 텍스처 스트랩 1개로 판독.`,
+    categoryOverride: "아카이브 워치",
+    discontinued: true,
+  },
+};
+
+function mergeArchiveEntries(entries: Record<string, InventoryEntry>): Record<string, InventoryEntry> {
+  return { ...ARCHIVE_ENTRIES, ...entries };
+}
+
+function mergeArchiveProducts(products: ProductInfo[]): ProductInfo[] {
+  const seen = new Set(products.map((p) => p.sku));
+  return [...products, ...ARCHIVE_PRODUCTS.filter((p) => !seen.has(p.sku))];
+}
+
 // ── localStorage 키 ───────────────────────────────────────────────────────
 
 const STORAGE_KEY         = "paulvice_inventory_v1";
 const PRODUCTS_CACHE_KEY  = "paulvice_products_cache_v2";
 const MANUAL_PRODUCTS_KEY = "paulvice_manual_products_v1";
 const HIDDEN_SKUS_KEY     = "paulvice_hidden_skus_v1";
+
+function readLocalJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function ensureArchiveInventorySeeded(): void {
+  if (typeof window === "undefined") return;
+
+  const manual = readLocalJson<ProductInfo[]>(MANUAL_PRODUCTS_KEY, []);
+  const manualBySku = new Map(manual.map((p) => [p.sku, p]));
+  for (const product of ARCHIVE_PRODUCTS) manualBySku.set(product.sku, {
+    ...product,
+    ...manualBySku.get(product.sku),
+    image: manualBySku.get(product.sku)?.image || product.image,
+    category: manualBySku.get(product.sku)?.category || product.category,
+    isManual: true,
+  });
+  saveWithSync(MANUAL_PRODUCTS_KEY, Array.from(manualBySku.values()));
+
+  const inventory = readLocalJson<Record<string, InventoryEntry>>(STORAGE_KEY, {});
+  saveWithSync(STORAGE_KEY, { ...ARCHIVE_ENTRIES, ...inventory });
+
+  const archiveSkus = new Set(ARCHIVE_PRODUCTS.map((p) => p.sku));
+  const hidden = readLocalJson<string[]>(HIDDEN_SKUS_KEY, []);
+  if (hidden.some((sku) => archiveSkus.has(sku))) {
+    saveWithSync(HIDDEN_SKUS_KEY, hidden.filter((sku) => !archiveSkus.has(sku)));
+  }
+}
 
 // ── InventoryEntry ─────────────────────────────────────────────────────────
 
@@ -51,15 +271,16 @@ export function defaultEntry(sku: string): InventoryEntry {
     notes: "",
     categoryOverride: "",
     discontinued: false,
+    dutyfreeOut: 0,
   };
 }
 
 export function loadInventory(): Record<string, InventoryEntry> {
-  if (typeof window === "undefined") return {};
+  if (typeof window === "undefined") return mergeArchiveEntries({});
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    return mergeArchiveEntries(raw ? JSON.parse(raw) : {});
+  } catch { return mergeArchiveEntries({}); }
 }
 
 export function saveInventory(data: Record<string, InventoryEntry>): void {
@@ -95,11 +316,11 @@ export function loadProductsCache(): ProductInfo[] {
 // ── 수동 추가 제품 ────────────────────────────────────────────────────────
 
 export function loadManualProducts(): ProductInfo[] {
-  if (typeof window === "undefined") return [];
+  if (typeof window === "undefined") return mergeArchiveProducts([]);
   try {
     const raw = localStorage.getItem(MANUAL_PRODUCTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+    return mergeArchiveProducts(raw ? JSON.parse(raw) : []);
+  } catch { return mergeArchiveProducts([]); }
 }
 
 export function saveManualProducts(products: ProductInfo[]): void {
@@ -183,7 +404,7 @@ export function buildInventoryProducts(
     const entry = entries[product.sku] ?? defaultEntry(product.sku);
     const soldByChannel = soldBySku[product.sku] ?? {};
     const totalSold = Object.values(soldByChannel).reduce((s, n) => s + (n || 0), 0);
-    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold);
+    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold - (entry.dutyfreeOut ?? 0));
     const stockInDate = new Date(entry.stockInDate);
     const daysInStock = Math.floor((today.getTime() - stockInDate.getTime()) / (1000 * 60 * 60 * 24));
     const agingStatus = calcAgingStatus(daysInStock, currentStock);

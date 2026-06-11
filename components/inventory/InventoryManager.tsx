@@ -13,6 +13,7 @@ import {
   loadProductsCache,
   loadManualProducts,
   deleteManualProduct,
+  ensureArchiveInventorySeeded,
   hideProduct,
   loadHiddenSkus,
   clearHiddenSkus,
@@ -130,6 +131,7 @@ export default function InventoryManager() {
         if (arr) localStorage.setItem("paulvice_hidden_skus_v1", JSON.stringify(arr));
       }),
     ]);
+    ensureArchiveInventorySeeded();
 
     let cafe24List: ProductInfo[] = [];
     let cafe24Sales: { sku: string; sold: number }[] = [];
@@ -175,6 +177,7 @@ export default function InventoryManager() {
         if (arr) localStorage.setItem("paulvice_hidden_skus_v1", JSON.stringify(arr));
       }),
     ]);
+    ensureArchiveInventorySeeded();
     rebuildProducts(c24.list, c24.sales, channelUploads);
   }, [c24, channelUploads, rebuildProducts]);
 
@@ -246,7 +249,7 @@ export default function InventoryManager() {
     setProducts(prev => prev.map(p => {
       if (p.sku !== sku) return p;
       const newEntry = { ...p.entry, ...patch };
-      const currentStock = Math.max(0, newEntry.initialStock + newEntry.manualAdjustment - p.totalSold);
+      const currentStock = Math.max(0, newEntry.initialStock + newEntry.manualAdjustment - p.totalSold - (newEntry.dutyfreeOut ?? 0));
       const daysInStock  = Math.floor((Date.now() - new Date(newEntry.stockInDate).getTime()) / 86_400_000);
       const agingStatus  = calcAgingStatus(daysInStock, currentStock);
       const stockPct     = newEntry.initialStock > 0 ? Math.round((currentStock / newEntry.initialStock) * 100) : 0;
@@ -258,7 +261,7 @@ export default function InventoryManager() {
   const handleDelete = useCallback((sku: string) => {
     const product = products.find((p) => p.sku === sku);
     if (!product) return;
-    if (product.isManual) {
+    if (product.isManual && !product.sku.startsWith("PV-ARCH-")) {
       deleteManualProduct(sku);
     } else {
       hideProduct(sku);
