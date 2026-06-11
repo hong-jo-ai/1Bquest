@@ -198,7 +198,7 @@ export function categorizeMerchant(text: string): TxCategory {
   if (/^[A-Z]형\s*\d/.test(t)) return "매입"; // "A형 280x260x120"
 
   // 광고비
-  if (/광고|마케팅|배너|상위노출|키워드|facebook|facebk|meta|google\s*ads|kakao.*ad|naver.*ad|tiktok/i.test(t)) return "광고비";
+  if (/광고|마케팅|배너|상위노출|키워드|facebook|facebk|meta|google\s*ads|애드워즈|adwords|구글애드|kakao.*ad|naver.*ad|tiktok/i.test(t)) return "광고비";
 
   // 소프트웨어 / SaaS / AI 구독 (해외 결제 대부분이 여기)
   if (/saas|구독|월정액|cloud|aws|github|notion|figma|chatgpt|claude|openai|anthropic|vercel|supabase/i.test(t)) return "소프트웨어";
@@ -231,6 +231,7 @@ export function categorizeMerchant(text: string): TxCategory {
   if (/주유소|GS칼텍스|SK에너지|S-OIL|현대오일/.test(t)) return "교통/연료";
   if (/카카오T|kakaomobility|kakao\s*t|택시|TADA|타다/i.test(t)) return "교통/연료";
   if (/지하철|버스|코레일|KTX|SRT|하이패스|highway|톨게이트/i.test(t)) return "교통/연료";
+  if (/오토오아시스|세차|타이어|블루핸즈|스피드메이트|카센터|자동차정비|정비소|엔진오일|모터스/.test(t)) return "교통/연료"; // 차량 유지
 
   // 경조사·선물성 = 접대비(기업업무추진비). 백화점/명품은 선물·샘플·개인 혼재라 자동분류 X(기타→사장님 태그)
   if (/꽃다발|화환|근조|축하|결혼|장례|조의|부고|개업|선물|기프트|gift/.test(t)) return "접대비";
