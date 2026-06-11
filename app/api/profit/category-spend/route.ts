@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     // 매입 전자세금계산서(현금이체 비용) — write_date 기준. 통장 미업로드분의 실비 보강.
     db
       .from("finance_tax_invoices")
-      .select("category, total_amount, write_date")
+      .select("category, total_amount, write_date, partner_name")
       .eq("invoice_type", "purchase")
       .gte("write_date", since)
       .lte("write_date", until),
@@ -93,6 +93,9 @@ export async function GET(req: NextRequest) {
     const amt = Number(r.total_amount) || 0;
     if (amt <= 0) continue;
     const c = (r.category as string | null) || "기타";
+    // W컨셉 광고비 세금계산서는 ad_spend:wconcept(Moloco)에서 이미 집계 → 광고비 버킷에서 제외(이중계상 방지).
+    // (메타 광고는 메타 API로 별도 집계, 세금계산서엔 안 옴)
+    if (c === "광고비" && /더블유컨셉|w.?컨셉|wconcept/i.test(String(r.partner_name ?? ""))) continue;
     if (!invoiceByCategory[c]) invoiceByCategory[c] = { amount: 0, count: 0 };
     invoiceByCategory[c].amount += amt;
     invoiceByCategory[c].count += 1;

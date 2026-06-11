@@ -4,9 +4,16 @@ import { parseNpayReceiptExcel } from "@/lib/finance/npayParser";
 import { parseHyundaiCardExcel } from "@/lib/finance/hyundaiCardParser";
 import { parseKbCardExcel } from "@/lib/finance/kbCardParser";
 import { categorizeMerchant } from "@/lib/finance/categorize";
+import { USD_TO_KRW } from "@/lib/finance/forex";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// 해외(USD) 결제는 카드 엑셀에 원화 환산이 없어 amount=0 → forex 환율로 추정 환산.
+function krwAmount(amount: number, isForeign: boolean, usdAmount: number): number {
+  if (isForeign && amount === 0 && usdAmount > 0) return Math.round(usdAmount * USD_TO_KRW);
+  return amount;
+}
 
 function getDb() {
   const url = process.env.SUPABASE_URL;
@@ -103,7 +110,7 @@ export async function POST(req: NextRequest) {
         use_date: r.useDate.toISOString(),
         cancel_date: null,
         merchant: r.merchant,
-        amount: r.amount,
+        amount: krwAmount(r.amount, r.isForeign, r.usdAmount),
         cancel_amount: r.cancelAmount,
         supply_amount: null,
         tax_amount: null,
