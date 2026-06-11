@@ -23,6 +23,19 @@ export function threadStatusForReturn(status: string): CsStatus {
   return "unanswered";
 }
 
+// 반품 라이프사이클 순서 (앞→뒤로만 진행).
+const RETURN_RANK: Record<string, number> = { requested: 0, confirmed: 1, in_transit: 2, received: 3, done: 4 };
+/** 식스샵 동기화가 로컬 진행상태를 퇴행시키지 않게 보존.
+ *  식스샵엔 '회수중' 상태가 없어 반품신청(requested)으로 계속 보이지만, 우리가 우체국 회수 접수해
+ *  in_transit 으로 올린 건을 동기화가 requested 로 되돌리면 안 됨. 단 식스샵이 명시적으로 완료/거부(done/rejected)
+ *  하면 그대로 반영. 종결(done/rejected)된 건은 동기화로 재오픈하지 않음. */
+export function nonRegressingStatus(existing: string | null | undefined, incoming: CsReturnStatus): CsReturnStatus {
+  if (!existing) return incoming;
+  if (incoming === "done" || (incoming as string) === "rejected") return incoming;
+  if (existing === "done" || existing === "rejected") return existing as CsReturnStatus;
+  return (RETURN_RANK[incoming] ?? 0) < (RETURN_RANK[existing] ?? 0) ? (existing as CsReturnStatus) : incoming;
+}
+
 export interface SixshopClaimInput {
   brand?: CsBrandId;          // 기본 paulvice (상품이 폴바이스)
   channel?: "sixshop" | "wconcept" | "musinsa"; // 마켓 채널 (기본 sixshop)
@@ -47,8 +60,18 @@ export async function upsertSixshopClaim(
   const externalThreadId = `return:${c.orderNumber}:${c.claimType}`;
   const at = c.requestedAt ?? new Date().toISOString();
   const subject = `[${CLAIM_TYPE_LABEL[c.claimType]}] ${c.product ?? c.orderNumber}`;
-  const previewText = `${CLAIM_TYPE_LABEL[c.claimType]} · ${RETURN_STATUS_LABEL[c.status]}`;
-  const threadStatus = threadStatusForReturn(c.status);
+  // 기존 진행상태 조회 — 동기화가 로컬 라이프사이클(회수중·회수송장)을 퇴행시키지 않게.
+  const { data: existingRet } = await db
+    .from("cs_returns")
+    .select("status, recovery_tracking_no")
+    .eq("channel", channel)
+    .eq("order_number", c.orderNumber)
+    .eq("claim_type", c.claimType)
+    .maybeSingle();
+  const effStatus = nonRegressingStatus(existingRet?.status, c.status);
+  const effRecovery = c.recoveryTrackingNo ?? existingRet?.recovery_tracking_no ?? null;
+  const previewText = `${CLAIM_TYPE_LABEL[c.claimType]} · ${RETURN_STATUS_LABEL[effStatus]}`;
+  const threadStatus = threadStatusForReturn(effStatus);
 
   const { data: existing } = await db
     .from("cs_threads")
@@ -105,8 +128,8 @@ export async function upsertSixshopClaim(
       product: c.product ?? null,
       reason: c.reason ?? null,
       customer_name: c.customerName ?? null,
-      recovery_tracking_no: c.recoveryTrackingNo ?? null,
-      status: c.status,
+      recovery_tracking_no: effRecovery,
+      status: effStatus,
       raw: c.raw ?? null,
       updated_at: new Date().toISOString(),
     },
