@@ -28,6 +28,7 @@ import {
 import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
 import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
+import { parseClaudeCommand, enqueueClaudeTask } from "@/lib/claudeBridge/queue";
 import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -386,6 +387,18 @@ export async function POST(req: NextRequest) {
         await sendTelegramReply(message.chat.id, `⚠️ 인증번호 저장 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
       }
       return Response.json({ ok: true, smsCode: true });
+    }
+
+    // Claude Code 브리지 — "클로드 <지시>" → 큐 적재, 아이맥 워처가 헤드리스 수행 후 결과 보고
+    const claudeTask = parseClaudeCommand(text);
+    if (claudeTask) {
+      try {
+        await enqueueClaudeTask(claudeTask, message.chat.id);
+        await sendTelegramReply(message.chat.id, `🤖 작업 받았습니다, 진행할게요.\n"${claudeTask.slice(0, 60)}"\n(읽기·조회 작업만 — 잠시 후 결과 보고. 아이맥이 켜져 있어야 합니다)`, message.message_id);
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 작업 접수 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      }
+      return Response.json({ ok: true, claudeTask: true });
     }
 
     // on-demand 동기화 명령 ("W컨셉 동기화" / "무신사 동기화") → 요청 기록 (아이맥 watcher가 실행)

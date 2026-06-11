@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "/Users/mac/sungjo_ai/paulwise-dashboard/local-agent/claudeBridgeGuard.sh" }
+        ]
+      }
+    ]
+  }
+}
