@@ -28,7 +28,7 @@ const DF_DIR = process.env.DUTYFREE_PROJECT || path.join(DRIVE, "다운로드/du
 const INPUT_DIR = process.env.DUTYFREE_INPUT || path.join(DRIVE, "다운로드");
 const SINSEGAE_OUT = process.env.DUTYFREE_SINSEGAE_DIR || path.join(DRIVE, "제이에이치/폴바이스 면세점/2.신세계 면세점/신세계 패킹리스트");
 const LOTTE_OUT = process.env.DUTYFREE_LOTTE_DIR || path.join(DRIVE, "제이에이치/폴바이스 면세점/3.롯데면세점/패킹리스트");
-const PY = process.env.DUTYFREE_PYTHON || "python3";
+const PY = process.env.DUTYFREE_PYTHON || "/usr/bin/python3"; // launchd 최소 PATH 대비 절대경로 (openpyxl 설치된 시스템 python)
 const SUPPLIES_KEY = "paulwise:supplies:v1";
 const SHIPLOG_KEY = "paulwise:dutyfree-shipments:v1";
 

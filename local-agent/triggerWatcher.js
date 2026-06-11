@@ -31,8 +31,11 @@ function runSync(channel) {
     const script = channel === "wconcept" ? "runWconceptSync.js"
       : channel === "29cm" ? "runCm29Sync.js"
       : channel === "sixshop" ? "runSixshopSync.js"
-      : "runMusinsaSync.js";
-    console.log(`[${new Date().toISOString()}] ▶ ${channel} 동기화 실행 (${script})`);
+      : channel === "dutyfree" ? "dutyFreeProcess.js"
+      : channel === "musinsa" ? "runMusinsaSync.js"
+      : null;
+    if (!script) { console.log(`[${new Date().toISOString()}] 알 수 없는 channel: ${channel} — 스킵`); return resolve(); }
+    console.log(`[${new Date().toISOString()}] ▶ ${channel} 실행 (${script})`);
     const cp = execFile(process.execPath, [path.join(__dirname, script)], { cwd: __dirname, env: process.env });
     cp.stdout && cp.stdout.on("data", (d) => process.stdout.write(d));
     cp.stderr && cp.stderr.on("data", (d) => process.stderr.write(d));

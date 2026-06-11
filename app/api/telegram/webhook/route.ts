@@ -391,15 +391,20 @@ export async function POST(req: NextRequest) {
     // on-demand 동기화 명령 ("W컨셉 동기화" / "무신사 동기화") → 요청 기록 (아이맥 watcher가 실행)
     const syncCh = parseSyncCommand(text);
     if (syncCh) {
-      const label = syncCh === "wconcept" ? "W컨셉" : "무신사";
+      const LABELS: Record<string, string> = { wconcept: "W컨셉", musinsa: "무신사", "29cm": "29CM", sixshop: "식스샵", dutyfree: "면세점 발주" };
+      const label = LABELS[syncCh] ?? syncCh;
       try {
         await storeSyncRequest(syncCh);
-        const guide = syncCh === "wconcept"
-          ? "잠시 후 인증번호 요청이 2번 갑니다. 각 SMS를 'wc 코드'로 보내주세요."
-          : "잠시 후 자동으로 진행됩니다.";
-        await sendTelegramReply(message.chat.id, `🔄 ${label} 동기화를 시작합니다. ${guide}\n(아이맥이 켜져 있어야 실행됩니다)`, message.message_id);
+        if (syncCh === "dutyfree") {
+          await sendTelegramReply(message.chat.id, `📦 면세점 발주 처리를 시작합니다. 발주제안서(신세계·롯데)를 다운로드 폴더에 받아두시면 입고서류를 생성·저장하고 면세점 박스를 차감합니다.\n(아이맥이 켜져 있어야 실행됩니다)`, message.message_id);
+        } else {
+          const guide = syncCh === "wconcept"
+            ? "잠시 후 인증번호 요청이 2번 갑니다. 각 SMS를 'wc 코드'로 보내주세요."
+            : "잠시 후 자동으로 진행됩니다.";
+          await sendTelegramReply(message.chat.id, `🔄 ${label} 동기화를 시작합니다. ${guide}\n(아이맥이 켜져 있어야 실행됩니다)`, message.message_id);
+        }
       } catch (e) {
-        await sendTelegramReply(message.chat.id, `⚠️ ${label} 동기화 요청 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+        await sendTelegramReply(message.chat.id, `⚠️ ${label} 요청 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
       }
       return Response.json({ ok: true, syncRequest: syncCh });
     }
