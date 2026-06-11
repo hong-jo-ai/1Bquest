@@ -105,7 +105,12 @@ export async function loadSupplies(): Promise<SupplyItem[]> {
   } catch {
     stored = null;
   }
-  if (!stored || !stored.length) return DEFAULT_SUPPLIES.map((s) => ({ ...s }));
+  if (!stored || !stored.length) {
+    // 최초 로드 시 기본 시드를 서버(KV)에도 1회 저장 → 출고 자동차감 에이전트가 읽을 수 있게.
+    const seed = DEFAULT_SUPPLIES.map((s) => ({ ...s }));
+    saveSupplies(seed);
+    return seed;
+  }
   // 기본 시드 중 저장본에 없는 신규 항목만 추가(매핑 갱신은 코드 시드 우선, 수량/링크는 저장본 보존)
   const byId = new Map(stored.map((s) => [s.id, s]));
   const merged = DEFAULT_SUPPLIES.map((def) => {
