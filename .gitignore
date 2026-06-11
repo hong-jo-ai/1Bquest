@@ -51,3 +51,6 @@ business-plan-*.md
 
 # Moloco RMP 광고비 동기화 브라우저 세션 프로필
 local-agent/.moloco-ads-*
+
+# 전자세금계산서 복호화 브라우저 프로필
+local-agent/.tax-profile

@@ -46,6 +46,8 @@ export function parseSyncCommand(text: string): string | null {
   if (/면세점.*(발주|입고|패킹|출고|처리)|(발주|입고|패킹).*면세점/i.test(text)) return "dutyfree";
   // W컨셉 광고비 집계 (Moloco RMP 2계정 합산 → ad_spend:wconcept)
   if (/광고비|광고\s*집계|광고\s*동기화/i.test(text)) return "wconcept_ads";
+  // 전자세금계산서 수집 (메일 보안첨부 복호화 → finance_tax_invoices)
+  if (/세금\s*계산서|세금계산서/i.test(text)) return "tax_invoice";
   if (!/동기화|sync|가져오기|업로드/i.test(text)) return null;
   if (/w.?컨셉|wconcept|더블유/i.test(text)) return "wconcept";
   if (/무신사|musinsa/i.test(text)) return "musinsa";

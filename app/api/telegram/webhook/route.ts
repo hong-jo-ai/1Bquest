@@ -475,7 +475,7 @@ export async function POST(req: NextRequest) {
     // on-demand 동기화 명령 ("W컨셉 동기화" / "무신사 동기화") → 요청 기록 (아이맥 watcher가 실행)
     const syncCh = parseSyncCommand(text);
     if (syncCh) {
-      const LABELS: Record<string, string> = { wconcept: "W컨셉", musinsa: "무신사", "29cm": "29CM", sixshop: "식스샵", dutyfree: "면세점 발주", wconcept_ads: "W컨셉 광고비" };
+      const LABELS: Record<string, string> = { wconcept: "W컨셉", musinsa: "무신사", "29cm": "29CM", sixshop: "식스샵", dutyfree: "면세점 발주", wconcept_ads: "W컨셉 광고비", tax_invoice: "전자세금계산서" };
       const label = LABELS[syncCh] ?? syncCh;
       try {
         await storeSyncRequest(syncCh);
