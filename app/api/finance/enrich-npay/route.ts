@@ -38,9 +38,9 @@ function extractBody(payload: GmailPart | undefined): string {
   if (payload.body?.data) return b64urlDecode(payload.body.data);
   const parts: GmailPart[] = payload.parts || [];
   const plain = parts.find((p) => p.mimeType === "text/plain" && p.body?.data);
-  if (plain) return b64urlDecode(plain.body.data);
+  if (plain?.body?.data) return b64urlDecode(plain.body.data);
   const html = parts.find((p) => p.mimeType === "text/html" && p.body?.data);
-  if (html) return b64urlDecode(html.body.data);
+  if (html?.body?.data) return b64urlDecode(html.body.data);
   for (const p of parts) { const t = extractBody(p); if (t) return t; }
   return "";
 }
