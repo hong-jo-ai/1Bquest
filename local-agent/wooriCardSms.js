@@ -51,13 +51,25 @@ function readNew(afterNs) {
   finally { try { cdb.close(); } catch {} }
 }
 
+// 네이버페이 메일로 "네이버파이낸셜" 카드내역 보강 트리거(서버가 Gmail 읽고 매칭).
+async function enrichNpay() {
+  try {
+    const r = await fetch(`${base()}/api/finance/enrich-npay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-agent-token": process.env.PAULWISE_MCP_TOKEN || "" },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && (j.candidates || j.enriched)) log(`네이버페이 보강: 대상 ${j.candidates} → 보강 ${j.enriched} (메일 ${j.emails})`);
+  } catch (e) { log(`네이버페이 보강 호출 실패: ${e && e.message}`); }
+}
+
 async function main() {
   if (process.argv.includes("--reset")) { await setCursor(sb(), "0"); log("커서 초기화됨(0)"); return; }
   const db = sb();
   const cursor = await getCursor(db);
   const rows = readNew(cursor);
   if (rows === null) return; // 읽기 실패
-  if (!rows.length) { log("새 우리카드 문자 없음"); return; }
+  if (!rows.length) { log("새 우리카드 문자 없음"); await enrichNpay(); return; }
 
   const messages = rows.map((r) => ({
     text: r.text,
@@ -82,6 +94,7 @@ async function main() {
   if (res.preview && res.preview.length) {
     for (const p of res.preview.slice(0, 10)) log(`  · ${p.merchant} ${Number(p.amount).toLocaleString()}원 [${p.category}]${p.cancel ? " (취소)" : ""}`);
   }
+  await enrichNpay();
 }
 
 main().catch((e) => { console.error("ERR", e); process.exit(1); });
