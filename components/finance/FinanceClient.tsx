@@ -166,6 +166,122 @@ function CardMatchDetails({ match, withdrawal }: { match: CardMatch; withdrawal:
   );
 }
 
+interface CardUsageItem {
+  id: string;
+  source: string;
+  card_company: string | null;
+  use_date: string;
+  merchant: string | null;
+  amount: number;
+  cancel_amount: number;
+  category: string | null;
+  category_source: string | null;
+}
+
+/** 카드 지출 (SMS 자동수집) — 업로드 없이 카드 결제내역을 바로 보여주고 분류를 즉석 수정. */
+function CardExpenses() {
+  const [items, setItems] = useState<CardUsageItem[]>([]);
+  const [agg, setAgg] = useState<Record<string, { total: number; count: number }>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/finance/card-usage?limit=300`);
+      const j = await res.json();
+      if (j.ok) { setItems(j.items ?? []); setAgg(j.aggregate ?? {}); }
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const recategorize = async (id: string, category: string) => {
+    setSaving(id);
+    try {
+      const res = await fetch(`/api/finance/card-usage`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, category }),
+      });
+      if (res.ok) setItems((prev) => prev.map((it) => (it.id === id ? { ...it, category, category_source: "manual" } : it)));
+    } finally { setSaving(null); }
+  };
+
+  const total = useMemo(
+    () => items.reduce((s, it) => s + (Number(it.amount) || 0) - (Number(it.cancel_amount) || 0), 0),
+    [items],
+  );
+  const cats = useMemo(
+    () => Object.entries(agg).filter(([, v]) => v.total !== 0).sort((a, b) => b[1].total - a[1].total),
+    [agg],
+  );
+
+  return (
+    <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 min-w-0 text-left">
+          {open ? <ChevronUp size={16} className="text-zinc-400 shrink-0" /> : <ChevronDown size={16} className="text-zinc-400 shrink-0" />}
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">카드 지출 <span className="text-emerald-600 dark:text-emerald-400">자동수집</span></h2>
+            <p className="text-[11px] text-zinc-500 truncate">카드로 결제하면 SMS로 자동 기록 — 업로드 불필요 · 최근 {items.length}건 · 합계 {fmtKrw(total)}</p>
+          </div>
+        </button>
+        <button onClick={load} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 shrink-0" title="새로고침">
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {open && (
+        items.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-zinc-400">
+            {loading ? "불러오는 중…" : "아직 수집된 카드 지출이 없습니다. 카드로 결제하면 1~2분 내 자동으로 나타납니다."}
+          </p>
+        ) : (
+          <>
+            {/* 분류별 합계 칩 */}
+            {cats.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+                {cats.map(([cat, v]) => (
+                  <span key={cat} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">{cat}</span>
+                    <span className="tabular-nums text-zinc-500">{fmtKrw(v.total)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* 목록 */}
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {items.map((it) => {
+                const canceled = (Number(it.cancel_amount) || 0) > 0;
+                return (
+                  <li key={it.id} className="flex items-center gap-2 px-4 py-2 text-sm">
+                    <span className="text-[11px] text-zinc-400 tabular-nums w-20 shrink-0">{fmtDate(it.use_date)}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 shrink-0">{CARD_SOURCE_LABEL[it.source] ?? "카드"}</span>
+                    <span className={`flex-1 min-w-0 truncate ${canceled ? "line-through text-zinc-400" : "text-zinc-800 dark:text-zinc-200"}`}>{it.merchant || "(미상)"}</span>
+                    <span className={`tabular-nums shrink-0 ${canceled ? "text-zinc-400" : "text-red-600 dark:text-red-400 font-medium"}`}>
+                      {canceled ? `-${fmtKrw(Number(it.cancel_amount))}` : fmtKrw(Number(it.amount))}
+                    </span>
+                    <select
+                      value={(it.category as string) || "기타"}
+                      disabled={saving === it.id}
+                      onChange={(e) => recategorize(it.id, e.target.value)}
+                      className="text-[11px] rounded border border-zinc-200 dark:border-zinc-700 bg-transparent px-1 py-0.5 shrink-0 text-zinc-600 dark:text-zinc-300"
+                      title={it.category_source === "manual" ? "직접 분류" : "자동 분류"}
+                    >
+                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )
+      )}
+    </section>
+  );
+}
+
 export default function FinanceClient() {
   const [txs, setTxs] = useState<BankTx[]>([]);
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
@@ -288,6 +404,9 @@ export default function FinanceClient() {
           }
         />
       </section>
+
+      {/* 카드 지출 — SMS 자동수집 (업로드 불필요) */}
+      <CardExpenses />
 
       {/* 요약 카드 — 모바일에선 세로 쌓기 (큰 금액이 잘리지 않도록) */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
