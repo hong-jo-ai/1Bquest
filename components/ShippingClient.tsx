@@ -96,6 +96,21 @@ function TrackingBadge({ state }: { state: string | null }) {
   );
 }
 
+// 접수일시 — KST "MM/DD HH:mm" (없으면 —)
+function fmtRegAt(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
 const BIZ_EPOST_PRINT = "https://biz.epost.go.kr/ui/index.jsp";
 
 // 판매처별 아주 옅은 행 배경 (구분용 · 과하지 않게 50/70)
@@ -148,7 +163,6 @@ export default function ShippingClient() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showSingle, setShowSingle] = useState(false);
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState<"all" | "today" | "7d" | "30d">("all");
   // 등기번호 직접 조회 (과거/수기 발송 포함)
   const [trackNo, setTrackNo] = useState("");
   const [trackBusy, setTrackBusy] = useState(false);
@@ -158,7 +172,11 @@ export default function ShippingClient() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/postparcel/shipments?reqType=${tab}`, { cache: "no-store" });
+      // 검색어가 있으면 보관분(1주일 이전) 포함 전체를 서버에서 조회, 없으면 최근 1주일만.
+      const qs = new URLSearchParams({ reqType: tab });
+      const term = query.trim();
+      if (term) qs.set("q", term);
+      const res = await fetch(`/api/postparcel/shipments?${qs.toString()}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "조회 실패");
       setShipments(data.shipments || []);
@@ -168,11 +186,13 @@ export default function ShippingClient() {
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [tab, query]);
 
+  // 검색어 변경은 디바운스(타이핑 중 과도한 서버 호출 방지). 탭 전환·초기화는 즉시.
   useEffect(() => {
-    load();
-  }, [load]);
+    const t = setTimeout(() => { load(); }, query.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [load, query]);
 
   // 로컬에이전트 호출 (출고 일괄 접수)
   async function registerOutbound() {
@@ -302,14 +322,8 @@ export default function ShippingClient() {
 
   const hasTest = shipments.some((s) => s.is_test);
 
-  // 발송내역 검색/기간 필터 (클라이언트)
-  const periodMs: Record<string, number> = { today: 1, "7d": 7, "30d": 30, all: 0 };
+  // 검색은 서버가 처리(기본 1주일 / 검색 시 보관 포함 전체). 클라이언트는 즉시 반응용 텍스트 필터만.
   const filtered = shipments.filter((s) => {
-    if (period !== "all" && s.registered_at) {
-      const days = period === "today" ? 1 : periodMs[period];
-      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-      if (new Date(s.registered_at).getTime() < cutoff) return false;
-    }
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return [s.recipient_name, s.order_number, s.regi_no, s.product_name, s.channel]
@@ -426,25 +440,11 @@ export default function ShippingClient() {
           placeholder="수취인 · 주문번호 · 운송장 · 상품 검색"
           className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
         />
-        <div className="flex gap-1">
-          {([
-            ["all", "전체"],
-            ["today", "오늘"],
-            ["7d", "7일"],
-            ["30d", "30일"],
-          ] as const).map(([v, label]) => (
-            <button
-              key={v}
-              onClick={() => setPeriod(v)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                period === v ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-slate-400">{filtered.length}건</span>
+        <span className="text-xs text-slate-400">
+          {query.trim()
+            ? `검색결과 ${filtered.length}건 · 보관분 포함`
+            : `최근 1주일 ${filtered.length}건 · 이전 발송은 검색으로 조회`}
+        </span>
       </div>
 
       {/* 등기번호 직접 배송조회 (과거/수기 발송 포함) */}
@@ -500,6 +500,7 @@ export default function ShippingClient() {
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
               <th className="px-3 py-2 font-medium">판매처</th>
               <th className="px-3 py-2 font-medium">주문번호</th>
+              <th className="px-3 py-2 font-medium">접수일</th>
               <th className="px-3 py-2 font-medium">수취인</th>
               <th className="px-3 py-2 font-medium">상품</th>
               <th className="px-3 py-2 font-medium">운송장번호</th>
@@ -511,13 +512,13 @@ export default function ShippingClient() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
+                <td colSpan={9} className="px-3 py-10 text-center text-slate-400">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-slate-400">
+                <td colSpan={9} className="px-3 py-10 text-center text-slate-400">
                   {shipments.length === 0
                     ? `접수 내역이 없습니다. ${tab === "1" ? "‘출고 일괄 접수’ 또는 ‘단건 접수’로 등록하세요." : ""}`
                     : "검색 결과가 없습니다."}
@@ -528,6 +529,7 @@ export default function ShippingClient() {
                 <tr key={s.id} className={`border-b border-slate-100 last:border-0 ${isDelivered(s.tracking_state) ? "bg-emerald-50" : CHANNEL_TINT[s.channel] || ""}`}>
                   <td className="px-3 py-2 text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{fmtRegAt(s.registered_at)}</td>
                   <td className="px-3 py-2 text-slate-700">{s.recipient_name}</td>
                   <td className="px-3 py-2 max-w-[200px] truncate text-slate-600" title={s.product_name || ""}>
                     {s.product_name}
@@ -604,7 +606,10 @@ export default function ShippingClient() {
               </div>
               <div className="mt-2 flex items-baseline justify-between gap-2">
                 <span className="font-semibold text-slate-800">{s.recipient_name}</span>
-                <span className="shrink-0 font-mono text-xs text-slate-500">{s.order_number}</span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-mono text-xs text-slate-500">{s.order_number}</span>
+                  <span className="block text-[11px] text-slate-400">접수 {fmtRegAt(s.registered_at)}</span>
+                </span>
               </div>
               {s.product_name && <div className="mt-1 text-sm text-slate-600">{s.product_name}</div>}
               <div className="mt-2 flex items-center justify-between gap-2">
