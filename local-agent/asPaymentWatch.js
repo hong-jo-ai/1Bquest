@@ -108,9 +108,18 @@ async function main() {
   const db = sb();
   if (process.argv.includes("--reset")) { await setCursor(db, "0"); log("커서 초기화"); return; }
   const cursor = await getCursor(db);
+  // 비용안내완료(notified) AS가 없으면 입금확인 불필요 — chat.db도 안 읽고 종료(유휴시 사실상 안 돎).
+  const { count } = await db.from("as_requests").select("id", { count: "exact", head: true }).eq("status", "notified");
+  if (!count) {
+    // 유휴 기간 입금이 나중에 잘못 매칭되지 않게 커서만 최신으로 전진 후 종료.
+    const idle = readNew(cursor);
+    if (idle && idle.length) { let mx = cursor; for (const r of idle) if (BigInt(r.ns) > BigInt(mx)) mx = r.ns; if (!DRY) await setCursor(db, mx); }
+    log("대기 중(비용안내완료) AS 없음 — 입금확인 스킵");
+    return;
+  }
   const rows = readNew(cursor);
   if (rows === null) return;
-  if (!rows.length) { log("새 입금문자 없음"); return; }
+  if (!rows.length) { log("새 입금문자 없음(대기 AS 있음)"); return; }
   let maxNs = cursor;
   for (const row of rows) {
     if (BigInt(row.ns) > BigInt(maxNs)) maxNs = row.ns;
