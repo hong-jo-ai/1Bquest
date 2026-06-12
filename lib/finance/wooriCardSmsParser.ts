@@ -59,7 +59,7 @@ export function parseWooriCardSms(text: string, receivedAtMs?: number): ParsedWo
   const holder = (lines.find((l) => /님$/.test(l) && l.length <= 12) ?? "").replace(/님$/, "");
 
   // 금액 줄: 누적/잔액/한도 제외, '일시불|개월|할부' 있는 줄 우선
-  const amtLines = lines.filter((l) => /[\d,]+\s*원/.test(l) && !/누적|잔액|누계|한도/.test(l));
+  const amtLines = lines.filter((l) => /[\d,]+\s*원/.test(l) && !/누적|잔액|누계|한도|지급가능액|지급가능|가용한도|사용가능/.test(l));
   const amtLine = amtLines.find((l) => /일시불|개월|할부/.test(l)) ?? amtLines[0] ?? "";
   const amtM = amtLine.match(/([\d,]+)\s*원/);
   const amount = amtM ? Number(amtM[1].replace(/,/g, "")) : 0;
@@ -85,7 +85,7 @@ export function parseWooriCardSms(text: string, receivedAtMs?: number): ParsedWo
     l === amtLine ||
     (/님$/.test(l) && l.length <= 12) ||
     DT_RE.test(l) ||
-    /누적|잔액|누계|한도/.test(l);
+    /누적|잔액|누계|한도|지급가능액|지급가능|가용한도|사용가능/.test(l);
   let merchant = "";
   const dtIdx = lines.findIndex((l) => DT_RE.test(l));
   if (dtIdx >= 0) {
