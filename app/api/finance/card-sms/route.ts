@@ -8,9 +8,27 @@ import { createClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { parseWooriCardSms } from "@/lib/finance/wooriCardSmsParser";
 import { categorizeMerchant } from "@/lib/finance/categorize";
+import { isPgMerchant, enqueueCardClassify } from "@/lib/finance/cardClassify";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// 텔레그램 메시지 전송 (PG 결제 즉시 문의용)
+async function sendTelegram(chatId: string, text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || !chatId) return;
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  }).catch(() => {});
+}
+
+function fmtKst(iso: string): string {
+  const d = new Date(iso);
+  const k = new Date(d.getTime() + 9 * 3600 * 1000);
+  return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
+}
 
 function getDb() {
   const url = process.env.SUPABASE_URL;
@@ -81,10 +99,23 @@ export async function POST(req: NextRequest) {
   const { data, error } = await db
     .from("finance_card_usage")
     .upsert(records, { onConflict: "business_id,source,approval_no,use_date", ignoreDuplicates: true })
-    .select("id");
+    .select("id, merchant, amount, use_date");
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
+  // PG 경유(실제 가맹점 가려짐) 신규 결제 → 즉시 텔레그램으로 "이거 뭐였어?" 문의 (실시간 분류)
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  let asked = 0;
+  for (const row of (data ?? []) as Array<{ id: string; merchant: string; amount: number; use_date: string }>) {
+    if (Number(row.amount) <= 0 || !isPgMerchant(row.merchant)) continue;
+    if (chatId) {
+      await enqueueCardClassify(row, chatId);
+      await sendTelegram(chatId, `🟡 이 카드결제는 무엇이었나요? (PG라 가맹점이 가려져요)\n\n${row.merchant} · ₩${Number(row.amount).toLocaleString()} · ${fmtKst(row.use_date)}\n\n답장으로 알려주세요. 예) "뱀부랩 필라멘트"  또는  "뱀부랩 필라멘트 / 부자재"`);
+      asked++;
+    }
+  }
+
   return Response.json({
+    asked,
     ok: true,
     received: messages.length,
     parsed: records.length,

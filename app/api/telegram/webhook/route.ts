@@ -28,6 +28,7 @@ import {
 import { createAsRequest, type CreateAsInput } from "@/lib/as/store";
 import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
+import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
 import { transcribeAudio } from "@/lib/mori/stt";
 import type { CsBrandId } from "@/lib/cs/types";
@@ -492,6 +493,19 @@ export async function POST(req: NextRequest) {
       }
       return Response.json({ ok: true, syncRequest: syncCh });
     }
+  }
+
+  // PG 결제 분류 답장 — 대기 중인 "이거 뭐였어?" 질문이 있으면 이 메시지를 분류 답으로 처리
+  if (text) {
+    try {
+      if (await hasPendingClassify()) {
+        const res = await applyCardClassify(text);
+        if (res) {
+          await sendTelegramReply(message.chat.id, `✅ ${res.merchant} ₩${res.amount.toLocaleString()} → [${res.category}]로 정리했어요.`, message.message_id);
+          return Response.json({ ok: true, cardClassify: true });
+        }
+      }
+    } catch { /* 실패 시 일반 처리로 진행 */ }
   }
 
   const decision = shouldProcess(text, hasPhoto);
