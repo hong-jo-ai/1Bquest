@@ -55,8 +55,9 @@ interface InvoiceMatch {
 interface AggEntry { withdrawal: number; deposit: number; count: number }
 
 const CATEGORIES: TxCategory[] = [
-  "매출", "광고비", "매입", "인건비", "임대료", "통신비",
-  "소프트웨어", "택배비", "수수료", "세금",
+  "매출", "광고비", "매입", "부자재", "사무용품", "비품/설비",
+  "인건비", "복리후생", "임대료", "통신비", "소프트웨어", "택배비",
+  "여비교통비", "수수료", "세금", "보험료", "수선비", "도서인쇄",
   "카드결제", "식비", "교통/연료", "접대비", "송금", "개인", "기타",
 ];
 
@@ -185,11 +186,12 @@ function CardExpenses() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const [filterCat, setFilterCat] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/finance/card-usage?limit=300`);
+      const res = await fetch(`/api/finance/card-usage?limit=1000`);
       const j = await res.json();
       if (j.ok) { setItems(j.items ?? []); setAgg(j.aggregate ?? {}); }
     } finally { setLoading(false); }
@@ -216,6 +218,14 @@ function CardExpenses() {
     () => Object.entries(agg).filter(([, v]) => v.total !== 0).sort((a, b) => b[1].total - a[1].total),
     [agg],
   );
+  const shown = useMemo(
+    () => (filterCat ? items.filter((it) => ((it.category as string) || "기타") === filterCat) : items),
+    [items, filterCat],
+  );
+  const shownTotal = useMemo(
+    () => shown.reduce((s, it) => s + (Number(it.amount) || 0) - (Number(it.cancel_amount) || 0), 0),
+    [shown],
+  );
 
   return (
     <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -239,20 +249,33 @@ function CardExpenses() {
           </p>
         ) : (
           <>
-            {/* 분류별 합계 칩 */}
+            {/* 분류별 합계 칩 — 클릭하면 해당 분류만 필터 */}
             {cats.length > 0 && (
               <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+                <button
+                  onClick={() => setFilterCat(null)}
+                  className={`text-[11px] px-2 py-1 rounded-full font-medium ${filterCat === null ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"}`}
+                >전체</button>
                 {cats.map(([cat, v]) => (
-                  <span key={cat} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
-                    <span className="font-medium text-zinc-700 dark:text-zinc-300">{cat}</span>
-                    <span className="tabular-nums text-zinc-500">{fmtKrw(v.total)}</span>
-                  </span>
+                  <button
+                    key={cat}
+                    onClick={() => setFilterCat((c) => (c === cat ? null : cat))}
+                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full ${filterCat === cat ? "bg-emerald-600 text-white" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                  >
+                    <span className={`font-medium ${filterCat === cat ? "" : "text-zinc-700 dark:text-zinc-300"}`}>{cat}</span>
+                    <span className={`tabular-nums ${filterCat === cat ? "text-emerald-100" : "text-zinc-500"}`}>{fmtKrw(v.total)}</span>
+                  </button>
                 ))}
               </div>
             )}
+            {filterCat && (
+              <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">{filterCat}</span> {shown.length}건 · 합계 {fmtKrw(shownTotal)}
+              </div>
+            )}
             {/* 목록 */}
-            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {items.map((it) => {
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-[560px] overflow-auto">
+              {shown.map((it) => {
                 const canceled = (Number(it.cancel_amount) || 0) > 0;
                 return (
                   <li key={it.id} className="flex items-center gap-2 px-4 py-2 text-sm">
