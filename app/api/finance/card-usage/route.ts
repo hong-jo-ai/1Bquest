@@ -4,6 +4,7 @@ import { parseNpayReceiptExcel } from "@/lib/finance/npayParser";
 import { parseHyundaiCardExcel } from "@/lib/finance/hyundaiCardParser";
 import { parseKbCardExcel } from "@/lib/finance/kbCardParser";
 import { categorizeMerchant } from "@/lib/finance/categorize";
+import { dedupeNpayCardRows } from "@/lib/finance/dedupeNpayCardRows";
 import { USD_TO_KRW } from "@/lib/finance/forex";
 
 export const dynamic = "force-dynamic";
@@ -142,11 +143,17 @@ export async function POST(req: NextRequest) {
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
+  // 네이버페이↔카드 이중계상 자동 병합(승인번호 일치 → 카드행 보강 + npay 행 삭제).
+  // npay·카드 import 순서와 무관하게 매 적재 후 정리되어 같은 결제가 두 번 잡히지 않음.
+  let npayMerged = 0;
+  try { ({ merged: npayMerged } = await dedupeNpayCardRows(db)); } catch {}
+
   return Response.json({
     ok: true,
     parsed: records.length,
     inserted: data?.length ?? 0,
     skipped: records.length - (data?.length ?? 0),
+    npayMerged,
   });
 }
 
