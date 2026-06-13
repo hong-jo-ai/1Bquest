@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
     const p = parseWooriCardSms(m.text, m.receivedAtMs);
     if (!p || (p.amount <= 0 && !p.isCanceled)) { nonCard++; continue; }
     const category = categorizeMerchant(p.merchant);
+    // 해외승인: 가맹점명에 외화 표기 덧붙임(원화는 환율 추정치임을 명확히). 분류는 원래 가맹점명 기준.
+    const fx = p.isForeign && p.foreignAmount > 0 ? ` (${p.foreignCurrency} ${p.foreignAmount})` : "";
     records.push({
       business_id: businessId,
       source: "card_woori_sms",
@@ -79,12 +81,12 @@ export async function POST(req: NextRequest) {
       approval_no: `sms-${m.id}`,
       use_date: p.useDate.toISOString(),
       cancel_date: p.isCanceled ? p.useDate.toISOString() : null,
-      merchant: p.merchant,
+      merchant: p.merchant + fx,
       amount: p.isCanceled ? 0 : p.amount,
       cancel_amount: p.isCanceled ? p.amount : 0,
       supply_amount: null,
       tax_amount: null,
-      installment: [p.cardKind, p.installment].filter(Boolean).join("/"),
+      installment: [p.cardKind, p.installment, p.isForeign ? "해외(추정환산)" : ""].filter(Boolean).join("/"),
       category,
       category_source: "rule",
       raw: { ...p, useDate: p.useDate.toISOString() },
