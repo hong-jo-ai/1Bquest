@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { parseBankSms, type ParsedDeposit } from "@/lib/bankDeposit/parser";
 import { findDepositCandidates, type MatchCandidate } from "@/lib/bankDeposit/matcher";
+import { confirmOrderPayment, type ConfirmResult } from "@/lib/bankDeposit/confirm";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { getCsSupabase } from "@/lib/cs/store";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
@@ -66,7 +67,11 @@ async function markProcessed(hash: string, payload: unknown): Promise<void> {
   );
 }
 
-function formatNotification(p: ParsedDeposit, candidates: MatchCandidate[]): string {
+function formatNotification(
+  p: ParsedDeposit,
+  candidates: MatchCandidate[],
+  confirm?: ConfirmResult | null,
+): string {
   const head = [
     `💰 <b>${p.bank} 입금 ${escapeHtml(fmtKRW(p.amount))}</b>`,
     p.depositorName ? `· ${escapeHtml(p.depositorName)}` : "",
@@ -83,11 +88,30 @@ function formatNotification(p: ParsedDeposit, candidates: MatchCandidate[]): str
   if (candidates.length === 1) {
     const c = candidates[0];
     const o = c.order;
-    const confidence = c.nameMatch ? "✅ <b>HIGH</b>" : "🟡 <b>MEDIUM</b> (이름 미확인)";
+    const orderLine =
+      `주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`;
+
+    // 자동확정을 시도한 경우(HIGH) — 결과를 반영.
+    if (confirm) {
+      if (confirm.ok && confirm.alreadyConfirmed) {
+        return [head, `✅ <b>이미 입금확인됨</b>`, orderLine].join("\n");
+      }
+      if (confirm.ok) {
+        return [head, `✅ <b>자동 입금확인 완료</b> (상품준비중 전환)`, orderLine].join("\n");
+      }
+      return [
+        head,
+        `🟡 <b>매칭 1건 — 자동확정 실패, 수동 확인 필요</b>`,
+        orderLine,
+        `<i>사유: ${escapeHtml(confirm.error ?? "알 수 없음")}</i>`,
+      ].join("\n");
+    }
+
+    // 자동확정 미시도(MEDIUM: 이름 미확인) — 알림만.
     return [
       head,
-      `${confidence} 매칭 1건`,
-      `주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`,
+      `🟡 <b>MEDIUM</b> (이름 미확인) 매칭 1건`,
+      orderLine,
       `카페24 어드민에서 입금확정해주세요.`,
     ].join("\n");
   }
@@ -108,16 +132,23 @@ function formatNotification(p: ParsedDeposit, candidates: MatchCandidate[]): str
 }
 
 export async function POST(req: NextRequest) {
-  const expected = process.env.BANK_DEPOSIT_WEBHOOK_SECRET;
-  if (!expected) {
+  // 인증: (a) iPhone 단축어 — ?token=/x-auth-token=BANK_DEPOSIT_WEBHOOK_SECRET,
+  //       (b) iMac 로컬 에이전트 — x-agent-token=PAULWISE_MCP_TOKEN.
+  const webhookSecret = process.env.BANK_DEPOSIT_WEBHOOK_SECRET;
+  const agentToken = process.env.PAULWISE_MCP_TOKEN;
+  if (!webhookSecret && !agentToken) {
     return Response.json(
-      { ok: false, error: "BANK_DEPOSIT_WEBHOOK_SECRET 미설정" },
+      { ok: false, error: "BANK_DEPOSIT_WEBHOOK_SECRET / PAULWISE_MCP_TOKEN 모두 미설정" },
       { status: 503 },
     );
   }
-  const tok =
+  const shortcutTok =
     req.nextUrl.searchParams.get("token") ?? req.headers.get("x-auth-token");
-  if (tok !== expected) {
+  const agentTok = req.headers.get("x-agent-token");
+  const authed =
+    (!!webhookSecret && shortcutTok === webhookSecret) ||
+    (!!agentToken && agentTok === agentToken);
+  if (!authed) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
@@ -148,8 +179,9 @@ export async function POST(req: NextRequest) {
   // 카페24 미결제 주문 매칭
   let candidates: MatchCandidate[] = [];
   let matchError: string | null = null;
+  let cafeToken: string | null = null;
   try {
-    const cafeToken = await getAccessTokenFromStore();
+    cafeToken = await getAccessTokenFromStore();
     if (cafeToken) {
       candidates = await findDepositCandidates(cafeToken, parsed.amount, parsed.depositorName);
     } else {
@@ -159,8 +191,15 @@ export async function POST(req: NextRequest) {
     matchError = e instanceof Error ? e.message : String(e);
   }
 
+  // 자동 입금확인: 후보가 정확히 1건이고 입금자명까지 일치(HIGH)할 때만 실행.
+  // 0건 / 복수 / 이름 미확인(MEDIUM) 은 오확정 위험이 있어 알림만 하고 수동 처리.
+  let confirm: ConfirmResult | null = null;
+  if (cafeToken && candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
+    confirm = await confirmOrderPayment(cafeToken, candidates[0].order.order_id);
+  }
+
   // 텔레그램 발송 (매칭 실패해도 입금 자체는 알림)
-  let telegramText = formatNotification(parsed, candidates);
+  let telegramText = formatNotification(parsed, candidates, confirm);
   if (matchError) {
     telegramText += `\n<i>⚠ 매칭 조회 실패: ${escapeHtml(matchError)}</i>`;
   }
@@ -169,6 +208,7 @@ export async function POST(req: NextRequest) {
   await markProcessed(hash, {
     parsed,
     candidates: candidates.length,
+    confirmed: confirm?.ok ? confirm.confirmed : 0,
     ts: new Date().toISOString(),
   });
 
@@ -176,6 +216,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     parsed,
     matched: candidates.length,
+    confirmed: confirm?.ok ? confirm.confirmed : 0,
+    confirmError: confirm && !confirm.ok ? confirm.error : undefined,
     matchError: matchError ?? undefined,
   });
 }

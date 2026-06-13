@@ -1,0 +1,115 @@
+/**
+ * 카페24 무통장입금 자동 입금확인 — chat.db 우리은행 입금 SMS 감시.
+ *
+ * 흐름: chat.db(우리은행 입금알림, 커서 이후, 수신만) → 각 SMS 를
+ *   POST /api/cafe24/bank-deposit-webhook (x-agent-token) 으로 전송.
+ *   서버가 파싱→카페24 미결제 주문 매칭→HIGH(단건+이름일치)면 자동 입금확인→텔레그램.
+ *
+ * 멱등: 서버측 depositHash(은행+시각+금액+입금자) + 로컬 커서.
+ * 필요: 전체 디스크 접근 권한(chat.db), .env 의 SUPABASE_*, PAULWISE_MCP_TOKEN, DASHBOARD_URL.
+ *
+ * 실행:  node cafe24DepositWatch.js          ← 1회(launchd StartInterval)
+ *        node cafe24DepositWatch.js --reset   ← 커서 초기화
+ *
+ * 주의: 발신문자(사장님이 보낸 "…입금 부탁드립니다" AS 안내)는 is_from_me=0 필터로 제외.
+ */
+require("dotenv").config({ override: true });
+const fs = require("fs"), path = require("path"), os = require("os");
+const { DatabaseSync } = require("node:sqlite");
+const DASH = path.resolve(__dirname, "..");
+function le(p) { try { for (const l of fs.readFileSync(p, "utf8").split("\n")) { const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if (!m) continue; let v = m[2].trim().replace(/^["']|["']$/g, ""); if (!(m[1] in process.env)) process.env[m[1]] = v; } } catch {} }
+le(path.join(DASH, ".env.supabase")); le(path.join(DASH, ".env.local")); le(path.join(__dirname, ".env"));
+const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
+
+const CHAT_DB = path.join(os.homedir(), "Library/Messages/chat.db");
+const CURSOR_KEY = "cafe24_deposit_sms_cursor";
+const base = () => (process.env.DASHBOARD_URL || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
+const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
+const sb = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function getCursor(db) {
+  const { data } = await db.from("kv_store").select("data").eq("key", CURSOR_KEY).maybeSingle();
+  return (data && data.data && data.data.lastNs) ? String(data.data.lastNs) : "0";
+}
+async function setCursor(db, ns) {
+  await db.from("kv_store").upsert({ key: CURSOR_KEY, data: { lastNs: String(ns), updatedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+}
+
+// chat.db 에서 커서 이후 우리은행 입금알림 SMS(수신만) 읽기. ns 는 2^53 초과라 TEXT 캐스팅.
+function readNew(afterNs) {
+  let cdb;
+  try { cdb = new DatabaseSync(CHAT_DB, { readOnly: true }); }
+  catch (e) { log(`chat.db 열기 실패(전체 디스크 접근 권한 확인): ${e && e.message}`); return null; }
+  try {
+    const rows = cdb.prepare(
+      "SELECT CAST(date AS TEXT) AS ns, text FROM message " +
+      "WHERE text IS NOT NULL AND is_from_me = 0 AND date > ? " +
+      "AND text LIKE '%우리%' AND text LIKE '%입금%' AND text LIKE '%원%' " +
+      "ORDER BY date ASC LIMIT 200"
+    ).all(BigInt(afterNs));
+    return rows;
+  } catch (e) { log(`chat.db 쿼리 오류: ${e && e.message}`); return null; }
+  finally { try { cdb.close(); } catch {} }
+}
+
+// 입금알림 형태만 1차 필터(발신 안내문/카드승인 등 노이즈 줄이기). 최종 파싱은 서버.
+function looksLikeDeposit(text) {
+  if (!/입금/.test(text)) return false;
+  if (/부탁|바랍니다|드립니다|해주시면|해주세요/.test(text)) return false; // 발신 안내문 방어(이중)
+  if (/승인|취소|할부|체크승인|일시불/.test(text)) return false;            // 카드 승인문자 제외
+  return /입금\s*[\d,]+\s*원|[\d,]+\s*원\s*입금/.test(text);
+}
+
+async function sendToWebhook(text) {
+  const r = await fetch(`${base()}/api/cafe24/bank-deposit-webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-agent-token": process.env.PAULWISE_MCP_TOKEN || "" },
+    body: JSON.stringify({ sender: "우리", body: text }),
+  });
+  const j = await r.json().catch(() => ({}));
+  return { status: r.status, ok: r.ok, j };
+}
+
+async function main() {
+  const db = sb();
+  if (process.argv.includes("--reset")) { await setCursor(db, "0"); log("커서 초기화됨(0)"); return; }
+
+  const cursor = await getCursor(db);
+  const rows = readNew(cursor);
+  if (rows === null) return;            // 읽기 실패 — 커서 유지(다음에 재시도)
+  if (!rows.length) { log("새 입금문자 없음"); return; }
+
+  let advanced = cursor;
+  let processed = 0, confirmed = 0;
+  for (const row of rows) {
+    if (!looksLikeDeposit(row.text)) {
+      // 입금알림 아님(노이즈) — 처리 없이 커서만 전진.
+      if (BigInt(row.ns) > BigInt(advanced)) advanced = row.ns;
+      continue;
+    }
+    let res;
+    try { res = await sendToWebhook(row.text); }
+    catch (e) { log(`전송 실패(커서 보존, 다음 재시도): ${e && e.message}`); break; }
+
+    if (!res.ok) {
+      // 401/503 등 설정 오류 → 커서 전진 금지(고치고 재시도).
+      log(`웹훅 오류 ${res.status}: ${JSON.stringify(res.j).slice(0, 200)} — 커서 보존`);
+      break;
+    }
+    processed++;
+    if (res.j && res.j.confirmed) confirmed += res.j.confirmed;
+    if (res.j) {
+      const tag = res.j.duplicate ? "중복" : res.j.skipped ? "비입금" :
+        (res.j.confirmed ? `자동확정 ${res.j.confirmed}건` :
+         res.j.confirmError ? `확정실패(${String(res.j.confirmError).slice(0, 60)})` :
+         res.j.matched ? `매칭 ${res.j.matched}건(수동)` : "매칭없음");
+      log(`  · ${(row.text || "").replace(/\n/g, " ").slice(0, 40)} → ${tag}`);
+    }
+    if (BigInt(row.ns) > BigInt(advanced)) advanced = row.ns;
+  }
+
+  if (advanced !== cursor) await setCursor(db, advanced);
+  log(`처리 ${processed}건 / 자동확정 ${confirmed}건`);
+}
+
+main().catch((e) => { console.error("ERR", e); process.exit(1); });
