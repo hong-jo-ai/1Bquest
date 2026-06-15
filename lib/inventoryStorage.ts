@@ -253,11 +253,11 @@ export function ensureArchiveInventorySeeded(): void {
   const inventory = readLocalJson<Record<string, InventoryEntry>>(STORAGE_KEY, {});
   saveWithSync(STORAGE_KEY, { ...ARCHIVE_ENTRIES, ...inventory });
 
-  const archiveSkus = new Set(ARCHIVE_PRODUCTS.map((p) => p.sku));
-  const hidden = readLocalJson<string[]>(HIDDEN_SKUS_KEY, []);
-  if (hidden.some((sku) => archiveSkus.has(sku))) {
-    saveWithSync(HIDDEN_SKUS_KEY, hidden.filter((sku) => !archiveSkus.has(sku)));
-  }
+  // 주의: 여기서 숨김 목록(HIDDEN_SKUS_KEY)을 건드리지 않는다.
+  // 과거엔 아카이브 SKU를 숨김에서 강제로 제거(항상 노출)했는데,
+  // 그 때문에 아카이브 제품을 삭제(숨김)해도 30초 폴링마다 되살아나는 버그가 있었다.
+  // 아카이브 제품도 일반 제품처럼 숨길 수 있어야 하며(렌더 단계에서 hidden 필터로 제외),
+  // 다시 보려면 "모두 복원"으로 숨김을 해제하면 된다.
 }
 
 // ── InventoryEntry ─────────────────────────────────────────────────────────
