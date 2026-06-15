@@ -14,6 +14,7 @@ export interface AsIntakeInitial {
   channel?: string | null;
   model?: string | null;
   symptom?: string | null;
+  note?: string | null;
   csThreadId?: string | null;
 }
 
@@ -38,7 +39,7 @@ export default function AsIntakeForm({
   const [model, setModel] = useState(initial?.model ?? "");
   const [symptom, setSymptom] = useState(initial?.symptom ?? "");
   const [destination, setDestination] = useState<AsDestination | "">("");
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initial?.note ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

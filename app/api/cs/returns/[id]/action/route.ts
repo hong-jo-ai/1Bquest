@@ -85,6 +85,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const ret = await getReturnByThread(id);
   if (!ret) return Response.json({ error: "반품 정보 없음" }, { status: 404 });
 
+  // AS 접수 후 대기중 전환 — W컨셉 회수는 자동(계약택배)이므로 큐/워커 없이
+  // 클레임만 회수중(in_transit=대기중)으로 올려 미답변에서 빼고 택배 도착을 기다린다.
+  // setReturnStatus 가 nonRegressing 으로 보존돼 재동기화에도 대기중 유지.
+  if (action === "waiting") {
+    await setReturnStatus(id, "in_transit");
+    return Response.json({ ok: true, status: "in_transit", message: "대기중으로 이동 — 택배 도착 후 회수 완료를 누르세요" });
+  }
+
   // 우체국 반품 회수 접수(대기중으로) — 브라우저 워커 아님, 우체국 큐 경유.
   if (action === "pickup") {
     try {

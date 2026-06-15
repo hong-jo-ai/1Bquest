@@ -374,6 +374,32 @@ export default function InboxClient() {
     }
   };
 
+  // AS 접수 후: 해당 CS 건을 대기중으로 이동(물건 도착 대기).
+  // 반품/교환 카드는 스레드 상태가 클레임 상태에서 자동 계산되므로,
+  // 클레임을 회수중(in_transit=대기중)으로 올려야 재동기화에도 대기중이 유지됨.
+  // 일반 문의는 스레드 상태만 직접 대기중으로 PATCH.
+  const moveThreadToWaiting = async (d: ThreadDetail) => {
+    try {
+      if (d.thread.item_type === "return") {
+        await fetch(`/api/cs/returns/${d.thread.id}/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "waiting" }),
+        });
+      } else {
+        await fetch(`/api/cs/threads/${d.thread.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "waiting" }),
+        });
+      }
+    } catch {
+      // 대기중 이동 실패는 치명적이지 않음 — AS 접수 자체는 등록됨
+    }
+    await loadThreads();
+    if (selectedId) await loadDetail(selectedId);
+  };
+
   const markResolved = async () => {
     if (!selectedId) return;
     await fetch(`/api/cs/threads/${selectedId}`, {
@@ -822,14 +848,21 @@ export default function InboxClient() {
         <AsIntakeForm
           initial={{
             brand: detail.thread.brand,
-            customerName: detail.thread.customer_name,
+            // 반품/교환 카드는 고객명·상품명·주문번호가 csReturn 에 있음 → 미리 채움
+            customerName: detail.csReturn?.customer_name ?? detail.thread.customer_name,
             channel: CHANNEL_LABEL[detail.thread.channel],
+            model: detail.csReturn?.product ?? null,
+            symptom: detail.csReturn?.reason ?? null,
+            note: detail.csReturn?.order_number
+              ? `주문번호: ${detail.csReturn.order_number}`
+              : null,
             csThreadId: detail.thread.id,
           }}
           onClose={() => setAsFormOpen(false)}
-          onCreated={() => {
+          onCreated={async () => {
             setAsFormOpen(false);
-            showToast("AS 접수 등록됨 — /as 에서 추적");
+            await moveThreadToWaiting(detail);
+            showToast("AS 접수 등록됨 · 대기중으로 이동 — /as 에서 추적");
           }}
         />
       )}
