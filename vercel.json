@@ -99,6 +99,14 @@
     {
       "path": "/api/cron/daily-summary",
       "schedule": "59 14 * * *"
+    },
+    {
+      "path": "/api/alba/ask",
+      "schedule": "10 6 * * 1,2,4,5"
+    },
+    {
+      "path": "/api/alba/payslip",
+      "schedule": "0 0 1 * *"
     }
   ]
 }

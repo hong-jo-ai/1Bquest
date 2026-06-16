@@ -30,6 +30,7 @@ import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
+import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
 import { transcribeAudio } from "@/lib/mori/stt";
 import type { CsBrandId } from "@/lib/cs/types";
 
@@ -459,6 +460,26 @@ export async function POST(req: NextRequest) {
         await sendTelegramReply(message.chat.id, `⚠️ 확인 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
         return Response.json({ ok: true, claudeConfirm: "error" });
       }
+    }
+
+    // 알바 급여명세서 명령 — "급여명세서" / "알바 급여" (+ 선택 "YYYY-MM")
+    if (/급여\s*명세서|알바\s*급여|급여\s*정산/.test(text)) {
+      const ym = (text.match(/(20\d{2})[-.\s]?(0?[1-9]|1[0-2])\b/) || []);
+      const ymStr = ym.length ? `${ym[1]}-${String(ym[2]).padStart(2, "0")}` : undefined;
+      try {
+        const slip = await sendPayslip(ymStr);
+        return Response.json({ ok: true, albaPayslip: true, text: slip });
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 급여명세서 생성 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+        return Response.json({ ok: true, albaPayslip: "error" });
+      }
+    }
+
+    // 알바 출퇴근 응답 — 대기 중인 "근무했나요?" 질문이 있고 y/n 이면 그날 근무여부 기록
+    const albaRes = await resolveAlbaAttendance(text);
+    if (albaRes) {
+      await sendTelegramReply(message.chat.id, albaRes.message, message.message_id);
+      return Response.json({ ok: true, albaAttendance: true });
     }
 
     // Claude Code 브리지 — "클로드 <지시>" → 큐 적재, 아이맥 워처가 헤드리스 수행 후 결과 보고
