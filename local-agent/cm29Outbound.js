@@ -93,24 +93,41 @@ async function getDetail(page, serial, log) {
   const zip = (addrRaw.match(/\((\d{5})\)/) || [,""])[1];
   const addr = addrRaw.replace(/\(\d{5}\)/, "").trim();
   const msg = grab("배송 메세지");
-  // 상품: 상세내용 테이블에서 상품명 셀 + 최종수량
+  // 상품: 상세내용 테이블에서 헤더 기준으로 상품명+옵션+직접입력옵션(각인)+최종수량 추출.
+  // 29CM 컬럼: 상품명 / 옵션 / 직접 입력형 옵션 / … / 최종수량
   const items = await page.evaluate(() => {
-    const res = [];
-    const tables = [...document.querySelectorAll("table")];
-    for (const tb of tables) {
-      const headTxt = tb.innerText || "";
-      if (!/상품명/.test(headTxt)) continue;
+    const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+    for (const tb of document.querySelectorAll("table")) {
+      if (!/상품명/.test(tb.innerText || "")) continue;
+      const ths = [...tb.querySelectorAll("thead th, thead td")];
+      const headers = (ths.length ? ths : [...(tb.querySelector("tr")?.querySelectorAll("th,td") || [])]).map((c) => norm(c.innerText));
+      const exact = (label) => headers.findIndex((h) => h === label);
+      const inc = (re) => headers.findIndex((h) => re.test(h));
+      const pi = exact("상품명") >= 0 ? exact("상품명") : inc(/상품명/);
+      const oi = exact("옵션");                 // '직접 입력형 옵션'과 구분 위해 정확매칭
+      const ci = inc(/직접.*옵션/);              // 직접 입력형 옵션(각인 등)
+      let qi = exact("최종수량"); if (qi < 0) qi = inc(/수량/);
+      const res = [];
       for (const tr of tb.querySelectorAll("tbody tr")) {
-        const cells = [...tr.querySelectorAll("td")].map(td => td.innerText.replace(/\s+/g," ").trim());
-        const joined = cells.join("|");
-        // 상품명처럼 보이는 셀(가장 긴 한글 포함 셀)
-        const prod = cells.filter(c => /[가-힣]/.test(c) && c.length > 4 && !/^-$/.test(c)).sort((a,b)=>b.length-a.length)[0];
-        if (prod) res.push({ prod, raw: joined.slice(0,200) });
+        const cells = [...tr.querySelectorAll("td")].map((td) => norm(td.innerText));
+        if (!cells.length) continue;
+        let prod = pi >= 0 ? cells[pi] : "";
+        if (!prod) prod = cells.filter((c) => /[가-힣]/.test(c) && c.length > 4 && c !== "-").sort((a, b) => b.length - a.length)[0] || "";
+        if (!prod) continue;
+        const opt = oi >= 0 ? cells[oi] : "";
+        const cust = ci >= 0 ? cells[ci] : "";
+        const qty = qi >= 0 ? cells[qi] : "";
+        const q = (qty || "").replace(/[^\d]/g, "") || "1";
+        let full = prod;
+        if (opt && opt !== "-") full += ` / ${opt}`;
+        if (cust && cust !== "-") full += ` (${cust})`;
+        if (Number(q) > 1) full += ` x${q}`;       // 수량 2개+ 송장에 표시
+        res.push({ prod: full, qty: q, raw: cells.join("|").slice(0, 200) });
       }
-      break;
+      return res;
     }
-    return res;
-  }).catch(()=>[]);
+    return [];
+  }).catch(() => []);
   log(`  ${serial}: ${name} / ${phone} / (${zip}) ${addr.slice(0,30)}... / 상품 ${items.length}개`);
   return { serial, name, phone, zip, addr, msg, items };
 }
