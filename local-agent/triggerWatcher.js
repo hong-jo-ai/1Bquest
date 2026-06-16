@@ -15,6 +15,7 @@ const os = require("os");
 const BASE = (process.env.DASHBOARD_URL || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
 const TOKEN = process.env.PAULWISE_MCP_TOKEN || "";
 const STATE = path.join(os.homedir(), ".paulvice-marketplace-agent", "last_sync_request.txt");
+const PARK_STATE = path.join(os.homedir(), ".paulvice-marketplace-agent", "last_parking_request.txt");
 const POLL_MS = 30000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
