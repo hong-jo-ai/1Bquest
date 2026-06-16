@@ -93,7 +93,7 @@ export async function askAttendance(): Promise<{ asked: boolean; reason?: string
   const records = await readKv<Records>(RECORDS_KEY, {});
   if (!records[date]) { records[date] = { worked: true, confirmed: false, hours: ALBA.hoursPerDay }; await writeKv(RECORDS_KEY, records); }
   await writeKv(PENDING_KEY, { date, askedAt: new Date().toISOString() });
-  await sendTelegram(`📋 ${ALBA.name}님 오늘(${mmddKor(date)}) 근무했나요?\n\ny = 근무함 / n = 안 함\n(기본 ${ALBA.time}, ${ALBA.hoursPerDay}시간)`);
+  await sendTelegram(`📋 ${ALBA.name}님 오늘(${mmddKor(date)}) 출근했나요?\n\ny = 출근 / n = 결근\n(${ALBA.time}, ${ALBA.hoursPerDay}시간 근무)`);
   return { asked: true, date };
 }
 
