@@ -16,6 +16,7 @@ export const ALBA = {
   workdays: [1, 2, 4, 5],      // 월(1)·화(2)·목(4)·금(5)  (0=일 … 6=토)
   hoursPerDay: 2,              // 1일 2시간
   time: "13:00~15:00",
+  car: "4330",                 // 출근차량 번호(끝4자리) — 출근확인 시 주차할인 자동등록
 };
 
 // 2026 대한민국 공휴일(주말 제외 법정공휴일+대체공휴일). 알바는 공휴일 근무 안 함.
@@ -110,6 +111,15 @@ export async function resolveAlbaAttendance(text: string): Promise<{ message: st
   const { days, pay } = summarize(records, pending.date.slice(0, 7));
   const head = yn ? `✅ ${mmddKor(pending.date)} 근무 확인 (${ALBA.hoursPerDay}시간)` : `🚫 ${mmddKor(pending.date)} 미근무 처리`;
   return { message: `${head}\n이번 달 누적: ${days}일 · ₩${pay.toLocaleString()}` };
+}
+
+// ── 오늘 근무 여부(주차 자동등록용) ──────────────────────
+// 오늘이 근무일이고, 출근으로 기록(기본 근무 또는 Y 확인)이면 true. N(결근)이면 false.
+export async function workedToday(): Promise<boolean> {
+  const date = kstDateStr();
+  if (!isWorkday(date)) return false;
+  const records = await readKv<Records>(RECORDS_KEY, {});
+  return records[date]?.worked === true;
 }
 
 // ── 급여명세서 ──────────────────────────────────────────

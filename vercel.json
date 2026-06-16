@@ -107,6 +107,10 @@
     {
       "path": "/api/alba/payslip",
       "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/alba/parking",
+      "schedule": "2 6 * * 1,2,4,5"
     }
   ]
 }
