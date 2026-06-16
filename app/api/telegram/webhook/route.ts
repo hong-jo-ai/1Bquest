@@ -31,6 +31,7 @@ import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncReques
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
+import { parseParkingCommand, storeParkingRequest } from "@/lib/parking/request";
 import { transcribeAudio } from "@/lib/mori/stt";
 import type { CsBrandId } from "@/lib/cs/types";
 
@@ -473,6 +474,18 @@ export async function POST(req: NextRequest) {
         await sendTelegramReply(message.chat.id, `⚠️ 급여명세서 생성 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
         return Response.json({ ok: true, albaPayslip: "error" });
       }
+    }
+
+    // 주차 2시간 할인 등록 — "주차 4330" → 요청 적재(아이맥 워처가 주차사이트 등록 후 결과 회신)
+    const parkCarNo = parseParkingCommand(text);
+    if (parkCarNo) {
+      try {
+        await storeParkingRequest(parkCarNo);
+        await sendTelegramReply(message.chat.id, `🅿️ 차량 ${parkCarNo} 2시간 할인권 등록 중... (아이맥이 처리 후 결과 알려줄게요)`, message.message_id);
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 주차 등록 요청 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      }
+      return Response.json({ ok: true, parking: parkCarNo });
     }
 
     // 알바 출퇴근 응답 — 대기 중인 "근무했나요?" 질문이 있고 y/n 이면 그날 근무여부 기록
