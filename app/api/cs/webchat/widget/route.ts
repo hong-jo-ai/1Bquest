@@ -378,7 +378,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     function focusComposerIfContactSaved() {
       var saved = getContact();
-      if (saved.name && saved.phone && saved.phone.replace(/\D/g, "").length >= 10) {
+      if (saved.name && saved.phone && saved.phone.replace(/\\D/g, "").length >= 10) {
         setTimeout(function () { textarea.focus(); }, 120);
       }
     }
