@@ -21,6 +21,7 @@ const CHANNEL_ICON: Record<CsChannel, React.ElementType> = {
   ig_comment: Camera,
   channeltalk: MessageCircle,
   crisp: MessageCircle,
+  webchat: MessageCircle,
   kakao_bizchat: MessageCircle,
   cafe24_board: Store,
   sixshop_board: ShoppingBag,

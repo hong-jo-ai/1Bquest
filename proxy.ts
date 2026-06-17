@@ -19,6 +19,7 @@ const ALLOW_PREFIX = [
   "/api/marketplace/", // 로컬 마켓플레이스 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN)
   "/api/threads/webhook/", // Threads webhook
   "/api/cs/ingest/",   // CS 인박스 외부 ingestion
+  "/api/cs/webchat/",  // PAULVICE 웹사이트 자체 상담 위젯 (익명 고객 접근)
   "/api/finance/card-sms", // 우리카드 SMS 자동수집 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN)
   "/api/finance/enrich-npay", // 네이버페이 메일 카드내역 보강 에이전트 (x-agent-token / CRON_SECRET)
   "/api/cs/notify",    // CS 알림 cron (텔레그램/이메일/stale) — CRON_SECRET 헤더로 인증

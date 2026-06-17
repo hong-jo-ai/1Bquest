@@ -22,7 +22,7 @@ async function loadSkill(): Promise<string> {
 }
 
 function isChatChannel(channel: string): boolean {
-  return channel === "threads" || channel === "ig_dm" || channel === "channeltalk" || channel === "kakao_bizchat";
+  return channel === "threads" || channel === "ig_dm" || channel === "channeltalk" || channel === "kakao_bizchat" || channel === "webchat";
 }
 
 function formatMessages(messages: CsMessage[]): string {
@@ -91,13 +91,13 @@ export async function generateDraft(
 
   const brandLabel = BRAND_LABEL[thread.brand];
   const channelLabel = CHANNEL_LABEL[thread.channel];
-  const isCrisp = thread.channel === "crisp";
+  const isWebWidget = thread.channel === "crisp" || thread.channel === "webchat";
   const chatMode = isChatChannel(thread.channel);
 
   // 같은 브랜드·채널의 최근 답변 6개를 few-shot 예시로 주입
   const examples = await getReplyExamples(thread.brand, thread.channel, 6);
   const examplesBlock = formatExamples(examples);
-  const crispBlock = isCrisp ? CRISP_TONE_BLOCK : "";
+  const crispBlock = isWebWidget ? CRISP_TONE_BLOCK : "";
 
   const operatorNote = options.operatorNotes?.trim();
   const operatorBlock = operatorNote
@@ -128,7 +128,7 @@ export async function generateDraft(
 
 - 브랜드: ${brandLabel} (${thread.brand})
 - 채널: ${channelLabel} (${thread.channel})
-- 채널 유형: ${isCrisp ? "Crisp 웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
+- 채널 유형: ${isWebWidget ? "웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
 - 고객 이름: ${thread.customer_name ?? "(알 수 없음)"}
 - 고객 연락처: ${thread.customer_handle ?? "(알 수 없음)"}
 - 제목: ${thread.subject ?? "(없음)"}

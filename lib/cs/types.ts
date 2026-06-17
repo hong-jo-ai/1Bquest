@@ -9,6 +9,7 @@ export type CsChannel =
   | "ig_comment"
   | "channeltalk"
   | "crisp"
+  | "webchat"
   | "kakao_bizchat"
   | "cafe24_board"
   | "sixshop_board"
@@ -101,6 +102,7 @@ export const CHANNEL_LABEL: Record<CsChannel, string> = {
   ig_comment: "IG 댓글",
   channeltalk: "채널톡",
   crisp: "Crisp",
+  webchat: "웹채팅",
   kakao_bizchat: "카카오 상담톡",
   cafe24_board: "카페24 게시판",
   sixshop_board: "식스샵 게시판",

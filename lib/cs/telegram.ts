@@ -4,7 +4,15 @@ import { BRAND_LABEL, CHANNEL_LABEL, type CsThread } from "./types";
 
 const LAST_NOTIFY_KEY = "cs_inbox_telegram_last_notify_at";
 
-export async function sendTelegramMessage(text: string): Promise<void> {
+export interface TelegramButton {
+  text: string;
+  url: string;
+}
+
+export async function sendTelegramMessage(
+  text: string,
+  options: { buttons?: TelegramButton[] } = {}
+): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) {
@@ -21,6 +29,18 @@ export async function sendTelegramMessage(text: string): Promise<void> {
         text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
+        ...(options.buttons?.length
+          ? {
+              reply_markup: {
+                inline_keyboard: [
+                  options.buttons.map((button) => ({
+                    text: button.text,
+                    url: button.url,
+                  })),
+                ],
+              },
+            }
+          : {}),
       }),
     });
     if (!res.ok) {

@@ -73,6 +73,11 @@ const CHANNEL_STYLE: Record<
     color: "text-blue-600 dark:text-blue-400",
     bg: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900/40",
   },
+  webchat: {
+    icon: MessageCircle,
+    color: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/40",
+  },
   kakao_bizchat: {
     icon: MessageCircle,
     color: "text-amber-600 dark:text-amber-400",
@@ -232,6 +237,14 @@ export default function InboxClient() {
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const threadId = params.get("thread");
+    if (threadId && /^[0-9a-f-]{36}$/i.test(threadId)) {
+      setSelectedId(threadId);
+    }
+  }, []);
 
   // 자동 동기화 — 탭 포커스 시 60초, 백그라운드에서는 쉼
   // 실시간 채널(IG DM, Crisp)은 서버 webhook으로 즉시 ingest되므로
@@ -731,6 +744,7 @@ export default function InboxClient() {
               "gmail",
               "ig_dm",
               "threads",
+              "webchat",
               "crisp",
               "cafe24_board",
               "sixshop_board",
@@ -1679,6 +1693,7 @@ function MobileFilterDrawer({
                 "gmail",
                 "ig_dm",
                 "threads",
+                "webchat",
                 "crisp",
                 "cafe24_board",
                 "sixshop_board",
