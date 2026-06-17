@@ -30,6 +30,7 @@ import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
+import { parseParcelBookingCommand, buildBookingInstruction } from "@/lib/postParcel/telegramBooking";
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
 import { parseParkingCommand, storeParkingRequest } from "@/lib/parking/request";
 import { transcribeAudio } from "@/lib/mori/stt";
@@ -493,6 +494,20 @@ export async function POST(req: NextRequest) {
     if (albaRes) {
       await sendTelegramReply(message.chat.id, albaRes.message, message.message_id);
       return Response.json({ ok: true, albaAttendance: true });
+    }
+
+    // 단건 택배/반품 예약 — "홍길동 택배예약" / "홍길동 반품예약" → Claude 브리지로 라우팅
+    // (헤드리스 claude가 채널 출고대기에서 고객 찾아 registerSingle/registerReturn, 가드 확인게이트로 실발급 승인)
+    const booking = parseParcelBookingCommand(text);
+    if (booking) {
+      try {
+        await enqueueClaudeTask(buildBookingInstruction(booking), message.chat.id, viaVoice);
+        const kind = booking.type === "return" ? "반품" : "택배";
+        await sendTelegramReply(message.chat.id, `📦 ${booking.name}님 ${kind} 단건예약 진행할게요. 주문을 찾아 수취 정보를 보여드리고, 실제 송장 발급 전에 "예/아니오"로 확인 요청드립니다.\n(아이맥이 켜져 있어야 합니다)`, message.message_id);
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 단건예약 접수 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      }
+      return Response.json({ ok: true, parcelBooking: booking.type });
     }
 
     // Claude Code 브리지 — "클로드 <지시>" → 큐 적재, 아이맥 워처가 헤드리스 수행 후 결과 보고
