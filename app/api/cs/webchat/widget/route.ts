@@ -90,8 +90,12 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function injectStyles() {
     var css = ""
       + ".pv-chat-root{position:fixed;right:22px;bottom:22px;z-index:2147483000;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#161616;letter-spacing:0}"
-      + ".pv-chat-button{width:62px;height:62px;border-radius:999px;border:1px solid rgba(255,255,255,.42);background:#121212;color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.14);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;line-height:1}"
-      + ".pv-chat-button:after{content:'문의';display:block}"
+      + ".pv-chat-button{position:relative;width:76px;height:66px;border:1px solid rgba(255,255,255,.55);border-radius:50% 50% 48% 50%;background:linear-gradient(145deg,#d51f37 0%,#a30f23 64%,#82091a 100%);color:#fff;box-shadow:0 18px 44px rgba(75,13,20,.28),0 5px 14px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}"
+      + ".pv-chat-button:before{content:'';position:absolute;left:6px;bottom:-5px;width:20px;height:20px;background:linear-gradient(145deg,#b91429 0%,#8d0a1c 100%);border-left:1px solid rgba(255,255,255,.35);border-bottom:1px solid rgba(255,255,255,.28);border-radius:0 0 0 18px;transform:rotate(-23deg);box-shadow:0 8px 15px rgba(75,13,20,.2)}"
+      + ".pv-chat-button:after{content:'';position:absolute;inset:6px 8px 8px 8px;border-radius:999px;background:radial-gradient(circle at 34% 24%,rgba(255,255,255,.28),rgba(255,255,255,0) 38%);pointer-events:none}"
+      + ".pv-chat-button:hover{transform:translateY(-2px);filter:saturate(1.04);box-shadow:0 22px 50px rgba(75,13,20,.32),0 7px 17px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.24)}"
+      + ".pv-chat-mark{position:relative;z-index:1;width:44px;height:44px;border:1.6px solid rgba(255,255,255,.9);border-radius:999px;display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}"
+      + ".pv-chat-mark:before{content:'';position:absolute;inset:4px;border:1px solid rgba(232,204,148,.72);border-radius:999px}.pv-chat-mark span{position:relative;z-index:1}"
       + ".pv-chat-panel{display:none;width:374px;max-width:calc(100vw - 32px);height:590px;max-height:calc(100vh - 104px);background:#fbfaf7;border:1px solid #d8d2c8;border-radius:8px;box-shadow:0 24px 70px rgba(17,17,17,.22);overflow:hidden}"
       + ".pv-chat-panel.open{display:flex;flex-direction:column}"
       + ".pv-chat-head{height:72px;background:#141414;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.08)}"
@@ -105,7 +109,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-bubble{max-width:82%;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.pv-chat-bubble.in{align-self:flex-start;background:#fffdf9;border:1px solid #ded6ca;color:#1f2933}.pv-chat-bubble.out{align-self:flex-end;background:#141414;color:#fff}"
       + ".pv-chat-empty{font-size:12px;color:#625b52;background:#fffdf9;border:1px solid #e2dbd1;border-radius:8px;padding:13px;line-height:1.55}"
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:11px;background:#fffdf9;display:flex;gap:8px}.pv-chat-text{flex:1;min-height:42px;max-height:92px;resize:none;border:1px solid #d8d0c4;border-radius:8px;background:#fff;padding:10px 11px;font-size:13px;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:58px;border:0;border-radius:8px;background:#141414;color:#fff;font-weight:700;cursor:pointer;font-size:13px}"
-      + "@media(max-width:480px){.pv-chat-root{right:12px;bottom:12px}.pv-chat-panel{width:calc(100vw - 24px);height:calc(100vh - 84px);border-radius:8px}.pv-chat-head{height:68px;padding:0 16px}.pv-chat-contact{padding:14px}.pv-chat-messages{padding:14px}.pv-chat-button{width:58px;height:58px}}";
+      + "@media(max-width:480px){.pv-chat-root{right:14px;bottom:14px}.pv-chat-panel{width:calc(100vw - 24px);height:calc(100vh - 84px);border-radius:8px}.pv-chat-head{height:68px;padding:0 16px}.pv-chat-contact{padding:14px}.pv-chat-messages{padding:14px}.pv-chat-button{width:68px;height:58px}.pv-chat-mark{width:38px;height:38px;font-size:15px}}";
     document.head.appendChild(el("style", { text: css }));
   }
 
@@ -135,11 +139,15 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function build() {
     injectStyles();
     var root = el("div", { class: "pv-chat-root" });
-    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" });
+    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" }, [
+      el("span", { class: "pv-chat-mark", "aria-hidden": "true" }, [
+        el("span", { text: "PL" })
+      ])
+    ]);
     var panel = el("div", { class: "pv-chat-panel" });
     var messages = el("div", { class: "pv-chat-messages" });
     var contact = getContact();
-    var hasSavedContact = contact.name && contact.phone && contact.phone.replace(/\D/g, "").length >= 10;
+    var hasSavedContact = contact.name && contact.phone && contact.phone.replace(/\\D/g, "").length >= 10;
     var contactBox = el("div", { class: "pv-chat-contact" + (hasSavedContact ? " saved" : "") });
     var helpText = el("div", { class: "pv-chat-help", text: "답변 알림을 문자로 보내드리기 위해 이름과 연락처가 필요합니다. 화면을 떠나도 링크로 이어서 상담하실 수 있습니다." });
     var errorText = el("div", { class: "pv-chat-error", text: "" });
