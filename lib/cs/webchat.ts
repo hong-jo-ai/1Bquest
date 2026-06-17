@@ -11,6 +11,13 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://paulvice.cafe24.com",
 ];
 
+type WebchatSmsNotifyState = {
+  lastSmsAt?: string;
+  lastNotifiedInboundMessageId?: string;
+  lastNotifiedOutMessageId?: string;
+  lastGroupId?: string;
+};
+
 export function getWebchatCorsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("origin") ?? "";
   const allowed = (process.env.PAULVICE_WEBCHAT_ALLOWED_ORIGINS ?? "")
@@ -189,6 +196,50 @@ export async function notifyWebchatReplyBySms(threadId: string): Promise<{
   const phone = normalizePhone(thread.customer_handle);
   if (!phone) return { ok: false, skipped: "missing_phone" };
 
+  const latestInbound = [...data.messages]
+    .reverse()
+    .find((m) => m.direction === "in" && !isInternalSystemMessage(m.raw));
+  const latestOutbound = [...data.messages].reverse().find((m) => m.direction === "out");
+  if (!latestInbound?.id) return { ok: false, skipped: "no_customer_message" };
+  if (!latestOutbound?.id) return { ok: false, skipped: "no_agent_reply" };
+  if (new Date(latestOutbound.sent_at).getTime() < new Date(latestInbound.sent_at).getTime()) {
+    return { ok: false, skipped: "reply_before_latest_customer_message" };
+  }
+
+  const db = getCsSupabase();
+  const notifyKey = `webchat_sms_notified:${threadId}`;
+  const { data: existingNotify } = await db
+    .from("kv_store")
+    .select("data")
+    .eq("key", notifyKey)
+    .maybeSingle();
+  const notifyState = normalizeWebchatSmsNotifyState(existingNotify?.data);
+  if (notifyState.lastNotifiedOutMessageId === latestOutbound.id) {
+    return { ok: false, skipped: "already_notified_reply" };
+  }
+  if (notifyState.lastNotifiedInboundMessageId === latestInbound.id) {
+    return { ok: false, skipped: "already_notified_customer_message" };
+  }
+
+  const claimKey = `webchat_sms_notify_claim:${threadId}:${latestInbound.id}`;
+  const { error: claimError } = await db.from("kv_store").insert({
+    key: claimKey,
+    data: {
+      status: "sending",
+      threadId,
+      inboundMessageId: latestInbound.id,
+      outMessageId: latestOutbound.id,
+      createdAt: new Date().toISOString(),
+    },
+    updated_at: new Date().toISOString(),
+  });
+  if (claimError) {
+    if (claimError.code === "23505") {
+      return { ok: false, skipped: "already_claimed_customer_message" };
+    }
+    return { ok: false, error: `sms_claim_failed:${claimError.message}` };
+  }
+
   const conversationId = thread.external_thread_id.replace(/^webchat:/, "");
   const link = buildWebchatReturnUrl(conversationId);
   const name = thread.customer_name?.trim() || "고객님";
@@ -215,8 +266,43 @@ export async function notifyWebchatReplyBySms(threadId: string): Promise<{
   }
 
   if (!outcome.ok) {
+    await db.from("kv_store").delete().eq("key", claimKey);
     return { ok: false, error: outcome.error ?? "sms_send_failed" };
   }
+
+  const notifiedAt = new Date().toISOString();
+  const { error: claimUpdateError } = await db.from("kv_store").update({
+    data: {
+      status: "sent",
+      threadId,
+      inboundMessageId: latestInbound.id,
+      outMessageId: latestOutbound.id,
+      groupId: outcome.groupId ?? null,
+      sentAt: notifiedAt,
+    },
+    updated_at: notifiedAt,
+  }).eq("key", claimKey);
+  if (claimUpdateError) {
+    console.error("[webchat-sms] claim 갱신 실패:", claimUpdateError.message);
+  }
+
+  const { error: notifyStateError } = await db.from("kv_store").upsert(
+    {
+      key: notifyKey,
+      data: {
+        lastSmsAt: notifiedAt,
+        lastNotifiedInboundMessageId: latestInbound.id,
+        lastNotifiedOutMessageId: latestOutbound.id,
+        lastGroupId: outcome.groupId ?? null,
+      },
+      updated_at: notifiedAt,
+    },
+    { onConflict: "key" }
+  );
+  if (notifyStateError) {
+    console.error("[webchat-sms] 알림 상태 저장 실패:", notifyStateError.message);
+  }
+
   return { ok: true };
 }
 
@@ -311,6 +397,23 @@ function escapeHtml(s: string): string {
 function normalizePhone(value: string | null | undefined): string | null {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits.length >= 10 ? digits : null;
+}
+
+function normalizeWebchatSmsNotifyState(value: unknown): WebchatSmsNotifyState {
+  if (!value || typeof value !== "object") return {};
+  const data = value as Record<string, unknown>;
+  return {
+    lastSmsAt: typeof data.lastSmsAt === "string" ? data.lastSmsAt : undefined,
+    lastNotifiedInboundMessageId:
+      typeof data.lastNotifiedInboundMessageId === "string"
+        ? data.lastNotifiedInboundMessageId
+        : undefined,
+    lastNotifiedOutMessageId:
+      typeof data.lastNotifiedOutMessageId === "string"
+        ? data.lastNotifiedOutMessageId
+        : undefined,
+    lastGroupId: typeof data.lastGroupId === "string" ? data.lastGroupId : undefined,
+  };
 }
 
 function isInternalSystemMessage(raw: unknown): boolean {
