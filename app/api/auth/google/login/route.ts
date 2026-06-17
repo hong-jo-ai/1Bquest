@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",
       "https://www.googleapis.com/auth/gmail.modify",   // 카카오 PO 메일 읽기 + 라벨 추가 (gmail.send 포괄)
-      "https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/calendar.readonly",
       "openid",
       "email",
