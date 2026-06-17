@@ -94,8 +94,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-button:before{content:'';position:absolute;left:6px;bottom:-5px;width:20px;height:20px;background:linear-gradient(145deg,#b91429 0%,#8d0a1c 100%);border-left:1px solid rgba(255,255,255,.35);border-bottom:1px solid rgba(255,255,255,.28);border-radius:0 0 0 18px;transform:rotate(-23deg);box-shadow:0 8px 15px rgba(75,13,20,.2)}"
       + ".pv-chat-button:after{content:'';position:absolute;inset:6px 8px 8px 8px;border-radius:999px;background:radial-gradient(circle at 34% 24%,rgba(255,255,255,.28),rgba(255,255,255,0) 38%);pointer-events:none}"
       + ".pv-chat-button:hover{transform:translateY(-2px);filter:saturate(1.04);box-shadow:0 22px 50px rgba(75,13,20,.32),0 7px 17px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.24)}"
-      + ".pv-chat-mark{position:relative;z-index:1;width:44px;height:44px;border:1.6px solid rgba(255,255,255,.9);border-radius:999px;display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}"
-      + ".pv-chat-mark:before{content:'';position:absolute;inset:4px;border:1px solid rgba(232,204,148,.72);border-radius:999px}.pv-chat-mark span{position:relative;z-index:1}"
+      + ".pv-chat-mark{position:relative;z-index:1;width:44px;height:44px;border:1.6px solid rgba(255,255,255,.9);border-radius:999px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}"
+      + ".pv-chat-mark:before{content:'';position:absolute;inset:4px;border:1px solid rgba(232,204,148,.72);border-radius:999px}.pv-chat-logo{position:relative;z-index:1;width:30px;height:30px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.18))}"
       + ".pv-chat-panel{display:none;width:374px;max-width:calc(100vw - 32px);height:590px;max-height:calc(100vh - 104px);background:#fbfaf7;border:1px solid #d8d2c8;border-radius:8px;box-shadow:0 24px 70px rgba(17,17,17,.22);overflow:hidden}"
       + ".pv-chat-panel.open{display:flex;flex-direction:column}"
       + ".pv-chat-head{height:72px;background:#141414;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.08)}"
@@ -139,11 +139,9 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function build() {
     injectStyles();
     var root = el("div", { class: "pv-chat-root" });
-    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" }, [
-      el("span", { class: "pv-chat-mark", "aria-hidden": "true" }, [
-        el("span", { text: "PL" })
-      ])
-    ]);
+    var mark = el("span", { class: "pv-chat-mark", "aria-hidden": "true" });
+    mark.innerHTML = '<svg class="pv-chat-logo" viewBox="0 0 100 100" focusable="false" aria-hidden="true"><path fill="currentColor" d="M43 8h14v14H43zM18 25h45c20 0 32 13 32 31 0 17-12 30-30 31v-14c9-1 15-8 15-17 0-10-7-18-18-18H31v26h14v13H31v15H18zM43 38h14v40l36-2 1 16H43z"/></svg>';
+    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" }, [mark]);
     var panel = el("div", { class: "pv-chat-panel" });
     var messages = el("div", { class: "pv-chat-messages" });
     var contact = getContact();
