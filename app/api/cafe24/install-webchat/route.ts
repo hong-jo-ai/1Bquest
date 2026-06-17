@@ -60,9 +60,11 @@ export async function POST(req: Request) {
     typeof body.src === "string" && body.src.trim() ? body.src.trim() : defaultWidgetSrc(),
   );
   const displayLocation =
-    typeof body.display_location === "string" && body.display_location.trim()
-      ? body.display_location.trim()
-      : "all";
+    Array.isArray(body.display_location)
+      ? body.display_location.filter((item: unknown) => typeof item === "string" && item.trim())
+      : typeof body.display_location === "string" && body.display_location.trim()
+        ? [body.display_location.trim()]
+        : ["all"];
   const dryRun = body.dry_run === true;
 
   const list = (await cafe24Get(
@@ -72,7 +74,7 @@ export async function POST(req: Request) {
   const existing = (list.scripttags ?? []).find((tag) => isPaulviceWebchatScript(tag, src));
 
   const payload = {
-    scripttag: {
+    request: {
       src,
       display_location: displayLocation,
     },
