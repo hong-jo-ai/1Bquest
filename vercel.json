@@ -102,7 +102,7 @@
     },
     {
       "path": "/api/alba/ask",
-      "schedule": "0 4 * * 1,2,4,5"
+      "schedule": "0 4 * * 1,2,3,4,5"
     },
     {
       "path": "/api/alba/payslip",
@@ -110,7 +110,7 @@
     },
     {
       "path": "/api/alba/parking",
-      "schedule": "2 6 * * 1,2,4,5"
+      "schedule": "2 6 * * 1,2,3,4,5"
     }
   ]
 }

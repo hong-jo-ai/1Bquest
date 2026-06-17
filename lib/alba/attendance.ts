@@ -13,7 +13,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 export const ALBA = {
   name: "박자영",
   wage: 10320,                 // 최저시급(원)
-  workdays: [1, 2, 4, 5],      // 월(1)·화(2)·목(4)·금(5)  (0=일 … 6=토)
+  workdays: [1, 2, 3, 4, 5],   // 월(1)·화(2)·수(3)·목(4)·금(5)  (0=일 … 6=토)  ※2026-06-17 수요일 추가
   hoursPerDay: 2,              // 1일 2시간
   time: "13:00~15:00",
   car: "4330",                 // 출근차량 번호(끝4자리) — 출근확인 시 주차할인 자동등록
