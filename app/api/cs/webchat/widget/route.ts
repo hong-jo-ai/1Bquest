@@ -580,6 +580,66 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     applyFooterTweaks();
     setTimeout(applyFooterTweaks, 600);
     setTimeout(applyFooterTweaks, 2000);
+
+    // /about.html — 폴바이스 무드로 재디자인. 오프라인 매장 오해를 주던
+    // "스토어"(구글맵+주소) 섹션을 제거하고 온라인 전용임을 명확히 안내한다.
+    function applyAboutRedesign() {
+      if (!/\\/about(\\.html)?$/i.test(location.pathname)) return;
+      var root = document.querySelector(".about");
+      if (!root || root.getAttribute("data-pv-about") === "1") return;
+      root.setAttribute("data-pv-about", "1");
+
+      var css = ""
+        + ".pv-about{max-width:940px;margin:0 auto;padding:72px 24px 104px;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#3a352f;background:#fff}.pv-about *{box-sizing:border-box}"
+        + ".pv-about-hero{text-align:center}.pv-about-eyebrow{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#a59c92;font-weight:700}"
+        + ".pv-about-word{font-family:'Times New Roman','Nanum Myeongjo',serif;font-size:clamp(56px,12vw,98px);font-weight:400;letter-spacing:.14em;margin:16px 0 0;color:#2b2620;line-height:1;padding-left:.14em}"
+        + ".pv-about-kr{font-size:15px;letter-spacing:.52em;color:#8c8278;margin-top:12px;padding-left:.52em}.pv-about-tag{font-family:'Times New Roman','Nanum Myeongjo',serif;font-style:italic;font-size:19px;color:#9a8f83;margin-top:20px}"
+        + ".pv-about-rule{width:48px;height:1px;background:#cfc7bb;margin:44px auto}"
+        + ".pv-about-story{max-width:680px;margin:0 auto;text-align:center}.pv-about-story p{font-size:16px;line-height:2;color:#4a443d;margin:0 0 18px;word-break:keep-all}.pv-about-en{font-size:14px;line-height:1.9;color:#9a8f83;font-style:italic}"
+        + ".pv-about-values{display:flex;gap:18px;justify-content:center;margin:60px auto 0;max-width:780px;flex-wrap:wrap}.pv-about-value{flex:1;min-width:208px;text-align:center;padding:28px 18px;border:1px solid #ece7df;border-radius:16px;background:#faf8f5}.pv-about-value-t{font-family:'Times New Roman',serif;font-size:20px;letter-spacing:.04em;color:#2b2620}.pv-about-value-d{font-size:13px;color:#8c8278;margin-top:9px;line-height:1.6;word-break:keep-all}"
+        + ".pv-about-contact{margin:68px auto 0;max-width:780px;background:#faf8f5;border:1px solid #ece7df;border-radius:22px;padding:44px 32px;text-align:center}.pv-about-title{font-family:'Times New Roman',serif;font-size:27px;letter-spacing:.08em;color:#2b2620}.pv-about-online{font-size:14px;line-height:1.75;color:#6b635a;margin:14px auto 0;max-width:480px;word-break:keep-all}.pv-about-online b{color:#8c8278}"
+        + ".pv-about-grid{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin:30px 0 6px}.pv-about-ci{flex:1;min-width:212px;background:#fff;border:1px solid #ece7df;border-radius:14px;padding:18px}.pv-about-ci span{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a59c92;font-weight:700}.pv-about-ci b{display:block;font-size:15px;color:#3a352f;margin-top:9px;font-weight:700;line-height:1.65}"
+        + ".pv-about-cta{margin-top:28px;height:52px;padding:0 30px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 22px rgba(122,112,100,.26)}.pv-about-cta:hover{filter:brightness(.97)}"
+        + "@media(max-width:640px){.pv-about{padding:48px 18px 76px}.pv-about-contact{padding:34px 20px}.pv-about-values{margin-top:44px}}";
+      document.head.appendChild(el("style", { text: css }));
+
+      var html = [
+        '<section class="pv-about">',
+          '<div class="pv-about-hero">',
+            '<div class="pv-about-eyebrow">Watch &amp; Jewelry &middot; Official Online</div>',
+            '<h1 class="pv-about-word">PLVE</h1>',
+            '<div class="pv-about-kr">폴바이스</div>',
+            '<div class="pv-about-tag">A style that transcends time</div>',
+          '</div>',
+          '<div class="pv-about-rule"></div>',
+          '<div class="pv-about-story">',
+            '<p>폴바이스 PLVE는 우아한 여성들의 아름다움을 간결한 디자인과 최고급 소재로 담아내는 한국산 여성 시계·주얼리 브랜드입니다. 각 제품은 현대 여성의 라이프스타일을 반영해 정교하게 제작되며, 우리는 시간을 넘어서는 스타일을 추구합니다.</p>',
+            '<p class="pv-about-en">PLVE is a Korean women’s watch &amp; jewelry brand that captures the beauty of elegant women through simple designs and premium materials. Each piece is meticulously crafted to reflect the lifestyle of the modern woman. We pursue a style that transcends time.</p>',
+          '</div>',
+          '<div class="pv-about-values">',
+            '<div class="pv-about-value"><div class="pv-about-value-t">Modern Classic</div><div class="pv-about-value-d">시대를 타지 않는 간결한 디자인</div></div>',
+            '<div class="pv-about-value"><div class="pv-about-value-t">Premium Materials</div><div class="pv-about-value-d">최고급 소재의 정교한 마감</div></div>',
+            '<div class="pv-about-value"><div class="pv-about-value-t">Timeless</div><div class="pv-about-value-d">시간을 넘어서는 무드의 완성</div></div>',
+          '</div>',
+          '<div class="pv-about-contact">',
+            '<div class="pv-about-title">Contact</div>',
+            '<p class="pv-about-online">폴바이스는 별도의 오프라인 매장 없이 <b>온라인 공식몰</b>로만 운영됩니다. 문의는 아래 채널로 연락 주세요.</p>',
+            '<div class="pv-about-grid">',
+              '<div class="pv-about-ci"><span>고객센터</span><b>070-4571-4944</b></div>',
+              '<div class="pv-about-ci"><span>이메일</span><b>plvekorea@gmail.com</b></div>',
+              '<div class="pv-about-ci"><span>운영시간</span><b>월–금 11:00–17:00<br>점심 12:00–13:00 · 주말·공휴일 휴무</b></div>',
+            '</div>',
+            '<button type="button" class="pv-about-cta">채팅 상담 문의하기</button>',
+          '</div>',
+        '</section>'
+      ].join("");
+      root.innerHTML = html;
+
+      var cta = root.querySelector(".pv-about-cta");
+      if (cta) cta.addEventListener("click", function () { openWebchat("home"); });
+    }
+    applyAboutRedesign();
+    setTimeout(applyAboutRedesign, 600);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
