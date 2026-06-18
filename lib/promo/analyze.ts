@@ -32,6 +32,26 @@ const MAX_CLASSIFY_PER_RUN = 25;
 const MAX_ANALYZE_PER_RUN = 8;
 const SEEN_CAP = 600;
 
+/** 알려진 채널 프로모션 담당자 — 분류 힌트 + 채널/담당자 자동 채움. */
+const KNOWN_SENDERS: Record<string, { channel: string; counterparty: string }> = {
+  "jisoo@29cm.co.kr": { channel: "29CM", counterparty: "남지수 MD" },
+  "ksh@fjord.kr": { channel: "카카오선물하기", counterparty: "김수환 (피오르드)" },
+};
+/** 도메인 단위 폴백 — 같은 채널의 다른 담당자도 채널은 잡아준다. */
+const KNOWN_DOMAINS: Record<string, string> = {
+  "29cm.co.kr": "29CM",
+  "fjord.kr": "카카오선물하기",
+};
+
+function lookupKnownSender(emailAddr: string | null): { channel: string; counterparty: string } | null {
+  if (!emailAddr) return null;
+  const addr = emailAddr.trim().toLowerCase();
+  if (KNOWN_SENDERS[addr]) return KNOWN_SENDERS[addr];
+  const domain = addr.split("@")[1];
+  if (domain && KNOWN_DOMAINS[domain]) return { channel: KNOWN_DOMAINS[domain], counterparty: "" };
+  return null;
+}
+
 export interface PromoAnalysis {
   channel: string;
   counterparty: string;
@@ -131,7 +151,11 @@ interface EmailDoc {
 async function classifyPromo(
   client: Anthropic,
   email: EmailDoc,
+  known: { channel: string; counterparty: string } | null,
 ): Promise<{ isPromo: boolean; channel: string; counterparty: string }> {
+  const knownNote = known
+    ? `\n\n[참고] 이 발신자는 ${known.channel}${known.counterparty ? `의 ${known.counterparty}` : ""}로 등록된 채널 담당자다. 프로모션 제안일 가능성이 높지만, 단순 운영/발주/정산 메일이면 그대로 false 로 분류하라.`
+    : "";
   const resp = await client.messages.create({
     model: CLASSIFY_MODEL,
     max_tokens: 300,
@@ -139,7 +163,8 @@ async function classifyPromo(
       "너는 폴바이스(여성 시계·주얼리 온라인 브랜드)의 메일을 분류한다. " +
       "판매 채널(29CM, 무신사, W컨셉, 카카오선물하기, 식스샵 등)의 MD/담당자가 " +
       "프로모션·기획전·입점·쿠폰/할인 행사·광고/노출·캠페인 등 '매출을 늘릴 기회'를 제안하는 메일이면 isPromo=true. " +
-      "단순 주문/발주서/정산/배송/시스템 알림/뉴스레터/광고메일은 false.",
+      "단순 주문/발주서/정산/배송/시스템 알림/뉴스레터/광고메일은 false." +
+      knownNote,
     tools: [
       {
         name: "classify",
@@ -167,8 +192,8 @@ async function classifyPromo(
   const out = toolInput<{ isPromo: boolean; channel: string; counterparty: string }>(resp, "classify");
   return {
     isPromo: !!out?.isPromo,
-    channel: out?.channel || "",
-    counterparty: out?.counterparty || "",
+    channel: out?.channel || known?.channel || "",
+    counterparty: out?.counterparty || known?.counterparty || "",
   };
 }
 
@@ -378,7 +403,8 @@ export async function scanAndAnalyzePromoEmails(): Promise<PromoRunResult> {
 
     try {
       classifiedCount += 1;
-      const cls = await classifyPromo(client, email);
+      const known = lookupKnownSender(email.fromEmail);
+      const cls = await classifyPromo(client, email, known);
       result.classified += 1;
       newSeen.push(msg.id); // 분류했으면 재평가 방지
 
