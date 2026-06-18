@@ -89,8 +89,10 @@ export async function POST(req: NextRequest) {
   if (!accessToken) return Response.json({ error: "Gmail 토큰 없음(shong@ 재연결 필요)" }, { status: 502 });
   const oldest = Math.min(...pending.map((r) => new Date(r.use_date).getTime()));
   const days = Math.min(95, Math.ceil((Date.now() - oldest) / 86400000) + 2);
-  const q = `("결제하신 내역" OR "네이버페이로 결제" OR subject:네이버페이) newer_than:${days}d`;
-  const list = await gmail<{ messages?: { id: string }[] }>(accessToken, `/messages?q=${encodeURIComponent(q)}&maxResults=80`);
+  // ⚠️ 따옴표 한글구문+괄호+OR 복합 쿼리는 raw Gmail API에서 0건 반환(2026-06-18 확인) →
+  //    확정 발신자 기반 단순 쿼리로 견고화. 메일 종류(결제/자동결제/구매확정 등)는 파서·매칭이 걸러냄.
+  const q = `from:naverpayadmin_noreply@navercorp.com newer_than:${days}d`;
+  const list = await gmail<{ messages?: { id: string }[] }>(accessToken, `/messages?q=${encodeURIComponent(q)}&maxResults=200`);
   const emails: ParsedNaverPayEmail[] = [];
   for (const m of list.messages ?? []) {
     try {
