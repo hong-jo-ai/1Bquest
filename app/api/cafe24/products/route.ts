@@ -1,15 +1,16 @@
-import { cafe24Get } from "@/lib/cafe24Client";
+import { cafe24Get, type MallId } from "@/lib/cafe24Client";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-async function fetchAllProducts(token: string) {
+async function fetchAllProducts(token: string, mall: MallId) {
   const all: any[] = [];
   let offset = 0;
   while (true) {
     // embed=categories 로 카테고리 정보 포함 요청
     const data = await cafe24Get(
       `/api/v2/admin/products?limit=100&display=T&offset=${offset}&embed=categories`,
-      token
+      token,
+      mall
     );
     const batch: any[] = data.products ?? [];
     all.push(...batch);
@@ -19,12 +20,13 @@ async function fetchAllProducts(token: string) {
   return all;
 }
 
-async function fetchCategoryMap(token: string): Promise<Record<number, string>> {
+async function fetchCategoryMap(token: string, mall: MallId): Promise<Record<number, string>> {
   try {
     // shop_no=1 명시, 최상위 포함 전체 카테고리 조회
     const data = await cafe24Get(
       "/api/v2/admin/categories?limit=200&shop_no=1",
-      token
+      token,
+      mall
     );
     const map: Record<number, string> = {};
     for (const cat of (data.categories ?? [])) {
@@ -38,16 +40,17 @@ async function fetchCategoryMap(token: string): Promise<Record<number, string>> 
   }
 }
 
-export async function GET() {
-  const accessToken = await getAccessTokenFromStore();
+export async function GET(req: NextRequest) {
+  const mall: MallId = req.nextUrl.searchParams.get("brand") === "harriot" ? "harriot" : "paulvice";
+  const accessToken = await getAccessTokenFromStore(mall);
   if (!accessToken) {
     return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   }
 
   try {
     const [raw, catMap] = await Promise.all([
-      fetchAllProducts(accessToken),
-      fetchCategoryMap(accessToken),
+      fetchAllProducts(accessToken, mall),
+      fetchCategoryMap(accessToken, mall),
     ]);
 
     // 디버그: 첫 번째 상품의 원본 데이터 확인

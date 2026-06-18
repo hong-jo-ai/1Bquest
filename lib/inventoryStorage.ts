@@ -211,20 +211,29 @@ const ARCHIVE_ENTRIES: Record<string, InventoryEntry> = {
 };
 
 function mergeArchiveEntries(entries: Record<string, InventoryEntry>): Record<string, InventoryEntry> {
+  if (!isPaulviceBrand()) return entries; // 아카이브는 폴바이스 전용
   return { ...ARCHIVE_ENTRIES, ...entries };
 }
 
 function mergeArchiveProducts(products: ProductInfo[]): ProductInfo[] {
+  if (!isPaulviceBrand()) return products; // 아카이브는 폴바이스 전용
   const seen = new Set(products.map((p) => p.sku));
   return [...products, ...ARCHIVE_PRODUCTS.filter((p) => !seen.has(p.sku))];
 }
 
-// ── localStorage 키 ───────────────────────────────────────────────────────
+// ── 멀티몰: 현재 브랜드(폴바이스/해리엇)별로 키 분리 ─────────────────────
+// 폴바이스는 기존 키(paulvice_*) 그대로 유지(데이터 보존). 해리엇은 harriot_* 로 분리.
+// 아카이브(PV-ARCH-*)는 폴바이스 전용 — 해리엇엔 주입하지 않는다.
+let ACTIVE_BRAND: "paulvice" | "harriot" = "paulvice";
+export function setInventoryBrand(b: "paulvice" | "harriot"): void { ACTIVE_BRAND = b; }
+export function getInventoryBrand(): "paulvice" | "harriot" { return ACTIVE_BRAND; }
+const isPaulviceBrand = () => ACTIVE_BRAND === "paulvice";
 
-const STORAGE_KEY         = "paulvice_inventory_v1";
-const PRODUCTS_CACHE_KEY  = "paulvice_products_cache_v2";
-const MANUAL_PRODUCTS_KEY = "paulvice_manual_products_v1";
-const HIDDEN_SKUS_KEY     = "paulvice_hidden_skus_v1";
+// ── localStorage 키 (브랜드별) ────────────────────────────────────────────
+const STORAGE_KEY         = () => `${ACTIVE_BRAND}_inventory_v1`;
+const PRODUCTS_CACHE_KEY  = () => `${ACTIVE_BRAND}_products_cache_v2`;
+const MANUAL_PRODUCTS_KEY = () => `${ACTIVE_BRAND}_manual_products_v1`;
+const HIDDEN_SKUS_KEY     = () => `${ACTIVE_BRAND}_hidden_skus_v1`;
 
 function readLocalJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -238,8 +247,9 @@ function readLocalJson<T>(key: string, fallback: T): T {
 
 export function ensureArchiveInventorySeeded(): void {
   if (typeof window === "undefined") return;
+  if (!isPaulviceBrand()) return; // 아카이브 시드는 폴바이스만
 
-  const manual = readLocalJson<ProductInfo[]>(MANUAL_PRODUCTS_KEY, []);
+  const manual = readLocalJson<ProductInfo[]>(MANUAL_PRODUCTS_KEY(), []);
   const manualBySku = new Map(manual.map((p) => [p.sku, p]));
   for (const product of ARCHIVE_PRODUCTS) manualBySku.set(product.sku, {
     ...product,
@@ -248,12 +258,12 @@ export function ensureArchiveInventorySeeded(): void {
     category: manualBySku.get(product.sku)?.category || product.category,
     isManual: true,
   });
-  saveWithSync(MANUAL_PRODUCTS_KEY, Array.from(manualBySku.values()));
+  saveWithSync(MANUAL_PRODUCTS_KEY(), Array.from(manualBySku.values()));
 
-  const inventory = readLocalJson<Record<string, InventoryEntry>>(STORAGE_KEY, {});
-  saveWithSync(STORAGE_KEY, { ...ARCHIVE_ENTRIES, ...inventory });
+  const inventory = readLocalJson<Record<string, InventoryEntry>>(STORAGE_KEY(), {});
+  saveWithSync(STORAGE_KEY(), { ...ARCHIVE_ENTRIES, ...inventory });
 
-  // 주의: 여기서 숨김 목록(HIDDEN_SKUS_KEY)을 건드리지 않는다.
+  // 주의: 여기서 숨김 목록(HIDDEN_SKUS_KEY())을 건드리지 않는다.
   // 과거엔 아카이브 SKU를 숨김에서 강제로 제거(항상 노출)했는데,
   // 그 때문에 아카이브 제품을 삭제(숨김)해도 30초 폴링마다 되살아나는 버그가 있었다.
   // 아카이브 제품도 일반 제품처럼 숨길 수 있어야 하며(렌더 단계에서 hidden 필터로 제외),
@@ -278,14 +288,14 @@ export function defaultEntry(sku: string): InventoryEntry {
 export function loadInventory(): Record<string, InventoryEntry> {
   if (typeof window === "undefined") return mergeArchiveEntries({});
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY());
     return mergeArchiveEntries(raw ? JSON.parse(raw) : {});
   } catch { return mergeArchiveEntries({}); }
 }
 
 export function saveInventory(data: Record<string, InventoryEntry>): void {
   if (typeof window === "undefined") return;
-  saveWithSync(STORAGE_KEY, data);
+  saveWithSync(STORAGE_KEY(), data);
 }
 
 export function updateEntry(sku: string, patch: Partial<InventoryEntry>): void {
@@ -295,20 +305,20 @@ export function updateEntry(sku: string, patch: Partial<InventoryEntry>): void {
 }
 
 export async function syncInventoryFromServer(): Promise<Record<string, InventoryEntry> | null> {
-  return loadFromServer<Record<string, InventoryEntry>>(STORAGE_KEY);
+  return loadFromServer<Record<string, InventoryEntry>>(STORAGE_KEY());
 }
 
 // ── Cafe24 제품 캐시 (기기별 캐시 유지 — 서버 동기화 불필요) ─────────────
 
 export function saveProductsCache(products: ProductInfo[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(products));
+  localStorage.setItem(PRODUCTS_CACHE_KEY(), JSON.stringify(products));
 }
 
 export function loadProductsCache(): ProductInfo[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    const raw = localStorage.getItem(PRODUCTS_CACHE_KEY());
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
@@ -318,14 +328,14 @@ export function loadProductsCache(): ProductInfo[] {
 export function loadManualProducts(): ProductInfo[] {
   if (typeof window === "undefined") return mergeArchiveProducts([]);
   try {
-    const raw = localStorage.getItem(MANUAL_PRODUCTS_KEY);
+    const raw = localStorage.getItem(MANUAL_PRODUCTS_KEY());
     return mergeArchiveProducts(raw ? JSON.parse(raw) : []);
   } catch { return mergeArchiveProducts([]); }
 }
 
 export function saveManualProducts(products: ProductInfo[]): void {
   if (typeof window === "undefined") return;
-  saveWithSync(MANUAL_PRODUCTS_KEY, products);
+  saveWithSync(MANUAL_PRODUCTS_KEY(), products);
 }
 
 export function addManualProduct(product: ProductInfo): void {
@@ -340,15 +350,21 @@ export function deleteManualProduct(sku: string): void {
 }
 
 export async function syncManualProductsFromServer(): Promise<ProductInfo[] | null> {
-  return loadFromServer<ProductInfo[]>(MANUAL_PRODUCTS_KEY);
+  return loadFromServer<ProductInfo[]>(MANUAL_PRODUCTS_KEY());
 }
 
 // ── 숨김 처리 ─────────────────────────────────────────────────────────────
 
+/** 서버에서 받은 숨김 SKU 목록을 현재 브랜드 키로 로컬 저장. */
+export function saveHiddenSkusLocal(arr: string[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(HIDDEN_SKUS_KEY(), JSON.stringify(arr));
+}
+
 export function loadHiddenSkus(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = localStorage.getItem(HIDDEN_SKUS_KEY);
+    const raw = localStorage.getItem(HIDDEN_SKUS_KEY());
     return new Set(raw ? JSON.parse(raw) : []);
   } catch { return new Set(); }
 }
@@ -356,21 +372,21 @@ export function loadHiddenSkus(): Set<string> {
 export function hideProduct(sku: string): void {
   const set = loadHiddenSkus();
   set.add(sku);
-  saveWithSync(HIDDEN_SKUS_KEY, [...set]);
+  saveWithSync(HIDDEN_SKUS_KEY(), [...set]);
 }
 
 export function unhideProduct(sku: string): void {
   const set = loadHiddenSkus();
   set.delete(sku);
-  saveWithSync(HIDDEN_SKUS_KEY, [...set]);
+  saveWithSync(HIDDEN_SKUS_KEY(), [...set]);
 }
 
 export function clearHiddenSkus(): void {
-  saveWithSync(HIDDEN_SKUS_KEY, []);
+  saveWithSync(HIDDEN_SKUS_KEY(), []);
 }
 
 export async function syncHiddenSkusFromServer(): Promise<string[] | null> {
-  return loadFromServer<string[]>(HIDDEN_SKUS_KEY);
+  return loadFromServer<string[]>(HIDDEN_SKUS_KEY());
 }
 
 // ── 에이징 계산 ────────────────────────────────────────────────────────────

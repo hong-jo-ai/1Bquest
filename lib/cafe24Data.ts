@@ -516,8 +516,8 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // ── 일별 매입원가 (COGS) — items 단위로 SKU × 단가 합산 ────────────────
-  const cogsMap = await getProductCogs();
+  // ── 일별 매입원가 (COGS) — items 단위로 SKU × 단가 합산 (브랜드별 원가) ──
+  const cogsMap = await getProductCogs(brand);
   const dailyCogsMap = new Map<string, number>();
   const gbCogsMap = new Map<string, number>();
   const unmatchedSet = new Set<string>();

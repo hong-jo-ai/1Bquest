@@ -401,9 +401,9 @@ export async function runInventorySync(
 
   // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
   const [cafe24SalesBySku, otherChannelsSales, productNoMap] = await Promise.all([
-    fetchSalesBySku(token, startDate),
-    fetchOtherChannelsSales(token),
-    buildSkuProductNoMap(token),
+    fetchSalesBySku(token, startDate, mall),
+    fetchOtherChannelsSales(token, mall),
+    buildSkuProductNoMap(token, mall),
   ]);
 
   // SKU별 처리 — 청크 2개 동시 + 청크 간 300ms 지연 (카페24 40 req/sec 보수적 운영)
@@ -419,7 +419,7 @@ export async function runInventorySync(
       return { sku, quantity: currentStock, ok: false, error: "상품 없음" };
     }
     try {
-      await updateVariantStock(token, productNo, currentStock);
+      await updateVariantStock(token, productNo, currentStock, mall);
       return { sku, quantity: currentStock, ok: true };
     } catch (e: any) {
       return { sku, quantity: currentStock, ok: false, error: e.message ?? "업데이트 실패" };
@@ -430,7 +430,7 @@ export async function runInventorySync(
   const failed = results.filter((r) => !r.ok).length;
 
   // 동기화 이력 저장
-  await saveSyncLog({ timestamp: new Date().toISOString(), trigger, synced, failed, results });
+  await saveSyncLog({ timestamp: new Date().toISOString(), trigger, synced, failed, results }, mall);
 
   return { synced, failed, results };
 }

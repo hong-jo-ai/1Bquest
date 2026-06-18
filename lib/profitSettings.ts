@@ -81,18 +81,24 @@ async function writeKv(key: string, value: unknown): Promise<void> {
 
 export type ProductCogsMap = Record<string, number>; // SKU → 원가
 
-export async function getProductCogs(): Promise<ProductCogsMap> {
-  return readKv<ProductCogsMap>(KEYS.productCogs, {});
+// 멀티몰: 폴바이스는 기존 키 그대로(데이터 보존), 해리엇 등은 브랜드 접미 키로 분리.
+function cogsKey(brand?: string): string {
+  return brand && brand !== "paulvice" ? `${KEYS.productCogs}:${brand}` : KEYS.productCogs;
 }
 
-export async function saveProductCogs(map: ProductCogsMap): Promise<void> {
-  await writeKv(KEYS.productCogs, map);
+export async function getProductCogs(brand?: string): Promise<ProductCogsMap> {
+  return readKv<ProductCogsMap>(cogsKey(brand), {});
+}
+
+export async function saveProductCogs(map: ProductCogsMap, brand?: string): Promise<void> {
+  await writeKv(cogsKey(brand), map);
 }
 
 export async function updateProductCogs(
-  patch: ProductCogsMap
+  patch: ProductCogsMap,
+  brand?: string,
 ): Promise<ProductCogsMap> {
-  const current = await getProductCogs();
+  const current = await getProductCogs(brand);
   const next: ProductCogsMap = { ...current };
   for (const [sku, cost] of Object.entries(patch)) {
     if (cost === 0 || cost === null) {
@@ -101,7 +107,7 @@ export async function updateProductCogs(
       next[sku] = cost;
     }
   }
-  await saveProductCogs(next);
+  await saveProductCogs(next, brand);
   return next;
 }
 
