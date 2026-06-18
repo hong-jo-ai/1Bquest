@@ -163,18 +163,22 @@ export function normProductName(s: string): string {
 }
 
 // 카페24 상품명(정규화) → product_code 사전. 채널 판매상품명을 재고 SKU로 이름매칭하는 폴백용.
+// 한글명 + 영문명(eng_product_name) 둘 다 색인 → W컨셉 계정2 등 영문 상품명도 매칭.
 export async function buildCafe24NameMap(token: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const limit = 100;
   for (let offset = 0, page = 0; page < 40; page++, offset += limit) {
     const data = await cafe24Get(
-      `/api/v2/admin/products?fields=product_code,product_name&limit=${limit}&offset=${offset}`,
+      `/api/v2/admin/products?fields=product_code,product_name,eng_product_name&limit=${limit}&offset=${offset}`,
       token,
-    ) as { products?: Array<{ product_code: string; product_name: string }> };
+    ) as { products?: Array<{ product_code: string; product_name: string; eng_product_name?: string }> };
     const products = data.products ?? [];
     for (const p of products) {
-      const n = normProductName(p.product_name);
-      if (p.product_code && n && !map.has(n)) map.set(n, p.product_code);
+      if (!p.product_code) continue;
+      for (const nm of [p.product_name, p.eng_product_name]) {
+        const n = normProductName(nm || "");
+        if (n && !map.has(n)) map.set(n, p.product_code);
+      }
     }
     if (products.length < limit) break;
   }
