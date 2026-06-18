@@ -48,6 +48,8 @@ export function parseSyncCommand(text: string): string | null {
   if (/광고비|광고\s*집계|광고\s*동기화/i.test(text)) return "wconcept_ads";
   // 전자세금계산서 수집 (메일 보안첨부 복호화 → finance_tax_invoices)
   if (/세금\s*계산서|세금계산서/i.test(text)) return "tax_invoice";
+  // 식스샵 글로벌 해외 미발송 주문 → FedEx Ship Manager 엑셀 생성·전송 (fedexExcel)
+  if (/페덱스|fedex|글로벌\s*발송|글로벌\s*엑셀|해외\s*발송|해외주문\s*엑셀/i.test(text)) return "fedex_global";
   if (!/동기화|sync|가져오기|업로드/i.test(text)) return null;
   if (/w.?컨셉|wconcept|더블유/i.test(text)) return "wconcept";
   if (/무신사|musinsa/i.test(text)) return "musinsa";

@@ -539,12 +539,14 @@ export async function POST(req: NextRequest) {
     // on-demand 동기화 명령 ("W컨셉 동기화" / "무신사 동기화") → 요청 기록 (아이맥 watcher가 실행)
     const syncCh = parseSyncCommand(text);
     if (syncCh) {
-      const LABELS: Record<string, string> = { wconcept: "W컨셉", musinsa: "무신사", "29cm": "29CM", sixshop: "식스샵", dutyfree: "면세점 발주", wconcept_ads: "W컨셉 광고비", tax_invoice: "전자세금계산서" };
+      const LABELS: Record<string, string> = { wconcept: "W컨셉", musinsa: "무신사", "29cm": "29CM", sixshop: "식스샵", dutyfree: "면세점 발주", wconcept_ads: "W컨셉 광고비", tax_invoice: "전자세금계산서", fedex_global: "FedEx 글로벌 엑셀" };
       const label = LABELS[syncCh] ?? syncCh;
       try {
         await storeSyncRequest(syncCh);
         if (syncCh === "dutyfree") {
           await sendTelegramReply(message.chat.id, `📦 면세점 발주 처리를 시작합니다. 발주제안서(신세계·롯데)를 다운로드 폴더에 받아두시면 입고서류를 생성·저장하고 면세점 박스를 차감합니다.\n(아이맥이 켜져 있어야 실행됩니다)`, message.message_id);
+        } else if (syncCh === "fedex_global") {
+          await sendTelegramReply(message.chat.id, `📦 식스샵 글로벌 미발송 해외주문을 수집해 FedEx Ship Manager용 엑셀을 만들어 보내드릴게요.\n(아이맥이 켜져 있어야 실행됩니다)`, message.message_id);
         } else {
           const guide = syncCh === "wconcept"
             ? "잠시 후 인증번호 요청이 2번 갑니다. 각 SMS를 'wc 코드'로 보내주세요."

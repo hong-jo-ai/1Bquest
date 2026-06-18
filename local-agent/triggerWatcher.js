@@ -67,6 +67,7 @@ function runSync(channel) {
       : channel === "musinsa" ? "runMusinsaSync.js"
       : channel === "wconcept_ads" ? "wconceptAdsSync.js"
       : channel === "tax_invoice" ? "taxInvoiceSync.js"
+      : channel === "fedex_global" ? "fedexExcel.js"
       : null;
     if (!script) { console.log(`[${new Date().toISOString()}] 알 수 없는 channel: ${channel} — 스킵`); return resolve(); }
     console.log(`[${new Date().toISOString()}] ▶ ${channel} 실행 (${script})`);
