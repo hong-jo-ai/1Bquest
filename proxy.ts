@@ -22,7 +22,6 @@ const ALLOW_PREFIX = [
   "/api/cs/webchat/",  // PAULVICE 웹사이트 자체 상담 위젯 (익명 고객 접근)
   "/api/finance/card-sms", // 우리카드 SMS 자동수집 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN)
   "/api/finance/enrich-npay", // 네이버페이 메일 카드내역 보강 에이전트 (x-agent-token / CRON_SECRET)
-  "/api/analytics/seo-check", // 임시 SEO 점검(harriot GA 채널 비중) — x-agent-token
   "/api/cs/notify",    // CS 알림 cron (텔레그램/이메일/stale) — CRON_SECRET 헤더로 인증
   "/api/alba/",        // 알바 출퇴근 질문/급여명세서 cron — CRON_SECRET 헤더로 인증
   "/api/parking/",     // 주차할인 등록 요청 폴링 (x-agent-token = PAULWISE_MCP_TOKEN)
