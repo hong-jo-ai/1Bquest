@@ -33,17 +33,28 @@ export function parseParcelBookingCommand(text: string): ParcelBookingCommand | 
 export function buildBookingInstruction(cmd: ParcelBookingCommand): string {
   const isReturn = cmd.type === "return";
   const kind = isReturn ? "반품" : "출고(택배)";
-  const reqType = isReturn ? "2" : "1";
+  const N = cmd.name;
   return [
-    `[우체국 단건 ${kind} 송장 예약] 고객 "${cmd.name}"`,
+    `[우체국 단건 ${kind} 송장 예약] 고객 "${N}"`,
+    "local-agent 디렉터리에서 작업. 작업 위치 자격증명은 .env.supabase/.env.local 로드.",
     "",
-    "다음 순서로 진행해:",
-    "1) local-agent 디렉터리에서 buildPostOffice 의 collectOutboundRows() 로 채널 출고대기 주문을 모은 뒤, 수취인 이름이 \"" + cmd.name + "\"와 일치(부분일치 포함)하는 주문을 찾아.",
-    "2) 찾은 주문의 수취인·주소·상품·주문번호·채널을 먼저 텔레그램으로 보여줘.",
-    `3) 그 주문을 local-agent/postParcel/register.js 의 ${isReturn ? "registerReturn(row)" : "registerSingle(row, { reqType: \"1\", source: \"텔레그램단건\" })"} 로 ${kind} 단건 예약해.`,
-    "4) 예약은 실제 우체국 송장 발급이라, 시스템 가드가 사장님께 \"예/아니오\" 확인을 받을 거야 — 승인되면 진행, 거부면 중단.",
-    "5) 성공하면 송장번호(regiNo)를 회신해.",
+    "■ A) 먼저 '과거 발송기록'에서 빠르게 찾아(교환·재발송 대응 — 이게 빠름):",
+    `  - Supabase finance/pp_shipments 테이블에서 recipient_name 이 "${N}" 부분일치인 행을 created_at 내림차순으로 조회.`,
+    "    (컬럼: recipient_name, recipient_addr, recipient_zip, recipient_mobile, product_name, order_number, channel, regi_no, created_at)",
+    "  - 있으면: 그 고객은 전에 보낸 적 있는 사람(교환/재발송 가능성 큼). 가장 최근 행의 주소/연락처/상품/채널을 쓴다.",
     "",
-    "주의: 이름이 여러 건 매칭되면 후보 목록을 보여주고 어느 건인지 물어봐. 한 건도 못 찾으면 그대로 알려줘. 1인=1박스=송장 1개. (reqType: 출고=1, 반품=2)",
+    "■ B) 과거기록에 없으면 '출고대기 신규주문'에서 찾기:",
+    `  - buildPostOffice 의 collectOutboundRows() 로 채널 출고대기를 모아 수취인 이름이 "${N}" 부분일치인 주문을 찾아(이건 전 채널 라이브 수집이라 1~2분 걸릴 수 있음).`,
+    "",
+    "■ 찾은 정보(수취인·주소·우편번호·연락처·상품·채널·과거송장)를 먼저 텔레그램으로 보여줘.",
+    "",
+    "■ 예약(local-agent/postParcel/register.js):",
+    isReturn
+      ? `  - registerReturn({ name, addr, zip, mobile, prod, qty:"1", order, seller:채널 }) 로 반품 단건 예약.`
+      : `  - registerSingle({ name, addr, zip, mobile, prod, qty:"1", order, seller:채널 }, { reqType:"1", source:"텔레그램단건" }) 로 출고 예약.`,
+    "  - ⚠️ 과거기록(A)에서 찾은 '재발송/교환'이면, 원주문과 멱등 충돌(이미 발급으로 skip)을 피하려고 order 를 \"{원주문번호}-EX\" 로 줘서 새 송장이 나오게 해. msg(배송메모)는 \"교환/재발송\"으로.",
+    "",
+    "■ 예약은 실제 송장 발급이라 시스템 가드가 \"예/아니오\" 확인을 받아 — 승인되면 진행, 거부면 중단. 성공하면 송장번호(regiNo)를 회신해.",
+    "■ 이름이 여러 건이면 후보를 보여주고 어느 건인지 물어봐. 아무데도 없으면 그대로 알려줘. 1인=1박스=송장1개.",
   ].join("\n");
 }
