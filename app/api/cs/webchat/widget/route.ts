@@ -559,9 +559,27 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         })(links[i]);
       }
     }
-    rewireKakaoLinks();
-    setTimeout(rewireKakaoLinks, 600);
-    setTimeout(rewireKakaoLinks, 2000);
+    // 더 이상 사용하지 않는 푸터의 "PLVE 앰배서더 신청하기" 메뉴 제거.
+    function removeAmbassadorLink() {
+      var byHref = document.querySelectorAll('a[href*="linkd.kr/ambassador"]');
+      for (var i = 0; i < byHref.length; i++) {
+        var a = byHref[i];
+        var li = a.closest ? a.closest("li") : null;
+        (li || a).style.display = "none";
+      }
+      var items = document.querySelectorAll("li.footer__menu");
+      for (var j = 0; j < items.length; j++) {
+        if (/앰배서더/.test(items[j].textContent || "")) items[j].style.display = "none";
+      }
+    }
+
+    function applyFooterTweaks() {
+      rewireKakaoLinks();
+      removeAmbassadorLink();
+    }
+    applyFooterTweaks();
+    setTimeout(applyFooterTweaks, 600);
+    setTimeout(applyFooterTweaks, 2000);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
