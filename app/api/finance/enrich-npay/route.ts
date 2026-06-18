@@ -61,12 +61,13 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   if (!db) return Response.json({ error: "Supabase 미설정" }, { status: 500 });
 
-  // 1) 미보강 네이버파이낸셜 카드행 (최근 90일)
+  // 1) 미보강 네이버페이/네이버파이낸셜 카드행 (최근 90일)
+  //    우리카드 SMS 가맹점 표기가 "네이버페이" 또는 "네이버파이낸셜" 둘 다 나옴 → 둘 다 후보.
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
   const { data: rows } = await db
     .from("finance_card_usage")
     .select("id, use_date, amount, merchant, raw")
-    .ilike("merchant", "%네이버파이낸셜%")
+    .or("merchant.ilike.%네이버파이낸셜%,merchant.ilike.%네이버페이%")
     .gte("use_date", since)
     .order("use_date", { ascending: false })
     .limit(300);

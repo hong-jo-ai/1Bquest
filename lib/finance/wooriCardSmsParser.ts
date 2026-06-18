@@ -44,11 +44,17 @@ export interface ParsedWooriSms {
 
 const DT_RE = /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/;
 
+const KST_MS = 9 * 3600 * 1000;
 function inferYear(month: number, day: number, h: number, mi: number, baseMs?: number): Date {
   const base = baseMs ? new Date(baseMs) : new Date();
-  const d = new Date(base.getFullYear(), month - 1, day, h, mi, 0, 0);
-  // 결제일시가 수신시각보다 미래로 나오면(연말→연초 경계) 직전 해로 보정.
-  if (d.getTime() - base.getTime() > 2 * 24 * 3600 * 1000) d.setFullYear(base.getFullYear() - 1);
+  // SMS 시각(MM/DD HH:MM)은 항상 KST 벽시계 → 런타임 TZ(서버=UTC)와 무관하게 KST로 해석.
+  // KST(y,m,d,h,mi)의 UTC epoch = Date.UTC(...) − 9h.
+  const baseKstYear = new Date(base.getTime() + KST_MS).getUTCFullYear();
+  let d = new Date(Date.UTC(baseKstYear, month - 1, day, h, mi, 0, 0) - KST_MS);
+  // 결제일시가 수신시각보다 2일 이상 미래면(연말→연초 경계) 직전 해로 보정.
+  if (d.getTime() - base.getTime() > 2 * 24 * 3600 * 1000) {
+    d = new Date(Date.UTC(baseKstYear - 1, month - 1, day, h, mi, 0, 0) - KST_MS);
+  }
   return d;
 }
 
