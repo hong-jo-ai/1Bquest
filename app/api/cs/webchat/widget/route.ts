@@ -594,9 +594,22 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       }
     }
 
+    // 해리엇 스킨 우측 퀵메뉴(#right_quick: 카카오상담·최근본상품·맨위/아래로) 전체 숨김.
+    // 카카오가 onclick=window.open(pf.kakao) 방식이라 href 기준 rewire가 못 잡으므로 별도 처리.
+    function hideStorefrontQuickMenu() {
+      var rq = document.getElementById("right_quick");
+      if (rq) rq.style.display = "none";
+      // onclick 안에 pf.kakao 가 든 버튼(별도 위치)도 컨테이너째 숨김
+      var nodes = document.querySelectorAll('[onclick*="pf.kakao.com"]');
+      for (var i = 0; i < nodes.length; i++) {
+        var box = nodes[i].closest ? (nodes[i].closest("li, p, div") || nodes[i]) : nodes[i];
+        box.style.display = "none";
+      }
+    }
     function applyFooterTweaks() {
       rewireKakaoLinks();
       removeAmbassadorLink();
+      hideStorefrontQuickMenu();
     }
     applyFooterTweaks();
     setTimeout(applyFooterTweaks, 600);
