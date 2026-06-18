@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Mail,
@@ -1021,6 +1021,14 @@ function ThreadDetailView({
   const { thread, messages, csReturn } = detail;
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
+
+  // 새 메시지(내 답변 포함)가 추가되면 대화 영역을 맨 아래로 자동 스크롤.
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const lastMessageId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, lastMessageId]);
   const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
   const isReturn = thread.item_type === "return";
 
@@ -1122,7 +1130,7 @@ function ThreadDetailView({
         </div>
       </header>
 
-      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
+      <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
         {isReturn ? (
           <div className="max-w-md mx-auto rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-5 space-y-1.5 text-sm">
             <div className="font-semibold text-zinc-800 dark:text-zinc-200">{thread.subject || "반품/교환"}</div>
@@ -1838,6 +1846,14 @@ function MobileThreadDetailView({
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
   const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
+
+  // 새 메시지(내 답변 포함)가 추가되면 대화 영역을 맨 아래로 자동 스크롤.
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const lastMessageId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, lastMessageId]);
   const [actionsOpen, setActionsOpen] = useState(false);
 
   return (
@@ -1977,7 +1993,7 @@ function MobileThreadDetailView({
       )}
 
       {/* 메시지 영역 */}
-      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-4 bg-zinc-50 dark:bg-zinc-950">
+      <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-4 bg-zinc-50 dark:bg-zinc-950">
         {messages.map((m) => (
           <MessageBubble
             key={m.id}
