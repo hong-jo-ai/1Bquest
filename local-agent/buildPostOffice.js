@@ -115,7 +115,19 @@ async function sendTelegram(filePath, caption){
     }catch(e){ log(`텔레그램 전송 예외(${attempt}/5): ${e.cause&&e.cause.code||e.message}`); }
     await new Promise(r=>setTimeout(r,5000));
   }
-  log("텔레그램 전송 5회 모두 실패");
+  // 직결 실패(아이맥→텔레그램 ETIMEDOUT 잦음) → Vercel 릴레이 폴백. Vercel→텔레그램은 안정적.
+  try{
+    const base=(process.env.DASHBOARD_URL||"https://paulvice-dashboard.vercel.app").replace(/\/$/,"");
+    const res=await fetch(`${base}/api/marketplace/telegram-relay`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-agent-token":process.env.PAULWISE_MCP_TOKEN||""},
+      body:JSON.stringify({caption, filename:path.basename(filePath), fileBase64:buf.toString("base64")}),
+      signal:AbortSignal.timeout(60000),
+    });
+    if(res.ok){ log("텔레그램 릴레이(Vercel) 성공"); return; }
+    log(`텔레그램 릴레이 실패 HTTP ${res.status}: ${(await res.text().catch(()=>"")).slice(0,200)}`);
+  }catch(e){ log(`텔레그램 릴레이 예외: ${e.cause&&e.cause.code||e.message}`); }
+  log("텔레그램 전송 5회 + 릴레이 모두 실패");
 }
 
 // plvekorea@gmail.com 으로 우체국 파일 첨부 메일 발송 (cs_accounts gmail 계정 + GOOGLE 클라이언트로 갱신)
