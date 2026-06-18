@@ -2115,7 +2115,7 @@ function MobileThreadDetailView({
             onChange={(e) => setOperatorNotes(e.target.value)}
             placeholder="AI 에게 줄 메모 (선택) — 짧게: 예) 각인 한글 가능, 5자 제한"
             rows={2}
-            className="w-full px-2.5 py-1.5 text-[12px] rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none"
+            className="w-full px-2.5 py-1.5 text-[16px] rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none"
           />
           <div className="flex items-center gap-2 mt-2">
             <button
@@ -2153,7 +2153,7 @@ function MobileThreadDetailView({
               }}
               placeholder="답장 입력…"
               rows={4}
-              className="flex-1 px-3.5 py-2.5 text-[15px] leading-snug rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[112px] max-h-[50dvh]"
+              className="flex-1 px-3.5 py-2.5 text-[16px] leading-snug rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[112px] max-h-[50dvh]"
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = "auto";
