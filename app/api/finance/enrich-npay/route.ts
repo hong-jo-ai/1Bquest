@@ -61,6 +61,16 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   if (!db) return Response.json({ error: "Supabase 미설정" }, { status: 500 });
 
+  // 디버그: ?debug=1 → 토큰이 읽는 Gmail 계정·쿼리 적중수만 반환 (메일 내용 노출 안 함)
+  if (req.nextUrl.searchParams.get("debug") === "1") {
+    const at = await getGoogleAccessTokenFromStore();
+    if (!at) return Response.json({ debug: true, error: "토큰 없음" });
+    const prof = await gmail<{ emailAddress?: string; messagesTotal?: number }>(at, "/profile").catch((e) => ({ err: String(e) }));
+    const q1 = await gmail<{ resultSizeEstimate?: number }>(at, `/messages?q=${encodeURIComponent("subject:네이버페이 newer_than:7d")}&maxResults=5`).catch((e) => ({ err: String(e) }));
+    const q2 = await gmail<{ resultSizeEstimate?: number }>(at, `/messages?q=${encodeURIComponent("from:naverpayadmin_noreply@navercorp.com newer_than:7d")}&maxResults=5`).catch((e) => ({ err: String(e) }));
+    return Response.json({ debug: true, account: prof, subjectNaverPay: q1, fromNaverPay: q2 });
+  }
+
   // 1) 미보강 네이버페이/네이버파이낸셜 카드행 (최근 90일)
   //    우리카드 SMS 가맹점 표기가 "네이버페이" 또는 "네이버파이낸셜" 둘 다 나옴 → 둘 다 후보.
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
