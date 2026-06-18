@@ -266,7 +266,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       closeHome
     ]));
     var cardCopy = el("div", { class: "pv-chat-card-copy" });
-    cardCopy.innerHTML = '<p>폴바이스 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 18:00 입니다.</p>';
+    cardCopy.innerHTML = '<p>폴바이스 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 17:00 입니다.</p>';
     homeBody.appendChild(el("div", { class: "pv-chat-card" }, [
       el("div", { class: "pv-chat-card-row" }, [
         (function () { var bot = el("span", { class: "pv-chat-bot" }); bot.innerHTML = icon("chat"); return bot; })(),
@@ -316,7 +316,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     }
 
     var notice = el("div", { class: "pv-chat-notice" });
-    notice.innerHTML = icon("megaphone") + "<span>월-금 10:00 - 18:00, 점심시간 12:30 - 13:30</span>";
+    notice.innerHTML = icon("megaphone") + "<span>월-금 10:00 - 17:00, 점심시간 12:00 - 13:00</span>";
     chatScreen.appendChild(topbar(config.brandName, true, function () { showView(chatReturnView); }));
     chatScreen.appendChild(notice);
     chatScreen.appendChild(contactBox);
@@ -627,7 +627,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
             '<div class="pv-about-grid">',
               '<div class="pv-about-ci"><span>고객센터</span><b>070-4571-4944</b></div>',
               '<div class="pv-about-ci"><span>이메일</span><b>plvekorea@gmail.com</b></div>',
-              '<div class="pv-about-ci"><span>운영시간</span><b>월–금 11:00–17:00<br>점심 12:00–13:00 · 주말·공휴일 휴무</b></div>',
+              '<div class="pv-about-ci"><span>운영시간</span><b>월–금 10:00–17:00<br>점심 12:00–13:00 · 주말·공휴일 휴무</b></div>',
             '</div>',
             '<button type="button" class="pv-about-cta">채팅 상담 문의하기</button>',
           '</div>',
