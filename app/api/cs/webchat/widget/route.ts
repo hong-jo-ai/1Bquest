@@ -3,10 +3,16 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const baseUrl = `${url.protocol}//${url.host}`;
-  const brandName = url.searchParams.get("brandName") || "PAULVICE";
-  const accent = sanitizeColor(url.searchParams.get("accent") || "#111827");
+  const brand = url.searchParams.get("brand") === "harriot" ? "harriot" : "paulvice";
+  const isHarriot = brand === "harriot";
+  const brandName = url.searchParams.get("brandName") || (isHarriot ? "HARRIOT" : "PAULVICE");
+  // 폴바이스=토프, 해리엇=골드(시계 브랜드 무드)
+  const accent = sanitizeColor(url.searchParams.get("accent") || (isHarriot ? "#c79a3b" : "#b1aaa2"));
+  const imgBase = isHarriot ? "/webchat/harriot" : "/webchat";
+  const brandKo = isHarriot ? "해리엇" : "폴바이스";
+  const email = url.searchParams.get("email") || (isHarriot ? "shong@harriotwatches.com" : "plvekorea@gmail.com");
 
-  return new Response(buildWidgetScript({ baseUrl, brandName, accent }), {
+  return new Response(buildWidgetScript({ baseUrl, brandName, accent, imgBase, brand, brandKo, email }), {
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
       "Cache-Control": "public, max-age=300",
@@ -19,7 +25,7 @@ function sanitizeColor(value: string): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : "#111827";
 }
 
-function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: string }): string {
+function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: string; imgBase: string; brand: string; brandKo: string; email: string }): string {
   const config = JSON.stringify(input);
   return `
 (function () {
@@ -138,7 +144,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     return api("/api/cs/webchat/session", {
       method: "POST",
       body: JSON.stringify(Object.assign({}, pageMeta(), contact || {}, {
-        conversationId: getConversationId()
+        conversationId: getConversationId(),
+        brand: config.brand
       }))
     }).then(function (json) {
       if (json.conversationId) setConversationId(json.conversationId);
@@ -166,6 +173,11 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:10px 12px;background:#fff;display:flex;gap:8px;flex:0 0 auto}.pv-chat-text{flex:1;min-height:46px;max-height:110px;resize:none;border:1px solid #d8d0c4;border-radius:16px;background:#f3f4f6;padding:13px 12px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:60px;border:0;border-radius:16px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.pv-chat-fab-new{align-self:center;margin:auto auto 28px;height:48px;padding:0 22px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 10px 22px rgba(122,112,100,.26);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}"
       + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:14px}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
     document.head.appendChild(el("style", { text: css }));
+    // 브랜드 accent 오버라이드(폴바이스=토프 기본, 해리엇=골드). 액센트 요소만 재색.
+    var accentCss =
+      ".pv-chat-primary,.pv-chat-fab-new,.pv-chat-email-btn,.pv-chat-method-icon.hot{background:" + config.accent + "}"
+      + ".pv-chat-bot{color:" + config.accent + "}";
+    document.head.appendChild(el("style", { text: accentCss }));
   }
 
   function renderMessages(box, messages) {
@@ -197,7 +209,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function build() {
     injectStyles();
     var root = el("div", { class: "pv-chat-root" });
-    var btnImg = el("img", { class: "pv-chat-btn-img", src: config.baseUrl + "/webchat/floating-button.png", alt: config.brandName + " 상담", draggable: "false" });
+    var btnImg = el("img", { class: "pv-chat-btn-img", src: config.baseUrl + config.imgBase + "/floating-button.png", alt: config.brandName + " 상담", draggable: "false" });
     var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" }, [btnImg]);
     var panel = el("div", { class: "pv-chat-panel", role: "dialog", "aria-label": config.brandName + " 상담" });
     var contact = getContact();
@@ -220,7 +232,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     function avatar(className) {
       var node = el("span", { class: className, "aria-hidden": "true" });
-      node.appendChild(el("img", { src: config.baseUrl + "/webchat/avatar.png", alt: "", draggable: "false" }));
+      node.appendChild(el("img", { src: config.baseUrl + config.imgBase + "/avatar.png", alt: "", draggable: "false" }));
       return node;
     }
 
@@ -266,7 +278,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       closeHome
     ]));
     var cardCopy = el("div", { class: "pv-chat-card-copy" });
-    cardCopy.innerHTML = '<p>폴바이스 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 17:00 입니다.</p>';
+    cardCopy.innerHTML = '<p>' + config.brandKo + ' 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 17:00 입니다.</p>';
     homeBody.appendChild(el("div", { class: "pv-chat-card" }, [
       el("div", { class: "pv-chat-card-row" }, [
         (function () { var bot = el("span", { class: "pv-chat-bot" }); bot.innerHTML = icon("chat"); return bot; })(),
@@ -277,7 +289,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     ]));
     var emailButton = el("a", {
       class: "pv-chat-email-btn",
-      href: "mailto:plvekorea@gmail.com?subject=" + encodeURIComponent("[PAULVICE 문의]"),
+      href: "mailto:" + config.email + "?subject=" + encodeURIComponent("[" + config.brandName + " 문의]"),
       "aria-label": "이메일 문의"
     });
     emailButton.innerHTML = icon("mail") + "<span>이메일 문의</span>";
@@ -285,7 +297,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       el("span", { text: "다른 방법으로 문의" }),
       emailButton
     ]));
-    homeBody.appendChild(el("div", { class: "pv-chat-powered", text: "PAULVICE 상담 이용중" }));
+    homeBody.appendChild(el("div", { class: "pv-chat-powered", text: config.brandName + " 상담 이용중" }));
     homeScreen.appendChild(homeBody);
     homeScreen.appendChild(nav("home"));
 
@@ -467,7 +479,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
           method: "POST",
           body: JSON.stringify(Object.assign({}, pageMeta(), contact, {
             conversationId: session.conversationId,
-            body: text
+            body: text,
+            brand: config.brand
           }))
         });
       }).then(function () { loadMessages(messages); });
@@ -539,23 +552,31 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     // 공홈 푸터의 "카카오톡 플러스 친구" 문의 링크 → 웹채팅 열기로 교체.
     // (카카오싱크 로그인 버튼은 pf.kakao.com 앵커가 아니므로 영향 없음)
+    // 요소(또는 6단계 이내 조상)가 고정/플로팅이면 그 컨테이너 반환.
+    function floatingAncestor(node) {
+      var el = node, depth = 0;
+      while (el && depth < 6) {
+        try { var p = getComputedStyle(el).position; if (p === "fixed" || p === "sticky") return el; } catch (_) {}
+        el = el.parentElement; depth++;
+      }
+      return null;
+    }
     function rewireKakaoLinks() {
       var links = document.querySelectorAll('a[href*="pf.kakao.com"], a[href*="plus.kakao.com"]');
       for (var i = 0; i < links.length; i++) {
         (function (a) {
           if (a.getAttribute("data-pv-webchat") === "1") return;
           a.setAttribute("data-pv-webchat", "1");
+          // 플로팅 카카오 상담 버튼 → 우리 위젯 버튼으로 대체하므로 숨김
+          var floatRoot = floatingAncestor(a);
+          if (floatRoot) { floatRoot.style.display = "none"; return; }
+          // 푸터/링크형 → 클릭 시 우리 웹채팅 열기. 텍스트 라벨만 교체(아이콘은 보존).
           a.setAttribute("href", "javascript:void(0)");
-          a.addEventListener("click", function (e) {
-            e.preventDefault();
-            openWebchat("home");
-          });
+          a.addEventListener("click", function (e) { e.preventDefault(); openWebchat("home"); });
           var txt = a.querySelectorAll(".footer__txt");
-          var replaced = false;
           for (var j = 0; j < txt.length; j++) {
-            if (/카카오/.test(txt[j].textContent || "")) { txt[j].textContent = "채팅 상담 문의하기"; replaced = true; }
+            if (/카카오/.test(txt[j].textContent || "")) txt[j].textContent = "채팅 상담 문의하기";
           }
-          if (!replaced && /카카오/.test(a.textContent || "")) a.textContent = "채팅 상담 문의하기";
         })(links[i]);
       }
     }
@@ -584,6 +605,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     // /about.html — 폴바이스 무드로 재디자인. 오프라인 매장 오해를 주던
     // "스토어"(구글맵+주소) 섹션을 제거하고 온라인 전용임을 명확히 안내한다.
     function applyAboutRedesign() {
+      if (config.brand !== "paulvice") return; // 폴바이스 전용(PLVE 콘텐츠)
       if (!/\\/about(\\.html)?$/i.test(location.pathname)) return;
       var root = document.querySelector(".about");
       if (!root || root.getAttribute("data-pv-about") === "1") return;

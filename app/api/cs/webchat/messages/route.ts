@@ -56,6 +56,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const brand = body.brand === "harriot" ? "harriot" : "paulvice";
     const session = await ensureWebchatThread({
       conversationId,
       name,
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
       pageUrl: cleanText(body.pageUrl, 500),
       referrer: cleanText(body.referrer, 500),
       userAgent: cleanText(req.headers.get("user-agent"), 300),
+      brand,
     });
 
     const inserted = await appendWebchatVisitorMessage({
@@ -74,6 +76,7 @@ export async function POST(req: Request) {
       email: cleanText(body.email, 120),
       pageUrl: cleanText(body.pageUrl, 500),
       userAgent: cleanText(req.headers.get("user-agent"), 300),
+      brand,
     });
 
     if (inserted.inserted) {

@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       pageUrl: cleanText(body.pageUrl, 500),
       referrer: cleanText(body.referrer, 500),
       userAgent: cleanText(req.headers.get("user-agent"), 300),
+      brand: body.brand === "harriot" ? "harriot" : "paulvice",
     });
 
     return webchatJson(req, {

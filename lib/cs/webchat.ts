@@ -9,7 +9,18 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://www.paulvice.co.kr",
   "https://m.paulvice.co.kr",
   "https://paulvice.cafe24.com",
+  // 해리엇 (멀티몰)
+  "https://harriot.co.kr",
+  "https://www.harriot.co.kr",
+  "https://m.harriot.co.kr",
+  "https://harriotkorea.cafe24.com",
 ];
+
+// 웹채팅 표시 브랜드명 (SMS·텔레그램·상담 제목). 폴바이스 기존 문구 유지.
+const WEBCHAT_BRAND_LABEL: Record<string, string> = { paulvice: "PAULVICE", harriot: "HARRIOT" };
+function wlabel(brand?: string | null): string {
+  return WEBCHAT_BRAND_LABEL[brand ?? "paulvice"] ?? "PAULVICE";
+}
 
 type WebchatPresence = {
   state: "active" | "away";
@@ -166,7 +177,9 @@ export async function ensureWebchatThread(input: {
   pageUrl?: string;
   referrer?: string;
   userAgent?: string;
+  brand?: CsBrandId;
 }): Promise<{ conversationId: string; threadId: string; isNew: boolean }> {
+  const brand: CsBrandId = input.brand ?? "paulvice";
   const conversationId = input.conversationId ?? createConversationId();
   const externalThreadId = makeWebchatExternalThreadId(conversationId);
   const db = getCsSupabase();
@@ -188,14 +201,14 @@ export async function ensureWebchatThread(input: {
   ].filter(Boolean).join("\n");
 
   const { threadId } = await ingestMessage({
-    brand: "paulvice" satisfies CsBrandId,
+    brand,
     channel: "webchat",
     externalThreadId,
     externalMessageId: `${externalThreadId}:system:${now.getTime()}`,
     customerHandle: input.phone || input.email || conversationId,
     customerName: input.name || undefined,
-    subject: "PAULVICE 웹 상담",
-    bodyText: intro || "PAULVICE 웹 상담이 시작되었습니다.",
+    subject: `${wlabel(brand)} 웹 상담`,
+    bodyText: intro || `${wlabel(brand)} 웹 상담이 시작되었습니다.`,
     sentAt: now,
     direction: "in",
     raw: {
@@ -217,16 +230,18 @@ export async function appendWebchatVisitorMessage(input: {
   email?: string;
   pageUrl?: string;
   userAgent?: string;
+  brand?: CsBrandId;
 }): Promise<{ threadId: string; inserted: boolean }> {
+  const brand: CsBrandId = input.brand ?? "paulvice";
   const externalThreadId = makeWebchatExternalThreadId(input.conversationId);
   const result = await ingestMessage({
-    brand: "paulvice",
+    brand,
     channel: "webchat",
     externalThreadId,
     externalMessageId: `${externalThreadId}:visitor:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
     customerHandle: input.phone || input.email || input.conversationId,
     customerName: input.name || undefined,
-    subject: "PAULVICE 웹 상담",
+    subject: `${wlabel(brand)} 웹 상담`,
     bodyText: input.body,
     sentAt: new Date(),
     direction: "in",
@@ -373,11 +388,11 @@ export async function notifyWebchatReplyBySms(threadId: string): Promise<{
     return { ok: false, error: `sms_claim_failed:${claimError.message}` };
   }
 
-  const link = buildWebchatReturnUrl(conversationId);
+  const link = buildWebchatReturnUrl(conversationId, thread.brand);
   const name = thread.customer_name?.trim() || "고객님";
-  const text = `${name}, PAULVICE 상담 답변이 도착했습니다.\n아래 링크에서 이어서 확인해 주세요.\n${link}`;
+  const text = `${name}, ${wlabel(thread.brand)} 상담 답변이 도착했습니다.\n아래 링크에서 이어서 확인해 주세요.\n${link}`;
 
-  const outcome = await sendMany([{ to: phone, text, subject: "PAULVICE 상담 답변" }]);
+  const outcome = await sendMany([{ to: phone, text, subject: `${wlabel(thread.brand)} 상담 답변` }]);
   const results = outcome.results.map((r) => ({ ...r, name, text: r.text ?? text }));
 
   try {
@@ -464,7 +479,7 @@ export async function notifyNewWebchatThreadByTelegram(threadId: string): Promis
   const preview = latestVisitorMessage.body_text.trim().slice(0, 500);
 
   const text = [
-    "🔔 <b>PAULVICE 새 웹채팅 문의</b>",
+    `🔔 <b>${wlabel(thread.brand)} 새 웹채팅 문의</b>`,
     "",
     `<b>${escapeHtml(name)}</b> · ${escapeHtml(phone)}`,
     "",
@@ -492,8 +507,12 @@ export async function notifyNewWebchatThreadByTelegram(threadId: string): Promis
   return { ok: true };
 }
 
-function buildWebchatReturnUrl(conversationId: string): string {
-  const base = (process.env.PAULVICE_WEBCHAT_RETURN_URL || "https://paulvice.co.kr/").trim();
+function buildWebchatReturnUrl(conversationId: string, brand?: string | null): string {
+  const isHarriot = brand === "harriot";
+  const base = (
+    (isHarriot ? process.env.HARRIOT_WEBCHAT_RETURN_URL : process.env.PAULVICE_WEBCHAT_RETURN_URL) ||
+    (isHarriot ? "https://harriot.co.kr/" : "https://paulvice.co.kr/")
+  ).trim();
   const url = new URL(base);
   url.searchParams.set("pv_chat", conversationId);
   return url.toString();
