@@ -5,6 +5,7 @@ import {
   listWebchatMessages,
   notifyNewWebchatThreadByTelegram,
   normalizeConversationId,
+  recordWebchatPresence,
   webchatJson,
   webchatOptionsResponse,
 } from "@/lib/cs/webchat";
@@ -24,6 +25,12 @@ export async function GET(req: Request) {
     }
 
     const messages = await listWebchatMessages(conversationId);
+    // 메시지를 불러오는 중 = 고객이 위젯 화면을 보는 중(최신 답변을 본 것으로 간주).
+    try {
+      await recordWebchatPresence(conversationId, "active");
+    } catch {
+      // presence 기록 실패는 치명적이지 않음
+    }
     return webchatJson(req, { ok: true, messages });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);

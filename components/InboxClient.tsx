@@ -234,6 +234,21 @@ export default function InboxClient() {
     setDraftNote(null);
   }, []);
 
+  // 열린 스레드를 주기적으로 새로고침해 새 고객 메시지를 바로 보여준다.
+  // loadDetail 과 달리 작성 중인 답장(replyText)·초안 메모는 건드리지 않는다.
+  const refreshDetail = useCallback(async (threadId: string) => {
+    try {
+      const [d, c] = await Promise.all([
+        fetch(`/api/cs/threads/${threadId}`).then((r) => r.json()),
+        fetch(`/api/cs/threads/${threadId}/context`).then((r) => r.json()),
+      ]);
+      if (d) setDetail(d);
+      if (c) setContext(c);
+    } catch {
+      // 일시적 네트워크 오류는 다음 틱에서 회복
+    }
+  }, []);
+
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
@@ -272,6 +287,16 @@ export default function InboxClient() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadThreads]);
+
+  // 열린 스레드 실시간 갱신 — 새 고객 메시지가 새로고침 없이 바로 보이도록 15초마다 폴링.
+  useEffect(() => {
+    if (!selectedId) return;
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      refreshDetail(selectedId);
+    }, 15 * 1000);
+    return () => clearInterval(id);
+  }, [selectedId, refreshDetail]);
 
   useEffect(() => {
     if (selectedId) loadDetail(selectedId);
@@ -1196,7 +1221,20 @@ function ThreadDetailView({
           <textarea
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
-            placeholder="답장 내용을 입력하거나 AI 초안을 생성하세요…"
+            onKeyDown={(e) => {
+              // ⌘/Ctrl + Enter 로 전송
+              if (
+                (e.metaKey || e.ctrlKey) &&
+                e.key === "Enter" &&
+                !e.nativeEvent.isComposing &&
+                !sending &&
+                replyText.trim()
+              ) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+            placeholder="답장 내용을 입력하거나 AI 초안을 생성하세요… (⌘/Ctrl+Enter 전송)"
             rows={5}
             className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
           />
@@ -1984,6 +2022,19 @@ function MobileThreadDetailView({
             <textarea
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
+              onKeyDown={(e) => {
+                // ⌘/Ctrl + Enter 로 전송
+                if (
+                  (e.metaKey || e.ctrlKey) &&
+                  e.key === "Enter" &&
+                  !e.nativeEvent.isComposing &&
+                  !sending &&
+                  replyText.trim()
+                ) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
               placeholder="답장 입력…"
               rows={4}
               className="flex-1 px-3.5 py-2.5 text-[15px] leading-snug rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-violet-500 resize-none min-h-[112px] max-h-[50dvh]"
