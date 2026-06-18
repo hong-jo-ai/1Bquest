@@ -17,8 +17,7 @@ const action = process.argv.slice(2).join(" ").trim() || "(미상)";
 const chatId = process.env.CLAUDE_BRIDGE_CHATID || process.env.TELEGRAM_CHAT_ID;
 
 async function tg(msg) {
-  const t = process.env.TELEGRAM_BOT_TOKEN; if (!t || !chatId) return;
-  await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text: msg.slice(0, 3500) }) }).catch(() => {});
+  await require("./telegramRelay").relayText(msg, chatId);
 }
 
 (async () => {

@@ -28,9 +28,7 @@ const sb = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const norm = (s) => String(s || "").replace(/\s+/g, "");
 
 async function tg(msg) {
-  const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID;
-  if (!t || !c) return;
-  await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {});
+  await require("./telegramRelay").relayText(msg);
 }
 
 // 우리은행 입금알림 SMS 파싱 → { amount, depositor } | null

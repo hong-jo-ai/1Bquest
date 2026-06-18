@@ -38,9 +38,7 @@ const sb = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function tg(msg, chatId) {
-  const t = process.env.TELEGRAM_BOT_TOKEN, c = chatId || process.env.TELEGRAM_CHAT_ID;
-  if (!t || !c) { log("텔레그램 미설정 — 전송 생략"); return; }
-  await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg.slice(0, 4000) }) }).catch((e) => log("텔레그램 실패: " + e.message));
+  await require("./telegramRelay").relayText(msg, chatId);
 }
 
 // 헤드리스 Claude Code 실행 (Sonnet · 가드훅 · 쓰기/실행 + 확인게이트). resume 로 대화 연속 가능.

@@ -36,9 +36,7 @@ function kstDate(offsetDays = 0) {
 }
 
 async function tg(msg) {
-  const t = env("TELEGRAM_BOT_TOKEN"), c = env("TELEGRAM_CHAT_ID");
-  if (!t || !c) return;
-  await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {});
+  await require("./telegramRelay").relayText(msg);
 }
 
 // 한 계정 로그인 → 토큰 + 계정ID 확보

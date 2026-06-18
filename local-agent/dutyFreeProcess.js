@@ -42,16 +42,22 @@ function arg(name, def) { const i = process.argv.indexOf("--" + name); return i 
 const DRY = !!arg("dry", false);
 
 // 입력 폴더에서 최신 발주제안서 탐색 (NFC 매칭, 롯데는 최종승인수량 우선)
+// 최근 N시간 내 받은(수정된) 발주서만 처리 대상 — 옛 차수 파일이 폴더에 남아도 무시.
+// 워크플로: 사장님이 발주서를 다운로드 폴더에 넣고 → 승인 후 "면세점 발주" 트리거.
+const FRESH_MS = Number(process.env.DUTYFREE_FRESH_HOURS || 48) * 3600 * 1000;
 function findOrder(dir, store) {
   let files;
   try { files = fs.readdirSync(dir); } catch { return null; }
+  const now = Date.now();
   const cands = files
     .filter((f) => /\.xlsx$/i.test(f))
     .map((f) => ({ f, n: nfc(f), m: fs.statSync(path.join(dir, f)).mtimeMs }))
     .filter((x) => x.n.includes(store) && x.n.includes("발주제안서"))
+    .filter((x) => now - x.m <= FRESH_MS)   // ← 최근 발주서만 (옛 차수 파일·발주 안 한 면세점 제외)
     .sort((a, b) => b.m - a.m);
   if (!cands.length) return null;
   if (store === "롯데") {
+    // 최종승인수량 우선은 '최근 받은' 파일들 사이에서만 적용 (옛 차수의 최종승인 파일을 집지 않음)
     const fin = cands.find((x) => x.n.includes("최종승인수량"));
     if (fin) return path.join(dir, fin.f);
   }
@@ -101,29 +107,10 @@ async function applyDutyfreeOut(sb, items, log) {
   if (skip.length) log(`  완제품 재고 미추적/면세점전용: ${skip.join(",")}`);
   return { applied, skipped: skip.length };
 }
-async function tg(msg) { const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID; if (!t || !c) return; await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {}); }
-// PDF 첨부 전송 (멀티파트, 재시도, 429 retry_after 존중). displayName 으로 NFC 파일명 사용.
+async function tg(msg) { await require("./telegramRelay").relayText(msg); }
+// PDF 첨부 전송 — 직결 재시도 후 실패 시 Vercel 릴레이 폴백. displayName 으로 NFC 파일명 사용.
 async function tgDoc(filePath, displayName, caption) {
-  const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID;
-  if (!t || !c) return false;
-  let buf; try { buf = fs.readFileSync(filePath); } catch { return false; }
-  let lastErr = "";
-  for (let a = 1; a <= 6; a++) {
-    try {
-      const form = new FormData();
-      form.append("chat_id", c);
-      if (caption) form.append("caption", caption);
-      form.append("document", new Blob([buf]), displayName || path.basename(filePath));
-      const r = await fetch(`https://api.telegram.org/bot${t}/sendDocument`, { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
-      if (r.ok) return true;
-      const j = await r.json().catch(() => ({}));
-      lastErr = `HTTP ${r.status} ${j.description || ""}`;
-      const ra = j.parameters && j.parameters.retry_after;
-      await new Promise((res) => setTimeout(res, ra ? (ra + 1) * 1000 : 6000));
-    } catch (e) { lastErr = (e.cause && e.cause.code) || e.message; await new Promise((res) => setTimeout(res, 6000)); }
-  }
-  log(`    첨부 오류(${displayName}): ${lastErr}`);
-  return false;
+  return require("./telegramRelay").relayDocument(filePath, caption, displayName, 6);
 }
 
 (async () => {

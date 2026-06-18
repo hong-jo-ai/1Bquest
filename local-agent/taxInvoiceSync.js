@@ -35,9 +35,7 @@ const MAILBOXES = [
 ];
 
 async function tg(msg) {
-  const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID;
-  if (!t || !c) return;
-  await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text: msg }) }).catch(() => {});
+  await require("./telegramRelay").relayText(msg);
 }
 
 async function accessToken(kvKey) {

@@ -18,6 +18,7 @@ interface RelayBody {
   text?: string;
   filename?: string;
   fileBase64?: string;
+  chatId?: string; // 기본 TELEGRAM_CHAT_ID 대신 보낼 대상(클로드 브리지 등)
 }
 
 export async function POST(req: NextRequest) {
@@ -27,8 +28,8 @@ export async function POST(req: NextRequest) {
   }
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!botToken || !chatId) {
+  const defaultChat = process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !defaultChat) {
     return Response.json({ error: "telegram_not_configured" }, { status: 500 });
   }
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return Response.json({ error: "bad_json" }, { status: 400 });
   }
+  const chatId = (body.chatId && String(body.chatId)) || defaultChat;
 
   try {
     if (body.fileBase64) {

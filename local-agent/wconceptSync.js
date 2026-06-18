@@ -26,12 +26,7 @@ const ACCOUNTS = [
 ];
 
 async function tg(msg) {
-  const token = env("TELEGRAM_BOT_TOKEN"), chat = env("TELEGRAM_CHAT_ID");
-  if (!token || !chat) return;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chat, text: msg }),
-  }).catch(() => {});
+  await require("./telegramRelay").relayText(msg);
 }
 
 // after(ISO) 이후 새 SMS 코드를 최대 8분 폴링
