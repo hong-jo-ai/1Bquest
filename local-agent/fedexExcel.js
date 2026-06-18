@@ -127,24 +127,29 @@ async function collectGlobalFile(){
   } finally { await ctx.close().catch(() => {}); }
 }
 
-(async () => {
-  const args = process.argv.slice(2);
-  const dry = args.includes("--dry");
-  const includeAll = args.includes("--all");
-  const fileArg = (() => { const i = args.indexOf("--file"); return i >= 0 ? args[i + 1] : ""; })();
-
-  const filePath = fileArg || (await collectGlobalFile());
+/**
+ * 글로벌 export → FedEx 엑셀 생성·전송. 핵심 진입점.
+ * @param {object} opt
+ *   filePath    기존 글로벌 export 경로(없으면 라이브 수집 — 로그인)
+ *   dry         true면 엑셀만 만들고 전송 안 함
+ *   includeAll  미발송 필터 끄고 전체(빌더 검증용)
+ *   notifyEmpty 미발송 0건일 때 "0건" 텔레그램 알림 여부(수동호출=true, 자동=false 권장)
+ * @returns {Promise<{count:number, out:string|null}>}
+ */
+async function generateFedexExcel(opt = {}){
+  const { filePath: fp, dry = false, includeAll = false, notifyEmpty = false } = opt;
+  const filePath = fp || (await collectGlobalFile());
   log(`글로벌 export: ${filePath}`);
   const orders = parseOrders(filePath, includeAll);
   log(`${includeAll ? "전체" : "미발송"} 주문 ${orders.length}건`);
 
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   if (!orders.length){
     log("미발송 글로벌 주문 없음 — 엑셀 생략");
-    if (!dry) await relayText(`📦 FedEx 글로벌 발송 대기\n오늘 미발송 해외주문 0건.`);
-    return;
+    if (!dry && notifyEmpty) await relayText(`📦 FedEx 글로벌 발송 대기\n미발송 해외주문 0건.`);
+    return { count: 0, out: null };
   }
 
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const aoa = [FEDEX_COLS];
   for (const o of orders){ aoa.push(await buildRow(o)); log(`  ${o.order} ${o.name} → 행 생성`); }
 
@@ -154,9 +159,23 @@ async function collectGlobalFile(){
   XLSX.writeFile(wb, out);
   log(`엑셀 생성: ${out} (${orders.length}건)`);
 
-  if (dry){ log("--dry: 전송 생략"); return; }
+  if (dry){ log("--dry: 전송 생략"); return { count: orders.length, out }; }
   const names = orders.map((o) => o.name).slice(0, 8).join(", ");
   const caption = `📦 FedEx 글로벌 발송 대기 ${orders.length}건\n${names}${orders.length > 8 ? " 외" : ""}\nShip Manager에 가져오기 후 예약하세요.`;
   const ok = await relayDocument(out, caption, path.basename(out));
   log(ok ? "텔레그램 전송 완료" : "텔레그램 전송 실패");
-})().catch((e) => { console.error("ERR", e); process.exit(1); });
+  return { count: orders.length, out };
+}
+
+module.exports = { generateFedexExcel };
+
+if (require.main === module){
+  const args = process.argv.slice(2);
+  const i = args.indexOf("--file");
+  generateFedexExcel({
+    filePath: i >= 0 ? args[i + 1] : "",
+    dry: args.includes("--dry"),
+    includeAll: args.includes("--all"),
+    notifyEmpty: true, // 수동 실행은 0건도 알려줌
+  }).catch((e) => { console.error("ERR", e); process.exit(1); });
+}

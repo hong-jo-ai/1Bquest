@@ -120,6 +120,14 @@ async function syncSixshop(_opts, log) {
     const f2 = await exportOrders(page, "글로벌", log);
     const r2 = await ingest(f2, "sixshop_global", log);
 
+    // 2-1) 같은 글로벌 export 재사용 → 미발송 해외주문 있으면 FedEx Ship Manager 엑셀 생성·텔레그램 전송.
+    //      매출엔 영향 없게 guard. 0건이면 조용히 스킵(하루 2회 sync라 noise 방지 notifyEmpty=false).
+    try {
+      const { generateFedexExcel } = require("./fedexExcel");
+      const fx = await generateFedexExcel({ filePath: f2, notifyEmpty: false });
+      if (fx.count) log(`FedEx 글로벌 엑셀 ${fx.count}건 전송`);
+    } catch (e) { log(`FedEx 엑셀 생성 실패(매출엔 영향 없음): ${e.message}`); }
+
     return { success: true, sixshop: r1.rowCount, sixshop_global: r2.rowCount };
   } finally {
     await ctx.close().catch(() => {});
