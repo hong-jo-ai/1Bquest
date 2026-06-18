@@ -529,6 +529,39 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         setTimeout(function () { openPanel("chat"); }, 250);
       }
     } catch (_) {}
+
+    // 외부(푸터 버튼 등)에서 위젯을 열 수 있도록 노출.
+    function openWebchat(view) {
+      if (isOpen) showView(view || "home");
+      else openPanel(view || "home");
+    }
+    window.PaulviceWebchat = { open: openWebchat };
+
+    // 공홈 푸터의 "카카오톡 플러스 친구" 문의 링크 → 웹채팅 열기로 교체.
+    // (카카오싱크 로그인 버튼은 pf.kakao.com 앵커가 아니므로 영향 없음)
+    function rewireKakaoLinks() {
+      var links = document.querySelectorAll('a[href*="pf.kakao.com"], a[href*="plus.kakao.com"]');
+      for (var i = 0; i < links.length; i++) {
+        (function (a) {
+          if (a.getAttribute("data-pv-webchat") === "1") return;
+          a.setAttribute("data-pv-webchat", "1");
+          a.setAttribute("href", "javascript:void(0)");
+          a.addEventListener("click", function (e) {
+            e.preventDefault();
+            openWebchat("home");
+          });
+          var txt = a.querySelectorAll(".footer__txt");
+          var replaced = false;
+          for (var j = 0; j < txt.length; j++) {
+            if (/카카오/.test(txt[j].textContent || "")) { txt[j].textContent = "채팅 상담 문의하기"; replaced = true; }
+          }
+          if (!replaced && /카카오/.test(a.textContent || "")) a.textContent = "채팅 상담 문의하기";
+        })(links[i]);
+      }
+    }
+    rewireKakaoLinks();
+    setTimeout(rewireKakaoLinks, 600);
+    setTimeout(rewireKakaoLinks, 2000);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
