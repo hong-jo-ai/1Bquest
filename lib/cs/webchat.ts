@@ -265,6 +265,48 @@ export async function listWebchatMessages(
     }));
 }
 
+export type WebchatConversationSummary = {
+  conversationId: string;
+  firstAt: string | null;
+  lastAt: string | null;
+  lastText: string;
+  lastDirection: "in" | "out" | null;
+  count: number;
+};
+
+/**
+ * 위젯 "대화" 탭의 요약 카드용 — 방문자가 보유한 대화 id 목록을 받아
+ * 각 대화의 시작/최근 시각, 마지막 메시지 미리보기, 메시지 수를 돌려준다.
+ * 입력 순서(최근 대화 우선)를 그대로 유지한다.
+ */
+export async function summarizeWebchatConversations(
+  conversationIds: string[]
+): Promise<WebchatConversationSummary[]> {
+  const out: WebchatConversationSummary[] = [];
+  for (const id of conversationIds) {
+    try {
+      const msgs = await listWebchatMessages(id);
+      if (!msgs.length) {
+        out.push({ conversationId: id, firstAt: null, lastAt: null, lastText: "", lastDirection: null, count: 0 });
+        continue;
+      }
+      const first = msgs[0];
+      const last = msgs[msgs.length - 1];
+      out.push({
+        conversationId: id,
+        firstAt: first.sent_at,
+        lastAt: last.sent_at,
+        lastText: last.body_text ?? "",
+        lastDirection: last.direction,
+        count: msgs.length,
+      });
+    } catch {
+      out.push({ conversationId: id, firstAt: null, lastAt: null, lastText: "", lastDirection: null, count: 0 });
+    }
+  }
+  return out;
+}
+
 export async function notifyWebchatReplyBySms(threadId: string): Promise<{
   ok: boolean;
   skipped?: string;

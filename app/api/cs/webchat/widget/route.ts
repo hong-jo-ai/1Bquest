@@ -29,6 +29,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   var config = ${config};
   var STORAGE_KEY = "paulvice_webchat_conversation_id";
   var CONTACT_KEY = "paulvice_webchat_contact";
+  var CONV_KEY = "paulvice_webchat_conversations";
   var pollTimer = null;
   var isOpen = false;
   var currentView = "home";
@@ -94,7 +95,36 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   }
 
   function setConversationId(id) {
-    if (id) localStorage.setItem(STORAGE_KEY, id);
+    if (id) { localStorage.setItem(STORAGE_KEY, id); addConversation(id); }
+  }
+
+  function clearConversationId() {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function getConversations() {
+    try { var a = JSON.parse(localStorage.getItem(CONV_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+    catch (_) { return []; }
+  }
+
+  function addConversation(id) {
+    if (!id) return;
+    var list = getConversations().filter(function (x) { return x !== id; });
+    list.unshift(id);
+    try { localStorage.setItem(CONV_KEY, JSON.stringify(list.slice(0, 30))); } catch (_) {}
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function formatWhen(iso) {
+    if (!iso) return "";
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })
+        + " " + d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    } catch (_) { return ""; }
   }
 
   function pageMeta() {
@@ -125,15 +155,16 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-btn-img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}"
       + ".pv-chat-panel{display:none;width:420px;max-width:calc(100vw - 32px);height:680px;max-height:calc(100vh - 84px);background:#f5f4f2;border:1px solid #d8d2c8;border-radius:12px;box-shadow:0 24px 70px rgba(17,17,17,.22);overflow:hidden}"
       + ".pv-chat-panel.open{display:flex;flex-direction:column}.pv-chat-screen{display:none;min-height:0;flex:1;flex-direction:column;background:#f5f4f2}.pv-chat-screen.active{display:flex}"
-      + ".pv-chat-home{padding:24px 18px 0;gap:16px}.pv-chat-home-head{display:flex;align-items:center;gap:13px;padding:0 2px}.pv-chat-avatar{width:48px;height:48px;border-radius:999px;overflow:hidden;background:#111;flex:0 0 auto}.pv-chat-avatar img{width:100%;height:100%;object-fit:cover;display:block}.pv-chat-brand{min-width:0;flex:1}.pv-chat-brand-name{font-size:20px;font-weight:800;line-height:1.2;color:#171717}.pv-chat-hours-link{margin-top:6px;font-size:13px;color:#777;background:transparent;border:0;padding:0;cursor:pointer}.pv-chat-close{width:40px;height:40px;border:0;border-radius:999px;background:#858585;color:#fff;font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}"
-      + ".pv-chat-card{background:#fff;border:1px solid #ebe8e3;border-radius:20px;padding:18px 16px 16px;box-shadow:0 1px 0 rgba(0,0,0,.02)}.pv-chat-card-row{display:flex;gap:12px}.pv-chat-bot{width:38px;height:38px;border-radius:999px;background:#ece8e3;color:#8c8278;display:flex;align-items:center;justify-content:center;flex:0 0 auto}.pv-chat-bot svg{width:22px;height:22px}.pv-chat-card-copy{font-size:15px;line-height:1.55;font-weight:700;color:#202020}.pv-chat-card-copy p{margin:0 0 12px}.pv-chat-primary{width:100%;height:52px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 18px rgba(122,112,100,.28);display:flex;align-items:center;justify-content:center;gap:8px}.pv-chat-card-time{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:13px;font-weight:700;color:#777}.pv-chat-methods{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #ebe8e3;border-radius:18px;padding:14px 16px;color:#8a8a8a;font-size:14px}.pv-chat-method-icons{display:flex;gap:8px}.pv-chat-method-icon{width:40px;height:40px;border:0;border-radius:14px;background:#f0efed;color:#777;font-size:20px;display:flex;align-items:center;justify-content:center}.pv-chat-method-icon.hot{background:#b1aaa2;color:#fff}.pv-chat-powered{margin-top:2px;text-align:center;color:#a0a0a0;font-size:12px;font-weight:700}"
-      + ".pv-chat-nav{height:74px;border-top:1px solid #e7e5e0;background:#fbfbfa;display:flex;align-items:center;justify-content:space-around;flex:0 0 auto}.pv-chat-nav button{width:72px;border:0;background:transparent;color:#8a8a8a;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:700;cursor:pointer}.pv-chat-nav svg{width:24px;height:24px}.pv-chat-nav button.active{color:#1f1f1f}"
+      + ".pv-chat-home{padding:0}.pv-chat-home-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:16px;padding:24px 18px 18px}.pv-chat-home-head{display:flex;align-items:center;gap:13px;padding:0 2px}.pv-chat-avatar{width:48px;height:48px;border-radius:999px;overflow:hidden;background:#111;flex:0 0 auto}.pv-chat-avatar img{width:100%;height:100%;object-fit:cover;display:block}.pv-chat-brand{min-width:0;flex:1}.pv-chat-brand-name{font-size:20px;font-weight:800;line-height:1.2;color:#171717}.pv-chat-hours-link{margin-top:6px;font-size:13px;color:#777;background:transparent;border:0;padding:0;cursor:pointer}.pv-chat-close{width:40px;height:40px;border:0;border-radius:999px;background:#858585;color:#fff;font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}"
+      + ".pv-chat-card{background:#fff;border:1px solid #ebe8e3;border-radius:20px;padding:18px 16px 16px;box-shadow:0 1px 0 rgba(0,0,0,.02)}.pv-chat-card-row{display:flex;gap:12px}.pv-chat-bot{width:38px;height:38px;border-radius:999px;background:#ece8e3;color:#8c8278;display:flex;align-items:center;justify-content:center;flex:0 0 auto}.pv-chat-bot svg{width:22px;height:22px}.pv-chat-card-copy{font-size:15px;line-height:1.55;font-weight:700;color:#202020}.pv-chat-card-copy p{margin:0 0 12px}.pv-chat-primary{width:100%;height:52px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 18px rgba(122,112,100,.28);display:flex;align-items:center;justify-content:center;gap:8px}.pv-chat-card-time{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:13px;font-weight:700;color:#777}.pv-chat-methods{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #ebe8e3;border-radius:18px;padding:12px 14px 12px 16px;color:#8a8a8a;font-size:14px}.pv-chat-email-btn{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 16px;border:0;border-radius:14px;background:#b1aaa2;color:#fff;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer;flex:0 0 auto}.pv-chat-email-btn:hover{filter:brightness(.97)}.pv-chat-powered{margin-top:2px;text-align:center;color:#a0a0a0;font-size:12px;font-weight:700}"
+      + ".pv-chat-conv-list{flex:1;min-height:0;overflow:auto;padding:14px 16px;background:#fff;display:flex;flex-direction:column;gap:10px}.pv-chat-conv-card{text-align:left;border:1px solid #e7e2da;border-radius:16px;background:#fff;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;width:100%}.pv-chat-conv-card:hover{background:#faf8f5;border-color:#d8d2c8}.pv-chat-conv-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.pv-chat-conv-when{font-size:12px;font-weight:700;color:#8a8a8a}.pv-chat-conv-count{font-size:11px;font-weight:700;color:#b1aaa2;flex:0 0 auto}.pv-chat-conv-snippet{font-size:14px;line-height:1.45;color:#2b2b2b;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}"
+      + ".pv-chat-nav{margin-top:auto;height:74px;border-top:1px solid #e7e5e0;background:#fbfbfa;display:flex;align-items:center;justify-content:space-around;flex:0 0 auto}.pv-chat-nav button{width:72px;border:0;background:transparent;color:#8a8a8a;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:700;cursor:pointer}.pv-chat-nav svg{width:24px;height:24px}.pv-chat-nav button.active{color:#1f1f1f}"
       + ".pv-chat-topbar{height:76px;background:#fff;color:#171717;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #ece9e4;flex:0 0 auto}.pv-chat-back{width:34px;height:34px;border:0;background:transparent;color:#555;font-size:28px;line-height:1;cursor:pointer}.pv-chat-title-wrap{display:flex;align-items:center;gap:10px;min-width:0;flex:1}.pv-chat-small-avatar{width:34px;height:34px;border-radius:999px;overflow:hidden;background:#111;flex:0 0 auto}.pv-chat-small-avatar img{width:100%;height:100%;object-fit:cover;display:block}.pv-chat-title{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pv-chat-sub{font-size:12px;color:#777;margin-top:3px}.pv-chat-x{width:34px;height:34px;border:0;background:transparent;color:#555;font-size:28px;line-height:1;cursor:pointer}"
       + ".pv-chat-notice{margin:14px 16px 10px;height:46px;border:1px solid #e7e2da;border-radius:12px;background:#fff;display:flex;align-items:center;gap:9px;padding:0 12px;color:#777;font-size:14px;white-space:nowrap;overflow:hidden}.pv-chat-notice span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.pv-chat-contact{margin:0 16px 12px;padding:14px;border:1px solid #e7e2da;border-radius:16px;background:#fff;display:grid;gap:10px}.pv-chat-contact.saved{display:none}.pv-chat-help{font-size:13px;line-height:1.45;color:#756c61;background:#fff7ef;border:1px solid #ead7c4;border-radius:10px;padding:10px}.pv-chat-error{display:none;font-size:13px;line-height:1.45;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 10px}.pv-chat-error.show{display:block}"
       + ".pv-chat-input{width:100%;border:1px solid #d8d0c4;border-radius:12px;background:#fffdf9;padding:12px 13px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-input:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-save{height:44px;border:0;border-radius:12px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:15px}"
       + ".pv-chat-messages{flex:1;min-height:0;overflow:auto;padding:12px 16px 16px;background:#fff;display:flex;flex-direction:column;gap:10px}.pv-chat-bubble{max-width:84%;padding:11px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.pv-chat-bubble.in{align-self:flex-start;background:#f5f4f2;border:1px solid #e5e1d9;color:#1f2933}.pv-chat-bubble.out{align-self:flex-end;background:#141414;color:#fff}.pv-chat-empty{font-size:14px;color:#625b52;background:#f8f6f2;border:1px solid #e2dbd1;border-radius:14px;padding:14px;line-height:1.55}"
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:10px 12px;background:#fff;display:flex;gap:8px;flex:0 0 auto}.pv-chat-text{flex:1;min-height:46px;max-height:110px;resize:none;border:1px solid #d8d0c4;border-radius:16px;background:#f3f4f6;padding:13px 12px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:60px;border:0;border-radius:16px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.pv-chat-fab-new{align-self:center;margin:auto auto 28px;height:48px;padding:0 22px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 10px 22px rgba(122,112,100,.26);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}"
-      + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:14px}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 0}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
+      + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:14px}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
     document.head.appendChild(el("style", { text: css }));
   }
 
@@ -172,6 +203,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     var contact = getContact();
     var hasSavedContact = contact.name && contact.phone && contact.phone.replace(/\\D/g, "").length >= 10;
 
+    var chatReturnView = "home";
     var homeScreen = el("div", { class: "pv-chat-screen pv-chat-home active" });
     var chatScreen = el("div", { class: "pv-chat-screen pv-chat-chat" });
     var listScreen = el("div", { class: "pv-chat-screen pv-chat-list" });
@@ -199,7 +231,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         gear: '<path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7.8 7.8 0 0 0-2.1-1.2L14 3h-4l-.4 2.6a7.8 7.8 0 0 0-2.1 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7.8 7.8 0 0 0 2.1 1.2L10 21h4l.4-2.6a7.8 7.8 0 0 0 2.1-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
         send: '<path d="M4 12 21 4l-8 17-2-7z" fill="currentColor"/>',
         clock: '<path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>',
-        megaphone: '<path d="M4 12h4l9-5v10l-9-5H4Z" fill="currentColor"/><path d="M8 12v5" fill="none" stroke="currentColor" stroke-width="2"/>'
+        megaphone: '<path d="M4 12h4l9-5v10l-9-5H4Z" fill="currentColor"/><path d="M8 12v5" fill="none" stroke="currentColor" stroke-width="2"/>',
+        mail: '<path d="M3 6.5h18v11H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m3.5 7.5 8.5 6 8.5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
       };
       // width/height 를 1em 으로 고정 — CSS 로 크기를 지정한 곳(nav·bot 등)은 그대로 두고,
       // 지정이 없는 곳(시계·확성기·전송 아이콘)이 기본 300px 로 거대하게 렌더되는 것을 막는다.
@@ -212,14 +245,10 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       home.innerHTML = icon("home") + "<span>홈</span>";
       var chat = el("button", { type: "button", class: active === "chat" ? "active" : "" });
       chat.innerHTML = icon("chat") + "<span>대화</span>";
-      var settings = el("button", { type: "button" });
-      settings.innerHTML = icon("gear") + "<span>설정</span>";
       home.addEventListener("click", function () { showView("home"); });
       chat.addEventListener("click", function () { showView("list"); });
-      settings.addEventListener("click", function () { showView("home"); });
       wrap.appendChild(home);
       wrap.appendChild(chat);
-      wrap.appendChild(settings);
       return wrap;
     }
 
@@ -227,7 +256,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     var startButton = el("button", { class: "pv-chat-primary", type: "button" });
     startButton.innerHTML = "문의하기 " + icon("send");
 
-    homeScreen.appendChild(el("div", { class: "pv-chat-home-head" }, [
+    var homeBody = el("div", { class: "pv-chat-home-body" });
+    homeBody.appendChild(el("div", { class: "pv-chat-home-head" }, [
       avatar("pv-chat-avatar"),
       el("div", { class: "pv-chat-brand" }, [
         el("div", { class: "pv-chat-brand-name", text: config.brandName }),
@@ -237,7 +267,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     ]));
     var cardCopy = el("div", { class: "pv-chat-card-copy" });
     cardCopy.innerHTML = '<p>폴바이스 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 18:00 입니다.</p>';
-    homeScreen.appendChild(el("div", { class: "pv-chat-card" }, [
+    homeBody.appendChild(el("div", { class: "pv-chat-card" }, [
       el("div", { class: "pv-chat-card-row" }, [
         (function () { var bot = el("span", { class: "pv-chat-bot" }); bot.innerHTML = icon("chat"); return bot; })(),
         cardCopy
@@ -245,16 +275,18 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       startButton,
       (function () { var time = el("div", { class: "pv-chat-card-time" }); time.innerHTML = icon("clock") + "<span>오전 10:00부터 운영해요</span>"; return time; })()
     ]));
-    homeScreen.appendChild(el("div", { class: "pv-chat-methods" }, [
+    var emailButton = el("a", {
+      class: "pv-chat-email-btn",
+      href: "mailto:plvekorea@gmail.com?subject=" + encodeURIComponent("[PAULVICE 문의]"),
+      "aria-label": "이메일 문의"
+    });
+    emailButton.innerHTML = icon("mail") + "<span>이메일 문의</span>";
+    homeBody.appendChild(el("div", { class: "pv-chat-methods" }, [
       el("span", { text: "다른 방법으로 문의" }),
-      (function () {
-        var icons = el("div", { class: "pv-chat-method-icons" });
-        icons.appendChild(el("button", { class: "pv-chat-method-icon hot", type: "button", text: "●", "aria-label": "채팅" }));
-        icons.appendChild(el("button", { class: "pv-chat-method-icon", type: "button", text: "…", "aria-label": "더보기" }));
-        return icons;
-      })()
+      emailButton
     ]));
-    homeScreen.appendChild(el("div", { class: "pv-chat-powered", text: "PAULVICE 상담 이용중" }));
+    homeBody.appendChild(el("div", { class: "pv-chat-powered", text: "PAULVICE 상담 이용중" }));
+    homeScreen.appendChild(homeBody);
     homeScreen.appendChild(nav("home"));
 
     contactBox.appendChild(helpText);
@@ -264,11 +296,11 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     contactBox.appendChild(emailInput);
     contactBox.appendChild(saveButton);
 
-    function topbar(title, showBack) {
+    function topbar(title, showBack, onBack) {
       var back = el("button", { class: "pv-chat-back", type: "button", "aria-label": "뒤로", text: "‹" });
       var close = el("button", { class: "pv-chat-x", type: "button", "aria-label": "상담 닫기", text: "×" });
       back.style.visibility = showBack ? "visible" : "hidden";
-      back.addEventListener("click", function () { showView("home"); });
+      back.addEventListener("click", onBack || function () { showView("home"); });
       close.addEventListener("click", closePanel);
       return el("div", { class: "pv-chat-topbar" }, [
         back,
@@ -285,17 +317,17 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     var notice = el("div", { class: "pv-chat-notice" });
     notice.innerHTML = icon("megaphone") + "<span>월-금 10:00 - 18:00, 점심시간 12:30 - 13:30</span>";
-    chatScreen.appendChild(topbar(config.brandName, true));
+    chatScreen.appendChild(topbar(config.brandName, true, function () { showView(chatReturnView); }));
     chatScreen.appendChild(notice);
     chatScreen.appendChild(contactBox);
     chatScreen.appendChild(messages);
     chatScreen.appendChild(el("div", { class: "pv-chat-compose" }, [textarea, send]));
 
-    var listMessages = el("div", { class: "pv-chat-messages" });
+    var convList = el("div", { class: "pv-chat-conv-list" });
     var newButton = el("button", { class: "pv-chat-fab-new", type: "button" });
     newButton.innerHTML = "새 문의하기 " + icon("send");
-    listScreen.appendChild(topbar("대화", true));
-    listScreen.appendChild(listMessages);
+    listScreen.appendChild(topbar("대화", true, function () { showView("home"); }));
+    listScreen.appendChild(convList);
     listScreen.appendChild(newButton);
     listScreen.appendChild(nav("chat"));
 
@@ -311,12 +343,55 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       homeScreen.classList.toggle("active", view === "home");
       chatScreen.classList.toggle("active", view === "chat");
       listScreen.classList.toggle("active", view === "list");
-      if (view === "chat") {
-        loadMessages(messages);
+      if (view === "chat") loadMessages(messages);
+      if (view === "list") loadConversationList();
+    }
+
+    function renderConversationCards(summaries) {
+      convList.innerHTML = "";
+      (summaries || []).forEach(function (s) {
+        if (!s || !s.count) return; // 메시지 없는(미시작) 대화는 숨김
+        var card = el("button", { class: "pv-chat-conv-card", type: "button" });
+        var prefix = s.lastDirection === "out" ? "답변: " : "";
+        card.innerHTML =
+          '<div class="pv-chat-conv-top"><span class="pv-chat-conv-when">' + esc(formatWhen(s.lastAt)) + '</span>'
+          + '<span class="pv-chat-conv-count">' + esc(String(s.count)) + '개</span></div>'
+          + '<div class="pv-chat-conv-snippet">' + esc(prefix + (s.lastText || "")) + '</div>';
+        card.addEventListener("click", function () { openConversation(s.conversationId); });
+        convList.appendChild(card);
+      });
+      if (!convList.children.length) {
+        convList.appendChild(el("div", { class: "pv-chat-empty", text: "아직 나눈 대화가 없어요. 아래 ‘새 문의하기’로 문의를 시작해 보세요." }));
       }
-      if (view === "list") {
-        loadMessages(listMessages);
+    }
+
+    function loadConversationList() {
+      var ids = getConversations();
+      if (!ids.length) {
+        renderConversationCards([]);
+        return;
       }
+      api("/api/cs/webchat/summary", {
+        method: "POST",
+        body: JSON.stringify({ conversationIds: ids })
+      }).then(function (json) {
+        if (json && json.ok) renderConversationCards(json.summaries || []);
+      }).catch(function () {});
+    }
+
+    function openConversation(id) {
+      if (!id) return;
+      setConversationId(id);
+      chatReturnView = "list";
+      showView("chat");
+    }
+
+    function startNewConversation(returnView) {
+      clearConversationId();
+      chatReturnView = returnView || "home";
+      renderMessages(messages, []);
+      showView("chat");
+      focusComposerIfContactSaved();
     }
 
     function openPanel(targetView) {
@@ -325,20 +400,15 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       document.documentElement.classList.add("pv-chat-lock");
       button.style.display = "none";
       showView(targetView || "home");
-      var saved = getContact();
-      if (getConversationId()) {
-        loadMessages(messages);
-      } else if (saved.name && saved.phone && saved.phone.replace(/\\D/g, "").length >= 10) {
-        ensureSession(saved).then(function () { loadMessages(messages); });
-      }
-      pingPresence("active");
       clearInterval(pollTimer);
       pollTimer = setInterval(function () {
         if (!isOpen || document.hidden) return;
-        if (currentView === "chat") loadMessages(messages);
-        if (currentView === "list") loadMessages(listMessages);
-        // 폴링이 도는 동안은 고객이 화면을 보고 있다는 신호(=답변을 곧 확인).
-        if (currentView === "chat" || currentView === "list") pingPresence("active");
+        if (currentView === "chat") {
+          loadMessages(messages);
+          // 채팅 화면을 보는 동안은 고객이 답변을 곧 확인한다는 신호.
+          pingPresence("active");
+        }
+        if (currentView === "list") loadConversationList();
       }, 5000);
     }
 
@@ -412,8 +482,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     button.addEventListener("click", function () { openPanel("home"); });
     closeHome.addEventListener("click", closePanel);
-    startButton.addEventListener("click", function () { showView("chat"); focusComposerIfContactSaved(); });
-    newButton.addEventListener("click", function () { showView("chat"); focusComposerIfContactSaved(); });
+    startButton.addEventListener("click", function () { startNewConversation("home"); });
+    newButton.addEventListener("click", function () { startNewConversation("list"); });
     saveButton.addEventListener("click", function () {
       var contact = currentContact();
       if (!validateContact(contact)) return;
@@ -445,11 +515,16 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       if (isOpen) pingPresence("away");
     });
 
+    // 이번 업데이트 이전부터 진행 중이던 대화도 "대화" 목록에 보이도록 1회 이관.
+    var existing = getConversationId();
+    if (existing) addConversation(existing);
+
     try {
       var params = new URLSearchParams(location.search);
       var linkedConversation = params.get("pv_chat");
       if (linkedConversation && /^pv_[a-z0-9_]{12,80}$/i.test(linkedConversation)) {
         setConversationId(linkedConversation);
+        chatReturnView = "home";
         contactBox.classList.add("saved");
         setTimeout(function () { openPanel("chat"); }, 250);
       }
