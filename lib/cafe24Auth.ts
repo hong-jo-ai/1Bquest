@@ -7,13 +7,13 @@
  *   3. 콜백에서만 saveCafe24TokenFull 로 저장
  */
 import { getAccessTokenFromStore, saveCafe24TokenFull } from "./cafe24TokenStore";
-import type { TokenResponse } from "./cafe24Client";
+import { DEFAULT_MALL, type MallId, type TokenResponse } from "./cafe24Client";
 
-export async function getValidC24Token(): Promise<string | null> {
-  return getAccessTokenFromStore();
+export async function getValidC24Token(mall: MallId = DEFAULT_MALL): Promise<string | null> {
+  return getAccessTokenFromStore(mall);
 }
 
 /** 콜백/수동 로그인 후 토큰 저장 — Supabase 에만 저장 (쿠키 의존 제거). */
-export async function saveInitialCafe24Token(token: TokenResponse): Promise<void> {
-  await saveCafe24TokenFull(token);
+export async function saveInitialCafe24Token(token: TokenResponse, mall: MallId = DEFAULT_MALL): Promise<void> {
+  await saveCafe24TokenFull(token, mall);
 }
