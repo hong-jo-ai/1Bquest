@@ -6,7 +6,24 @@
 require("dotenv").config({ override: true });
 const { execFile } = require("child_process");
 const path = require("path");
+const fs = require("fs");
+const DASH = path.resolve(__dirname, "..");
+function loadEnv(p) { try { for (const l of fs.readFileSync(p, "utf8").split("\n")) { const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if (!m) continue; let v = m[2].trim().replace(/^["']|["']$/g, ""); if (!(m[1] in process.env)) process.env[m[1]] = v; } } catch {} }
+loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
+
+// 발송보류(held) — 최근 3일, 송장입력에서 제외된 건 요약
+async function heldSummary() {
+  try {
+    const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const since = new Date(Date.now() - 3 * 86400000).toISOString();
+    const { data } = await sb.from("pp_shipments").select("recipient_name,channel").eq("status", "held").gte("created_at", since);
+    if (!data || !data.length) return "";
+    const names = [...new Set(data.map((r) => r.recipient_name).filter(Boolean))];
+    return `\n🔒 발송보류 ${data.length}건 제외: ${names.slice(0, 8).join(", ")}${names.length > 8 ? " 외" : ""}`;
+  } catch { return ""; }
+}
 
 function run(script, env) {
   return new Promise((resolve) => {
@@ -37,7 +54,8 @@ async function main() {
   const mu = r5.out.match(/송장입력 완료: 성공 (\d+)/);
   const muMsg = mu ? (+mu[1] ? `성공 ${mu[1]}건` : "대상없음") : (/대상 없음|신규 송장 없음/.test(r5.out) ? "대상없음" : "확인필요");
   const kakao = /카카오 회신 발송/.test(r2.out) ? "발송" : (/스킵|채울 건 없음|메일 없음/.test(r2.out) ? "스킵" : "확인필요");
-  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 식스샵: ${sixMsg}\n- 무신사: ${muMsg}\n- 카카오선물: ${kakao}`);
+  const held = await heldSummary();
+  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 식스샵: ${sixMsg}\n- 무신사: ${muMsg}\n- 카카오선물: ${kakao}${held}`);
   log("=== 완료 ===");
 }
 

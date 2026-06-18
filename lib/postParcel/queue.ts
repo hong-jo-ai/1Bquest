@@ -10,7 +10,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-export type PpJobKind = "one" | "batch" | "outbound" | "return";
+export type PpJobKind = "one" | "batch" | "outbound" | "return" | "cancel";
 export type PpJobStatus = "pending" | "processing" | "done" | "error";
 
 export interface PpRegisterJob {

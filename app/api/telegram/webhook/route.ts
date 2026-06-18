@@ -31,6 +31,7 @@ import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncReques
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
 import { parseParcelBookingCommand, buildBookingInstruction } from "@/lib/postParcel/telegramBooking";
+import { parseHoldCommand, applyHoldCommand } from "@/lib/postParcel/holdCommand";
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
 import { parseParkingCommand, storeParkingRequest } from "@/lib/parking/request";
 import { transcribeAudio } from "@/lib/mori/stt";
@@ -494,6 +495,19 @@ export async function POST(req: NextRequest) {
     if (albaRes) {
       await sendTelegramReply(message.chat.id, albaRes.message, message.message_id);
       return Response.json({ ok: true, albaAttendance: true });
+    }
+
+    // 발송보류/발송/발송취소 — "이영희 발송보류" / "이영희 발송" / "이영희 발송취소"
+    // (발급된 송장 중 실제 미발송 건을 송장입력에서 제외/복귀/취소 — 서버 DB, 취소만 큐→아이맥)
+    const hold = parseHoldCommand(text);
+    if (hold) {
+      try {
+        const msg = await applyHoldCommand(hold);
+        await sendTelegramReply(message.chat.id, msg, message.message_id);
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 발송보류 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      }
+      return Response.json({ ok: true, hold: hold.action });
     }
 
     // 단건 택배/반품 예약 — "홍길동 택배예약" / "홍길동 반품예약" → Claude 브리지로 라우팅

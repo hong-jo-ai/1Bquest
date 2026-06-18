@@ -14,7 +14,7 @@ function loadEnv(p){ try { for(const l of fs.readFileSync(p,"utf8").split("\n"))
 require("dotenv").config({ override: true });
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
-const { registerSingle, registerRows, registerOutbound, registerReturn } = require("./postParcel/register");
+const { registerSingle, registerRows, registerOutbound, registerReturn, cancelShipment } = require("./postParcel/register");
 
 const PREFIX = "pp_register_job:";
 const POLL_MS = 4000;
@@ -42,6 +42,9 @@ async function processJob(job) {
       result = await registerOutbound(job.payload || {});
     } else if (job.kind === "return") {
       result = await registerReturn(job.payload || {});
+    } else if (job.kind === "cancel") {
+      // 발송취소 — 우체국 송장 취소(과금방지). payload: { order_number, channel, req_type }
+      result = await cancelShipment(job.payload || {});
     } else {
       throw new Error(`알 수 없는 kind: ${job.kind}`);
     }
