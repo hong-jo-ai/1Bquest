@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Package, AlertTriangle, XCircle, TrendingDown,
   Search, SlidersHorizontal, RefreshCw, Link, Plus, EyeOff,
@@ -37,9 +37,22 @@ import AddProductModal from "./AddProductModal";
  *
  * channelUploads: { wconcept: { topProducts: [{sku, sold}, ...] }, musinsa: ..., '29cm': ..., groupbuy: ..., sixshop: ..., naver_smartstore: ..., sixshop_global: ... }
  */
+// 상품명 정규화 (서버 inventorySync.normProductName 과 동일 규칙) — 이름매칭 폴백용.
+function normName(s: string): string {
+  return String(s || "").normalize("NFC").toLowerCase()
+    .replace(/^\s*(폴바이스|paulvice|벨피|바이린\s*x\s*폴바이스)\s*/i, "")
+    .replace(/[\s\-_()[\]/.,·]+/g, "");
+}
+
+export interface SkuMapData {
+  skuMaps: Record<string, Record<string, string>>; // 채널 → { 채널코드: 카페24코드 }
+  nameMap: Record<string, string>;                  // 정규화상품명 → 카페24코드
+}
+
 function buildSoldBySku(
   cafe24Products: { sku: string; sold: number }[],
-  channelUploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>,
+  channelUploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>,
+  skuMap?: SkuMapData,
 ): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
   const add = (sku: string, channel: string, sold: number) => {
@@ -47,9 +60,20 @@ function buildSoldBySku(
     if (!result[sku]) result[sku] = {};
     result[sku][channel] = (result[sku][channel] ?? 0) + sold;
   };
+  // 카페24는 sku 가 이미 재고 SKU(product_code)
   for (const p of cafe24Products) add(p.sku, "cafe24", p.sold);
+  const skuMaps = skuMap?.skuMaps ?? {};
+  const nameMap = skuMap?.nameMap ?? {};
   for (const [channel, data] of Object.entries(channelUploads)) {
-    for (const p of data?.topProducts ?? []) add(p.sku, channel, p.sold);
+    const cmap = skuMaps[channel] ?? {};
+    for (const p of data?.topProducts ?? []) {
+      if (!p.sold) continue;
+      // 채널코드 → 재고 SKU 변환: ① 채널 매핑사전 ② 상품명 매칭. 둘 다 실패면 차감 안 함(오차감 방지).
+      let target: string | null = null;
+      if (p.sku && p.sku !== "-" && cmap[p.sku]) target = cmap[p.sku];
+      else if (p.name) target = nameMap[normName(p.name)] ?? null;
+      if (target) add(target, channel, p.sold);
+    }
   }
   return result;
 }
@@ -102,14 +126,16 @@ export default function InventoryManager() {
   });
   const [c24, setC24] = cafe24Cache;
   const [channelUploads, setChannelUploads] = useState<
-    Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>
+    Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>
   >({});
+  // 채널코드→재고SKU 매핑 사전 (서버 /api/inventory/sku-map). ref 라 rebuild 시 항상 최신 사용.
+  const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, nameMap: {} });
 
   /** 제품 목록 재조합 (Cafe24 캐시 + 채널 업로드 + 최신 서버 데이터) */
   const rebuildProducts = useCallback((
     cafe24List: ProductInfo[],
     cafe24Sales: { sku: string; sold: number }[],
-    uploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }>,
+    uploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>,
   ) => {
     const manualProducts = loadManualProducts();
     const cafe24Skus = new Set(cafe24List.map((p) => p.sku));
@@ -118,7 +144,7 @@ export default function InventoryManager() {
     const hiddenSkus = loadHiddenSkus();
     setHiddenCount(hiddenSkus.size);
     const visible = allProducts.filter((p) => !hiddenSkus.has(p.sku));
-    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads)));
+    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads, skuMapRef.current)));
   }, []);
 
   /** 최초 로드 — Cafe24 API + 채널 업로드 + 서버 동기화 */
@@ -135,13 +161,18 @@ export default function InventoryManager() {
 
     let cafe24List: ProductInfo[] = [];
     let cafe24Sales: { sku: string; sold: number }[] = [];
-    let uploads: Record<string, { topProducts?: Array<{ sku: string; sold: number }> }> = {};
+    let uploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }> = {};
 
-    const [productsRes, salesRes, uploadsRes] = await Promise.allSettled([
+    const [productsRes, salesRes, uploadsRes, skuMapRes] = await Promise.allSettled([
       fetch("/api/cafe24/products"),
       fetch("/api/cafe24/data"),
       fetch("/api/profit/channel-uploads"),
+      fetch("/api/inventory/sku-map"),
     ]);
+    if (skuMapRes.status === "fulfilled" && skuMapRes.value.ok) {
+      const j = await skuMapRes.value.json();
+      if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, nameMap: j.nameMap ?? {} };
+    }
 
     if (productsRes.status === "fulfilled" && productsRes.value.ok) {
       const data = await productsRes.value.json();
@@ -156,7 +187,7 @@ export default function InventoryManager() {
     if (uploadsRes.status === "fulfilled" && uploadsRes.value.ok) {
       const j = await uploadsRes.value.json();
       // j.uploads = { wconcept: { data: MultiChannelData, meta: ... }, ... }
-      for (const [channel, entry] of Object.entries((j.uploads ?? {}) as Record<string, { data?: { topProducts?: Array<{ sku: string; sold: number }> } }>)) {
+      for (const [channel, entry] of Object.entries((j.uploads ?? {}) as Record<string, { data?: { topProducts?: Array<{ sku?: string; name?: string; sold: number }> } }>)) {
         const tp = entry?.data?.topProducts;
         if (tp?.length) uploads[channel] = { topProducts: tp };
       }

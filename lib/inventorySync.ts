@@ -155,13 +155,40 @@ async function fetchSalesBySku(token: string, startDate: string): Promise<Record
   return salesBySku;
 }
 
+// 상품명 정규화 — 브랜드 접두어·공백·특수문자 제거(색상/옵션 단어는 유지: 색상별 SKU 구분).
+export function normProductName(s: string): string {
+  return String(s || "").normalize("NFC").toLowerCase()
+    .replace(/^\s*(폴바이스|paulvice|벨피|바이린\s*x\s*폴바이스)\s*/i, "")
+    .replace(/[\s\-_()[\]/.,·]+/g, "");
+}
+
+// 카페24 상품명(정규화) → product_code 사전. 채널 판매상품명을 재고 SKU로 이름매칭하는 폴백용.
+export async function buildCafe24NameMap(token: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const limit = 100;
+  for (let offset = 0, page = 0; page < 40; page++, offset += limit) {
+    const data = await cafe24Get(
+      `/api/v2/admin/products?fields=product_code,product_name&limit=${limit}&offset=${offset}`,
+      token,
+    ) as { products?: Array<{ product_code: string; product_name: string }> };
+    const products = data.products ?? [];
+    for (const p of products) {
+      const n = normProductName(p.product_name);
+      if (p.product_code && n && !map.has(n)) map.set(n, p.product_code);
+    }
+    if (products.length < limit) break;
+  }
+  return map;
+}
+
 /**
  * 다른 채널(W컨셉/무신사/29CM/공동구매 등)의 업로드 데이터에서 SKU별 판매량 합산.
  * 사용자가 대시보드에서 엑셀 업로드한 결과는 kv_store에 채널별로 저장됨.
  *   - 키: `channel_upload:<channelId>`
- *   - 값: `{ data: { topProducts: [{ sku, sold }, ...], ... }, meta: ... }`
+ *   - 값: `{ data: { topProducts: [{ sku, name, sold }, ...], ... }, meta: ... }`
+ * 채널코드는 재고 SKU와 다르므로: ① channel_pricing:skumap:<채널>(채널코드→SKU) ② 상품명 매칭 으로 변환.
  */
-async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
+async function fetchOtherChannelsSales(token: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   const supabase = getSupabase();
   if (!supabase) return out;
@@ -179,6 +206,18 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
     if (m.kakaoName) kakaoNameToSku.set(m.kakaoName, m.kakaoSku);
   }
 
+  // 채널별 매핑사전(channel_pricing:skumap:<채널>: 채널코드→카페24 product_code) + 카페24 상품명 사전
+  const channelSkuMaps = new Map<string, Record<string, string>>();
+  const { data: smapRows } = await supabase
+    .from("kv_store")
+    .select("key, data")
+    .like("key", "channel_pricing:skumap:%");
+  for (const r of (smapRows ?? []) as Array<{ key: string; data: unknown }>) {
+    const ch = r.key.replace("channel_pricing:skumap:", "");
+    if (r.data && typeof r.data === "object") channelSkuMaps.set(ch, r.data as Record<string, string>);
+  }
+  const cafe24NameToCode = await buildCafe24NameMap(token).catch(() => new Map<string, string>());
+
   const { data } = await supabase
     .from("kv_store")
     .select("key, data")
@@ -188,27 +227,33 @@ async function fetchOtherChannelsSales(): Promise<Record<string, number>> {
     // 신 포맷: { uploads: [{ data: { topProducts }, ... }] } — 모든 업로드의 topProducts 합산
     // 구 포맷: { data: { topProducts }, meta }              — 그대로
     const r = row.data as Record<string, unknown> | null;
-    const tpList: Array<{ sku: string; sold: number }> = [];
+    type Tp = { sku?: string; name?: string; sold: number };
+    const tpList: Tp[] = [];
     if (r && Array.isArray((r as { uploads?: unknown }).uploads)) {
-      const uploads = (r as { uploads: Array<{ data?: { topProducts?: Array<{ sku: string; sold: number }> } }> }).uploads;
+      const uploads = (r as { uploads: Array<{ data?: { topProducts?: Tp[] } }> }).uploads;
       for (const up of uploads) {
         for (const p of up.data?.topProducts ?? []) tpList.push(p);
       }
     } else {
-      const tp = (r as { data?: { topProducts?: Array<{ sku: string; sold: number }> } } | null)?.data?.topProducts;
+      const tp = (r as { data?: { topProducts?: Tp[] } } | null)?.data?.topProducts;
       if (tp) tpList.push(...tp);
     }
     if (tpList.length === 0) continue;
     const isKakao = row.key === "channel_upload:kakao_gift";
+    const channelId = row.key.replace("channel_upload:", "");
+    const smap = channelSkuMaps.get(channelId) ?? {};
     for (const p of tpList) {
-      if (!p.sku || !p.sold) continue;
-      let targetSku = p.sku;
+      if (!p.sold) continue;
+      let targetSku: string | null = null;
       if (isKakao) {
-        // 카카오 정산서 topProducts: 부모 SKU 만 들어옴 → 1:1 매핑만 적용. 1:N(시계) 은 PO 로 처리.
-        const mapped = kakaoSkuToCafe24.get(p.sku);
-        if (!mapped) continue;
-        targetSku = mapped;
+        // 카카오 정산서 topProducts: 부모 SKU 만 → 1:1 매핑만. 1:N(시계) 은 아래 PO 로 처리.
+        if (p.sku) targetSku = kakaoSkuToCafe24.get(p.sku) ?? null;
+      } else {
+        // ① 채널 매핑사전(채널코드→SKU) ② 카페24 상품명(색상 포함) 매칭
+        if (p.sku && p.sku !== "-" && smap[p.sku]) targetSku = smap[p.sku];
+        else if (p.name) targetSku = cafe24NameToCode.get(normProductName(p.name)) ?? null;
       }
+      if (!targetSku) continue; // 매칭 실패 시 차감 안 함(엉뚱한 SKU 오차감 방지)
       out[targetSku] = (out[targetSku] ?? 0) + p.sold;
     }
   }
@@ -273,7 +318,7 @@ export async function computeInventoryLevels(token: string): Promise<InventoryLe
   const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   const [cafe24SalesBySku, otherChannelsSales] = await Promise.all([
     fetchSalesBySku(token, startDate),
-    fetchOtherChannelsSales(),
+    fetchOtherChannelsSales(token),
   ]);
   return skus.map((sku) => {
     const e = entries[sku];
@@ -321,7 +366,7 @@ export async function runInventorySync(
   // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
   const [cafe24SalesBySku, otherChannelsSales, productNoMap] = await Promise.all([
     fetchSalesBySku(token, startDate),
-    fetchOtherChannelsSales(),
+    fetchOtherChannelsSales(token),
     buildSkuProductNoMap(token),
   ]);
 
