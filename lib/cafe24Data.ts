@@ -108,6 +108,7 @@ export async function fetchAllOrders(
   startDate: string,
   endDate: string,
   embedItems = true,
+  mall: Brand = "paulvice",
 ) {
   const all: any[] = [];
   let offset = 0;
@@ -123,7 +124,7 @@ export async function fetchAllOrders(
     if (embedItems) params.embed = "items";
 
     const qs   = new URLSearchParams(params);
-    const data = await cafe24Get(`/api/v2/admin/orders?${qs}`, token);
+    const data = await cafe24Get(`/api/v2/admin/orders?${qs}`, token, mall);
     const batch: any[] = data.orders ?? [];
     all.push(...batch);
     if (batch.length < limit) break;
@@ -388,6 +389,7 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
       const res = await cafe24Get(
         `/api/v2/admin/products?limit=100&offset=${offset}&display=T&embed=variants`,
         token,
+        brand,
       );
       const batch: any[] = res.products ?? [];
       out.push(...batch);
@@ -396,8 +398,8 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     return out;
   };
   const [rawMonthOrders, rawPrevMonthOrders, allProducts] = await Promise.all([
-    fetchAllOrders(token, monthStartStr, todayStr),
-    fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr),
+    fetchAllOrders(token, monthStartStr, todayStr, true, brand),
+    fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr, true, brand),
     fetchProducts(),
   ]);
 

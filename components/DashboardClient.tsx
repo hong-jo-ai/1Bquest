@@ -116,12 +116,13 @@ function fmtKrwCompact(n: number): string {
 interface Props {
   brand: Brand;
   cafe24Data: DashboardData | null;
+  harriotCafe24Data?: DashboardData | null;
   isAuthenticated: boolean;
   apiError: string | null;
   now: string;
 }
 
-export default function DashboardClient({ brand, cafe24Data, isAuthenticated, apiError, now }: Props) {
+export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data = null, isAuthenticated, apiError, now }: Props) {
   const router = useRouter();
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
@@ -360,6 +361,17 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     inventory: cafe24Data?.inventory ?? [],
   }), [cafe24Data]);
 
+  // 해리엇 카페24(별도 몰) — 해리엇 브랜드 채널 + 전사 합산에 사용
+  const harriotCafe24Channel: MultiChannelData = useMemo(() => ({
+    salesSummary: harriotCafe24Data?.salesSummary ?? EMPTY_CHANNEL_DATA.salesSummary,
+    topProducts: harriotCafe24Data?.topProducts ?? [],
+    hourlyOrders: harriotCafe24Data?.hourlyOrders ?? EMPTY_CHANNEL_DATA.hourlyOrders,
+    weeklyRevenue: harriotCafe24Data?.weeklyRevenue ?? EMPTY_CHANNEL_DATA.weeklyRevenue,
+    dailyRevenue: harriotCafe24Data?.dailyRevenue ?? [],
+    dailyCogs:    harriotCafe24Data?.dailyCogs ?? [],
+    inventory: harriotCafe24Data?.inventory ?? [],
+  }), [harriotCafe24Data]);
+
   // 실제 표시 데이터 (업로드 데이터가 없으면 0/빈 상태)
   const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => {
     // 공동구매 = 엑셀 업로드(과거) + 카페24 라이브 공구 상품(226 등) 합산
@@ -379,36 +391,51 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
     };
   }, [uploads, cafe24Data]);
 
+  // 채널 id → 표시 데이터 (cafe24/해리엇 cafe24는 라이브, 나머지는 업로드맵)
+  const resolveChannel = (id: ChannelId): MultiChannelData =>
+    id === "cafe24" ? cafe24Channel
+    : id === "cafe24_harriot" ? harriotCafe24Channel
+    : channelDataMap[id as UploadableChannel];
+
   const displayData: MultiChannelData = useMemo(() => {
     if (activeChannel === "cafe24") return cafe24Channel;
+    if (activeChannel === "cafe24_harriot") return harriotCafe24Channel;
     if (activeChannel === "all") {
       // 현재 브랜드의 채널만 합산
       const list: MultiChannelData[] = [];
       for (const id of brandChannelIds) {
         if (id === "all") continue;
-        if (id === "cafe24") list.push(cafe24Channel);
-        else list.push(channelDataMap[id as UploadableChannel]);
+        list.push(resolveChannel(id));
       }
       return mergeChannelData(list);
     }
     // 업로드 가능 채널
     return channelDataMap[activeChannel as UploadableChannel];
-  }, [activeChannel, cafe24Channel, channelDataMap, brandChannelIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChannel, cafe24Channel, harriotCafe24Channel, channelDataMap, brandChannelIds]);
 
   const companyChannels = useMemo(() => {
     const ids = Array.from(new Set(BRANDS.flatMap((b) => BRAND_CHANNELS[b.id]).filter((id) => id !== "all")));
     return ids.map((id) => {
       const meta = CHANNELS.find((c) => c.id === id);
-      const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+      const data = resolveChannel(id);
       return { channelId: id, name: meta?.name ?? id, color: meta?.color ?? "#71717a", data };
     });
-  }, [cafe24Channel, channelDataMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cafe24Channel, harriotCafe24Channel, channelDataMap]);
 
   const companyData = useMemo(() => {
     return mergeChannelData(companyChannels.map((ch) => ch.data));
   }, [companyChannels]);
 
   const cafe24IsReal       = cafe24Data?.isReal === true;
+  // 활성 탭/브랜드에 맞는 cafe24 데이터(폴바이스 vs 해리엇) — 인기상품·실시간 판정에 사용
+  const activeCafe24Data =
+    activeChannel === "cafe24_harriot" ? harriotCafe24Data
+    : activeChannel === "cafe24" ? cafe24Data
+    : brand === "harriot" ? harriotCafe24Data
+    : cafe24Data;
+  const activeCafe24IsReal = activeCafe24Data?.isReal === true;
   const isUploadableActive = UPLOADABLE_CHANNELS.includes(activeChannel as UploadableChannel);
   const activeUploadable   = isUploadableActive ? (activeChannel as UploadableChannel) : null;
   const activeHasUpload    = activeUploadable ? !!uploads[activeUploadable] : false;
@@ -422,11 +449,12 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       if (id === "all") continue;
       const meta = CHANNELS.find(c => c.id === id);
       if (!meta) continue;
-      const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+      const data = resolveChannel(id);
       list.push({ channelId: id, name: meta.name, color: meta.color, data });
     }
     return list;
-  }, [cafe24Channel, channelDataMap, brandChannelIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cafe24Channel, harriotCafe24Channel, channelDataMap, brandChannelIds]);
 
   // 이번 달(KST) prefix — 마운트 시점 한 번 결정. 월 경계 즉시 반영은 안 되지만 새로고침이면 OK.
   const [monthPrefix] = useState(() => {
@@ -470,14 +498,15 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
       let monthRevenue = 0;
       for (const id of BRAND_CHANNELS[b.id]) {
         if (id === "all") continue;
-        const data = id === "cafe24" ? cafe24Channel : channelDataMap[id as UploadableChannel];
+        const data = resolveChannel(id);
         for (const day of data.dailyRevenue ?? []) {
           if (day.date.startsWith(monthPrefix)) monthRevenue += day.revenue;
         }
       }
       return { brandId: b.id, name: b.name, monthRevenue };
     });
-  }, [cafe24Channel, channelDataMap, monthPrefix]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cafe24Channel, harriotCafe24Channel, channelDataMap, monthPrefix]);
 
   const overview = useMemo(() => {
     const todayRevenue = companyData.salesSummary.today.revenue;
@@ -686,17 +715,17 @@ export default function DashboardClient({ brand, cafe24Data, isAuthenticated, ap
         <CollapsibleSection title="상품별 판매 순위" defaultOpen={false}>
           <TopProducts
             today={
-              !isUploadableActive && cafe24IsReal
-                ? (cafe24Data?.topProductsToday ?? displayData.topProducts)
+              !isUploadableActive && activeCafe24IsReal
+                ? (activeCafe24Data?.topProductsToday ?? displayData.topProducts)
                 : displayData.topProducts
             }
             week={
-              !isUploadableActive && cafe24IsReal
-                ? (cafe24Data?.topProductsWeek ?? displayData.topProducts)
+              !isUploadableActive && activeCafe24IsReal
+                ? (activeCafe24Data?.topProductsWeek ?? displayData.topProducts)
                 : displayData.topProducts
             }
             month={displayData.topProducts}
-            isReal={(cafe24IsReal && !isUploadableActive) || activeHasUpload}
+            isReal={(activeCafe24IsReal && !isUploadableActive) || activeHasUpload}
           />
         </CollapsibleSection>
         </div>

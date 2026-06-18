@@ -16,20 +16,28 @@ export default async function Dashboard({ searchParams }: PageProps) {
   const hasAnyToken     = !!(await readRefreshTokenFromStore());
   const isAuthenticated = hasAnyToken;
 
-  let data      = null;
+  let data         = null; // 폴바이스 cafe24
+  let harriotData  = null; // 해리엇 cafe24
   let apiError: string | null = null;
 
-  // 최상단 전사 KPI에는 폴바이스 카페24 매출도 항상 포함되어야 한다.
+  // 전사 KPI는 두 cafe24 몰(폴바이스+해리엇)을 모두 합산해야 하므로 둘 다 불러온다.
   if (isAuthenticated) {
-    const token = await getValidC24Token();
+    const token = await getValidC24Token("paulvice");
     if (token) {
       try {
-        data = await getDashboardData(token);
+        data = await getDashboardData(token, "paulvice");
       } catch (e: unknown) {
         apiError = e instanceof Error ? e.message : "카페24 데이터를 불러오지 못했습니다.";
       }
     } else {
       apiError = "카페24 토큰이 만료되었습니다. 재연결이 필요합니다.";
+    }
+    // 해리엇 cafe24 — 연결돼 있으면 함께 로드(실패해도 폴바이스/페이지에 영향 없음)
+    try {
+      const hToken = await getValidC24Token("harriot");
+      if (hToken) harriotData = await getDashboardData(hToken, "harriot");
+    } catch (e) {
+      console.warn("[dashboard] 해리엇 cafe24 로드 실패:", e instanceof Error ? e.message : e);
     }
   }
 
@@ -48,6 +56,7 @@ export default async function Dashboard({ searchParams }: PageProps) {
       <DashboardClient
         brand={brand}
         cafe24Data={data}
+        harriotCafe24Data={harriotData}
         isAuthenticated={isAuthenticated}
         apiError={apiError}
         now={now}
