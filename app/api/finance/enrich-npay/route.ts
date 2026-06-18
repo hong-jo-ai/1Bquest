@@ -96,9 +96,13 @@ export async function POST(req: NextRequest) {
   const emails: ParsedNaverPayEmail[] = [];
   for (const m of list.messages ?? []) {
     try {
-      const full = await gmail<{ payload?: GmailPart }>(accessToken, `/messages/${m.id}?format=full`);
+      const full = await gmail<{ payload?: GmailPart; internalDate?: string }>(accessToken, `/messages/${m.id}?format=full`);
       const parsed = parseNaverPayEmail(extractBody(full.payload));
-      if (parsed && parsed.merchant && (parsed.cardAmount || parsed.totalAmount)) emails.push(parsed);
+      if (parsed && parsed.merchant && (parsed.cardAmount || parsed.totalAmount)) {
+        // 신형 결제메일 본문엔 결제'일자'만 있고 시각이 없음 → 메일 수신시각(=결제 직후)으로 시간 매칭.
+        if (full.internalDate) parsed.paidAt = new Date(Number(full.internalDate));
+        emails.push(parsed);
+      }
     } catch { /* skip one */ }
   }
 

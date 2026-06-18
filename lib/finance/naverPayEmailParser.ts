@@ -91,14 +91,16 @@ function parsePaidAt(s: string): Date | null {
 export function parseNaverPayEmail(input: string): ParsedNaverPayEmail | null {
   if (!input) return null;
   const text = toText(input);
-  if (!/네이버페이|naver\s*pay/i.test(text) || !/가맹점/.test(text)) return null;
+  // 메일 형식: 라벨이 "가맹점명"(구) 또는 "결제처"(신, 2026-06 실메일)로 옴. 둘 다 허용.
+  if (!/네이버페이|naver\s*pay/i.test(text) || !/가맹점|결제처/.test(text)) return null;
 
-  const merchant = valueAfter(text, /가맹점\s*(?:명)?/);
+  const merchant = valueAfter(text, /(?:가맹점\s*명?|결제처)/);
   const payNo = valueAfter(text, /결제\s*번호/).split(/\s/)[0] || "";
   const paidAt = parsePaidAt(valueAfter(text, /결제\s*(?:일시|일자)/));
-  const total = won(valueAfter(text, /최종\s*결제\s*금액/)) || won(valueAfter(text, /총\s*결제\s*금액/));
-  const card = won(valueAfter(text, /신용\s*금액/));
-  const method = valueAfter(text, /결제\s*수단/);
+  const total = won(valueAfter(text, /최종\s*결제\s*금액/)) || won(valueAfter(text, /총\s*결제\s*금액/)) || won(valueAfter(text, /주문\s*금액/));
+  // 카드 청구액: 구형 "신용금액" / 신형 "결제상세 > 카드 간편결제 {금액}".
+  const card = won(valueAfter(text, /신용\s*금액/)) || won(valueAfter(text, /카드\s*간편결제/));
+  const method = valueAfter(text, /결제\s*(?:수단|상세)/);
 
   if (!merchant && !total) return null;
   return {
