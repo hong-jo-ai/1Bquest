@@ -385,6 +385,11 @@ function TaxInvoices() {
   );
 }
 
+// 은행 계좌 거래내역(KB, 2026 1~4월) 섹션 표시 여부. 사장님 요청(2026-06-18)으로 숨김 —
+// 카드는 자동수집, 매출은 채널별로 잡혀 은행 원장은 화면에서 불필요. 데이터(finance_bank_tx)는 보존.
+// 다시 보려면 true 로.
+const SHOW_BANK_LEDGER = false;
+
 export default function FinanceClient() {
   const [txs, setTxs] = useState<BankTx[]>([]);
   const [aggregate, setAggregate] = useState<Record<string, AggEntry>>({});
@@ -444,6 +449,7 @@ export default function FinanceClient() {
 
       {/* 업로드 */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {SHOW_BANK_LEDGER && (
         <UploadCard
           title="KB국민은행 거래내역"
           hint="인터넷뱅킹 → 거래내역 → 엑셀 (여러 개월 한 번에 가능)"
@@ -453,6 +459,7 @@ export default function FinanceClient() {
           onSuccess={(j) => `${j.parsed}건 → ${j.inserted}건 신규 (${j.skipped}건 중복)`}
           onDone={loadTxs}
         />
+        )}
         <UploadCard
           title="현대카드 이용내역"
           hint="현대카드 → 이용내역 → 엑셀 (여러 개월 한 번에 가능)"
@@ -514,6 +521,8 @@ export default function FinanceClient() {
       {/* 매입 세금계산서 — 메일 자동수집 (현금이체 비용) */}
       <TaxInvoices />
 
+      {/* 은행 계좌 거래내역 블록(요약/카테고리/거래목록) — SHOW_BANK_LEDGER 로 표시 제어(현재 숨김) */}
+      {SHOW_BANK_LEDGER && (<>
       {/* 요약 카드 — 모바일에선 세로 쌓기 (큰 금액이 잘리지 않도록) */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <SummaryCard label="입금 (전체)" value={fmtKrw(totals.inflow)} accent="emerald" />
@@ -785,6 +794,7 @@ export default function FinanceClient() {
           </table>
         </div>
       </section>
+      </>)}
     </main>
   );
 }
