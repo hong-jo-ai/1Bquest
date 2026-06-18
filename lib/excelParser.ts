@@ -10,6 +10,8 @@ const COL_ALIASES = {
   orderId:     ["주문번호", "주문 번호", "order_no", "order_id", "order no", "order id", "ordersn"],
   name:        ["상품명", "품목명", "상품 이름", "상품이름"],
   sku:         ["상품번호", "상품코드", "자체상품코드", "브랜드관리코드", "상품관리코드", "품목코드", "옵션코드", "sku"],
+  // 옵션(색상 등) — 재고 색상별 차감용. W컨셉 "옵션1"=색상.
+  option:      ["옵션1", "옵션", "옵션명", "옵션정보", "색상", "컬러", "option", "color"],
   qty:         ["수량", "주문수량", "판매수량"], // "현재수량"(재고) 회피
   revenue:     ["실결제금액", "결제금액", "매출금액", "판매금액", "판매가격", "판매가", "정산금액", "매출", "총매출", "순매출", "금액"],
   status:      ["주문상태", "처리상태", "배송상태"],
@@ -32,6 +34,7 @@ interface ParsedRow {
   orderId: string;
   name: string;
   sku: string;
+  option: string;
   qty: number;
   revenue: number;
   status: string;
@@ -306,6 +309,7 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
   const orderIdCol     = findColIdx(headers, COL_ALIASES.orderId);
   const nameCol        = findColIdx(headers, COL_ALIASES.name);
   const skuCol         = findColIdx(headers, COL_ALIASES.sku);
+  const optionCol      = findColIdx(headers, COL_ALIASES.option);
   const qtyCol         = findColIdx(headers, COL_ALIASES.qty);
   const revenueCol     = findColIdx(headers, COL_ALIASES.revenue);
   const statusCol      = findColIdx(headers, COL_ALIASES.status);
@@ -348,6 +352,7 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
       orderId:     orderIdCol >= 0     ? String(row[orderIdCol] ?? "").trim()     : "",
       name:        nameCol >= 0        ? String(row[nameCol] ?? "")               : "",
       sku:         skuCol >= 0         ? String(row[skuCol] ?? "")                : "",
+      option:      optionCol >= 0      ? String(row[optionCol] ?? "").trim()      : "",
       qty:         qtyCol >= 0         ? Math.max(1, parseNum(row[qtyCol]))       : 1,
       revenue,
       status,
@@ -431,6 +436,19 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10)
     .map((p, i) => ({ rank: i + 1, name: p.name, sku: p.sku, sold: p.sold, revenue: p.revenue, image: "⌚" }));
+
+  // ── 옵션(색상)단위 전체 판매 — 재고 차감용 (topProducts는 상위10·옵션무시라 부정확) ──
+  const optionMap = new Map<string, { sku: string; name: string; option: string; sold: number }>();
+  for (const r of rows) {
+    const nm = (r.name || "").trim();
+    if (!r.sku && !nm) continue;
+    const opt = (r.option || "").trim();
+    const key = `${r.sku}|${nm}|${opt}`;
+    const cur = optionMap.get(key) ?? { sku: r.sku, name: nm, option: opt, sold: 0 };
+    cur.sold += r.qty;
+    optionMap.set(key, cur);
+  }
+  const salesByOption = Array.from(optionMap.values()).filter((x) => x.sold > 0);
 
   // ── 시간대별 ──────────────────────────────────────────────────────────────
   const hourBuckets: Record<number, ParsedRow[]> = {};
@@ -526,6 +544,7 @@ export async function parseExcelBuffer(buffer: ArrayBuffer): Promise<ExcelParseR
       unmatchedSkus,
       unmatchedNames,
       inventory: [],
+      salesByOption,
     },
     rowCount: rows.length,
     unmatchedSkus,

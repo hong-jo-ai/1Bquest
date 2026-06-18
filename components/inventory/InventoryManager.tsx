@@ -20,11 +20,19 @@ import {
   syncInventoryFromServer,
   syncManualProductsFromServer,
   syncHiddenSkusFromServer,
+  setInventoryBrand,
+  saveHiddenSkusLocal,
   calcAgingStatus,
   AGING_CONFIG,
   type ProductInfo,
   type InventoryProduct,
 } from "@/lib/inventoryStorage";
+
+type InvBrand = "paulvice" | "harriot";
+const INV_BRANDS: { id: InvBrand; name: string }[] = [
+  { id: "paulvice", name: "폴바이스" },
+  { id: "harriot", name: "해리엇" },
+];
 import ProductCard from "./ProductCard";
 import StockEditModal from "./StockEditModal";
 import AddProductModal from "./AddProductModal";
@@ -49,9 +57,25 @@ export interface SkuMapData {
   nameMap: Record<string, string>;                  // 정규화상품명 → 카페24코드
 }
 
+type ChannelItem = { sku?: string; name?: string; option?: string; sold: number };
+
+// 채널 판매항목 → 재고 SKU. ① 옵션(색상)기반 이름매칭(합본 색상분리) ② 상품명 ③ 채널 사전.
+// (서버 inventorySync.matchChannelItemToSku 와 동일 규칙 — 클라/서버 분리라 복제)
+function matchItemToSku(item: ChannelItem, nameMap: Record<string, string>, cmap: Record<string, string>): string | null {
+  const name = item.name || "";
+  const opt = (item.option || "").trim();
+  if (opt) {
+    const swapped = name.replace(/[^\s,]+(?:&|＆|\/|,)[^\s,]+/g, opt);
+    for (const c of [swapped, `${name} ${opt}`]) { const t = nameMap[normName(c)]; if (t) return t; }
+  }
+  if (name) { const t = nameMap[normName(name)]; if (t) return t; }
+  if (item.sku && item.sku !== "-" && cmap[item.sku]) return cmap[item.sku];
+  return null;
+}
+
 function buildSoldBySku(
   cafe24Products: { sku: string; sold: number }[],
-  channelUploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>,
+  channelUploads: Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }>,
   skuMap?: SkuMapData,
 ): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
@@ -66,13 +90,12 @@ function buildSoldBySku(
   const nameMap = skuMap?.nameMap ?? {};
   for (const [channel, data] of Object.entries(channelUploads)) {
     const cmap = skuMaps[channel] ?? {};
-    for (const p of data?.topProducts ?? []) {
-      if (!p.sold) continue;
-      // 채널코드 → 재고 SKU 변환: ① 채널 매핑사전 ② 상품명 매칭. 둘 다 실패면 차감 안 함(오차감 방지).
-      let target: string | null = null;
-      if (p.sku && p.sku !== "-" && cmap[p.sku]) target = cmap[p.sku];
-      else if (p.name) target = nameMap[normName(p.name)] ?? null;
-      if (target) add(target, channel, p.sold);
+    // 옵션단위 전체(salesByOption) 우선 — 색상분리 + 상위10 제한 없음. 없으면 topProducts.
+    const items = (data?.salesByOption?.length ? data.salesByOption : data?.topProducts) ?? [];
+    for (const it of items) {
+      if (!it.sold) continue;
+      const target = matchItemToSku(it, nameMap, cmap);
+      if (target) add(target, channel, it.sold);
     }
   }
   return result;
@@ -83,6 +106,9 @@ type FilterType = "all" | "normal" | "caution" | "urgent" | "critical" | "soldou
 const POLL_INTERVAL = 30_000; // 30초
 
 export default function InventoryManager() {
+  // 멀티몰: 폴바이스/해리엇 재고를 브랜드별로 분리 (저장 키·COGS·카페24 몰 모두 분리)
+  const [brand, setBrand] = useState<InvBrand>("paulvice");
+  if (typeof window !== "undefined") setInventoryBrand(brand); // 렌더 전 동기 반영(스토리지 키 정확)
   const [products, setProducts]         = useState<InventoryProduct[]>([]);
   const [editTarget, setEditTarget]     = useState<InventoryProduct | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -102,23 +128,23 @@ export default function InventoryManager() {
   // 매입원가 (COGS) 맵
   const [cogsMap, setCogsMap] = useState<Record<string, number>>({});
   useEffect(() => {
-    fetch("/api/profit/cogs")
+    fetch(`/api/profit/cogs?brand=${brand}`)
       .then((r) => r.json())
       .then((j) => {
         if (j.ok) setCogsMap(j.cogs ?? {});
       })
       .catch(() => {/* 무시 */});
-  }, []);
+  }, [brand]);
 
   const handleCogsChange = useCallback(async (sku: string, cost: number) => {
-    const res = await fetch("/api/profit/cogs", {
+    const res = await fetch(`/api/profit/cogs?brand=${brand}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [sku]: cost }),
     });
     const j = await res.json();
     if (j.ok) setCogsMap(j.cogs ?? {});
-  }, []);
+  }, [brand]);
 
   // Cafe24 API + 다른 채널 업로드 결과를 state에 캐싱 — 30초 폴링 때 재호출 안 함
   const cafe24Cache = useState<{ list: ProductInfo[]; sales: { sku: string; sold: number }[] }>({
@@ -126,7 +152,7 @@ export default function InventoryManager() {
   });
   const [c24, setC24] = cafe24Cache;
   const [channelUploads, setChannelUploads] = useState<
-    Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>
+    Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }>
   >({});
   // 채널코드→재고SKU 매핑 사전 (서버 /api/inventory/sku-map). ref 라 rebuild 시 항상 최신 사용.
   const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, nameMap: {} });
@@ -135,7 +161,7 @@ export default function InventoryManager() {
   const rebuildProducts = useCallback((
     cafe24List: ProductInfo[],
     cafe24Sales: { sku: string; sold: number }[],
-    uploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }>,
+    uploads: Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }>,
   ) => {
     const manualProducts = loadManualProducts();
     const cafe24Skus = new Set(cafe24List.map((p) => p.sku));
@@ -150,22 +176,23 @@ export default function InventoryManager() {
   /** 최초 로드 — Cafe24 API + 채널 업로드 + 서버 동기화 */
   const loadProducts = useCallback(async () => {
     setLoading(true);
+    setInventoryBrand(brand); // 스토리지/동기화 키를 현재 브랜드로
     await Promise.all([
       syncInventoryFromServer(),
       syncManualProductsFromServer(),
       syncHiddenSkusFromServer().then((arr) => {
-        if (arr) localStorage.setItem("paulvice_hidden_skus_v1", JSON.stringify(arr));
+        if (arr) saveHiddenSkusLocal(arr);
       }),
     ]);
     ensureArchiveInventorySeeded();
 
     let cafe24List: ProductInfo[] = [];
     let cafe24Sales: { sku: string; sold: number }[] = [];
-    let uploads: Record<string, { topProducts?: Array<{ sku?: string; name?: string; sold: number }> }> = {};
+    let uploads: Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }> = {};
 
     const [productsRes, salesRes, uploadsRes, skuMapRes] = await Promise.allSettled([
-      fetch("/api/cafe24/products"),
-      fetch("/api/cafe24/data"),
+      fetch(`/api/cafe24/products?brand=${brand}`),
+      fetch(`/api/cafe24/data?brand=${brand}`),
       fetch("/api/profit/channel-uploads"),
       fetch("/api/inventory/sku-map"),
     ]);
@@ -187,9 +214,10 @@ export default function InventoryManager() {
     if (uploadsRes.status === "fulfilled" && uploadsRes.value.ok) {
       const j = await uploadsRes.value.json();
       // j.uploads = { wconcept: { data: MultiChannelData, meta: ... }, ... }
-      for (const [channel, entry] of Object.entries((j.uploads ?? {}) as Record<string, { data?: { topProducts?: Array<{ sku?: string; name?: string; sold: number }> } }>)) {
+      for (const [channel, entry] of Object.entries((j.uploads ?? {}) as Record<string, { data?: { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] } }>)) {
         const tp = entry?.data?.topProducts;
-        if (tp?.length) uploads[channel] = { topProducts: tp };
+        const sbo = entry?.data?.salesByOption;
+        if (tp?.length || sbo?.length) uploads[channel] = { topProducts: tp, salesByOption: sbo };
       }
     }
 
@@ -197,40 +225,41 @@ export default function InventoryManager() {
     setChannelUploads(uploads);
     rebuildProducts(cafe24List, cafe24Sales, uploads);
     setLoading(false);
-  }, [rebuildProducts, setC24]);
+  }, [rebuildProducts, setC24, brand]);
 
   /** 30초 폴링 — Supabase 동기화만 (Cafe24 재호출 없음) */
   const pollFromServer = useCallback(async () => {
+    setInventoryBrand(brand);
     await Promise.all([
       syncInventoryFromServer(),
       syncManualProductsFromServer(),
       syncHiddenSkusFromServer().then((arr) => {
-        if (arr) localStorage.setItem("paulvice_hidden_skus_v1", JSON.stringify(arr));
+        if (arr) saveHiddenSkusLocal(arr);
       }),
     ]);
     ensureArchiveInventorySeeded();
     rebuildProducts(c24.list, c24.sales, channelUploads);
-  }, [c24, channelUploads, rebuildProducts]);
+  }, [c24, channelUploads, rebuildProducts, brand]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
   // 마지막 동기화 시간 로드
   useEffect(() => {
-    fetch("/api/cafe24/inventory-sync")
+    fetch(`/api/cafe24/inventory-sync?brand=${brand}`)
       .then(r => r.json())
       .then(d => {
         const logs = d.logs ?? [];
         if (logs.length > 0) setLastSyncTime(logs[0].timestamp);
       })
       .catch(() => {});
-  }, []);
+  }, [brand]);
 
   // 수동 동기화 실행
   const handleSync = useCallback(async (skus?: string[]) => {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/cafe24/inventory-sync", {
+      const res = await fetch(`/api/cafe24/inventory-sync?brand=${brand}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skus }),
@@ -262,7 +291,7 @@ export default function InventoryManager() {
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [brand]);
 
   // 30초마다 자동 동기화
   useEffect(() => {
@@ -369,15 +398,35 @@ export default function InventoryManager() {
     { id: "unset",    label: "미입력",   count: stats.unset, color: "text-violet-500" },
   ].filter((f) => f.id === "all" || (f.count ?? 0) > 0) as { id: FilterType; label: string; count?: number; color?: string }[];
 
+  // 브랜드 탭 (폴바이스/해리엇) — 모든 상태에서 노출해 전환 가능
+  const brandTabs = (
+    <div className="flex items-center gap-2 mb-6">
+      {INV_BRANDS.map((b) => (
+        <button
+          key={b.id}
+          onClick={() => setBrand(b.id)}
+          className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+            brand === b.id
+              ? "bg-violet-600 text-white"
+              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          }`}
+        >
+          {b.name}
+        </button>
+      ))}
+    </div>
+  );
+
   // ── 미연결 + 캐시 없음 ────────────────────────────────────────────────
   if (!loading && products.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-20 text-center">
+        {brandTabs}
         <Link size={40} className="mx-auto mb-4 text-zinc-300" />
         <h2 className="text-lg font-semibold text-zinc-700 dark:text-zinc-300 mb-2">카페24 연결이 필요합니다</h2>
         <p className="text-sm text-zinc-400 mb-6">카페24에 연결하면 실제 제품 목록을 불러와 재고를 관리할 수 있습니다.</p>
         <div className="flex items-center justify-center gap-3">
-          <a href="/api/auth/login" className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl px-6 py-3 transition-colors text-sm">
+          <a href={`/api/auth/login?mall=${brand}`} className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl px-6 py-3 transition-colors text-sm">
             카페24 연결하기
           </a>
           <button
@@ -402,6 +451,7 @@ export default function InventoryManager() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
+      {brandTabs}
 
       {/* 연결 상태 배너 */}
       {!isConnected && products.length > 0 && (

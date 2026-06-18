@@ -101,6 +101,8 @@ export interface MultiChannelData {
   /** SKU 칼럼이 없어 nameAliases 매핑이 필요한 상품명. */
   unmatchedNames?: string[];
   inventory: InventoryItem[];
+  /** 옵션(색상)단위 전체 판매 — 재고 색상별 차감용 (topProducts는 상위10·옵션무시). */
+  salesByOption?: Array<{ sku: string; name: string; option: string; sold: number }>;
 }
 
 // ── W컨셉 / 무신사: 업로드 전 빈 placeholder (29cm·공동구매와 동일 패턴) ──
@@ -386,6 +388,18 @@ export function mergeUploads(uploads: PerUpload[]): MergedChannelUpload | null {
     .slice(0, 10)
     .map((p, i) => ({ rank: i + 1, ...p }));
 
+  // salesByOption: sku+상품명+옵션 키로 sold 합산 (재고 색상별 차감용, 상위10 제한 없음)
+  const optMap = new Map<string, { sku: string; name: string; option: string; sold: number }>();
+  for (const up of sorted) {
+    for (const o of up.data.salesByOption ?? []) {
+      const key = `${o.sku}|${o.name}|${o.option}`;
+      const cur = optMap.get(key) ?? { sku: o.sku, name: o.name, option: o.option, sold: 0 };
+      cur.sold += o.sold;
+      optMap.set(key, cur);
+    }
+  }
+  const salesByOption = Array.from(optMap.values());
+
   // hourlyOrders: 24시간 버킷 합산
   const hourlyOrders: HourlyData[] = HOURS_24.map((hour, i) => {
     let orders = 0;
@@ -448,6 +462,7 @@ export function mergeUploads(uploads: PerUpload[]): MergedChannelUpload | null {
     unmatchedSkus: Array.from(unmatchedSkuSet),
     unmatchedNames: Array.from(unmatchedNameSet),
     inventory: [],
+    salesByOption,
   };
 
   // meta: 누적 정보 + 가장 최근 파일명
