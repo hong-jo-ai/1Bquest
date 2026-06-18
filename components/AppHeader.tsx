@@ -14,7 +14,7 @@ export default async function AppHeader({ isAuthenticated, refreshHref }: Props)
 
   return (
     <header className="hidden md:block sticky top-0 z-10 border-b border-zinc-200/70 bg-white/85 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
-      <div className="px-6 py-3 flex items-center justify-end gap-2">
+      <div className="relative pl-6 pr-16 py-3 flex items-center justify-end gap-2">
         {/* 카페24 */}
         <a
           href={cafe24Connected ? "/api/auth/logout" : "/api/auth/login"}
@@ -52,7 +52,7 @@ export default async function AppHeader({ isAuthenticated, refreshHref }: Props)
         {refreshHref && (
           <a
             href={refreshHref}
-            className="rounded-full border border-zinc-200 bg-white p-2 text-zinc-500 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-zinc-200 bg-white p-2 text-zinc-500 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             title="새로고침"
           >
             <RefreshCw size={15} />
