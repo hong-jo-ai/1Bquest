@@ -155,6 +155,25 @@ interface ContextData {
   }>;
   totalThreads: number;
   firstContact: string;
+  orderHistory?: {
+    phone: string | null;
+    totalOrders: number;
+    channels: string[];
+    firstOrderDate: string | null;
+    lastOrderDate: string | null;
+    orders: Array<{
+      channel: string;
+      orderNumber: string;
+      productName: string;
+      qty: number | null;
+      date: string | null;
+      tracking: string | null;
+      status: string | null;
+      reqType: string;
+      matchedBy: "phone" | "name";
+    }>;
+    nameOnlyCount: number;
+  } | null;
 }
 
 export default function InboxClient() {
@@ -1431,6 +1450,12 @@ function ContextPanel({
         />
       </div>
 
+      {context?.orderHistory && context.orderHistory.totalOrders > 0 && (
+        <div className="mb-5 pb-5 border-b border-zinc-100 dark:border-zinc-800">
+          <OrderHistorySection oh={context.orderHistory} />
+        </div>
+      )}
+
       {context?.related && context.related.length > 0 ? (
         <div>
           <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
@@ -1496,6 +1521,81 @@ function InfoRow({
       <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">
         {value}
       </span>
+    </div>
+  );
+}
+
+// ── 고객 구매 이력 (모든 채널 pp_shipments 매칭) ──────────────────
+function OrderHistorySection({
+  oh,
+  compact = false,
+}: {
+  oh: NonNullable<ContextData["orderHistory"]>;
+  compact?: boolean;
+}) {
+  if (!oh || oh.totalOrders === 0) {
+    return (
+      <div className="text-xs text-zinc-400 text-center py-3">
+        매칭된 구매 이력이 없습니다
+      </div>
+    );
+  }
+  const limit = compact ? 5 : 14;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">
+          구매 이력 ({oh.totalOrders})
+        </div>
+        <div className="text-[10px] text-zinc-400 truncate">
+          {oh.channels.join(" · ")}
+        </div>
+      </div>
+      <div className="space-y-2">
+        {oh.orders.slice(0, limit).map((o) => (
+          <div
+            key={`${o.channel}-${o.orderNumber}-${o.reqType}`}
+            className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50"
+          >
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
+                {o.channel}
+              </span>
+              {o.reqType === "2" && (
+                <span className="text-[9px] px-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                  반품
+                </span>
+              )}
+              {o.matchedBy === "name" && (
+                <span className="text-[9px] px-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  이름매칭
+                </span>
+              )}
+              <span className="text-[10px] text-zinc-400 ml-auto">
+                {o.date ? new Date(o.date).toLocaleDateString("ko-KR") : ""}
+              </span>
+            </div>
+            <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 line-clamp-2">
+              {o.productName || "(상품명 없음)"}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5">
+              {o.qty ? `${o.qty}개` : ""}
+              {o.qty && (o.tracking || o.orderNumber) ? " · " : ""}
+              {o.tracking ? `송장 ${o.tracking}` : `주문 ${o.orderNumber}`}
+            </div>
+          </div>
+        ))}
+      </div>
+      {oh.orders.length > limit && (
+        <div className="text-[10px] text-zinc-400 mt-2 text-center">
+          외 {oh.orders.length - limit}건 더
+        </div>
+      )}
+      {oh.nameOnlyCount > 0 && (
+        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 leading-snug">
+          ※ 이름만 일치한 {oh.nameOnlyCount}건 포함 — 동일인 여부 확인
+        </div>
+      )}
     </div>
   );
 }
@@ -2105,6 +2205,11 @@ function MobileContextSummary({
           <span className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 truncate">
             {thread.customer_handle}
           </span>
+        </div>
+      )}
+      {context?.orderHistory && context.orderHistory.totalOrders > 0 && (
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <OrderHistorySection oh={context.orderHistory} compact />
         </div>
       )}
       {context?.related && context.related.length > 0 && (

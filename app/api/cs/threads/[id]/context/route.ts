@@ -1,4 +1,5 @@
 import { getCsSupabase, getThread } from "@/lib/cs/store";
+import { getCustomerOrderHistory } from "@/lib/cs/customerOrders";
 
 export const dynamic = "force-dynamic";
 
@@ -47,10 +48,22 @@ export async function GET(
       if (firstRow?.created_at) firstContact = firstRow.created_at;
     }
 
+    // 문의 고객 ↔ 과거 주문(pp_shipments) 매칭 — 전화번호/이름 기준. 실패해도 컨텍스트는 반환.
+    let orderHistory = null;
+    try {
+      orderHistory = await getCustomerOrderHistory({
+        phone: thread.customer_handle,
+        name: thread.customer_name,
+      });
+    } catch (e) {
+      console.warn("[cs/context] 주문 매칭 실패:", e instanceof Error ? e.message : e);
+    }
+
     return Response.json({
       related,
       totalThreads,
       firstContact,
+      orderHistory,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
