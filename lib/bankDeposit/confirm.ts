@@ -10,7 +10,7 @@
  * 안전성: process_status 값이 거부되면(잘못된 enum/불가 전환) PUT 이 4xx 로 떨어지고
  *   주문은 입금전 그대로 유지된다. 호출부는 ok=false 를 받아 "수동 확인" 으로 폴백한다.
  */
-import { cafe24Get, cafe24Put } from "../cafe24Client";
+import { cafe24Get, cafe24Put, type MallId } from "../cafe24Client";
 
 /** 입금전 상태코드 (카페24 order_status). */
 const UNPAID_STATUS = "N00";
@@ -34,10 +34,11 @@ export interface ConfirmResult {
   error?: string;
 }
 
-async function fetchItems(token: string, orderId: string): Promise<OrderItem[]> {
+async function fetchItems(token: string, orderId: string, mall: MallId): Promise<OrderItem[]> {
   const json = (await cafe24Get(
     `/api/v2/admin/orders/${orderId}/items`,
     token,
+    mall,
   )) as { items?: OrderItem[] };
   return json.items ?? [];
 }
@@ -51,10 +52,11 @@ export async function confirmOrderPayment(
   token: string,
   orderId: string,
   shopNo = 1,
+  mall: MallId = "paulvice",
 ): Promise<ConfirmResult> {
   let items: OrderItem[];
   try {
-    items = await fetchItems(token, orderId);
+    items = await fetchItems(token, orderId, mall);
   } catch (e) {
     return { ok: false, confirmed: 0, error: `항목 조회 실패: ${msg(e)}` };
   }
@@ -74,7 +76,7 @@ export async function confirmOrderPayment(
         order_item_code: unpaidCodes,
         process_status: CONFIRM_PROCESS_STATUS,
       },
-    });
+    }, mall);
   } catch (e) {
     // process_status 거부/전환 불가 등 → 주문은 입금전 그대로. 수동 폴백.
     return { ok: false, confirmed: 0, error: `입금확인 PUT 실패: ${msg(e)}` };
@@ -82,7 +84,7 @@ export async function confirmOrderPayment(
 
   // 검증: 다시 읽어 입금전이 사라졌는지 확인.
   try {
-    const after = await fetchItems(token, orderId);
+    const after = await fetchItems(token, orderId, mall);
     const stillUnpaid = after.some((it) => it.order_status === UNPAID_STATUS);
     const statusAfter = after[0]?.order_status;
     if (stillUnpaid) {

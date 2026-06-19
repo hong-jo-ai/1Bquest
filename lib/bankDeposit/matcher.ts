@@ -9,6 +9,7 @@
  * 입금자명까지 일치하면 신뢰도 HIGH, 금액만 일치하면 MEDIUM.
  */
 import { fetchAllOrders, orderRevenue } from "../cafe24Data";
+import type { MallId } from "../cafe24Client";
 
 export interface Cafe24OrderLite {
   order_id?:             string;
@@ -36,6 +37,8 @@ export interface MatchCandidate {
   payerName:  string | null;
   /** 입금자명 prefix 일치 여부 (마스킹 안전) */
   nameMatch:  boolean;
+  /** 이 주문이 속한 몰 — 입금확인을 올바른 몰에 보내기 위함. */
+  mall:       MallId;
 }
 
 function kstDate(offsetDays = 0): string {
@@ -66,10 +69,11 @@ export async function findDepositCandidates(
   token:         string,
   amount:        number,
   smsDepositorName: string | null,
+  mall:          MallId = "paulvice",
 ): Promise<MatchCandidate[]> {
   const start = kstDate(-7);
   const end   = kstDate(0);
-  const orders = (await fetchAllOrders(token, start, end, true)) as Cafe24OrderLite[];
+  const orders = (await fetchAllOrders(token, start, end, true, mall)) as Cafe24OrderLite[];
 
   const candidates: MatchCandidate[] = [];
   for (const o of orders) {
@@ -87,6 +91,7 @@ export async function findDepositCandidates(
       buyerName,
       payerName,
       nameMatch,
+      mall,
     });
   }
   return candidates;

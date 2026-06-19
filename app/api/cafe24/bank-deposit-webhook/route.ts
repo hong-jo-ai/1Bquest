@@ -26,6 +26,9 @@ import { confirmOrderPayment, type ConfirmResult } from "@/lib/bankDeposit/confi
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { getCsSupabase } from "@/lib/cs/store";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
+import { type MallId } from "@/lib/cafe24Client";
+
+const BRAND_KO: Record<MallId, string> = { paulvice: "폴바이스", harriot: "해리엇" };
 
 export const dynamic    = "force-dynamic";
 export const maxDuration = 30;
@@ -89,7 +92,7 @@ function formatNotification(
     const c = candidates[0];
     const o = c.order;
     const orderLine =
-      `주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`;
+      `[${BRAND_KO[c.mall]}] 주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`;
 
     // 자동확정을 시도한 경우(HIGH) — 결과를 반영.
     if (confirm) {
@@ -124,7 +127,7 @@ function formatNotification(
   for (const c of candidates.slice(0, 5)) {
     const tag = c.nameMatch ? " ⭐" : "";
     lines.push(
-      `• <code>${escapeHtml(c.order.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (${escapeHtml(c.payerName)})` : ""}${tag}`,
+      `• [${BRAND_KO[c.mall]}] <code>${escapeHtml(c.order.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (${escapeHtml(c.payerName)})` : ""}${tag}`,
     );
   }
   if (candidates.length > 5) lines.push(`… 외 ${candidates.length - 5}건`);
@@ -176,26 +179,32 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, duplicate: true });
   }
 
-  // 카페24 미결제 주문 매칭
-  let candidates: MatchCandidate[] = [];
-  let matchError: string | null = null;
-  let cafeToken: string | null = null;
-  try {
-    cafeToken = await getAccessTokenFromStore();
-    if (cafeToken) {
-      candidates = await findDepositCandidates(cafeToken, parsed.amount, parsed.depositorName);
-    } else {
-      matchError = "카페24 토큰 없음";
+  // 카페24 미결제 주문 매칭 — 입금 SMS엔 몰 정보가 없으므로 두 몰(폴바이스+해리엇) 모두 조회.
+  const MALLS: MallId[] = ["paulvice", "harriot"];
+  const tokens: Partial<Record<MallId, string>> = {};
+  const candidates: MatchCandidate[] = [];
+  const matchErrors: string[] = [];
+  for (const mall of MALLS) {
+    try {
+      const tok = await getAccessTokenFromStore(mall);
+      // 폴바이스 토큰 없으면 에러로 표기, 해리엇은 미연결일 수 있어 조용히 스킵.
+      if (!tok) { if (mall === "paulvice") matchErrors.push("폴바이스 카페24 토큰 없음"); continue; }
+      tokens[mall] = tok;
+      candidates.push(...await findDepositCandidates(tok, parsed.amount, parsed.depositorName, mall));
+    } catch (e) {
+      matchErrors.push(`${BRAND_KO[mall]}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch (e) {
-    matchError = e instanceof Error ? e.message : String(e);
   }
+  const matchError: string | null = matchErrors.length ? matchErrors.join(" / ") : null;
 
-  // 자동 입금확인: 후보가 정확히 1건이고 입금자명까지 일치(HIGH)할 때만 실행.
+  // 자동 입금확인: (두 몰 합쳐) 후보 정확히 1건 + 입금자명 일치(HIGH)일 때만. 해당 주문의 몰 토큰으로 확정.
   // 0건 / 복수 / 이름 미확인(MEDIUM) 은 오확정 위험이 있어 알림만 하고 수동 처리.
   let confirm: ConfirmResult | null = null;
-  if (cafeToken && candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
-    confirm = await confirmOrderPayment(cafeToken, candidates[0].order.order_id);
+  if (candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
+    const c = candidates[0];
+    const tok = tokens[c.mall];
+    const orderId = c.order.order_id as string;
+    if (tok) confirm = await confirmOrderPayment(tok, orderId, 1, c.mall);
   }
 
   // 텔레그램 발송 (매칭 실패해도 입금 자체는 알림)
