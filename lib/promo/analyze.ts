@@ -25,6 +25,11 @@ import { sendTelegramMessage } from "@/lib/cs/telegram";
 const SELF_EMAIL = "plvekorea@gmail.com";
 const PROPOSAL_TO = process.env.PROMO_PROPOSAL_TO || "shong@harriotwatches.com";
 const SEEN_KEY = "promo_analyze:seen";
+const REMINDER_KEY = "promo_reminders";
+/** 참여할 만하다고 판단한 추천만 마감 알람 대상. */
+const PARTICIPATE_RECS = new Set(["참여", "조건부 참여"]);
+/** 마감까지 남은 시간(시간 단위) 기준 — 각 임계값을 처음 통과할 때 1회 알람. */
+const REMINDER_THRESHOLDS_H = [24, 3];
 const CLASSIFY_MODEL = "claude-haiku-4-5";
 const ANALYZE_MODEL = process.env.PROMO_ANALYSIS_MODEL || "claude-sonnet-4-6";
 
@@ -62,6 +67,25 @@ export interface PromoAnalysis {
   recommendation: "참여" | "조건부 참여" | "보류" | "거절";
   rationale: string;
   suggestedAction: string;
+  /** 회신/참여 마감 원문 그대로(예: "6/18(목) 오후 1시까지"). 없으면 "". */
+  deadlineRaw: string;
+  /** 마감 KST ISO8601(예: 2026-06-18T13:00:00+09:00). 못 잡으면 "". */
+  deadlineAt: string;
+}
+
+/** 마감 알람 대기 레코드 — kv `promo_reminders` 에 누적. */
+export interface PromoReminder {
+  id: string;
+  threadId: string;
+  channel: string;
+  counterparty: string;
+  subject: string;
+  recommendation: string;
+  deadlineRaw: string;
+  deadlineAt: string;
+  createdAt: string;
+  /** 이미 발사한 임계값(시간). 같은 임계는 재발사 안 함. */
+  firedThresholds: number[];
 }
 
 export interface PromoRunResult {
@@ -99,8 +123,70 @@ async function saveSeenIds(ids: string[]): Promise<void> {
   );
 }
 
+async function getReminders(): Promise<PromoReminder[]> {
+  const db = getDb();
+  if (!db) return [];
+  const { data } = await db.from("kv_store").select("data").eq("key", REMINDER_KEY).maybeSingle();
+  const arr = data?.data;
+  return Array.isArray(arr) ? (arr as PromoReminder[]) : [];
+}
+
+async function saveReminders(list: PromoReminder[]): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  await db.from("kv_store").upsert(
+    { key: REMINDER_KEY, data: list, updated_at: new Date().toISOString() },
+    { onConflict: "key" },
+  );
+}
+
 function esc(s: string): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** 현재 시각을 KST 사람이 읽는 문자열로(LLM 에 마감 상대표현 해석 기준으로 전달). */
+function kstNowLabel(now: Date): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
+}
+
+/** deadlineAt(ISO) 까지 남은 시간을 사람 표현으로. 과거면 "마감 지남", 못 읽으면 null. */
+function remainingLabel(deadlineAt: string, now: Date): string | null {
+  if (!deadlineAt) return null;
+  const due = new Date(deadlineAt);
+  if (isNaN(due.getTime())) return null;
+  const ms = due.getTime() - now.getTime();
+  if (ms <= 0) return "마감 지남";
+  const mins = Math.floor(ms / 60000);
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  if (days > 0) return `${days}일 ${hours}시간 남음`;
+  if (hours > 0) return `${hours}시간 ${mins % 60}분 남음`;
+  return `${mins}분 남음`;
+}
+
+/** 마감 KST 표시용(예: "6/18(목) 13:00"). */
+function deadlineLabel(deadlineAt: string): string | null {
+  if (!deadlineAt) return null;
+  const due = new Date(deadlineAt);
+  if (isNaN(due.getTime())) return null;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(due);
 }
 
 function encodeMimeHeader(text: string): string {
@@ -202,7 +288,9 @@ async function analyzePromo(
   email: EmailDoc,
   context: string,
   hint: { channel: string; counterparty: string },
+  now: Date,
 ): Promise<PromoAnalysis | null> {
+  const nowLabel = kstNowLabel(now);
   const resp = await client.messages.create({
     model: ANALYZE_MODEL,
     max_tokens: 1500,
@@ -212,6 +300,7 @@ async function analyzePromo(
       "\n\n채널 MD가 보낸 프로모션 제안 메일을 읽고, '우리 상황에서 이걸 하는 게 최선인지' 판단하라. " +
       "수수료·원가·운영 부담·마진 잠식을 구체적으로 따지고, 매출을 늘릴 수 있는지 현실적으로 평가하라. " +
       "추천은 참여/조건부 참여/보류/거절 중 하나로 분명히 정하고, 구체적인 다음 행동(어떤 상품/할인폭/협상 포인트)을 제시하라. " +
+      `회신·참여·신청 마감 기한이 본문에 있으면 deadlineRaw 에 원문 그대로 적고, deadlineAt 에 KST ISO8601(예: 2026-06-18T13:00:00+09:00)로 변환하라. 현재 시각은 ${nowLabel} (KST)이니 "내일", "이번 주 금요일", "6/18까지" 같은 상대 표현은 이 기준으로 절대 날짜로 환산하라. 시각이 명시 안 되면 그날 23:59 로, 마감이 아예 없으면 둘 다 빈 문자열로 둬라. ` +
       "한국어로, 사장님이 바로 판단할 수 있게 간결하고 실용적으로.",
     tools: [
       {
@@ -229,10 +318,13 @@ async function analyzePromo(
             recommendation: { type: "string", enum: ["참여", "조건부 참여", "보류", "거절"] },
             rationale: { type: "string", description: "우리 상황 기준 왜 이게 최선인가" },
             suggestedAction: { type: "string", description: "구체적 다음 행동" },
+            deadlineRaw: { type: "string", description: "회신/참여 마감 원문 그대로. 없으면 빈 문자열" },
+            deadlineAt: { type: "string", description: "마감 KST ISO8601(2026-06-18T13:00:00+09:00). 못 잡으면 빈 문자열" },
           },
           required: [
             "channel", "counterparty", "opportunity", "pros", "cons",
             "marginNote", "recommendation", "rationale", "suggestedAction",
+            "deadlineRaw", "deadlineAt",
           ],
         },
       },
@@ -258,7 +350,20 @@ const REC_EMOJI: Record<string, string> = {
   "거절": "🚫",
 };
 
-function buildProposalHtml(a: PromoAnalysis, email: EmailDoc): string {
+function buildDeadlineHtml(a: PromoAnalysis, now: Date): string {
+  const dl = deadlineLabel(a.deadlineAt) || a.deadlineRaw;
+  if (!dl) return "";
+  const rem = remainingLabel(a.deadlineAt, now);
+  const urgent = rem === "마감 지남" || /^(\d+분|[0-3]시간)/.test(rem || "");
+  const bg = urgent ? "#fff1f2" : "#fff7ed";
+  const bd = urgent ? "#fecdd3" : "#fed7aa";
+  const fg = urgent ? "#9f1239" : "#9a3412";
+  return `<div style="margin:14px 0;padding:13px 16px;border:1px solid ${bd};border-radius:12px;background:${bg};color:${fg};font-weight:700">
+    ⏰ 회신·참여 마감: ${esc(dl)}${rem ? ` <span style="font-weight:800">— ${esc(rem)}</span>` : ""}
+  </div>`;
+}
+
+function buildProposalHtml(a: PromoAnalysis, email: EmailDoc, now: Date): string {
   const li = (arr: string[]) =>
     (arr || []).map((x) => `<li style="margin:0 0 6px">${esc(x)}</li>`).join("") ||
     '<li style="color:#999">—</li>';
@@ -271,6 +376,7 @@ function buildProposalHtml(a: PromoAnalysis, email: EmailDoc): string {
     <div style="font-weight:700;margin-bottom:4px">제안 요약</div>
     <div>${esc(a.opportunity)}</div>
   </div>
+  ${buildDeadlineHtml(a, now)}
   <div style="display:flex;gap:14px;flex-wrap:wrap">
     <div style="flex:1;min-width:240px;padding:14px 16px;border:1px solid #e7efe7;border-radius:12px;background:#f6faf6">
       <div style="font-weight:700;color:#3f7a52;margin-bottom:6px">장점</div>
@@ -298,9 +404,11 @@ function buildProposalHtml(a: PromoAnalysis, email: EmailDoc): string {
 </div>`;
 }
 
-function buildTelegram(a: PromoAnalysis, email: EmailDoc): string {
+function buildTelegram(a: PromoAnalysis, email: EmailDoc, now: Date): string {
   const emoji = REC_EMOJI[a.recommendation] || "•";
-  return [
+  const dl = deadlineLabel(a.deadlineAt) || a.deadlineRaw;
+  const rem = remainingLabel(a.deadlineAt, now);
+  const lines = [
     `🎯 <b>프로모션 제안 — ${esc(a.channel || "채널")}</b>`,
     `${esc(a.counterparty || email.from)}`,
     "",
@@ -310,6 +418,24 @@ function buildTelegram(a: PromoAnalysis, email: EmailDoc): string {
     esc(a.rationale.slice(0, 400)),
     "",
     `👉 ${esc(a.suggestedAction.slice(0, 300))}`,
+  ];
+  if (dl) lines.push("", `⏰ <b>마감: ${esc(dl)}</b>${rem ? ` — ${esc(rem)}` : ""}`);
+  return lines.join("\n");
+}
+
+/** 마감 임박 리마인더 텔레그램 — 마감 알람 크론이 사용. */
+function buildReminderTelegram(r: PromoReminder, now: Date): string {
+  const dl = deadlineLabel(r.deadlineAt) || r.deadlineRaw;
+  const rem = remainingLabel(r.deadlineAt, now);
+  const emoji = REC_EMOJI[r.recommendation] || "•";
+  return [
+    `⏰ <b>프로모션 마감 임박 — ${esc(r.channel || "채널")}</b>`,
+    rem ? `<b>${esc(rem)}</b> · 마감 ${esc(dl || "")}` : `마감 ${esc(dl || "")}`,
+    "",
+    esc(r.subject),
+    `📌 분석 추천: ${emoji} ${esc(r.recommendation)}`,
+    "",
+    "👉 참여하려면 마감 전에 회신/신청을 마쳐주세요.",
   ].join("\n");
 }
 
@@ -373,6 +499,8 @@ export async function scanAndAnalyzePromoEmails(): Promise<PromoRunResult> {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const context = await buildBusinessContext();
+  const now = new Date();
+  const newReminders: PromoReminder[] = [];
 
   let classifiedCount = 0;
   let analyzedCount = 0;
@@ -416,14 +544,14 @@ export async function scanAndAnalyzePromoEmails(): Promise<PromoRunResult> {
       }
       analyzedCount += 1;
 
-      const analysis = await analyzePromo(client, email, context, cls);
+      const analysis = await analyzePromo(client, email, context, cls, now);
       if (!analysis) {
         result.errors.push(`분석 실패(빈 결과): ${subject.slice(0, 40)}`);
         continue;
       }
 
       const subjectLine = `[프로모션 제안] ${analysis.channel || cls.channel || "채널"} · 추천: ${analysis.recommendation}`;
-      await sendProposalEmail(accessToken, subjectLine, buildProposalHtml(analysis, email));
+      await sendProposalEmail(accessToken, subjectLine, buildProposalHtml(analysis, email, now));
 
       const tgButtons = [
         {
@@ -431,8 +559,25 @@ export async function scanAndAnalyzePromoEmails(): Promise<PromoRunResult> {
           url: `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(SELF_EMAIL)}#all/${email.threadId}`,
         },
       ];
-      await sendTelegramMessage(buildTelegram(analysis, email), { buttons: tgButtons });
+      await sendTelegramMessage(buildTelegram(analysis, email, now), { buttons: tgButtons });
       result.sent += 1;
+
+      // 참여할 만하다고 판단 + 미래 마감이 있으면 마감 알람 대상으로 등록.
+      const due = analysis.deadlineAt ? new Date(analysis.deadlineAt) : null;
+      if (PARTICIPATE_RECS.has(analysis.recommendation) && due && !isNaN(due.getTime()) && due.getTime() > now.getTime()) {
+        newReminders.push({
+          id: email.id,
+          threadId: email.threadId,
+          channel: analysis.channel || cls.channel || "채널",
+          counterparty: analysis.counterparty || cls.counterparty || email.from,
+          subject: email.subject,
+          recommendation: analysis.recommendation,
+          deadlineRaw: analysis.deadlineRaw || "",
+          deadlineAt: analysis.deadlineAt,
+          createdAt: now.toISOString(),
+          firedThresholds: [],
+        });
+      }
     } catch (e) {
       result.errors.push(
         `${subject.slice(0, 40)}: ${e instanceof Error ? e.message : String(e)}`,
@@ -441,6 +586,81 @@ export async function scanAndAnalyzePromoEmails(): Promise<PromoRunResult> {
   }
 
   if (newSeen.length) await saveSeenIds([...seen, ...newSeen]);
+
+  if (newReminders.length) {
+    try {
+      const existing = await getReminders();
+      const existingIds = new Set(existing.map((r) => r.id));
+      const merged = [...existing, ...newReminders.filter((r) => !existingIds.has(r.id))];
+      await saveReminders(merged);
+    } catch (e) {
+      result.errors.push(`리마인더 저장 실패: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  result.ok = result.errors.length === 0;
+  return result;
+}
+
+export interface PromoDeadlineResult {
+  ok: boolean;
+  pending: number;
+  fired: number;
+  dropped: number;
+  errors: string[];
+}
+
+/**
+ * 마감 알람 체크 — 자주(시간 단위) 도는 크론이 호출.
+ * 각 리마인더의 남은 시간이 임계값(24h, 3h)을 처음 통과할 때 텔레그램 1회 발사.
+ * 마감이 지난 레코드는 정리한다.
+ */
+export async function checkPromoDeadlines(): Promise<PromoDeadlineResult> {
+  const result: PromoDeadlineResult = { ok: true, pending: 0, fired: 0, dropped: 0, errors: [] };
+  const reminders = await getReminders();
+  if (!reminders.length) return result;
+
+  const now = new Date();
+  const kept: PromoReminder[] = [];
+
+  for (const r of reminders) {
+    const due = new Date(r.deadlineAt);
+    if (isNaN(due.getTime())) {
+      result.dropped += 1; // 마감 못 읽는 레코드는 버림
+      continue;
+    }
+    const hoursLeft = (due.getTime() - now.getTime()) / 3600000;
+    if (hoursLeft <= 0) {
+      result.dropped += 1; // 마감 지남 — 정리(3h 알람이 이미 경고)
+      continue;
+    }
+    // 이번에 새로 통과한 가장 임박한 임계값을 찾아 1회만 발사.
+    const due0 = REMINDER_THRESHOLDS_H
+      .filter((t) => hoursLeft <= t && !r.firedThresholds.includes(t))
+      .sort((a, b) => a - b)[0];
+    if (due0 != null) {
+      try {
+        await sendTelegramMessage(buildReminderTelegram(r, now), {
+          buttons: [
+            {
+              text: "메일 열기",
+              url: `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(SELF_EMAIL)}#all/${r.threadId}`,
+            },
+          ],
+        });
+        r.firedThresholds = [...r.firedThresholds, due0];
+        result.fired += 1;
+      } catch (e) {
+        result.errors.push(`알람 발송 실패(${r.channel}): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    kept.push(r);
+    result.pending += 1;
+  }
+
+  if (kept.length !== reminders.length || result.fired > 0) {
+    await saveReminders(kept);
+  }
   result.ok = result.errors.length === 0;
   return result;
 }
