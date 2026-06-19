@@ -194,7 +194,7 @@ export default function InventoryManager() {
       fetch(`/api/cafe24/products?brand=${brand}`),
       fetch(`/api/cafe24/data?brand=${brand}`),
       fetch("/api/profit/channel-uploads"),
-      fetch("/api/inventory/sku-map"),
+      fetch(`/api/inventory/sku-map?brand=${brand}`),
     ]);
     if (skuMapRes.status === "fulfilled" && skuMapRes.value.ok) {
       const j = await skuMapRes.value.json();

@@ -277,6 +277,8 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     }
     if (items.length === 0) continue;
     const isKakao = row.key === "channel_upload:kakao_gift";
+    // 카카오선물은 폴바이스 전용 채널 — 해리엇 몰 동기화 때는 건너뜀(코드 충돌 방지).
+    if (isKakao && mall !== "paulvice") continue;
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
     for (const it of items) {
@@ -293,7 +295,9 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     }
   }
 
-  // 카카오 PO 데이터에서 옵션-aware 차감 — 시계처럼 부모 SKU + 옵션 → 색상별 Cafe24 코드
+  // 카카오 PO 데이터에서 옵션-aware 차감 — 시계처럼 부모 SKU + 옵션 → 색상별 Cafe24 코드.
+  // 카카오선물은 폴바이스 전용이므로 해리엇 몰에서는 PO 차감도 건너뜀.
+  if (mall !== "paulvice") return out;
   const { data: poRows } = await supabase
     .from("kv_store")
     .select("data")
