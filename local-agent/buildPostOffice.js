@@ -34,25 +34,31 @@ function engravingOf(it){
   return raw.includes("=") ? raw.split("=").slice(1).join("=").trim() : raw.trim();
 }
 
-// ── 카페24 (API) ──
-const MALL=()=>process.env.CAFE24_MALL_ID, BASE=()=>`https://${MALL()}.cafe24api.com`;
-async function cafe24Token(){
+// ── 카페24 (API) — 멀티몰: 폴바이스(판매처="카페24") + 해리엇(판매처="해리엇") ──
+// seller 가 곧 pp_shipments.channel (register.js channel=row.seller) — 몰별로 분리돼 dedup·송장입력이 안 섞인다.
+const CAFE24_MALLS = [
+  { seller:"카페24", mallId:()=>process.env.CAFE24_MALL_ID,         clientId:()=>process.env.CAFE24_CLIENT_ID,         secret:()=>process.env.CAFE24_CLIENT_SECRET,         kvKey:"cafe24_refresh_token" },
+  { seller:"해리엇", mallId:()=>process.env.HARRIOT_CAFE24_MALL_ID, clientId:()=>process.env.HARRIOT_CAFE24_CLIENT_ID, secret:()=>process.env.HARRIOT_CAFE24_CLIENT_SECRET, kvKey:"cafe24_refresh_token:harriot" },
+];
+async function cafe24Token(m){
   const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const {data}=await sb.from("kv_store").select("data").eq("key","cafe24_refresh_token").maybeSingle();
+  const {data}=await sb.from("kv_store").select("data").eq("key",m.kvKey).maybeSingle();
   let t=data?.data; if(typeof t==="string")t={access_token:"",refresh_token:t,expires_at:0};
-  const now=Date.now();
+  if(!t||!t.refresh_token)throw new Error(`${m.seller} 카페24 토큰 없음(${m.kvKey})`);
+  const now=Date.now(), base=`https://${m.mallId()}.cafe24api.com`;
   if(t.access_token&&t.expires_at&&t.expires_at-90000>now)return t.access_token;
-  const res=await fetch(`${BASE()}/api/v2/oauth/token`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded",Authorization:"Basic "+Buffer.from(`${process.env.CAFE24_CLIENT_ID}:${process.env.CAFE24_CLIENT_SECRET}`).toString("base64")},body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(t.refresh_token)}`});
-  const j=await res.json(); if(!j.access_token)throw new Error("cafe24 refresh 실패");
-  await sb.from("kv_store").upsert({key:"cafe24_refresh_token",data:{access_token:j.access_token,refresh_token:j.refresh_token,expires_at:now+110*60*1000},updated_at:new Date().toISOString()},{onConflict:"key"});
+  const res=await fetch(`${base}/api/v2/oauth/token`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded",Authorization:"Basic "+Buffer.from(`${m.clientId()}:${m.secret()}`).toString("base64")},body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(t.refresh_token)}`});
+  const j=await res.json(); if(!j.access_token)throw new Error(`${m.seller} cafe24 refresh 실패`);
+  await sb.from("kv_store").upsert({key:m.kvKey,data:{access_token:j.access_token,refresh_token:j.refresh_token,expires_at:now+110*60*1000},updated_at:new Date().toISOString()},{onConflict:"key"});
   return j.access_token;
 }
 function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-async function cafe24Rows(){
-  const token=await cafe24Token();
+async function cafe24Rows(m){
+  const base=`https://${m.mallId()}.cafe24api.com`;
+  const token=await cafe24Token(m);
   const end=ymd(new Date()), start=ymd(new Date(Date.now()-45*86400000)); const all=[]; let off=0;
   while(true){const qs=new URLSearchParams({start_date:start,end_date:end,limit:"100",offset:String(off),embed:"items,receivers"});
-    const res=await fetch(`${BASE()}/api/v2/admin/orders?${qs}`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`${base}/api/v2/admin/orders?${qs}`,{headers:{Authorization:`Bearer ${token}`}});
     const d=await res.json(); const b=d.orders??[]; all.push(...b); if(b.length<100)break; off+=100;}
   const rows=[];
   for(const o of all){
@@ -63,7 +69,7 @@ async function cafe24Rows(){
       const eng=engravingOf(it);
       const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
-      rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:"카페24"});
+      rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
     }
   }
   return rows;
@@ -173,7 +179,12 @@ async function alreadyRegisteredKeys(){
 
 async function collectOutboundRows(){
   let cafe=[], six=[], cm=[], wc=[], mg=[], md=[];
-  try { cafe=await cafe24Rows(); log(`카페24 ${cafe.length}행`); } catch(e){ log("카페24 실패: "+e.message); }
+  // 카페24 멀티몰: 폴바이스 + 해리엇(미설정 몰은 건너뜀). 각 몰 실패해도 나머지 진행.
+  for(const m of CAFE24_MALLS){
+    if(!m.mallId()){ continue; }
+    try { const r=await cafe24Rows(m); cafe.push(...r); log(`${m.seller} ${r.length}행`); }
+    catch(e){ log(`${m.seller} 실패: `+e.message); }
+  }
   try { six=sixshopRows(); log(`식스샵 ${six.length}행`); } catch(e){ log("식스샵 실패: "+e.message); }
   try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
@@ -189,7 +200,7 @@ async function collectOutboundRows(){
   const skipped=all.length-rows.length;
   if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, counts:{cafe:cnt("카페24"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
+  return { rows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER };
@@ -202,7 +213,7 @@ async function main(){
   const aoa=[HEADER, ...rows.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
-  const summary=`총 ${rows.length}행 (카페24 ${counts.cafe}, 식스샵 ${counts.six}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
+  const summary=`총 ${rows.length}행 (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 식스샵 ${counts.six}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
   rows.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
