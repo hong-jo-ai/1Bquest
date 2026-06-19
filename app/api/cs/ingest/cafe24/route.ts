@@ -1,16 +1,24 @@
 import { syncCafe24Boards } from "@/lib/cs/cafe24BoardIngest";
+import { type MallId } from "@/lib/cafe24Client";
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 export const dynamic = "force-dynamic";
 
+const MALLS: MallId[] = ["paulvice", "harriot"];
+
 async function run() {
-  try {
-    const result = await syncCafe24Boards();
-    return Response.json({ ok: true, ...result });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return Response.json({ ok: false, error: msg }, { status: 500 });
+  // 두 몰(폴바이스+해리엇) CS 게시판 각각 ingest — 한 몰 실패해도 다른 몰 진행.
+  const malls: Record<string, unknown> = {};
+  let ok = true;
+  for (const mall of MALLS) {
+    try {
+      malls[mall] = await syncCafe24Boards(mall);
+    } catch (err) {
+      ok = false;
+      malls[mall] = { error: err instanceof Error ? err.message : String(err) };
+    }
   }
+  return Response.json({ ok, malls });
 }
 
 export async function GET(req: Request) {

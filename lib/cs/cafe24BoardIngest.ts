@@ -5,6 +5,7 @@ import {
   type Cafe24Article,
   type Cafe24Board,
   type Cafe24Product,
+  type MallId,
 } from "../cafe24Client";
 import { getAccessTokenFromStore } from "../cafe24TokenStore";
 import { ingestMessage, refreshThreadCustomer } from "./store";
@@ -17,9 +18,10 @@ async function getProductCached(
   accessToken: string,
   productNo: number,
   cache: ProductCache,
+  mall: MallId,
 ): Promise<Cafe24Product | null> {
   if (cache.has(productNo)) return cache.get(productNo) ?? null;
-  const p = await fetchProduct(accessToken, productNo);
+  const p = await fetchProduct(accessToken, productNo, mall);
   cache.set(productNo, p);
   return p;
 }
@@ -75,7 +77,7 @@ function articlePreview(article: Cafe24Article): string {
     .trim();
 }
 
-export async function syncCafe24Boards(): Promise<{
+export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
   boards: number;
   boardNames?: string[];
   articles: number;
@@ -84,7 +86,10 @@ export async function syncCafe24Boards(): Promise<{
   errors: string[];
 }> {
   const errors: string[] = [];
-  const accessToken = await getAccessTokenFromStore();
+  // 스레드/메시지 id 네임스페이스 — 몰별 board_no/article_no 충돌 방지(store 중복판정=channel+id).
+  // 폴바이스는 기존 id 유지(후방호환), 해리엇 등은 몰 접두.
+  const idPrefix = mall === "paulvice" ? "cafe24" : `${mall}_cafe24`;
+  const accessToken = await getAccessTokenFromStore(mall);
   if (!accessToken) {
     return {
       boards: 0,
@@ -92,14 +97,14 @@ export async function syncCafe24Boards(): Promise<{
       inserted: 0,
       skipped: 0,
       errors: [
-        "Cafe24 토큰 없음 — 대시보드에서 Cafe24 재연결 필요 (mall.read_community 스코프 추가)",
+        `Cafe24 토큰 없음(${mall}) — 대시보드에서 Cafe24 재연결 필요 (mall.read_community 스코프 추가)`,
       ],
     };
   }
 
   let allBoards: Cafe24Board[] = [];
   try {
-    allBoards = await fetchBoards(accessToken);
+    allBoards = await fetchBoards(accessToken, mall);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // 스코프 없으면 403/401 에러
@@ -134,7 +139,7 @@ export async function syncCafe24Boards(): Promise<{
       articles = await fetchBoardArticles(accessToken, board.board_no, {
         limit: 50,
         sinceDate,
-      });
+      }, mall);
     } catch (e) {
       errors.push(
         `[${board.board_name}] 글 조회 실패: ${e instanceof Error ? e.message : String(e)}`
@@ -157,7 +162,7 @@ export async function syncCafe24Boards(): Promise<{
       let productRef: CsCafe24ProductRef | undefined;
       let subjectPrefix = `[${board.board_name}]`;
       if (article.product_no && article.product_no > 0) {
-        const product = await getProductCached(accessToken, article.product_no, productCache);
+        const product = await getProductCached(accessToken, article.product_no, productCache, mall);
         if (product) {
           productRef = {
             productNo:   product.product_no,
@@ -175,12 +180,14 @@ export async function syncCafe24Boards(): Promise<{
         }
       }
 
+      const threadId = `${idPrefix}_${board.board_no}_${article.article_no}`;
+
       // 1) 고객 글 (수신)
       const inPayload: IngestPayload = {
-        brand: "paulvice",
+        brand: mall,
         channel: "cafe24_board",
-        externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
-        externalMessageId: `cafe24_${board.board_no}_${article.article_no}_article`,
+        externalThreadId: threadId,
+        externalMessageId: `${threadId}_article`,
         customerHandle: article.writer_email ?? article.member_id ?? undefined,
         customerName: writerName,
         subject: `${subjectPrefix} ${article.title}`,
@@ -202,10 +209,10 @@ export async function syncCafe24Boards(): Promise<{
       // 2) 운영자 답글이 이미 있으면 placeholder 메시지 추가 → 상태를 waiting으로
       if (hasReply) {
         const outPayload: IngestPayload = {
-          brand: "paulvice",
+          brand: mall,
           channel: "cafe24_board",
-          externalThreadId: `cafe24_${board.board_no}_${article.article_no}`,
-          externalMessageId: `cafe24_${board.board_no}_${article.article_no}_adminreply`,
+          externalThreadId: threadId,
+          externalMessageId: `${threadId}_adminreply`,
           customerHandle: article.writer_email ?? article.member_id ?? undefined,
           customerName: writerName,
           subject: `${subjectPrefix} ${article.title}`,
@@ -222,7 +229,7 @@ export async function syncCafe24Boards(): Promise<{
       // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)
       await refreshThreadCustomer(
         "cafe24_board",
-        `cafe24_${board.board_no}_${article.article_no}`,
+        threadId,
         {
           handle: article.writer_email ?? article.member_id ?? undefined,
           name: writerName,
