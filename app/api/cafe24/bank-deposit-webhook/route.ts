@@ -10,43 +10,28 @@
  * 응답: { ok, parsed?, matched: number, duplicate?: true }
  *
  * 매칭 결과 별 텔레그램 메시지:
- *   - 0건: ❓ 미매칭 입금 — 수동 확인 필요
+ *   - 0건: ⏳ 주문 매칭 대기중 — 재시도 큐 적재(bank-deposit-retry 크론이 최대 30분 재매칭)
  *   - 1건 (이름 일치): ✅ 매칭 1건 (HIGH 신뢰도) — 카페24에서 확정
  *   - 1건 (이름 불일치): 🟡 1건 후보 (MEDIUM 신뢰도)
  *   - 다수: ⚠ 같은 금액 N건 — 입금자 확인 후 수동 매칭
  *
+ * 타이밍 역전(입금 SMS가 주문 등록보다 먼저 도착)이면 최초 0건이 되므로,
+ * 즉시 수동확인으로 버리지 않고 재시도 큐에 넣어 크론이 따라잡게 한다.
+ *
  * idempotency: SMS 의 핵심 정보(은행+시각+금액+입금자) 해시를 kv_store 에 기록.
  * 같은 SMS 가 재전송돼도 텔레그램 중복 발송 안 함.
  */
-import { createHash } from "node:crypto";
 import { type NextRequest } from "next/server";
-import { parseBankSms, type ParsedDeposit } from "@/lib/bankDeposit/parser";
-import { findDepositCandidates, type MatchCandidate } from "@/lib/bankDeposit/matcher";
-import { confirmOrderPayment, type ConfirmResult } from "@/lib/bankDeposit/confirm";
+import { parseBankSms } from "@/lib/bankDeposit/parser";
+import { resolveDeposit, depositHash, formatNotification } from "@/lib/bankDeposit/resolve";
+import { enqueuePending } from "@/lib/bankDeposit/pending";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { getCsSupabase } from "@/lib/cs/store";
-import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
-import { type MallId } from "@/lib/cafe24Client";
-
-const BRAND_KO: Record<MallId, string> = { paulvice: "폴바이스", harriot: "해리엇" };
 
 export const dynamic    = "force-dynamic";
 export const maxDuration = 30;
 
 const KV_PREFIX = "bank_deposit_processed:";
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function fmtKRW(n: number): string {
-  return n.toLocaleString("ko-KR") + "원";
-}
-
-function depositHash(p: ParsedDeposit): string {
-  const key = `${p.bank}|${p.occurredAt ?? ""}|${p.amount}|${p.depositorName ?? ""}`;
-  return createHash("sha256").update(key).digest("hex").slice(0, 32);
-}
 
 async function isAlreadyProcessed(hash: string): Promise<boolean> {
   const db = getCsSupabase();
@@ -68,70 +53,6 @@ async function markProcessed(hash: string, payload: unknown): Promise<void> {
     },
     { onConflict: "key" },
   );
-}
-
-function formatNotification(
-  p: ParsedDeposit,
-  candidates: MatchCandidate[],
-  confirm?: ConfirmResult | null,
-): string {
-  const head = [
-    `💰 <b>${p.bank} 입금 ${escapeHtml(fmtKRW(p.amount))}</b>`,
-    p.depositorName ? `· ${escapeHtml(p.depositorName)}` : "",
-  ].filter(Boolean).join(" ");
-
-  if (candidates.length === 0) {
-    return [
-      head,
-      `❓ <b>매칭 주문 없음</b> — 카페24에서 수동 확인 필요`,
-      `<i>SMS: ${escapeHtml(p.raw.slice(0, 120))}</i>`,
-    ].join("\n");
-  }
-
-  if (candidates.length === 1) {
-    const c = candidates[0];
-    const o = c.order;
-    const orderLine =
-      `[${BRAND_KO[c.mall]}] 주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`;
-
-    // 자동확정을 시도한 경우(HIGH) — 결과를 반영.
-    if (confirm) {
-      if (confirm.ok && confirm.alreadyConfirmed) {
-        return [head, `✅ <b>이미 입금확인됨</b>`, orderLine].join("\n");
-      }
-      if (confirm.ok) {
-        return [head, `✅ <b>자동 입금확인 완료</b> (상품준비중 전환)`, orderLine].join("\n");
-      }
-      return [
-        head,
-        `🟡 <b>매칭 1건 — 자동확정 실패, 수동 확인 필요</b>`,
-        orderLine,
-        `<i>사유: ${escapeHtml(confirm.error ?? "알 수 없음")}</i>`,
-      ].join("\n");
-    }
-
-    // 자동확정 미시도(MEDIUM: 이름 미확인) — 알림만.
-    return [
-      head,
-      `🟡 <b>MEDIUM</b> (이름 미확인) 매칭 1건`,
-      orderLine,
-      `카페24 어드민에서 입금확정해주세요.`,
-    ].join("\n");
-  }
-
-  // 다수 후보
-  const lines = [
-    head,
-    `⚠ <b>같은 금액 ${candidates.length}건</b> — 입금자명 확인 후 수동 매칭`,
-  ];
-  for (const c of candidates.slice(0, 5)) {
-    const tag = c.nameMatch ? " ⭐" : "";
-    lines.push(
-      `• [${BRAND_KO[c.mall]}] <code>${escapeHtml(c.order.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (${escapeHtml(c.payerName)})` : ""}${tag}`,
-    );
-  }
-  if (candidates.length > 5) lines.push(`… 외 ${candidates.length - 5}건`);
-  return lines.join("\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -179,38 +100,21 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, duplicate: true });
   }
 
-  // 카페24 미결제 주문 매칭 — 입금 SMS엔 몰 정보가 없으므로 두 몰(폴바이스+해리엇) 모두 조회.
-  const MALLS: MallId[] = ["paulvice", "harriot"];
-  const tokens: Partial<Record<MallId, string>> = {};
-  const candidates: MatchCandidate[] = [];
-  const matchErrors: string[] = [];
-  for (const mall of MALLS) {
-    try {
-      const tok = await getAccessTokenFromStore(mall);
-      // 폴바이스 토큰 없으면 에러로 표기, 해리엇은 미연결일 수 있어 조용히 스킵.
-      if (!tok) { if (mall === "paulvice") matchErrors.push("폴바이스 카페24 토큰 없음"); continue; }
-      tokens[mall] = tok;
-      candidates.push(...await findDepositCandidates(tok, parsed.amount, parsed.depositorName, mall));
-    } catch (e) {
-      matchErrors.push(`${BRAND_KO[mall]}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  const matchError: string | null = matchErrors.length ? matchErrors.join(" / ") : null;
+  // 카페24 미결제 주문 매칭 + (HIGH면) 자동 입금확인 — 두 몰 조회.
+  const { candidates, confirm, matchError } = await resolveDeposit(parsed);
 
-  // 자동 입금확인: (두 몰 합쳐) 후보 정확히 1건 + 입금자명 일치(HIGH)일 때만. 해당 주문의 몰 토큰으로 확정.
-  // 0건 / 복수 / 이름 미확인(MEDIUM) 은 오확정 위험이 있어 알림만 하고 수동 처리.
-  let confirm: ConfirmResult | null = null;
-  if (candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
-    const c = candidates[0];
-    const tok = tokens[c.mall];
-    const orderId = c.order.order_id as string;
-    if (tok) confirm = await confirmOrderPayment(tok, orderId, 1, c.mall);
+  // 타이밍 역전 방어: 후보 0건이면 주문이 아직 등록 안 됐을 수 있다(입금 SMS 선도착).
+  // 즉시 "수동 확인" 으로 버리지 말고 재시도 큐에 적재 → bank-deposit-retry 크론이 따라잡는다.
+  // (매칭 조회 자체가 실패한 경우는 제외 — 토큰/네트워크 문제라 재시도 큐 대상 아님.)
+  const queuedForRetry = candidates.length === 0 && !matchError;
+  if (queuedForRetry) {
+    await enqueuePending(hash, parsed);
   }
 
   // 텔레그램 발송 (매칭 실패해도 입금 자체는 알림)
-  let telegramText = formatNotification(parsed, candidates, confirm);
+  let telegramText = formatNotification(parsed, candidates, confirm, { pendingRetry: queuedForRetry });
   if (matchError) {
-    telegramText += `\n<i>⚠ 매칭 조회 실패: ${escapeHtml(matchError)}</i>`;
+    telegramText += `\n<i>⚠ 매칭 조회 실패: ${matchError.replace(/</g, "&lt;")}</i>`;
   }
   await sendTelegramMessage(telegramText);
 

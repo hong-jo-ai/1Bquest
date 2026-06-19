@@ -73,6 +73,10 @@
       "schedule": "5,15,25,35,45,55 * * * *"
     },
     {
+      "path": "/api/cron/bank-deposit-retry",
+      "schedule": "*/3 * * * *"
+    },
+    {
       "path": "/api/cs/notify?mode=stale",
       "schedule": "30 * * * *"
     },
