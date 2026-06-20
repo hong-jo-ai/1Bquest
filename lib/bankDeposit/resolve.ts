@@ -10,16 +10,24 @@
 import { createHash } from "node:crypto";
 import { type ParsedDeposit } from "./parser";
 import { findDepositCandidates, type MatchCandidate } from "./matcher";
-import { confirmOrderPayment, type ConfirmResult } from "./confirm";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { type MallId } from "@/lib/cafe24Client";
 
 export const BRAND_KO: Record<MallId, string> = { paulvice: "폴바이스", harriot: "해리엇" };
 
+/** HIGH 매칭 시 브라우저 입금확인 큐에 넣을 대상(API 입금확인은 422라 브라우저로 처리). */
+export interface ConfirmTarget {
+  orderId: string;
+  mall:    MallId;
+  amount:  number;
+  name:    string | null;
+}
+
 export interface ResolveResult {
-  candidates: MatchCandidate[];
-  confirm:    ConfirmResult | null;
-  matchError: string | null;
+  candidates:    MatchCandidate[];
+  /** 후보 1건 + 입금자명 일치(HIGH) → 브라우저 입금확인 대상. 아니면 null(수동/대기). */
+  confirmTarget: ConfirmTarget | null;
+  matchError:    string | null;
 }
 
 /** 입금 멱등키 — 은행+시각+금액+입금자. 같은 SMS 재전송/재시도 식별. */
@@ -48,15 +56,14 @@ export async function resolveDeposit(parsed: ParsedDeposit): Promise<ResolveResu
   }
   const matchError = matchErrors.length ? matchErrors.join(" / ") : null;
 
-  let confirm: ConfirmResult | null = null;
+  // HIGH(후보 1건 + 입금자명 일치) → 브라우저 입금확인 대상. 실제 확정은 iMac 워처가 수행.
+  let confirmTarget: ConfirmTarget | null = null;
   if (candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
     const c = candidates[0];
-    const tok = tokens[c.mall];
-    const orderId = c.order.order_id as string;
-    if (tok) confirm = await confirmOrderPayment(tok, orderId, 1, c.mall);
+    confirmTarget = { orderId: c.order.order_id as string, mall: c.mall, amount: c.amount, name: c.payerName ?? c.buyerName ?? null };
   }
 
-  return { candidates, confirm, matchError };
+  return { candidates, confirmTarget, matchError };
 }
 
 function escapeHtml(s: string): string {
@@ -78,7 +85,6 @@ export interface FormatOpts {
 export function formatNotification(
   p: ParsedDeposit,
   candidates: MatchCandidate[],
-  confirm?: ConfirmResult | null,
   opts: FormatOpts = {},
 ): string {
   const head = [
@@ -108,23 +114,12 @@ export function formatNotification(
     const orderLine =
       `[${BRAND_KO[c.mall]}] 주문번호 <code>${escapeHtml(o.order_id ?? "?")}</code> · ${escapeHtml(c.buyerName || "?")}${c.payerName ? ` (입금자 ${escapeHtml(c.payerName)})` : ""}`;
 
-    // 자동확정을 시도한 경우(HIGH) — 결과를 반영.
-    if (confirm) {
-      if (confirm.ok && confirm.alreadyConfirmed) {
-        return [head, `✅ <b>이미 입금확인됨</b>`, orderLine].join("\n");
-      }
-      if (confirm.ok) {
-        return [head, `✅ <b>자동 입금확인 완료</b> (상품준비중 전환)`, orderLine].join("\n");
-      }
-      return [
-        head,
-        `🟡 <b>매칭 1건 — 자동확정 실패, 수동 확인 필요</b>`,
-        orderLine,
-        `<i>사유: ${escapeHtml(confirm.error ?? "알 수 없음")}</i>`,
-      ].join("\n");
+    // HIGH(입금자명 일치) → 브라우저 자동 입금확인 예약(iMac 워처가 곧 처리, 결과는 별도 알림).
+    if (c.nameMatch) {
+      return [head, `🔄 <b>매칭 1건 — 자동 입금확인 예약됨</b> (곧 처리)`, orderLine].join("\n");
     }
 
-    // 자동확정 미시도(MEDIUM: 이름 미확인) — 알림만.
+    // MEDIUM(이름 미확인) — 알림만.
     return [
       head,
       `🟡 <b>MEDIUM</b> (이름 미확인) 매칭 1건`,

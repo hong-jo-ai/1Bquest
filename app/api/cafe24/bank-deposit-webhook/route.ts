@@ -24,6 +24,7 @@
 import { type NextRequest } from "next/server";
 import { parseBankSms } from "@/lib/bankDeposit/parser";
 import { resolveDeposit, depositHash, formatNotification } from "@/lib/bankDeposit/resolve";
+import { enqueueConfirm } from "@/lib/bankDeposit/confirmQueue";
 import { enqueuePending } from "@/lib/bankDeposit/pending";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { getCsSupabase } from "@/lib/cs/store";
@@ -100,8 +101,13 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, duplicate: true });
   }
 
-  // 카페24 미결제 주문 매칭 + (HIGH면) 자동 입금확인 — 두 몰 조회.
-  const { candidates, confirm, matchError } = await resolveDeposit(parsed);
+  // 카페24 미결제 주문 매칭 (두 몰) — HIGH면 confirmTarget.
+  const { candidates, confirmTarget, matchError } = await resolveDeposit(parsed);
+
+  // HIGH 매칭 → 브라우저 입금확인 큐 적재(iMac 워처가 실제 '입금확인' 버튼 클릭).
+  if (confirmTarget) {
+    await enqueueConfirm(confirmTarget.orderId, confirmTarget.mall, confirmTarget.amount, confirmTarget.name);
+  }
 
   // 타이밍 역전 방어: 후보 0건이면 주문이 아직 등록 안 됐을 수 있다(입금 SMS 선도착).
   // 즉시 "수동 확인" 으로 버리지 말고 재시도 큐에 적재 → bank-deposit-retry 크론이 따라잡는다.
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 텔레그램 발송 (매칭 실패해도 입금 자체는 알림)
-  let telegramText = formatNotification(parsed, candidates, confirm, { pendingRetry: queuedForRetry });
+  let telegramText = formatNotification(parsed, candidates, { pendingRetry: queuedForRetry });
   if (matchError) {
     telegramText += `\n<i>⚠ 매칭 조회 실패: ${matchError.replace(/</g, "&lt;")}</i>`;
   }
@@ -121,7 +127,7 @@ export async function POST(req: NextRequest) {
   await markProcessed(hash, {
     parsed,
     candidates: candidates.length,
-    confirmed: confirm?.ok ? confirm.confirmed : 0,
+    confirmQueued: confirmTarget ? 1 : 0,
     ts: new Date().toISOString(),
   });
 
@@ -129,8 +135,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     parsed,
     matched: candidates.length,
-    confirmed: confirm?.ok ? confirm.confirmed : 0,
-    confirmError: confirm && !confirm.ok ? confirm.error : undefined,
+    confirmQueued: confirmTarget?.orderId ?? undefined,
     matchError: matchError ?? undefined,
   });
 }
