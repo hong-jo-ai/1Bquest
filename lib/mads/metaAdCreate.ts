@@ -124,11 +124,13 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
   const imageHash = givenHash ?? await uploadImage(token, accountId, imageUrl!);
 
   // 1) 캠페인 (PAUSED)
+  // CBO(캠페인 예산) 미사용 → is_adset_budget_sharing_enabled 명시 필수(최신 API).
   const campaign = (await metaPost(`/${accountId}/campaigns`, token, {
     name: `${name} | 캠페인`,
     objective,
     status: "PAUSED",
     special_ad_categories: "[]",
+    is_adset_budget_sharing_enabled: "false",
   })) as { id: string };
 
   // 2) 광고 크리에이티브
@@ -162,8 +164,11 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
   if (objective === "OUTCOME_SALES" && pixelId) {
     adsetParams.optimization_goal = "OFFSITE_CONVERSIONS";
     adsetParams.promoted_object = JSON.stringify({ pixel_id: pixelId, custom_event_type: "PURCHASE" });
-  } else {
+  } else if (objective === "OUTCOME_TRAFFIC") {
     adsetParams.optimization_goal = "LANDING_PAGE_VIEWS";
+  } else {
+    // SALES 인데 픽셀 없음 → 전환최적화 불가 → 링크클릭으로 폴백(픽셀 없이도 동작).
+    adsetParams.optimization_goal = "LINK_CLICKS";
   }
   if (startTime) adsetParams.start_time = startTime;
   if (endTime) adsetParams.end_time = endTime;
