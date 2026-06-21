@@ -282,7 +282,11 @@ export default function TodayTasksWidget({
           <input
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
+            onKeyDown={(e) => {
+              // 한글 IME 조합 중 Enter는 글자 확정용이므로 무시 (마지막 글자 중복 등록 방지)
+              if (e.nativeEvent.isComposing || e.key !== "Enter") return;
+              add();
+            }}
             placeholder="+ 할일 추가"
             className="flex-1 min-w-0 text-xs px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-violet-400"
           />
