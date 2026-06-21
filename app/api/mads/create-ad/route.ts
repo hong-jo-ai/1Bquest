@@ -2,10 +2,38 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { resolveAdAccountId } from "@/lib/metaBrandFilter";
 import { createPausedAd, type CreateAdInput } from "@/lib/mads/metaAdCreate";
-import { metaGet } from "@/lib/metaClient";
+import { metaGet, metaDelete } from "@/lib/metaClient";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * DELETE /api/mads/create-ad?prefix=PLVE 여름세트 0625
+ * 지정 prefix로 시작 + PAUSED 인 캠페인만 삭제(테스트로 남은 빈 캠페인 정리용).
+ * 안전장치: prefix 필수, ACTIVE 캠페인은 절대 건드리지 않음.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const prefix = req.nextUrl.searchParams.get("prefix");
+    if (!prefix) return NextResponse.json({ ok: false, error: "prefix 필수" }, { status: 400 });
+    const token = await getMetaTokenServer();
+    if (!token) return NextResponse.json({ ok: false, error: "Meta 토큰 없음" }, { status: 401 });
+    const accountId = req.nextUrl.searchParams.get("account") ?? (await resolveAdAccountId(token));
+    const camps = (await metaGet(`/${accountId}/campaigns`, token, {
+      fields: "id,name,status", limit: "50",
+    })) as { data?: Array<{ id: string; name: string; status: string }> };
+    const targets = (camps.data ?? []).filter(
+      (c) => c.name?.startsWith(prefix) && c.status === "PAUSED",
+    );
+    const deleted: string[] = [];
+    for (const t of targets) {
+      await metaDelete(`/${t.id}`, token).then(() => deleted.push(`${t.id} (${t.name})`)).catch(() => {});
+    }
+    return NextResponse.json({ ok: true, deletedCount: deleted.length, deleted });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
+}
 
 /**
  * GET /api/mads/create-ad?account=act_xxx
