@@ -2,9 +2,33 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { resolveAdAccountId } from "@/lib/metaBrandFilter";
 import { createPausedAd, type CreateAdInput } from "@/lib/mads/metaAdCreate";
+import { metaGet } from "@/lib/metaClient";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * GET /api/mads/create-ad?account=act_xxx
+ * 계정의 최근 캠페인·광고 목록(이름·상태·생성시각) 조회 — 검증용.
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const token = await getMetaTokenServer();
+    if (!token) return NextResponse.json({ ok: false, error: "Meta 토큰 없음" }, { status: 401 });
+    const accountId = req.nextUrl.searchParams.get("account") ?? (await resolveAdAccountId(token));
+    const campaigns = (await metaGet(`/${accountId}/campaigns`, token, {
+      fields: "id,name,status,effective_status,objective,created_time,daily_budget",
+      limit: "30",
+    })) as { data?: unknown[] };
+    const ads = (await metaGet(`/${accountId}/ads`, token, {
+      fields: "id,name,status,effective_status,created_time,creative{id,object_story_spec}",
+      limit: "30",
+    })) as { data?: unknown[] };
+    return NextResponse.json({ ok: true, accountId, campaigns: campaigns.data ?? [], ads: ads.data ?? [] });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
+}
 
 /**
  * POST /api/mads/create-ad
