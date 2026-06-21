@@ -7,7 +7,7 @@
  * KRW는 zero-decimal 통화: dailyBudget=20000 → ₩20,000.
  * objective: "OUTCOME_SALES"(픽셀 구매 최적화) | "OUTCOME_TRAFFIC"(랜딩페이지 조회).
  */
-import { metaGet, metaPost } from "../metaClient";
+import { metaGet, metaPost, metaDelete } from "../metaClient";
 
 export interface CreateAdInput {
   /** 광고계정 (act_ 포함). 생략 시 resolveAdAccountId 사용. */
@@ -97,8 +97,9 @@ function defaultTargeting(): Record<string, unknown> {
     geo_locations: { countries: ["KR"] },
     genders: [2],          // 1=남, 2=여
     age_min: 25,
-    age_max: 50,
-    targeting_automation: { advantage_audience: 1 },
+    age_max: 55,
+    // Advantage+ 오디언스는 age_max<65 와 충돌 → 명시 타깃 사용(끔).
+    targeting_automation: { advantage_audience: 0 },
   };
 }
 
@@ -133,6 +134,8 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     is_adset_budget_sharing_enabled: "false",
   })) as { id: string };
 
+  // 캠페인 이후 단계 실패 시 → 빈 캠페인 롤백(삭제) 후 에러 전파.
+  try {
   // 2) 광고 크리에이티브
   const linkData: Record<string, unknown> = {
     image_hash: imageHash,
@@ -195,4 +198,9 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     status: "PAUSED",
     managerUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${acctNum}&selected_campaign_ids=${campaign.id}`,
   };
+  } catch (err) {
+    // 빈 캠페인 정리 (실패 누적 방지)
+    await metaDelete(`/${campaign.id}`, token).catch(() => {});
+    throw err;
+  }
 }
