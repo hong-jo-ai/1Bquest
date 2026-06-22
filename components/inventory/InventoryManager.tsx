@@ -55,6 +55,7 @@ function normName(s: string): string {
 export interface SkuMapData {
   skuMaps: Record<string, Record<string, string>>; // 채널 → { 채널코드: 카페24코드 }
   nameMap: Record<string, string>;                  // 정규화상품명 → 카페24코드
+  alias?: Record<string, string>;                   // 중복/임시 상품코드 → 정식 재고 SKU (예: P00000IZ→P00000HO)
 }
 
 type ChannelItem = { sku?: string; name?: string; option?: string; sold: number };
@@ -79,10 +80,12 @@ function buildSoldBySku(
   skuMap?: SkuMapData,
 ): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
+  const alias = skuMap?.alias ?? {};
   const add = (sku: string, channel: string, sold: number) => {
-    if (!sku || !sold) return;
-    if (!result[sku]) result[sku] = {};
-    result[sku][channel] = (result[sku][channel] ?? 0) + sold;
+    const target = alias[sku] ?? sku; // 중복/임시 코드(P00000IZ 등)를 정식 SKU(P00000HO)로 합침
+    if (!target || !sold) return;
+    if (!result[target]) result[target] = {};
+    result[target][channel] = (result[target][channel] ?? 0) + sold;
   };
   // 카페24는 sku 가 이미 재고 SKU(product_code)
   for (const p of cafe24Products) add(p.sku, "cafe24", p.sold);
@@ -155,7 +158,7 @@ export default function InventoryManager() {
     Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }>
   >({});
   // 채널코드→재고SKU 매핑 사전 (서버 /api/inventory/sku-map). ref 라 rebuild 시 항상 최신 사용.
-  const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, nameMap: {} });
+  const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, nameMap: {}, alias: {} });
 
   /** 제품 목록 재조합 (Cafe24 캐시 + 채널 업로드 + 최신 서버 데이터) */
   const rebuildProducts = useCallback((
@@ -198,7 +201,7 @@ export default function InventoryManager() {
     ]);
     if (skuMapRes.status === "fulfilled" && skuMapRes.value.ok) {
       const j = await skuMapRes.value.json();
-      if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, nameMap: j.nameMap ?? {} };
+      if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, nameMap: j.nameMap ?? {}, alias: j.alias ?? {} };
     }
 
     if (productsRes.status === "fulfilled" && productsRes.value.ok) {

@@ -16,6 +16,7 @@ import type { KakaoGiftPo } from "@/lib/finance/kakaoGiftPo";
 // 멀티몰: 폴바이스는 기존 키 유지, 해리엇은 브랜드 접미. (mall === brand: "paulvice"|"harriot")
 const invKey = (mall: MallId) => (mall === "paulvice" ? "paulvice_inventory_v1" : `${mall}_inventory_v1`);
 const syncLogKey = (mall: MallId) => (mall === "paulvice" ? "inventory_sync_log" : `inventory_sync_log:${mall}`);
+const aliasKey = (mall: MallId) => (mall === "paulvice" ? "inventory_sku_alias" : `inventory_sku_alias:${mall}`);
 
 export interface SyncResult {
   sku: string;
@@ -49,6 +50,28 @@ export async function loadInventoryFromStore(mall: MallId = "paulvice"): Promise
     .eq("key", invKey(mall))
     .maybeSingle();
   return (data?.data as Record<string, InventoryEntry>) ?? {};
+}
+
+/**
+ * 카페24 상품코드 별칭맵 { 별칭코드: 정식코드 } — 같은 물건의 중복/임시 listing 을 정식 재고 SKU로 합침.
+ * 예) 인플루언서 협업용 임시상품 P00000IZ(에끌라 실버) → 정식 P00000HO. kv `inventory_sku_alias`.
+ */
+export async function loadSkuAlias(mall: MallId = "paulvice"): Promise<Record<string, string>> {
+  const supabase = getSupabase();
+  if (!supabase) return {};
+  const { data } = await supabase.from("kv_store").select("data").eq("key", aliasKey(mall)).maybeSingle();
+  return (data?.data as Record<string, string>) ?? {};
+}
+
+/** 판매 합계 레코드의 키(product_code)를 별칭맵으로 합산 치환. 별칭 대상 코드는 정식 코드로 합쳐짐. */
+export function applySkuAlias(rec: Record<string, number>, alias: Record<string, string>): Record<string, number> {
+  if (!alias || Object.keys(alias).length === 0) return rec;
+  const out: Record<string, number> = {};
+  for (const [sku, qty] of Object.entries(rec)) {
+    const target = alias[sku] ?? sku;
+    out[target] = (out[target] ?? 0) + qty;
+  }
+  return out;
 }
 
 /**
@@ -355,10 +378,13 @@ export async function computeInventoryLevels(token: string, mall: MallId = "paul
     .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
     .sort()[0];
   const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-  const [cafe24SalesBySku, otherChannelsSales] = await Promise.all([
+  const [cafe24SalesRaw, otherChannelsRaw, alias] = await Promise.all([
     fetchSalesBySku(token, startDate, mall),
     fetchOtherChannelsSales(token, mall),
+    loadSkuAlias(mall),
   ]);
+  const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
+  const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
   return skus.map((sku) => {
     const e = entries[sku];
     const totalSold = (cafe24SalesBySku[sku] ?? 0) + (otherChannelsSales[sku] ?? 0);
@@ -404,11 +430,14 @@ export async function runInventorySync(
   const startDate = earliestStockDate ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
 
   // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
-  const [cafe24SalesBySku, otherChannelsSales, productNoMap] = await Promise.all([
+  const [cafe24SalesRaw, otherChannelsRaw, productNoMap, alias] = await Promise.all([
     fetchSalesBySku(token, startDate, mall),
     fetchOtherChannelsSales(token, mall),
     buildSkuProductNoMap(token, mall),
+    loadSkuAlias(mall),
   ]);
+  const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
+  const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
 
   // SKU별 처리 — 청크 2개 동시 + 청크 간 300ms 지연 (카페24 40 req/sec 보수적 운영)
   const results = await processInChunks(skus, 2, async (sku): Promise<SyncResult> => {

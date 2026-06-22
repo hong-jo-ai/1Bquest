@@ -11,7 +11,7 @@ import { type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { type MallId } from "@/lib/cafe24Client";
-import { buildCafe24NameMap } from "@/lib/inventorySync";
+import { buildCafe24NameMap, loadSkuAlias } from "@/lib/inventorySync";
 
 export const dynamic = "force-dynamic";
 
@@ -34,5 +34,8 @@ export async function GET(req: NextRequest) {
     if (token) nameMap = Object.fromEntries(await buildCafe24NameMap(token, mall));
   } catch { /* 토큰/카페24 실패 시 사전 매핑만으로 동작 */ }
 
-  return Response.json({ ok: true, mall, skuMaps, nameMap });
+  // 중복/임시 상품코드 → 정식 SKU 별칭 (예: 인플루언서 임시 P00000IZ → P00000HO)
+  const alias = await loadSkuAlias(mall);
+
+  return Response.json({ ok: true, mall, skuMaps, nameMap, alias });
 }
