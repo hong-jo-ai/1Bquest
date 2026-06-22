@@ -98,9 +98,16 @@ function wconceptRows(){
   const fp="/tmp/wconcept_po_rows.json";
   if(!fs.existsSync(fp)){ log("W컨셉 캐시(/tmp/wconcept_po_rows.json) 없음 — 건너뜀"); return []; }
   const raw=JSON.parse(fs.readFileSync(fp,"utf8"));
-  // 주문번호+상품명 dedup (75칸 병합행 중복 제거)
-  const seen=new Set(); const out=[];
-  for(const r of raw){ const k=r.order+"|"+r.prod; if(seen.has(k))continue; seen.add(k); out.push(r); }
+  // 주문번호+상품명 합산 — W컨셉은 같은 상품 다수량을 "수량1 여러 줄"로 내려줌.
+  // 같은 (주문번호|상품명) 줄은 버리지 않고 수량을 더한다(엑셀 기준 진짜 다수량 반영).
+  const byKey=new Map(); const out=[];
+  for(const r of raw){
+    const k=r.order+"|"+r.prod;
+    const cur=byKey.get(k);
+    if(cur){ cur.qty=String((parseInt(cur.qty,10)||1)+(parseInt(r.qty,10)||1)); continue; }
+    const row={...r, qty:String(parseInt(r.qty,10)||1)};
+    byKey.set(k,row); out.push(row);
+  }
   return out;
 }
 
