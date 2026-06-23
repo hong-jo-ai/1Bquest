@@ -4,6 +4,10 @@
  */
 import { signReviewToken, getMall, type MallId } from "./core";
 import { listGmailAccounts, getGmailAccessToken } from "@/lib/cs/gmailClient";
+import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
+
+// 발송 발신자 — 창업자 개인 워크스페이스(이미 연결된 shong@ 토큰 = google_refresh_token).
+const FOUNDER_FROM = process.env.REVIEW_FROM || "Sungjo · Harriot <shong@harriotwatches.com>";
 
 const GOLD = "#c9a96a", DARK = "#1a1a1a";
 const BASE = () => process.env.REVIEW_BASE_URL || "https://paulvice-dashboard.vercel.app";
@@ -89,15 +93,27 @@ function encodeMimeHeader(text: string): string {
   return `=?UTF-8?B?${Buffer.from(text, "utf-8").toString("base64")}?=`;
 }
 
-/** 해리엇 Gmail 계정으로 발송. 반환: gmail message id. */
-export async function sendReviewRequest(to: string, subject: string, html: string, fromName = "Harriot Watches"): Promise<string> {
-  const accounts = await listGmailAccounts();
-  const acc = accounts.find((a) => a.brand === "harriot") || accounts[0];
-  if (!acc) throw new Error("연결된 Gmail 계정이 없습니다");
-  const at = await getGmailAccessToken(acc);
-  const fromAddr = acc.displayName.includes("@") ? acc.displayName : "harriotwatches@gmail.com";
+/**
+ * 리뷰 요청 발송. 발신자 = 창업자 shong@harriotwatches.com (이미 연결된 google 토큰, gmail.modify).
+ * shong@ 토큰이 없으면 연결된 해리엇 CS Gmail(harriotwatches@gmail.com)로 폴백.
+ * 반환: gmail message id.
+ */
+export async function sendReviewRequest(to: string, subject: string, html: string): Promise<string> {
+  let at = await getGoogleAccessTokenFromStore();
+  let from = FOUNDER_FROM;
+  if (!at) {
+    const accounts = await listGmailAccounts();
+    const acc = accounts.find((a) => a.brand === "harriot") || accounts[0];
+    if (!acc) throw new Error("발송 가능한 Gmail 계정이 없습니다 (shong@ 미연결 + CS Gmail 없음)");
+    at = await getGmailAccessToken(acc);
+    const fromAddr = acc.displayName.includes("@") ? acc.displayName : "harriotwatches@gmail.com";
+    from = `Harriot Watches <${fromAddr}>`;
+  }
+  const fromHeader = from.includes("<")
+    ? from.replace(/^([^<]+)</, (_m, n) => `${encodeMimeHeader(n.trim())} <`)
+    : encodeMimeHeader(from);
   const headers = [
-    `From: ${encodeMimeHeader(fromName)} <${fromAddr}>`,
+    `From: ${fromHeader}`,
     `To: ${to}`,
     `Subject: ${encodeMimeHeader(subject)}`,
     `Content-Type: text/html; charset="UTF-8"`,
