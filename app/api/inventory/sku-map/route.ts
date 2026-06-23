@@ -28,6 +28,14 @@ export async function GET(req: NextRequest) {
     if (r.data && typeof r.data === "object") skuMaps[ch] = r.data as Record<string, string>;
   }
 
+  // 엄브렐러 옵션맵 (channel_pricing:optmap:<채널>: 채널코드 → { 옵션값: 카페24코드 })
+  const optMaps: Record<string, Record<string, Record<string, string>>> = {};
+  const { data: omap } = await db.from("kv_store").select("key, data").like("key", "channel_pricing:optmap:%");
+  for (const r of (omap ?? []) as Array<{ key: string; data: unknown }>) {
+    const ch = r.key.replace("channel_pricing:optmap:", "");
+    if (r.data && typeof r.data === "object") optMaps[ch] = r.data as Record<string, Record<string, string>>;
+  }
+
   let nameMap: Record<string, string> = {};
   try {
     const token = await getAccessTokenFromStore(mall);
@@ -37,5 +45,5 @@ export async function GET(req: NextRequest) {
   // 중복/임시 상품코드 → 정식 SKU 별칭 (예: 인플루언서 임시 P00000IZ → P00000HO)
   const alias = await loadSkuAlias(mall);
 
-  return Response.json({ ok: true, mall, skuMaps, nameMap, alias });
+  return Response.json({ ok: true, mall, skuMaps, optMaps, nameMap, alias });
 }

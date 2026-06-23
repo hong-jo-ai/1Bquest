@@ -54,6 +54,7 @@ function normName(s: string): string {
 
 export interface SkuMapData {
   skuMaps: Record<string, Record<string, string>>; // 채널 → { 채널코드: 카페24코드 }
+  optMaps?: Record<string, Record<string, Record<string, string>>>; // 채널 → { 채널코드: { 옵션값: 카페24코드 } } (엄브렐러 색상분리)
   nameMap: Record<string, string>;                  // 정규화상품명 → 카페24코드
   alias?: Record<string, string>;                   // 중복/임시 상품코드 → 정식 재고 SKU (예: P00000IZ→P00000HO)
 }
@@ -62,9 +63,14 @@ type ChannelItem = { sku?: string; name?: string; option?: string; sold: number 
 
 // 채널 판매항목 → 재고 SKU. ① 옵션(색상)기반 이름매칭(합본 색상분리) ② 상품명 ③ 채널 사전.
 // (서버 inventorySync.matchChannelItemToSku 와 동일 규칙 — 클라/서버 분리라 복제)
-function matchItemToSku(item: ChannelItem, nameMap: Record<string, string>, cmap: Record<string, string>): string | null {
+function matchItemToSku(item: ChannelItem, nameMap: Record<string, string>, cmap: Record<string, string>, omap?: Record<string, Record<string, string>>): string | null {
   const name = item.name || "";
   const opt = (item.option || "").trim();
+  // ⓪ 엄브렐러 옵션맵 — 채널코드가 옵션별 분리 상품이면 옵션값으로 색상별 SKU (실패 시 폴백 금지)
+  if (item.sku && omap && omap[item.sku]) {
+    const om = omap[item.sku];
+    return om[opt] ?? om[normName(opt)] ?? null;
+  }
   if (opt) {
     const swapped = name.replace(/[^\s,]+(?:&|＆|\/|,)[^\s,]+/g, opt);
     for (const c of [swapped, `${name} ${opt}`]) { const t = nameMap[normName(c)]; if (t) return t; }
@@ -90,14 +96,16 @@ function buildSoldBySku(
   // 카페24는 sku 가 이미 재고 SKU(product_code)
   for (const p of cafe24Products) add(p.sku, "cafe24", p.sold);
   const skuMaps = skuMap?.skuMaps ?? {};
+  const optMaps = skuMap?.optMaps ?? {};
   const nameMap = skuMap?.nameMap ?? {};
   for (const [channel, data] of Object.entries(channelUploads)) {
     const cmap = skuMaps[channel] ?? {};
+    const omap = optMaps[channel];
     // 옵션단위 전체(salesByOption) 우선 — 색상분리 + 상위10 제한 없음. 없으면 topProducts.
     const items = (data?.salesByOption?.length ? data.salesByOption : data?.topProducts) ?? [];
     for (const it of items) {
       if (!it.sold) continue;
-      const target = matchItemToSku(it, nameMap, cmap);
+      const target = matchItemToSku(it, nameMap, cmap, omap);
       if (target) add(target, channel, it.sold);
     }
   }
@@ -158,7 +166,7 @@ export default function InventoryManager() {
     Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }>
   >({});
   // 채널코드→재고SKU 매핑 사전 (서버 /api/inventory/sku-map). ref 라 rebuild 시 항상 최신 사용.
-  const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, nameMap: {}, alias: {} });
+  const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, optMaps: {}, nameMap: {}, alias: {} });
 
   /** 제품 목록 재조합 (Cafe24 캐시 + 채널 업로드 + 최신 서버 데이터) */
   const rebuildProducts = useCallback((
@@ -201,7 +209,7 @@ export default function InventoryManager() {
     ]);
     if (skuMapRes.status === "fulfilled" && skuMapRes.value.ok) {
       const j = await skuMapRes.value.json();
-      if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, nameMap: j.nameMap ?? {}, alias: j.alias ?? {} };
+      if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, optMaps: j.optMaps ?? {}, nameMap: j.nameMap ?? {}, alias: j.alias ?? {} };
     }
 
     if (productsRes.status === "fulfilled" && productsRes.value.ok) {

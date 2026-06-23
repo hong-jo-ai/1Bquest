@@ -222,9 +222,16 @@ export function matchChannelItemToSku(
   item: { sku?: string; name?: string; option?: string },
   nameMap: Map<string, string>,
   channelSkuMap: Record<string, string>,
+  optMap?: Record<string, Record<string, string>>,
 ): string | null {
   const name = item.name || "";
   const opt = (item.option || "").trim();
+  // ⓪ 엄브렐러 옵션맵 — 한 listing이 여러 색/종류를 옵션으로 파는 상품(오드리·미니엘스퀘어 등).
+  //    채널코드가 옵션맵 대상이면 옵션값으로 색상별 SKU 분리. 옵션 매칭 실패 시 폴백 금지(오차감 방지).
+  if (item.sku && optMap && optMap[item.sku]) {
+    const om = optMap[item.sku];
+    return om[opt] ?? om[normProductName(opt)] ?? null;
+  }
   if (opt) {
     // "골드&실버"·"골드/실버" 등 색상조합을 옵션 색상으로 치환 → "에끌라 오벌 워치 - 골드"
     const swapped = name.replace(/[^\s,]+(?:&|＆|\/|,)[^\s,]+/g, opt);
@@ -276,6 +283,16 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     const ch = r.key.replace("channel_pricing:skumap:", "");
     if (r.data && typeof r.data === "object") channelSkuMaps.set(ch, r.data as Record<string, string>);
   }
+  // 엄브렐러 옵션맵(channel_pricing:optmap:<채널>: 채널코드 → { 옵션값: 카페24코드 })
+  const channelOptMaps = new Map<string, Record<string, Record<string, string>>>();
+  const { data: omapRows } = await supabase
+    .from("kv_store")
+    .select("key, data")
+    .like("key", "channel_pricing:optmap:%");
+  for (const r of (omapRows ?? []) as Array<{ key: string; data: unknown }>) {
+    const ch = r.key.replace("channel_pricing:optmap:", "");
+    if (r.data && typeof r.data === "object") channelOptMaps.set(ch, r.data as Record<string, Record<string, string>>);
+  }
   const cafe24NameToCode = await buildCafe24NameMap(token, mall).catch(() => new Map<string, string>());
 
   const { data } = await supabase
@@ -304,6 +321,7 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     if (isKakao && mall !== "paulvice") continue;
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
+    const omap = channelOptMaps.get(channelId);
     for (const it of items) {
       if (!it.sold) continue;
       let targetSku: string | null = null;
@@ -311,7 +329,7 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
         // 카카오는 부모 SKU 1:1 + 아래 PO 옵션매칭으로 별도 처리.
         if (it.sku) targetSku = kakaoSkuToCafe24.get(it.sku) ?? null;
       } else {
-        targetSku = matchChannelItemToSku(it, cafe24NameToCode, smap);
+        targetSku = matchChannelItemToSku(it, cafe24NameToCode, smap, omap);
       }
       if (!targetSku) continue; // 매칭 실패 시 차감 안 함(오차감 방지)
       out[targetSku] = (out[targetSku] ?? 0) + it.sold;
