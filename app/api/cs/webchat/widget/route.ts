@@ -11,8 +11,12 @@ export async function GET(req: Request) {
   const imgBase = isHarriot ? "/webchat/harriot" : "/webchat";
   const brandKo = isHarriot ? "해리엇" : "폴바이스";
   const email = url.searchParams.get("email") || (isHarriot ? "shong@harriotwatches.com" : "plvekorea@gmail.com");
+  // 글로벌(영문)몰: lang=en → 영어 UI + 연락처는 이메일만 수집(해외고객 문자 불가)
+  const lang = url.searchParams.get("lang") === "en" ? "en" : "ko";
+  const emailOnly = lang === "en" || url.searchParams.get("contact") === "email";
+  const t = strings(lang, brandName, brandKo);
 
-  return new Response(buildWidgetScript({ baseUrl, brandName, accent, imgBase, brand, brandKo, email }), {
+  return new Response(buildWidgetScript({ baseUrl, brandName, accent, imgBase, brand, brandKo, email, lang, emailOnly, t }), {
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
       "Cache-Control": "public, max-age=300",
@@ -25,7 +29,76 @@ function sanitizeColor(value: string): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : "#111827";
 }
 
-function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: string; imgBase: string; brand: string; brandKo: string; email: string }): string {
+function strings(lang: string, brandName: string, brandKo: string): Record<string, string> {
+  if (lang === "en") {
+    return {
+      emptyMsg: "Leave us a message about products, shipping, or after-sales and we'll reply in order. You can close this window — your conversation stays here so you can pick it back up anytime.",
+      helpText: "Please leave your name and email so we can notify you when we reply. You can leave this window — your conversation stays right here.",
+      namePh: "Name",
+      phonePh: "Phone",
+      emailPh: "Email",
+      startChat: "Start chat",
+      typeMsg: "Type your message",
+      send: "Send",
+      navHome: "Home",
+      navChat: "Chats",
+      closeAria: "Close chat",
+      backAria: "Back",
+      inquire: "Start a chat ",
+      viewHours: "View hours >",
+      cardCopy: "<p>This is the " + brandName + " support channel.</p><p>Ask us about products, shipping, or after-sales and we'll reply in order.</p><p>Hours: Monday – Friday, 10:00 – 17:00 (KST).</p>",
+      openFrom: "Open from 10:00 AM (KST)",
+      emailUs: "Email us",
+      otherWays: "Other ways to reach us",
+      usingChat: brandName + " support",
+      consult: brandName + " chat",
+      notice: "Mon – Fri 10:00 – 17:00 (KST), lunch 12:00 – 13:00",
+      replyPrefix: "Reply: ",
+      countSuffix: " msgs",
+      noConvs: "No conversations yet. Tap 'New chat' below to start.",
+      chatsTitle: "Chats",
+      newChat: "New chat ",
+      errName: "Please enter your name to start.",
+      errContact: "Please enter a valid email so we can reply.",
+      mailSubject: "[" + brandName + " Inquiry]",
+      chatCta: "Chat with us",
+    };
+  }
+  return {
+    emptyMsg: "제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다. 화면을 닫아도 답변 알림 문자의 링크로 이어서 확인하실 수 있습니다.",
+    helpText: "답변 알림을 문자로 보내드리기 위해 이름과 연락처가 필요합니다. 화면을 떠나도 링크로 이어서 상담하실 수 있습니다.",
+    namePh: "이름",
+    phonePh: "연락처",
+    emailPh: "이메일(선택)",
+    startChat: "상담 시작",
+    typeMsg: "메시지를 입력해주세요.",
+    send: "전송",
+    navHome: "홈",
+    navChat: "대화",
+    closeAria: "상담 닫기",
+    backAria: "뒤로",
+    inquire: "문의하기 ",
+    viewHours: "운영시간 보기 >",
+    cardCopy: "<p>" + brandKo + " 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 17:00 입니다.</p>",
+    openFrom: "오전 10:00부터 운영해요",
+    emailUs: "이메일 문의",
+    otherWays: "다른 방법으로 문의",
+    usingChat: brandName + " 상담 이용중",
+    consult: brandName + " 상담",
+    notice: "월-금 10:00 - 17:00, 점심시간 12:00 - 13:00",
+    replyPrefix: "답변: ",
+    countSuffix: "개",
+    noConvs: "아직 나눈 대화가 없어요. 아래 ‘새 문의하기’로 문의를 시작해 보세요.",
+    chatsTitle: "대화",
+    newChat: "새 문의하기 ",
+    errName: "상담을 시작하려면 이름을 입력해 주세요.",
+    errContact: "답변 알림을 받을 수 있는 연락처를 입력해 주세요.",
+    mailSubject: "[" + brandName + " 문의]",
+    chatCta: "채팅 상담 문의하기",
+  };
+}
+
+function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: string; imgBase: string; brand: string; brandKo: string; email: string; lang: string; emailOnly: boolean; t: Record<string, string> }): string {
   const config = JSON.stringify(input);
   return `
 (function () {
@@ -183,7 +256,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function renderMessages(box, messages) {
     box.innerHTML = "";
     if (!messages || messages.length === 0) {
-      box.appendChild(el("div", { class: "pv-chat-empty", text: "제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다. 화면을 닫아도 답변 알림 문자의 링크로 이어서 확인하실 수 있습니다." }));
+      box.appendChild(el("div", { class: "pv-chat-empty", text: config.t.emptyMsg }));
       return;
     }
     messages.forEach(function (msg) {
@@ -209,11 +282,17 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   function build() {
     injectStyles();
     var root = el("div", { class: "pv-chat-root" });
-    var btnImg = el("img", { class: "pv-chat-btn-img", src: config.baseUrl + config.imgBase + "/floating-button.png", alt: config.brandName + " 상담", draggable: "false" });
-    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.brandName + " 상담 열기" }, [btnImg]);
-    var panel = el("div", { class: "pv-chat-panel", role: "dialog", "aria-label": config.brandName + " 상담" });
+    var btnImg = el("img", { class: "pv-chat-btn-img", src: config.baseUrl + config.imgBase + "/floating-button.png", alt: config.t.consult, draggable: "false" });
+    var button = el("button", { class: "pv-chat-button", type: "button", "aria-label": config.t.consult }, [btnImg]);
+    var panel = el("div", { class: "pv-chat-panel", role: "dialog", "aria-label": config.t.consult });
     var contact = getContact();
-    var hasSavedContact = contact.name && contact.phone && contact.phone.replace(/\\D/g, "").length >= 10;
+    function validEmail(v) { return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test((v || "").trim()); }
+    function contactReady(c) {
+      if (!c || !c.name) return false;
+      if (config.emailOnly) return validEmail(c.email);
+      return !!c.phone && c.phone.replace(/\\D/g, "").length >= 10;
+    }
+    var hasSavedContact = contactReady(contact);
 
     var chatReturnView = "home";
     var homeScreen = el("div", { class: "pv-chat-screen pv-chat-home active" });
@@ -221,14 +300,14 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     var listScreen = el("div", { class: "pv-chat-screen pv-chat-list" });
     var messages = el("div", { class: "pv-chat-messages" });
     var contactBox = el("div", { class: "pv-chat-contact" + (hasSavedContact ? " saved" : "") });
-    var helpText = el("div", { class: "pv-chat-help", text: "답변 알림을 문자로 보내드리기 위해 이름과 연락처가 필요합니다. 화면을 떠나도 링크로 이어서 상담하실 수 있습니다." });
+    var helpText = el("div", { class: "pv-chat-help", text: config.t.helpText });
     var errorText = el("div", { class: "pv-chat-error", text: "" });
-    var nameInput = el("input", { class: "pv-chat-input", placeholder: "이름", value: contact.name || "", autocomplete: "name" });
-    var phoneInput = el("input", { class: "pv-chat-input", placeholder: "연락처", value: contact.phone || "", inputmode: "tel", autocomplete: "tel" });
-    var emailInput = el("input", { class: "pv-chat-input", placeholder: "이메일(선택)", value: contact.email || "", inputmode: "email", autocomplete: "email" });
-    var saveButton = el("button", { class: "pv-chat-save", type: "button", text: "상담 시작" });
-    var textarea = el("textarea", { class: "pv-chat-text", placeholder: "메시지를 입력해주세요.", rows: "1" });
-    var send = el("button", { class: "pv-chat-send", type: "button", text: "전송" });
+    var nameInput = el("input", { class: "pv-chat-input", placeholder: config.t.namePh, value: contact.name || "", autocomplete: "name" });
+    var phoneInput = el("input", { class: "pv-chat-input", placeholder: config.t.phonePh, value: contact.phone || "", inputmode: "tel", autocomplete: "tel" });
+    var emailInput = el("input", { class: "pv-chat-input", placeholder: config.t.emailPh, value: contact.email || "", inputmode: "email", autocomplete: "email" });
+    var saveButton = el("button", { class: "pv-chat-save", type: "button", text: config.t.startChat });
+    var textarea = el("textarea", { class: "pv-chat-text", placeholder: config.t.typeMsg, rows: "1" });
+    var send = el("button", { class: "pv-chat-send", type: "button", text: config.t.send });
 
     function avatar(className) {
       var node = el("span", { class: className, "aria-hidden": "true" });
@@ -254,9 +333,9 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     function nav(active) {
       var wrap = el("div", { class: "pv-chat-nav" });
       var home = el("button", { type: "button", class: active === "home" ? "active" : "" });
-      home.innerHTML = icon("home") + "<span>홈</span>";
+      home.innerHTML = icon("home") + "<span>" + config.t.navHome + "</span>";
       var chat = el("button", { type: "button", class: active === "chat" ? "active" : "" });
-      chat.innerHTML = icon("chat") + "<span>대화</span>";
+      chat.innerHTML = icon("chat") + "<span>" + config.t.navChat + "</span>";
       home.addEventListener("click", function () { showView("home"); });
       chat.addEventListener("click", function () { showView("list"); });
       wrap.appendChild(home);
@@ -264,53 +343,53 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       return wrap;
     }
 
-    var closeHome = el("button", { class: "pv-chat-close", type: "button", "aria-label": "상담 닫기", text: "×" });
+    var closeHome = el("button", { class: "pv-chat-close", type: "button", "aria-label": config.t.closeAria, text: "×" });
     var startButton = el("button", { class: "pv-chat-primary", type: "button" });
-    startButton.innerHTML = "문의하기 " + icon("send");
+    startButton.innerHTML = config.t.inquire + icon("send");
 
     var homeBody = el("div", { class: "pv-chat-home-body" });
     homeBody.appendChild(el("div", { class: "pv-chat-home-head" }, [
       avatar("pv-chat-avatar"),
       el("div", { class: "pv-chat-brand" }, [
         el("div", { class: "pv-chat-brand-name", text: config.brandName }),
-        el("button", { class: "pv-chat-hours-link", type: "button", text: "운영시간 보기 >" })
+        el("button", { class: "pv-chat-hours-link", type: "button", text: config.t.viewHours })
       ]),
       closeHome
     ]));
     var cardCopy = el("div", { class: "pv-chat-card-copy" });
-    cardCopy.innerHTML = '<p>' + config.brandKo + ' 상담 채널입니다.</p><p>제품, 배송, AS 문의를 남겨주시면 확인 후 순서대로 답변드리겠습니다.</p><p>상담 가능 시간은 월요일 - 금요일 10:00 - 17:00 입니다.</p>';
+    cardCopy.innerHTML = config.t.cardCopy;
     homeBody.appendChild(el("div", { class: "pv-chat-card" }, [
       el("div", { class: "pv-chat-card-row" }, [
         (function () { var bot = el("span", { class: "pv-chat-bot" }); bot.innerHTML = icon("chat"); return bot; })(),
         cardCopy
       ]),
       startButton,
-      (function () { var time = el("div", { class: "pv-chat-card-time" }); time.innerHTML = icon("clock") + "<span>오전 10:00부터 운영해요</span>"; return time; })()
+      (function () { var time = el("div", { class: "pv-chat-card-time" }); time.innerHTML = icon("clock") + "<span>" + config.t.openFrom + "</span>"; return time; })()
     ]));
     var emailButton = el("a", {
       class: "pv-chat-email-btn",
-      href: "mailto:" + config.email + "?subject=" + encodeURIComponent("[" + config.brandName + " 문의]"),
-      "aria-label": "이메일 문의"
+      href: "mailto:" + config.email + "?subject=" + encodeURIComponent(config.t.mailSubject),
+      "aria-label": config.t.emailUs
     });
-    emailButton.innerHTML = icon("mail") + "<span>이메일 문의</span>";
+    emailButton.innerHTML = icon("mail") + "<span>" + config.t.emailUs + "</span>";
     homeBody.appendChild(el("div", { class: "pv-chat-methods" }, [
-      el("span", { text: "다른 방법으로 문의" }),
+      el("span", { text: config.t.otherWays }),
       emailButton
     ]));
-    homeBody.appendChild(el("div", { class: "pv-chat-powered", text: config.brandName + " 상담 이용중" }));
+    homeBody.appendChild(el("div", { class: "pv-chat-powered", text: config.t.usingChat }));
     homeScreen.appendChild(homeBody);
     homeScreen.appendChild(nav("home"));
 
     contactBox.appendChild(helpText);
     contactBox.appendChild(errorText);
     contactBox.appendChild(nameInput);
-    contactBox.appendChild(phoneInput);
+    if (!config.emailOnly) contactBox.appendChild(phoneInput);
     contactBox.appendChild(emailInput);
     contactBox.appendChild(saveButton);
 
     function topbar(title, showBack, onBack) {
-      var back = el("button", { class: "pv-chat-back", type: "button", "aria-label": "뒤로", text: "‹" });
-      var close = el("button", { class: "pv-chat-x", type: "button", "aria-label": "상담 닫기", text: "×" });
+      var back = el("button", { class: "pv-chat-back", type: "button", "aria-label": config.t.backAria, text: "‹" });
+      var close = el("button", { class: "pv-chat-x", type: "button", "aria-label": config.t.closeAria, text: "×" });
       back.style.visibility = showBack ? "visible" : "hidden";
       back.addEventListener("click", onBack || function () { showView("home"); });
       close.addEventListener("click", closePanel);
@@ -320,7 +399,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
           avatar("pv-chat-small-avatar"),
           el("div", {}, [
             el("div", { class: "pv-chat-title", text: title }),
-            el("div", { class: "pv-chat-sub", text: "오전 10:00부터 운영해요" })
+            el("div", { class: "pv-chat-sub", text: config.t.openFrom })
           ])
         ]),
         close
@@ -328,7 +407,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     }
 
     var notice = el("div", { class: "pv-chat-notice" });
-    notice.innerHTML = icon("megaphone") + "<span>월-금 10:00 - 17:00, 점심시간 12:00 - 13:00</span>";
+    notice.innerHTML = icon("megaphone") + "<span>" + config.t.notice + "</span>";
     chatScreen.appendChild(topbar(config.brandName, true, function () { showView(chatReturnView); }));
     chatScreen.appendChild(notice);
     chatScreen.appendChild(contactBox);
@@ -337,8 +416,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     var convList = el("div", { class: "pv-chat-conv-list" });
     var newButton = el("button", { class: "pv-chat-fab-new", type: "button" });
-    newButton.innerHTML = "새 문의하기 " + icon("send");
-    listScreen.appendChild(topbar("대화", true, function () { showView("home"); }));
+    newButton.innerHTML = config.t.newChat + icon("send");
+    listScreen.appendChild(topbar(config.t.chatsTitle, true, function () { showView("home"); }));
     listScreen.appendChild(convList);
     listScreen.appendChild(newButton);
     listScreen.appendChild(nav("chat"));
@@ -364,16 +443,16 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       (summaries || []).forEach(function (s) {
         if (!s || !s.count) return; // 메시지 없는(미시작) 대화는 숨김
         var card = el("button", { class: "pv-chat-conv-card", type: "button" });
-        var prefix = s.lastDirection === "out" ? "답변: " : "";
+        var prefix = s.lastDirection === "out" ? config.t.replyPrefix : "";
         card.innerHTML =
           '<div class="pv-chat-conv-top"><span class="pv-chat-conv-when">' + esc(formatWhen(s.lastAt)) + '</span>'
-          + '<span class="pv-chat-conv-count">' + esc(String(s.count)) + '개</span></div>'
+          + '<span class="pv-chat-conv-count">' + esc(String(s.count)) + config.t.countSuffix + '</span></div>'
           + '<div class="pv-chat-conv-snippet">' + esc(prefix + (s.lastText || "")) + '</div>';
         card.addEventListener("click", function () { openConversation(s.conversationId); });
         convList.appendChild(card);
       });
       if (!convList.children.length) {
-        convList.appendChild(el("div", { class: "pv-chat-empty", text: "아직 나눈 대화가 없어요. 아래 ‘새 문의하기’로 문의를 시작해 보세요." }));
+        convList.appendChild(el("div", { class: "pv-chat-empty", text: config.t.noConvs }));
       }
     }
 
@@ -453,12 +532,18 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     function validateContact(contact) {
       if (!contact.name) {
-        showContactError("상담을 시작하려면 이름을 입력해 주세요.");
+        showContactError(config.t.errName);
         nameInput.focus();
         return false;
       }
-      if (!contact.phone || contact.phone.replace(/\\D/g, "").length < 10) {
-        showContactError("답변 알림을 받을 수 있는 연락처를 입력해 주세요.");
+      if (config.emailOnly) {
+        if (!validEmail(contact.email)) {
+          showContactError(config.t.errContact);
+          emailInput.focus();
+          return false;
+        }
+      } else if (!contact.phone || contact.phone.replace(/\\D/g, "").length < 10) {
+        showContactError(config.t.errContact);
         phoneInput.focus();
         return false;
       }
@@ -488,7 +573,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
     function focusComposerIfContactSaved() {
       var saved = getContact();
-      if (saved.name && saved.phone && saved.phone.replace(/\\D/g, "").length >= 10) {
+      if (contactReady(saved)) {
         setTimeout(function () { textarea.focus(); }, 120);
       }
     }
@@ -575,7 +660,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
           a.addEventListener("click", function (e) { e.preventDefault(); openWebchat("home"); });
           var txt = a.querySelectorAll(".footer__txt");
           for (var j = 0; j < txt.length; j++) {
-            if (/카카오/.test(txt[j].textContent || "")) txt[j].textContent = "채팅 상담 문의하기";
+            if (/카카오/.test(txt[j].textContent || "")) txt[j].textContent = config.t.chatCta;
           }
         })(links[i]);
       }
@@ -590,7 +675,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       }
       var items = document.querySelectorAll("li.footer__menu");
       for (var j = 0; j < items.length; j++) {
-        if (/앰배서더/.test(items[j].textContent || "")) items[j].style.display = "none";
+        if (/앰배서더|ambassador/i.test(items[j].textContent || "")) items[j].style.display = "none";
       }
     }
 
