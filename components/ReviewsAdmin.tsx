@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import BackToHubButton from "@/components/BackToHubButton";
+import ReviewCampaignPanel from "@/components/ReviewCampaignPanel";
 
 interface MediaItem { type: "image" | "video"; url: string }
 interface Review {
@@ -76,6 +77,8 @@ export default function ReviewsAdmin() {
         <h1 className="text-2xl font-bold">리뷰 관리</h1>
         <button onClick={exportCsv} className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50">CSV 내보내기</button>
       </div>
+
+      <ReviewCampaignPanel mall={mall} />
 
       {/* 통계 */}
       <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-4">
