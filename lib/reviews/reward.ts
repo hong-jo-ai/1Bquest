@@ -71,26 +71,27 @@ export async function issueReward(args: {
   const memberId = await findMemberIdByPhone(mall.cafe24Mall, mall.shopNo, args.phone, at);
   if (!memberId) return { status: "skipped", note: "카페24 회원 아님(전화 미매칭)" };
 
-  // 2) 적립금 지급
+  // 2) 적립금 지급 — 카페24 공식 신규 API(앱스토어 공지): POST /api/v2/admin/mileage
+  //    스코프 mall.write_mileage 는 "특정 클라이언트만" → 개발자센터 문의·승인으로 획득.
+  //    엔드포인트는 env(REVIEW_MILEAGE_PATH)로 덮어쓰기 가능(/points 폴백 대비).
+  const path = process.env.REVIEW_MILEAGE_PATH || "/api/v2/admin/mileage";
   const reason = `리뷰 작성 감사 적립${args.productName ? ` — ${args.productName}` : ""}`;
   try {
     const res = await cafe24Post(
-      `/api/v2/admin/points`,
+      path,
       at,
       {
         shop_no: mall.shopNo,
         request: {
           member_id: memberId,
           amount: String(args.points),
-          type: "increase",
+          type: "increase",   // 지급(증가). 차감은 decrease
           reason,
-          // 지급사유/표시 — 카페24 마이페이지 적립내역에 노출
-          point_type: "M", // M: 적립금(마일리지)
         },
       },
       mall.cafe24Mall,
     );
-    const ok = res?.point || res?.points || res?.request;
+    const ok = res?.mileage || res?.point || res?.points || res?.request;
     if (ok) return { status: "paid", memberId, points: args.points };
     return { status: "failed", memberId, note: "지급 응답 비정상: " + JSON.stringify(res).slice(0, 200) };
   } catch (e) {
