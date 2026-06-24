@@ -47,7 +47,8 @@ export const MALLS: Record<MallId, MallConfig> = {
   harriot_kr: {
     id: "harriot_kr", label: "Harriot (KR)", cafe24Mall: "harriot",
     shopNo: 1, reviewBoardNo: 4, boardCategoryNo: 1, currency: "KRW",
-    reward: { text: 5000, photo: 15000, video: 25000 },
+    // 국내몰은 판매가가 글로벌과 달라 보상도 별도 — 글 3천/사진 7천/동영상 1만 적립금
+    reward: { text: 3000, photo: 7000, video: 10000 },
   },
   paulvice_kr: {
     id: "paulvice_kr", label: "Paulvice (KR)", cafe24Mall: "paulvice",

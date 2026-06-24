@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
   const days = Math.min(60, Math.max(1, Number(req.nextUrl.searchParams.get("days")) || 14));
   try {
     const { targets, scanned, alreadySent, statusDist } = await collectDeliveredTargets(mallId, days);
-    const sample = targets[0] ? buildReviewSms(targets[0]) : null;
+    const base = process.env.REVIEW_BASE_URL || "https://paulvice-dashboard.vercel.app";
+    const sample = targets[0] ? buildReviewSms(targets[0], `${base}/r/xxxxxxx`) : null;
     return Response.json({
       ok: true, mall: mallId, days, scanned, alreadySent, pending: targets.length, statusDist,
       sample,

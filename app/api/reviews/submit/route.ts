@@ -45,6 +45,20 @@ export async function POST(req: NextRequest) {
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "0.0.0.0";
 
   const sb = reviewsDb();
+
+  // 중복 방지 — 같은 주문(없으면 전화/이메일+상품)으로 이미 작성했으면 보상 중복 없이 안내.
+  const phoneDigits = tok.phone ? tok.phone.replace(/\D/g, "") : null;
+  if (tok.orderRef || phoneDigits || tok.email) {
+    let dq = sb.from("reviews").select("id, reward_points").eq("mall", mall.id).limit(1);
+    if (tok.orderRef) dq = dq.eq("order_ref", tok.orderRef);
+    else if (phoneDigits) dq = dq.eq("customer_phone", phoneDigits).eq("product_no", tok.productNo);
+    else dq = dq.eq("customer_email", tok.email!).eq("product_no", tok.productNo);
+    const { data: dup } = await dq;
+    if (dup && dup.length > 0) {
+      return Response.json({ ok: true, duplicate: true, reward: dup[0].reward_points ?? 0, published: true });
+    }
+  }
+
   const row = {
     mall: mall.id, cafe24_shop_no: mall.shopNo, product_no: tok.productNo, product_name: tok.productName,
     order_ref: tok.orderRef || null, customer_name: writer, customer_email: tok.email || null,

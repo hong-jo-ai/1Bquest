@@ -4,10 +4,12 @@
  * 토큰링크(로그인 불필요)로 우리 리뷰페이지를 열고, 작성 시 적립금 보상(lib/reviews/reward).
  * 발송은 Solapi(lib/sms/solapi) sendMany — 발신번호는 콘솔 등록번호(SOLAPI_SENDER).
  *
+ * 문자에는 긴 토큰 대신 **짧은 링크(/r/<code>)** 를 싣는다(lib/reviews/shortlink).
  * 토큰에 phone 을 실어 두면, 후기 제출 시 reviews.customer_phone 으로 저장되고
  * reward 단계에서 그 번호로 카페24 회원을 매칭해 적립금을 지급한다.
  */
 import { signReviewToken, getMall, type MallId } from "./core";
+import { createReviewShortLink } from "./shortlink";
 import { sendMany, detectMessageType, estimateCost } from "@/lib/sms/solapi";
 
 const BASE = () => process.env.REVIEW_BASE_URL || "https://paulvice-dashboard.vercel.app";
@@ -21,9 +23,10 @@ export interface SmsTarget {
   order_ref?: string | null;
 }
 
-export function reviewUrlForSms(t: SmsTarget): string {
+/** 리뷰 토큰 문자열 생성(phone 포함). */
+function signSmsToken(t: SmsTarget): string {
   const mall = getMall(t.mall)!;
-  const token = signReviewToken({
+  return signReviewToken({
     mall: mall.id,
     productNo: t.product_no || 0,
     productName: t.product_name || "주문하신 시계",
@@ -31,22 +34,29 @@ export function reviewUrlForSms(t: SmsTarget): string {
     name: t.customer_name || undefined,
     phone: t.phone.replace(/\D/g, ""),
   });
-  return `${BASE()}/review/${token}`;
 }
 
-/**
- * 무료 수신거부 번호(080) — 국내 광고성 문자는 무료거부 수단 명시가 법적 의무.
- * Solapi 콘솔에서 080 수신거부 서비스 신청 후 번호를 REVIEW_SMS_OPTOUT 에 설정한다.
- */
+/** 긴 토큰 URL(/review/<token>) — 내부·폴백용. */
+export function reviewUrlForSms(t: SmsTarget): string {
+  return `${BASE()}/review/${signSmsToken(t)}`;
+}
+
+/** 짧은 링크(/r/<code>) 생성 — DB 저장 동반. 문자 발송용. */
+export async function createShortReviewUrl(t: SmsTarget): Promise<string> {
+  const token = signSmsToken(t);
+  const code = await createReviewShortLink(token, t.mall);
+  return `${BASE()}/r/${code}`;
+}
+
+/** 국내 무료 수신거부 번호(설정 시에만 표기). 리뷰요청은 정보성이라 필수는 아님. */
 export function smsOptOut(): string | null {
   return process.env.REVIEW_SMS_OPTOUT || null;
 }
 
-/** 국내 리뷰요청 문자 본문. LMS(제목+본문). 이름/상품 치환. */
-export function buildReviewSms(t: SmsTarget): { subject: string; text: string } {
+/** 국내 리뷰요청 문자 본문. url 은 호출부에서 생성해 전달(짧은 링크 권장). */
+export function buildReviewSms(t: SmsTarget, url: string): { subject: string; text: string } {
   const name = (t.customer_name || "고객").replace(/\s+/g, " ").trim();
   const product = t.product_name || "주문하신 시계";
-  const url = reviewUrlForSms(t);
   const optout = smsOptOut();
   const text =
     `[해리엇] ${name}님, ${product}는 마음에 드셨나요?\n\n` +
@@ -69,13 +79,15 @@ export interface SmsCampaignResult {
   results: Array<{ phone: string; status: "success" | "fail"; error?: string }>;
 }
 
-/** 다건 리뷰요청 문자 발송. 수신자별 본문(이름·링크) 생성 → Solapi sendMany. */
+/** 다건 리뷰요청 문자 발송. 수신자별 짧은 링크 생성 → 본문 → Solapi sendMany. */
 export async function sendReviewSmsBatch(targets: SmsTarget[]): Promise<SmsCampaignResult> {
   const valid = targets.filter((t) => (t.phone || "").replace(/\D/g, "").length >= 10);
-  const messages = valid.map((t) => {
-    const { subject, text } = buildReviewSms(t);
-    return { to: t.phone, text, subject };
-  });
+  const messages: Array<{ to: string; text: string; subject?: string }> = [];
+  for (const t of valid) {
+    const url = await createShortReviewUrl(t);
+    const { subject, text } = buildReviewSms(t, url);
+    messages.push({ to: t.phone, text, subject });
+  }
   const sampleText = messages[0]?.text || "";
   const type = detectMessageType(sampleText);
   const estCost = estimateCost(sampleText, messages.length);
