@@ -123,12 +123,15 @@ export async function GET(req: NextRequest) {
     const rated = reviews.filter((r) => r.rating > 0);
     const avg = rated.length ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0;
     const photoCount = reviews.filter((r) => r.photos.length).length;
+    // 별점 분포 (5→1)
+    const dist: Record<string, number> = { "5": 0, "4": 0, "3": 0, "2": 0, "1": 0 };
+    rated.forEach((r) => { const k = String(Math.min(5, Math.max(1, Math.round(r.rating)))); dist[k] = (dist[k] || 0) + 1; });
 
     return Response.json(
       {
         ok: true,
         product_no: productNo,
-        summary: { count, avg: Math.round(avg * 10) / 10, photoCount },
+        summary: { count, avg: Math.round(avg * 10) / 10, photoCount, distribution: dist },
         reviews,
       },
       { status: 200, headers: CORS },

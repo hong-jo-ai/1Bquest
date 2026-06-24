@@ -1,6 +1,6 @@
 /*! Paulvice 리뷰 위젯 — 자체 스토어프론트 리뷰 노출 (리뷰에이드 대체)
- *  컨테이너에 data-product-no 를 주면 /api/reviews/widget 에서 읽어 렌더.
- *  - #pv-review-list      : 하단 커스텀 리뷰 리스트
+ *  컨테이너 id 로 렌더 위치 지정. product_no 는 URL/canonical 에서 파싱.
+ *  - #pv-review-list      : 하단 리뷰 섹션(요약 + 분포막대 + 포토스트립 + 카드)
  *  - #pv-review-photostrip: 썸네일 밑 포토 가로 스트립
  *  - #pv-review-phototop  : 상세 상단 포토 그리드
  *  폴바이스 무드: 미니멀·모던·럭셔리 / ink·gold·ivory.
@@ -9,80 +9,117 @@
   "use strict";
   var API = "https://paulvice-dashboard.vercel.app/api/reviews/widget";
   var MALL = "paulvice";
-  var GOLD = "#b3935f", INK = "#1c1a17", SUB = "#8c8278", LINE = "#ece7df", IVORY = "#faf8f5";
+  var GOLD = "#b3935f", INK = "#1c1a17", SUB = "#8c8278", LINE = "#e7e1d8", IVORY = "#faf8f5", TRACK = "#ebe6dd";
 
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
-  function stars(n){var f=Math.round(n||0),s="";for(var i=1;i<=5;i++)s+='<span style="color:'+(i<=f?GOLD:"#dcd7cf")+'">★</span>';return s;}
+  function stars(n,size){var f=Math.round(n||0),s='<span style="letter-spacing:1px;font-size:'+(size||13)+'px">';for(var i=1;i<=5;i++)s+='<span style="color:'+(i<=f?GOLD:"#dcd7cf")+'">★</span>';return s+"</span>";}
 
   function injectCss(){
     if(document.getElementById("pv-rv-css"))return;
     var c=document.createElement("style");c.id="pv-rv-css";
     c.textContent=[
-      ".pv-rv{font-family:'Noto Sans KR',AppleSDGothicNeo,sans-serif;color:"+INK+";box-sizing:border-box}",
+      ".pv-rv{font-family:'Noto Sans KR',AppleSDGothicNeo,sans-serif;color:"+INK+";box-sizing:border-box;font-size:14px;line-height:1.6}",
       ".pv-rv *{box-sizing:border-box}",
-      ".pv-rv-strip{display:flex;gap:8px;overflow-x:auto;padding:14px 0;-webkit-overflow-scrolling:touch}",
+      // 상단 타이틀
+      ".pv-rv-ttl{font-size:13px;letter-spacing:.22em;font-weight:700;color:"+INK+";text-align:center;padding:8px 0 18px;border-top:1px solid "+INK+";margin-top:6px}",
+      // 요약 블록
+      ".pv-rv-sum{display:flex;gap:22px;align-items:center;background:"+IVORY+";border:1px solid "+LINE+";border-radius:4px;padding:22px 24px;margin:0 0 16px}",
+      ".pv-rv-big{flex:0 0 auto;text-align:center;min-width:104px;border-right:1px solid "+LINE+";padding-right:22px}",
+      ".pv-rv-big .num{font-size:44px;font-weight:800;line-height:1;letter-spacing:-.02em}",
+      ".pv-rv-big .st{margin:7px 0 4px}",
+      ".pv-rv-big .ct{font-size:12px;color:"+SUB+"}",
+      ".pv-rv-bars{flex:1 1 auto;display:flex;flex-direction:column;gap:6px}",
+      ".pv-rv-bar{display:flex;align-items:center;gap:9px;font-size:12px;color:"+SUB+"}",
+      ".pv-rv-bar .lab{flex:0 0 26px;color:"+INK+";font-weight:600}",
+      ".pv-rv-bar .lab b{color:"+GOLD+"}",
+      ".pv-rv-bar .track{flex:1 1 auto;height:7px;background:"+TRACK+";border-radius:999px;overflow:hidden}",
+      ".pv-rv-bar .fill{height:100%;background:"+INK+";border-radius:999px}",
+      ".pv-rv-bar .cnt{flex:0 0 28px;text-align:right}",
+      // 포토 스트립
+      ".pv-rv-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 0 16px;-webkit-overflow-scrolling:touch}",
       ".pv-rv-strip::-webkit-scrollbar{height:0}",
-      ".pv-rv-strip img{width:84px;height:84px;object-fit:cover;border-radius:10px;flex:0 0 auto;cursor:pointer;border:1px solid "+LINE+"}",
+      ".pv-rv-strip img{width:72px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto;cursor:pointer;border:1px solid "+LINE+"}",
+      ".pv-rv-strip .more{flex:0 0 auto;width:72px;height:72px;border-radius:8px;border:1px solid "+LINE+";display:flex;align-items:center;justify-content:center;font-size:12px;color:"+SUB+";background:"+IVORY+";cursor:pointer}",
+      // 상단 그리드
       ".pv-rv-topgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 8px}",
       ".pv-rv-topgrid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer}",
-      ".pv-rv-head{display:flex;align-items:baseline;gap:12px;padding:22px 0 6px;border-top:1px solid "+INK+"}",
-      ".pv-rv-head .t{font-size:17px;font-weight:700;letter-spacing:.02em}",
-      ".pv-rv-head .avg{font-size:15px;color:"+GOLD+";font-weight:700}",
-      ".pv-rv-head .cnt{font-size:13px;color:"+SUB+"}",
-      ".pv-rv-filter{display:flex;gap:8px;margin:10px 0 4px}",
-      ".pv-rv-filter button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid "+LINE+";background:#fff;border-radius:999px;color:"+SUB+";cursor:pointer}",
+      // 필터
+      ".pv-rv-filter{display:flex;gap:8px;margin:4px 0 2px;padding-bottom:4px}",
+      ".pv-rv-filter button{font:inherit;font-size:12px;padding:7px 14px;border:1px solid "+LINE+";background:#fff;border-radius:999px;color:"+SUB+";cursor:pointer;transition:.15s}",
       ".pv-rv-filter button.on{background:"+INK+";color:#fff;border-color:"+INK+"}",
-      ".pv-rv-card{padding:18px 0;border-bottom:1px solid "+LINE+"}",
-      ".pv-rv-card .meta{display:flex;align-items:center;gap:8px;font-size:13px;color:"+SUB+";margin:0 0 7px}",
-      ".pv-rv-card .meta .au{color:"+INK+";font-weight:600}",
-      ".pv-rv-card .star{letter-spacing:1px;font-size:13px}",
-      ".pv-rv-card .body{font-size:14px;line-height:1.7;white-space:pre-line;word-break:break-word}",
-      ".pv-rv-card .ph{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap}",
-      ".pv-rv-card .ph img{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid "+LINE+"}",
-      ".pv-rv-more{display:block;width:100%;margin:18px 0 0;padding:13px;font:inherit;font-size:13px;letter-spacing:.04em;background:#fff;border:1px solid "+INK+";color:"+INK+";border-radius:2px;cursor:pointer}",
-      ".pv-rv-empty{padding:26px 0;text-align:center;color:"+SUB+";font-size:13px}",
-      ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.92);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out}",
-      ".pv-rv-lb img{max-width:92vw;max-height:88vh;border-radius:6px}"
+      // 카드
+      ".pv-rv-card{padding:20px 0;border-bottom:1px solid "+LINE+"}",
+      ".pv-rv-card .meta{display:flex;align-items:center;gap:9px;margin:0 0 9px}",
+      ".pv-rv-card .meta .au{font-size:13px;color:"+INK+";font-weight:600}",
+      ".pv-rv-card .meta .dt{font-size:12px;color:"+SUB+"}",
+      ".pv-rv-card .vb{font-size:10.5px;letter-spacing:.02em;color:"+GOLD+";border:1px solid "+GOLD+";border-radius:999px;padding:1px 7px;font-weight:600}",
+      ".pv-rv-card .body{font-size:14px;line-height:1.75;white-space:pre-line;word-break:break-word;color:#33302b}",
+      ".pv-rv-card .rm{display:inline;margin-left:4px;font-size:13px;color:"+SUB+";text-decoration:underline;cursor:pointer}",
+      ".pv-rv-card .ph{display:flex;gap:7px;margin:11px 0 0;flex-wrap:wrap}",
+      ".pv-rv-card .ph img{width:84px;height:84px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid "+LINE+"}",
+      ".pv-rv-more{display:block;width:100%;margin:22px 0 4px;padding:14px;font:inherit;font-size:13px;letter-spacing:.06em;background:#fff;border:1px solid "+INK+";color:"+INK+";border-radius:2px;cursor:pointer}",
+      ".pv-rv-empty{padding:30px 0;text-align:center;color:"+SUB+";font-size:13px}",
+      ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.93);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out}",
+      ".pv-rv-lb img{max-width:92vw;max-height:88vh;border-radius:6px}",
+      "@media(max-width:480px){.pv-rv-sum{gap:16px;padding:18px}.pv-rv-big{min-width:88px;padding-right:16px}.pv-rv-big .num{font-size:38px}}"
     ].join("");
     document.head.appendChild(c);
   }
 
   function lightbox(src){var o=document.createElement("div");o.className="pv-rv-lb";o.innerHTML='<img src="'+esc(src)+'">';o.onclick=function(){o.remove();};document.body.appendChild(o);}
   function bindImgs(root){var ig=root.querySelectorAll("img[data-full]");for(var i=0;i<ig.length;i++){ig[i].addEventListener("click",function(){lightbox(this.getAttribute("data-full"));});}}
+  function allPhotos(data){var ph=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){ph.push(u);});});return ph;}
 
   function renderStrip(el,data){
-    var ph=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){ph.push(u);});});
-    if(!ph.length){el.style.display="none";return;}
+    var ph=allPhotos(data);if(!ph.length){el.style.display="none";return;}
     el.className="pv-rv pv-rv-strip";
     el.innerHTML=ph.slice(0,20).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("");
     bindImgs(el);
   }
   function renderTop(el,data){
-    var ph=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){ph.push(u);});});
-    if(!ph.length){el.style.display="none";return;}
+    var ph=allPhotos(data);if(!ph.length){el.style.display="none";return;}
     el.className="pv-rv";
     el.innerHTML='<div class="pv-rv-topgrid">'+ph.slice(0,8).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>';
     bindImgs(el);
   }
+
   function renderList(el,data){
     el.className="pv-rv";
-    var s=data.summary||{};
-    var state={photoOnly:false,shown:5};
-    function card(r){
-      return '<div class="pv-rv-card"><div class="meta"><span class="star">'+stars(r.rating)+'</span><span class="au">'+esc(r.author)+'</span><span>'+esc(r.date)+'</span></div>'+
-        (r.content?'<div class="body">'+esc(r.content)+'</div>':'')+
+    var s=data.summary||{}, dist=s.distribution||{}, total=data.reviews.length;
+    var state={photoOnly:false,shown:5,expanded:{}};
+    var ph=allPhotos(data);
+
+    function summary(){
+      var bars="";
+      for(var st=5;st>=1;st--){var n=dist[st]||0;var pct=total?Math.round(n/total*100):0;
+        bars+='<div class="pv-rv-bar"><span class="lab"><b>★</b>'+st+'</span><span class="track"><span class="fill" style="width:'+pct+'%"></span></span><span class="cnt">'+n+'</span></div>';}
+      return '<div class="pv-rv-sum"><div class="pv-rv-big"><div class="num">'+(s.avg||0).toFixed(1)+'</div><div class="st">'+stars(s.avg,15)+'</div><div class="ct">리뷰 '+(s.count||0)+'개</div></div><div class="pv-rv-bars">'+bars+'</div></div>';
+    }
+    function strip(){
+      if(!ph.length)return"";
+      var imgs=ph.slice(0,12).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("");
+      var more=ph.length>12?'<span class="more" data-photofilter="1">+'+(ph.length-12)+'</span>':"";
+      return '<div class="pv-rv-strip">'+imgs+more+'</div>';
+    }
+    function card(r,idx){
+      var long=(r.content||"").length>140, exp=state.expanded[r.id];
+      var body=r.content?(long&&!exp?esc(r.content.slice(0,140))+'…<span class="rm" data-exp="'+r.id+'">더보기</span>':esc(r.content)):"";
+      return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span><span class="vb">구매확인</span></div>'+
+        (body?'<div class="body">'+body+'</div>':'')+
         (r.photos.length?'<div class="ph">'+r.photos.map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>':'')+
         '</div>';
     }
     function draw(){
       var list=state.photoOnly?data.reviews.filter(function(r){return r.photos.length;}):data.reviews;
-      var head='<div class="pv-rv-head"><span class="t">REVIEW</span>'+(s.count?'<span class="avg">★ '+(s.avg||0).toFixed(1)+'</span><span class="cnt">('+s.count+')</span>':'')+'</div>'+
-        '<div class="pv-rv-filter"><button data-f="all" class="'+(state.photoOnly?"":"on")+'">전체 '+data.reviews.length+'</button><button data-f="photo" class="'+(state.photoOnly?"on":"")+'">포토 '+(s.photoCount||0)+'</button></div>';
-      var body=list.length?list.slice(0,state.shown).map(card).join(""):'<div class="pv-rv-empty">아직 등록된 후기가 없습니다.</div>';
-      var more=list.length>state.shown?'<button class="pv-rv-more">후기 더보기 (+'+(list.length-state.shown)+')</button>':"";
-      el.innerHTML=head+body+more;
-      var fb=el.querySelectorAll(".pv-rv-filter button");for(var i=0;i<fb.length;i++)fb[i].addEventListener("click",function(){state.photoOnly=this.getAttribute("data-f")==="photo";state.shown=5;draw();});
+      var html='<div class="pv-rv-ttl">REAL REVIEW</div>'+summary()+strip()+
+        '<div class="pv-rv-filter"><button data-f="all" class="'+(state.photoOnly?"":"on")+'">전체 '+total+'</button><button data-f="photo" class="'+(state.photoOnly?"on":"")+'">📷 포토 '+(s.photoCount||0)+'</button></div>'+
+        (list.length?list.slice(0,state.shown).map(card).join(""):'<div class="pv-rv-empty">아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.</div>')+
+        (list.length>state.shown?'<button class="pv-rv-more">후기 더보기 (+'+(list.length-state.shown)+')</button>':"");
+      el.innerHTML=html;
+      el.querySelectorAll(".pv-rv-filter button").forEach(function(b){b.addEventListener("click",function(){state.photoOnly=this.getAttribute("data-f")==="photo";state.shown=5;draw();});});
+      var pf=el.querySelector('[data-photofilter]');if(pf)pf.addEventListener("click",function(){state.photoOnly=true;state.shown=5;draw();});
       var mb=el.querySelector(".pv-rv-more");if(mb)mb.addEventListener("click",function(){state.shown+=10;draw();});
+      el.querySelectorAll(".rm[data-exp]").forEach(function(x){x.addEventListener("click",function(){state.expanded[this.getAttribute("data-exp")]=1;draw();});});
       bindImgs(el);
     }
     draw();
@@ -91,12 +128,11 @@
   var cache={};
   function load(pno,cb){
     if(cache[pno])return cb(cache[pno]);
-    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL,{credentials:"omit"})
+    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=100",{credentials:"omit"})
       .then(function(r){return r.json();})
       .then(function(j){if(!j||!j.ok)j={ok:false,reviews:[],summary:{count:0}};cache[pno]=j;cb(j);})
       .catch(function(){cb({ok:false,reviews:[],summary:{count:0}});});
   }
-
   function getProductNo(el){
     var d=el&&el.getAttribute("data-product-no");if(d&&/^\d+$/.test(d))return d;
     var q=new URLSearchParams(location.search).get("product_no");if(q&&/^\d+$/.test(q))return q;
