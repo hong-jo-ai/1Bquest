@@ -33,7 +33,7 @@
       ".pv-rv-bar .lab{flex:0 0 26px;color:"+INK+";font-weight:600}",
       ".pv-rv-bar .lab b{color:"+GOLD+"}",
       ".pv-rv-bar .track{flex:1 1 auto;height:7px;background:"+TRACK+";border-radius:999px;overflow:hidden}",
-      ".pv-rv-bar .fill{height:100%;background:"+INK+";border-radius:999px}",
+      ".pv-rv-bar .fill{display:block;height:100%;background:"+GOLD+";border-radius:999px;min-width:2px}",
       ".pv-rv-bar .cnt{flex:0 0 28px;text-align:right}",
       // 포토 스트립
       ".pv-rv-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 0 16px;-webkit-overflow-scrolling:touch}",
