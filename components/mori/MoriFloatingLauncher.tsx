@@ -15,7 +15,9 @@ export default function MoriFloatingLauncher() {
     pathname === "/login" ||
     pathname === "/mori" ||
     pathname === "/mori-embed" ||
-    pathname.startsWith("/api/");
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/review/") || // 고객용 리뷰 작성 페이지(익명)
+    pathname.startsWith("/r/");        // 리뷰 짧은 링크
 
   if (hidden) return null;
 
