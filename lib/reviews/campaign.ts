@@ -10,7 +10,7 @@ import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 const FOUNDER_FROM = process.env.REVIEW_FROM || "Sungjo · Harriot <shong@harriotwatches.com>";
 
 const GOLD = "#c9a96a", DARK = "#1a1a1a";
-const BASE = () => process.env.REVIEW_BASE_URL || "https://paulvice-dashboard.vercel.app";
+const BASE = () => process.env.REVIEW_BASE_URL || "https://review.harriotwatches.co.kr";
 
 export interface Target {
   id: string; mall: MallId; email: string; customer_name: string | null;

@@ -12,7 +12,7 @@ import { signReviewToken, getMall, type MallId } from "./core";
 import { createReviewShortLink } from "./shortlink";
 import { sendMany, detectMessageType, estimateCost } from "@/lib/sms/solapi";
 
-const BASE = () => process.env.REVIEW_BASE_URL || "https://paulvice-dashboard.vercel.app";
+const BASE = () => process.env.REVIEW_BASE_URL || "https://review.harriotwatches.co.kr";
 
 export interface SmsTarget {
   mall: MallId;
