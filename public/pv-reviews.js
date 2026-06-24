@@ -97,11 +97,19 @@
       .catch(function(){cb({ok:false,reviews:[],summary:{count:0}});});
   }
 
+  function getProductNo(el){
+    var d=el&&el.getAttribute("data-product-no");if(d&&/^\d+$/.test(d))return d;
+    var q=new URLSearchParams(location.search).get("product_no");if(q&&/^\d+$/.test(q))return q;
+    var m=location.pathname.match(/\/product\/[^\/?]+\/(\d+)(?:[\/?]|$)/);if(m)return m[1];
+    var c=document.querySelector('link[rel="canonical"]');
+    if(c){var cm=(c.href||"").match(/\/product\/[^\/?]+\/(\d+)(?:[\/?]|$)/);if(cm)return cm[1];}
+    return null;
+  }
   function init(){
     injectCss();
     var targets=[["pv-review-photostrip",renderStrip],["pv-review-phototop",renderTop],["pv-review-list",renderList]];
     var els=[],pno=null;
-    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=e.getAttribute("data-product-no");}});
+    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);}});
     if(!els.length||!pno||!/^\d+$/.test(pno))return;
     load(pno,function(data){els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});});
   }
