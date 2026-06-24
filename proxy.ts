@@ -35,6 +35,8 @@ const ALLOW_PREFIX = [
   "/api/reviews/upload",  // 리뷰 미디어 업로드 (익명, 토큰검증)
   "/api/reviews/widget",  // 스토어프론트 리뷰 위젯 데이터 (공개 읽기, CORS)
   "/pv-reviews.js",       // 스토어프론트 리뷰 위젯 스크립트 (공개 정적파일)
+  "/api/tryon",           // 착용해보기 위젯 데이터 (공개 읽기, CORS)
+  "/pv-tryon.js",         // 착용해보기 위젯 스크립트 (공개 정적파일)
   "/api/app-icons/",   // 홈화면/PWA 아이콘은 로그인 전에도 브라우저가 가져갈 수 있어야 함
   "/_next/",
   "/manifest-",
