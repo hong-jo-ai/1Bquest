@@ -37,46 +37,53 @@
     document.head.appendChild(c);
   }
 
-  // 손목 둘레(cm) → 보이는 팔 너비(px). 케이스는 고정 px(실제크기).
-  function svg(circ, caseMm){
-    var W=280, H=270, cx=W/2;
-    var refMaxDia = 18/Math.PI;            // cm, 최대 둘레 기준 지름
-    var armMaxW = 132;                      // px, 최대일 때 팔 너비
+  // 손목 둘레(cm) → 손목 너비(px). 케이스(타원)는 실제 비율 고정 px.
+  function svg(circ, cw, ch){
+    var W=280, H=292, cx=W/2;
+    var refMaxDia = 18/Math.PI;            // cm
+    var armMaxW = 124;                      // px (최대 둘레일 때 손목 너비)
     var scale = armMaxW / refMaxDia;        // px per cm
-    var armW = (circ/Math.PI) * scale;      // 선택 둘레 → 팔 너비
-    var caseD = (caseMm/10) * scale;        // 케이스 지름 px (고정)
-    var bandY = 158, armTop = 26, armBot = H-8;
-    var ax = cx - armW/2;
-    var caseR = caseD/2;
-    // 팔(원통) + 손끝 힌트 + 시계밴드 + 케이스
+    var hw = (circ/Math.PI) * scale / 2;    // 손목 half-width
+    var fHW = hw*1.5, aHW = hw*1.16;        // 주먹/팔뚝 half-width
+    var rx = (cw/10) * scale / 2, ry = (ch/10) * scale / 2; // 타원 케이스 반경 px
+    var yTop=16, yFist=96, yBand=172, yBot=H-4;
+    // 팔뚝→손목→주먹 윤곽 (좌우대칭 베지어)
+    var arm = "M "+cx+" "+yTop+
+      " C "+(cx+fHW*0.8)+" "+yTop+" "+(cx+fHW)+" "+(yTop+38)+" "+(cx+fHW)+" "+(yFist-26)+
+      " C "+(cx+fHW)+" "+(yFist+8)+" "+(cx+hw)+" "+(yBand-48)+" "+(cx+hw)+" "+yBand+
+      " C "+(cx+hw)+" "+(yBand+38)+" "+(cx+aHW)+" "+(yBot-52)+" "+(cx+aHW)+" "+yBot+
+      " L "+(cx-aHW)+" "+yBot+
+      " C "+(cx-aHW)+" "+(yBot-52)+" "+(cx-hw)+" "+(yBand+38)+" "+(cx-hw)+" "+yBand+
+      " C "+(cx-hw)+" "+(yBand-48)+" "+(cx-fHW)+" "+(yFist+8)+" "+(cx-fHW)+" "+(yFist-26)+
+      " C "+(cx-fHW)+" "+(yTop+38)+" "+(cx-fHW*0.8)+" "+yTop+" "+cx+" "+yTop+" Z";
+    // 손가락 골(주먹 힌트)
+    var grooves="";
+    [-0.46,0,0.46].forEach(function(o){var gx=cx+fHW*o;grooves+='<line x1="'+gx+'" y1="'+(yTop+20)+'" x2="'+gx+'" y2="'+(yFist-36)+'" stroke="#aaa093" stroke-width="2" stroke-linecap="round" opacity="0.55"/>';});
     return '<svg width="100%" viewBox="0 0 '+W+' '+H+'" style="max-width:300px;display:block">'+
       '<defs><linearGradient id="pvArm" x1="0" y1="0" x2="1" y2="0">'+
-        '<stop offset="0" stop-color="#c7c0b6"/><stop offset="0.5" stop-color="#e8e2d8"/><stop offset="1" stop-color="#c7c0b6"/>'+
+        '<stop offset="0" stop-color="#b6aea2"/><stop offset="0.16" stop-color="#d7d1c6"/><stop offset="0.5" stop-color="#ece7dd"/><stop offset="0.84" stop-color="#d7d1c6"/><stop offset="1" stop-color="#b6aea2"/>'+
       '</linearGradient></defs>'+
-      // 손(주먹) 힌트 — 팔 위쪽 둥근 블롭
-      '<ellipse cx="'+cx+'" cy="'+(armTop+10)+'" rx="'+(armW*0.62)+'" ry="'+(armW*0.42)+'" fill="url(#pvArm)"/>'+
-      // 팔(원통)
-      '<rect x="'+ax+'" y="'+armTop+'" width="'+armW+'" height="'+(armBot-armTop)+'" rx="'+(armW/2)+'" fill="url(#pvArm)"/>'+
-      // 시계 밴드(손목 감싸는 띠)
-      '<rect x="'+ax+'" y="'+(bandY-caseR*0.42)+'" width="'+armW+'" height="'+(caseR*0.84)+'" fill="#4a453e" rx="3"/>'+
-      // 케이스(원) — 고정 크기, 손목보다 클 수도
-      '<circle cx="'+cx+'" cy="'+bandY+'" r="'+caseR+'" fill="#f4f1ec" stroke="#2b2620" stroke-width="2"/>'+
-      '<circle cx="'+cx+'" cy="'+bandY+'" r="'+(caseR*0.62)+'" fill="none" stroke="#cfc7bb" stroke-width="1"/>'+
-      // 케이스 지름 치수선
-      '<line x1="'+(cx-caseR)+'" y1="'+(bandY+caseR+14)+'" x2="'+(cx+caseR)+'" y2="'+(bandY+caseR+14)+'" stroke="'+GOLD+'" stroke-width="1"/>'+
-      '<text x="'+cx+'" y="'+(bandY+caseR+28)+'" text-anchor="middle" font-size="11" fill="'+GOLD+'" font-family="sans-serif">'+caseMm+'mm</text>'+
+      '<path d="'+arm+'" fill="url(#pvArm)" stroke="#b1a698" stroke-width="1"/>'+
+      grooves+
+      // 손목 밴드(스트랩)
+      '<rect x="'+(cx-hw-1)+'" y="'+(yBand-ry*0.32)+'" width="'+(hw*2+2)+'" height="'+(ry*0.64)+'" fill="#46413a" rx="3"/>'+
+      // 타원 케이스 (가로 cw, 세로 ch — 12시 방향이 손끝쪽)
+      '<ellipse cx="'+cx+'" cy="'+yBand+'" rx="'+rx+'" ry="'+ry+'" fill="#f5f2ed" stroke="#2b2620" stroke-width="2"/>'+
+      '<ellipse cx="'+cx+'" cy="'+yBand+'" rx="'+(rx*0.62)+'" ry="'+(ry*0.62)+'" fill="none" stroke="#d4ccc0" stroke-width="1"/>'+
+      // 치수 (가로×세로)
+      '<text x="'+cx+'" y="'+(yBand+ry+19)+'" text-anchor="middle" font-size="11" fill="'+GOLD+'" font-family="sans-serif">'+cw+' × '+ch+'mm</text>'+
     '</svg>';
   }
 
-  function render(host, caseMm){
+  function render(host, cw, ch){
     css();
     var sel = DEFAULT_I;
     function draw(){
       var s=SIZES[sel];
       host.className="pv-tryon";
       host.innerHTML=
-        '<div class="hd"><span class="t">TRY IT ON</span><span class="c">케이스 <b>약 '+caseMm+'mm</b></span></div>'+
-        '<div class="stage">'+svg(s.circ, caseMm)+'</div>'+
+        '<div class="hd"><span class="t">TRY IT ON</span><span class="c">케이스 <b>'+cw+' × '+ch+'mm</b></span></div>'+
+        '<div class="stage">'+svg(s.circ, cw, ch)+'</div>'+
         '<div class="lbl">내 손목 둘레: <b>'+s.label+'</b> · '+s.sub+'</div>'+
         '<div class="sizes">'+SIZES.map(function(x,i){return '<button data-i="'+i+'" class="'+(i===sel?"on":"")+'">'+x.label+'</button>';}).join("")+'</div>'+
         '<div class="note">손목 둘레를 선택하면 케이스가 상대적으로 어느 정도 크기인지 가늠할 수 있어요. (실제 시계 모양 아님 · 참고용)</div>';
@@ -102,9 +109,9 @@
       .then(function(r){return r.json();})
       .then(function(j){
         if(!j||!j.ok)return;
-        var caseMm=Number(j.case)||0;
-        if(!caseMm)return; // 케이스 미설정 상품은 표시 안 함
-        render(host, caseMm);
+        var cw=Number(j.caseW)||0, ch=Number(j.caseH)||0;
+        if(!cw||!ch)return; // 케이스 미설정 상품은 표시 안 함
+        render(host, cw, ch);
       }).catch(function(){});
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();

@@ -33,14 +33,19 @@ export async function GET(req: NextRequest) {
   const { data } = await db.from("kv_store").select("data").eq("key", `tryon:${mall}`).maybeSingle();
   const map = (data?.data ?? {}) as Record<string, unknown>;
   const entry = map[productNo];
-  // 객체형 {case, images} 또는 (레거시) 이미지 배열 모두 지원
-  let caseMm = 0; let images: string[] = [];
+  // 객체형 {caseW, caseH, case, images} 또는 (레거시) 이미지 배열 지원
+  let caseW = 0, caseH = 0, caseMm = 0; let images: string[] = [];
   if (Array.isArray(entry)) {
     images = entry.filter((u): u is string => typeof u === "string" && !!u);
   } else if (entry && typeof entry === "object") {
-    const e = entry as { case?: number; images?: string[] };
+    const e = entry as { caseW?: number; caseH?: number; case?: number; images?: string[] };
+    caseW = Number(e.caseW) || 0;
+    caseH = Number(e.caseH) || 0;
     caseMm = Number(e.case) || 0;
+    // 원형만 설정된 경우 가로=세로로 채움
+    if (!caseW && caseMm) caseW = caseMm;
+    if (!caseH && caseMm) caseH = caseMm;
     images = Array.isArray(e.images) ? e.images.filter((u): u is string => typeof u === "string" && !!u) : [];
   }
-  return Response.json({ ok: true, product_no: productNo, case: caseMm, images }, { status: 200, headers: CORS });
+  return Response.json({ ok: true, product_no: productNo, caseW, caseH, images }, { status: 200, headers: CORS });
 }
