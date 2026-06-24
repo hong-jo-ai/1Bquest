@@ -31,7 +31,16 @@ export async function GET(req: NextRequest) {
   if (!url || !skey) return Response.json({ ok: false, images: [] }, { status: 200, headers: CORS });
   const db = createClient(url, skey);
   const { data } = await db.from("kv_store").select("data").eq("key", `tryon:${mall}`).maybeSingle();
-  const map = (data?.data ?? {}) as Record<string, string[]>;
-  const images = Array.isArray(map[productNo]) ? map[productNo].filter((u) => typeof u === "string" && u) : [];
-  return Response.json({ ok: true, product_no: productNo, images }, { status: 200, headers: CORS });
+  const map = (data?.data ?? {}) as Record<string, unknown>;
+  const entry = map[productNo];
+  // 객체형 {case, images} 또는 (레거시) 이미지 배열 모두 지원
+  let caseMm = 0; let images: string[] = [];
+  if (Array.isArray(entry)) {
+    images = entry.filter((u): u is string => typeof u === "string" && !!u);
+  } else if (entry && typeof entry === "object") {
+    const e = entry as { case?: number; images?: string[] };
+    caseMm = Number(e.case) || 0;
+    images = Array.isArray(e.images) ? e.images.filter((u): u is string => typeof u === "string" && !!u) : [];
+  }
+  return Response.json({ ok: true, product_no: productNo, case: caseMm, images }, { status: 200, headers: CORS });
 }
