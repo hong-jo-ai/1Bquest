@@ -1,9 +1,12 @@
 import {
+  fetchArticleComments,
   fetchBoardArticles,
   fetchBoards,
   fetchProduct,
+  getMallOperatorId,
   type Cafe24Article,
   type Cafe24Board,
+  type Cafe24Comment,
   type Cafe24Product,
   type MallId,
 } from "../cafe24Client";
@@ -66,15 +69,35 @@ function hasAdminReply(article: Cafe24Article): boolean {
   return article.reply === "T";
 }
 
-function articlePreview(article: Cafe24Article): string {
-  if (!article.content) return "";
-  // HTML 태그 제거
-  return article.content
+function stripHtml(html?: string | null): string {
+  if (!html) return "";
+  return html
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function articlePreview(article: Cafe24Article): string {
+  return stripHtml(article.content);
+}
+
+/**
+ * 댓글 작성자가 고객인지 운영자인지 판별.
+ * - 운영자: member_id가 몰 운영자 계정(operatorId)과 같거나, 작성자명이 "관리자"
+ * - 고객: 원글 작성자와 member_id 또는 이름이 일치
+ * 애매하면 운영자(out)로 두지 않고, 원글 작성자와 같을 때만 고객(in) → 고객 메시지 누락 방지 위해
+ *   "명확히 운영자가 아니면서 원글 작성자와 일치"를 고객으로 본다.
+ */
+function commentIsCustomer(c: Cafe24Comment, article: Cafe24Article, operatorId: string): boolean {
+  if (c.member_id && operatorId && c.member_id === operatorId) return false; // 운영자 계정
+  if ((c.writer ?? "").trim() === "관리자") return false;
+  if (article.member_id && c.member_id && c.member_id === article.member_id) return true;
+  if (article.writer && c.writer && c.writer === article.writer) return true;
+  // member_id 없는 댓글(운영자 패널 작성)인데 이름도 원글 작성자와 다르면 운영자측
+  if (!c.member_id && c.writer !== article.writer) return false;
+  return false;
 }
 
 export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
@@ -132,6 +155,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
   let skipped = 0;
   const boardNames = csBoards.map((b) => b.board_name);
   const productCache: ProductCache = new Map();
+  const operatorId = getMallOperatorId(mall); // 운영자 댓글 판별용 (예: icaruse2000)
 
   for (const board of csBoards) {
     let articles: Cafe24Article[] = [];
@@ -224,6 +248,35 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
         const r2 = await ingestMessage(outPayload);
         if (r2.inserted) inserted++;
         else skipped++;
+      }
+
+      // 2-b) 댓글(운영자 답변·고객 재답글) — 실제 대화. 같은 스레드에 시간순으로 적재.
+      try {
+        const comments = await fetchArticleComments(accessToken, board.board_no, article.article_no, mall);
+        for (const c of comments) {
+          const fromCustomer = commentIsCustomer(c, article, operatorId);
+          const cBody = stripHtml(c.content).slice(0, 1000);
+          const cPayload: IngestPayload = {
+            brand: mall,
+            channel: "cafe24_board",
+            externalThreadId: threadId,
+            externalMessageId: `${threadId}_comment_${c.comment_no}`,
+            customerHandle: article.writer_email ?? article.member_id ?? undefined,
+            customerName: writerName,
+            subject: `${subjectPrefix} ${article.title}`,
+            bodyText: cBody || "(내용 없음)",
+            sentAt: new Date(c.created_date),
+            direction: fromCustomer ? "in" : "out",
+            raw: { comment: c, comment_writer: c.writer, board_no: board.board_no },
+          };
+          const rc = await ingestMessage(cPayload);
+          if (rc.inserted) inserted++;
+          else skipped++;
+        }
+      } catch (e) {
+        errors.push(
+          `[${board.board_name}#${article.article_no}] 댓글 조회 실패: ${e instanceof Error ? e.message : String(e)}`
+        );
       }
 
       // 답장으로 지워진 고객 정보 보충 (dup 메시지여도 스레드 갱신)

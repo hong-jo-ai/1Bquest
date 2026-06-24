@@ -234,6 +234,26 @@ export interface Cafe24Article {
   product_no?: number | null;
 }
 
+/** 게시판 글의 댓글 — CS 게시판에서 운영자↔고객 대화가 댓글로 이뤄짐. */
+export interface Cafe24Comment {
+  comment_no: number;
+  board_no: number;
+  article_no: number;
+  content?: string;
+  writer?: string;
+  member_id?: string | null;
+  created_date: string;
+  parent_comment_no?: number | null;
+  input_channel?: string | null;
+  secret?: "T" | "F";
+  attach_file_urls?: string[] | null;
+}
+
+/** 몰의 운영자(관리자) 계정 id — 게시판 댓글이 운영자 작성인지 판별에 사용(예: icaruse2000). */
+export function getMallOperatorId(mall: MallId = DEFAULT_MALL): string {
+  return cfg(mall).mallId;
+}
+
 export interface Cafe24Product {
   product_no:    number;
   product_name?: string;
@@ -298,6 +318,26 @@ export async function fetchBoardArticles(
     mall
   )) as { articles?: Cafe24Article[] };
   return json.articles ?? [];
+}
+
+/** 게시판 글의 댓글 목록 — CS 대화(운영자 답변·고객 재답글)가 여기에 쌓인다. */
+export async function fetchArticleComments(
+  accessToken: string,
+  boardNo: number,
+  articleNo: number,
+  mall: MallId = DEFAULT_MALL,
+): Promise<Cafe24Comment[]> {
+  try {
+    const json = (await cafe24Get(
+      `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/comments?limit=100`,
+      accessToken,
+      mall,
+    )) as { comments?: Cafe24Comment[] };
+    // 오래된 → 최신 순 정렬(comment_no 오름차순)
+    return (json.comments ?? []).slice().sort((a, b) => a.comment_no - b.comment_no);
+  } catch {
+    return [];
+  }
 }
 
 export async function cafe24Put(path: string, accessToken: string, body: unknown, mall: MallId = DEFAULT_MALL) {
