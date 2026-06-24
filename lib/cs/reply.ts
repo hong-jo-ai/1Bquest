@@ -429,12 +429,18 @@ async function sendCafe24BoardReply(
     );
   }
 
+  // 생성된 댓글 comment_no — ingest(syncCafe24Boards)와 동일한 메시지 id 로 기록해 재적재 시 중복 방지.
+  const created = result as { comment?: { comment_no?: number }; comments?: Array<{ comment_no?: number }> };
+  const newCommentNo = created?.comment?.comment_no ?? created?.comments?.[0]?.comment_no;
+
   // 답변을 cs_messages에 out 메시지로 기록
   await ingestMessage({
     brand: "paulvice",
     channel: "cafe24_board",
     externalThreadId: thread.external_thread_id,
-    externalMessageId: `cafe24_${boardNo}_${articleNo}_reply_${Date.now()}`,
+    externalMessageId: newCommentNo
+      ? `${thread.external_thread_id}_comment_${newCommentNo}`
+      : `cafe24_${boardNo}_${articleNo}_reply_${Date.now()}`,
     bodyText: body,
     sentAt: new Date(),
     direction: "out",
