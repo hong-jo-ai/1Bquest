@@ -16,8 +16,8 @@
     { circ: 16.5, label: "16cm 이상",  sub: "비교적 굵은 손목" }
   ];
   var DEFAULT_I = 1, REF = 15;
-  // 손목 사진상 시계 위치(%) · 기준 케이스 가로(컨테이너 너비 %). 시각 보정값.
-  var WRIST_X = 50, WRIST_Y = 31, BASE_CASE_W = 15, STRAP_W = 24;
+  // 손목 사진 측정값: 손목(가장 잘록) 중심·폭(컨테이너 %). 실제 손목폭 ≈53mm 가정.
+  var WRIST_X = 51, WRIST_Y = 45, WRIST_W = 21, WRIST_MM = 53;
 
   function css(){
     if(document.getElementById("pv-tryon-css"))return;
@@ -29,10 +29,10 @@
       ".pv-tryon .hd .t{font-size:12px;letter-spacing:.18em;font-weight:700}",
       ".pv-tryon .hd .c{font-size:12px;color:"+SUB+"}.pv-tryon .hd .c b{color:"+INK+"}",
       ".pv-tryon .stage{background:"+IVORY+";display:flex;justify-content:center;padding:4px 0}",
-      ".pv-wrist{position:relative;width:100%;max-width:280px}",
-      ".pv-wrist img.base{width:100%;display:block}",
-      ".pv-strap{position:absolute;transform:translate(-50%,-50%);background:#46413a;border-radius:3px;height:15px;opacity:.95;z-index:1}",
-      ".pv-case{position:absolute;transform:translate(-50%,-50%);aspect-ratio:22/32;border:2.5px solid #2b2620;border-radius:50%;background:rgba(245,242,237,.92);box-shadow:0 1px 4px rgba(0,0,0,.18);z-index:2;display:flex;align-items:center;justify-content:center}",
+      ".pv-wrist{position:relative;width:100%;max-width:280px;overflow:hidden}",
+      ".pv-wrist img.base{width:100%;display:block;transition:transform .25s ease}",
+      ".pv-strap{position:absolute;transform:translate(-50%,-50%);background:#46413a;border-radius:3px;height:14px;opacity:.95;z-index:1;transition:width .25s ease}",
+      ".pv-case{position:absolute;transform:translate(-50%,-50%);border:2.5px solid #2b2620;border-radius:50%;background:rgba(245,242,237,.9);box-shadow:0 1px 4px rgba(0,0,0,.18);z-index:2;display:flex;align-items:center;justify-content:center}",
       ".pv-case::after{content:'';width:62%;height:62%;border:1px solid #cfc7ba;border-radius:50%}",
       ".pv-tryon .lbl{text-align:center;font-size:12px;color:"+SUB+";padding:8px 16px 2px}.pv-tryon .lbl b{color:"+INK+"}",
       ".pv-tryon .sizes{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;padding:10px 16px 6px}",
@@ -46,17 +46,18 @@
   function render(host, cw, ch){
     css();
     var sel = DEFAULT_I;
-    var ratio = ch/cw;
+    // 90도 회전: 화면 가로=긴축(ch=32), 세로=짧은축(cw=22). 시계는 고정 크기.
+    var caseWpct = (ch/WRIST_MM)*WRIST_W;        // 손목폭 대비 실제 비율(고정)
     function draw(){
       var s=SIZES[sel];
-      var caseW = BASE_CASE_W * (REF/s.circ);   // 둘레 작을수록 시계 상대적으로 커짐
+      var f = s.circ/REF;                         // 손목 두께 배율(평균=1). 사진만 가로 스케일.
       host.className="pv-tryon";
       host.innerHTML=
         '<div class="hd"><span class="t">TRY IT ON</span><span class="c">케이스 <b>'+cw+' × '+ch+'mm</b></span></div>'+
         '<div class="stage"><div class="pv-wrist">'+
-          '<img class="base" src="'+WRIST+'" alt="손목 사이즈 가이드">'+
-          '<div class="pv-strap" style="left:'+WRIST_X+'%;top:'+WRIST_Y+'%;width:'+STRAP_W+'%"></div>'+
-          '<div class="pv-case" style="left:'+WRIST_X+'%;top:'+WRIST_Y+'%;width:'+caseW.toFixed(1)+'%"></div>'+
+          '<img class="base" style="transform:scaleX('+f.toFixed(3)+');transform-origin:'+WRIST_X+'% '+WRIST_Y+'%" src="'+WRIST+'" alt="손목 사이즈 가이드">'+
+          '<div class="pv-strap" style="left:'+WRIST_X+'%;top:'+WRIST_Y+'%;width:'+(WRIST_W*f).toFixed(1)+'%"></div>'+
+          '<div class="pv-case" style="left:'+WRIST_X+'%;top:'+WRIST_Y+'%;width:'+caseWpct.toFixed(1)+'%;aspect-ratio:'+ch+'/'+cw+'"></div>'+
         '</div></div>'+
         '<div class="lbl">내 손목 둘레: <b>'+s.label+'</b> · '+s.sub+'</div>'+
         '<div class="sizes">'+SIZES.map(function(x,i){return '<button data-i="'+i+'" class="'+(i===sel?"on":"")+'">'+x.label+'</button>';}).join("")+'</div>'+
