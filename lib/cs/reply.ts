@@ -9,7 +9,7 @@ import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listRedditAccounts, postRedditReply } from "./reddit";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
 import { notifyWebchatReplyBySms } from "./webchat";
-import { cafe24Post, cafe24Put } from "../cafe24Client";
+import { cafe24Post, cafe24Put, type MallId } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import { addReplyExample } from "./replyExamples";
 import { enqueueCsAction, waitCsAction } from "./actionQueue";
@@ -367,17 +367,19 @@ async function sendCafe24BoardReply(
   if (!data) return { ok: false, error: "thread not found" };
   const { thread } = data;
 
-  // external_thread_id: "cafe24_{board_no}_{article_no}"
-  const match = thread.external_thread_id.match(/^cafe24_(\d+)_(\d+)$/);
+  // external_thread_id: "cafe24_{board}_{article}"(폴바이스) / "harriot_cafe24_{board}_{article}"(해리엇).
+  // 몰은 thread.brand 로 판별(하드코딩 금지 — 해리엇 게시판 답장이 폴바이스 몰로 가는 버그 방지).
+  const mall: MallId = thread.brand === "harriot" ? "harriot" : "paulvice";
+  const match = thread.external_thread_id.match(/cafe24_(\d+)_(\d+)$/);
   if (!match) {
     return { ok: false, error: "cafe24 thread id 형식 오류" };
   }
   const boardNo = Number(match[1]);
   const articleNo = Number(match[2]);
 
-  const accessToken = await getCafe24AccessToken();
+  const accessToken = await getCafe24AccessToken(mall);
   if (!accessToken) {
-    return { ok: false, error: "Cafe24 토큰 없음 — 재인증 필요" };
+    return { ok: false, error: `Cafe24 토큰 없음(${mall}) — 재인증 필요` };
   }
 
   // 카페24 admin 코멘트 엔드포인트 — 검증된 방법.
@@ -399,7 +401,8 @@ async function sendCafe24BoardReply(
     result = await cafe24Post(
       `/api/v2/admin/boards/${boardNo}/articles/${articleNo}/comments`,
       accessToken,
-      payload
+      payload,
+      mall
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -420,7 +423,8 @@ async function sendCafe24BoardReply(
         request: {
           reply_status: "C",
         },
-      }
+      },
+      mall
     );
   } catch (e) {
     console.warn(
@@ -435,7 +439,7 @@ async function sendCafe24BoardReply(
 
   // 답변을 cs_messages에 out 메시지로 기록
   await ingestMessage({
-    brand: "paulvice",
+    brand: mall,
     channel: "cafe24_board",
     externalThreadId: thread.external_thread_id,
     externalMessageId: newCommentNo
