@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import BackToHubButton from "@/components/BackToHubButton";
 import ReviewCampaignPanel from "@/components/ReviewCampaignPanel";
+import ReviewSmsKrPanel from "@/components/ReviewSmsKrPanel";
 
 interface MediaItem { type: "image" | "video"; url: string }
 interface Review {
@@ -78,7 +79,10 @@ export default function ReviewsAdmin() {
         <button onClick={exportCsv} className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50">CSV 내보내기</button>
       </div>
 
-      <ReviewCampaignPanel mall={mall} />
+      {/* 국내(KR)는 문자+적립금, 그 외(글로벌)는 이메일 캠페인 */}
+      {mall === "harriot_kr" || mall === "paulvice_kr"
+        ? <ReviewSmsKrPanel mall={mall} />
+        : <ReviewCampaignPanel mall={mall} />}
 
       {/* 통계 */}
       <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-4">

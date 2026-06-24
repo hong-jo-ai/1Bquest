@@ -81,6 +81,7 @@ export interface ReviewToken {
   orderRef?: string;
   name?: string;
   email?: string;
+  phone?: string; // 국내 SMS 리뷰의 적립금 회원매칭 키(카페24는 cellphone으로 회원 조회)
   exp: number; // epoch sec
 }
 

@@ -117,6 +117,10 @@
       "schedule": "59 14 * * *"
     },
     {
+      "path": "/api/cron/review-sms-kr",
+      "schedule": "0 2 * * *"
+    },
+    {
       "path": "/api/alba/ask",
       "schedule": "0 4 * * 1,2,3,4,5"
     },

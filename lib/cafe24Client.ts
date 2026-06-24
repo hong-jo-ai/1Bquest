@@ -70,6 +70,11 @@ const SCOPES = [
   "mall.write_community",
   "mall.read_application",
   "mall.write_application",
+  // 리뷰 보상(적립금) 자동지급 + 회원 매칭
+  "mall.read_customer",
+  "mall.write_customer",
+  "mall.read_mileage",
+  "mall.write_mileage",
 ].join(" ");
 
 /**

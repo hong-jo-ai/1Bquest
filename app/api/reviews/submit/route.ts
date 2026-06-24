@@ -48,8 +48,9 @@ export async function POST(req: NextRequest) {
   const row = {
     mall: mall.id, cafe24_shop_no: mall.shopNo, product_no: tok.productNo, product_name: tok.productName,
     order_ref: tok.orderRef || null, customer_name: writer, customer_email: tok.email || null,
+    customer_phone: tok.phone || null,
     rating, content, media, media_type: mediaType, reward_points: rewardFor(mall, mediaType),
-    status: "published", source: "review_app", ip,
+    status: "published", reward_status: "pending", source: "review_app", ip,
   };
   const { data: inserted, error } = await sb.from("reviews").insert(row).select("id").single();
   if (error) return Response.json({ error: "save failed: " + error.message }, { status: 500 });
