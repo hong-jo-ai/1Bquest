@@ -17,7 +17,7 @@
   ];
   var DEFAULT_I = 1, REF = 15;
   // 손목 사진상 시계 위치(%) · 기준 케이스 가로(컨테이너 너비 %). 시각 보정값.
-  var WRIST_X = 50, WRIST_Y = 38, BASE_CASE_W = 15, STRAP_W = 30;
+  var WRIST_X = 50, WRIST_Y = 31, BASE_CASE_W = 15, STRAP_W = 24;
 
   function css(){
     if(document.getElementById("pv-tryon-css"))return;
