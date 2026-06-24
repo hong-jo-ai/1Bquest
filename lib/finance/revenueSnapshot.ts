@@ -37,10 +37,12 @@ interface SnapshotResult {
 
 /**
  * 모든 채널 dailyRevenue → brand 별 entries 로 변환 후 upsert.
- * @param cafe24Token  cafe24 access token (paulvice 만 해당, 없으면 cafe24 부분 skip)
+ * @param cafe24Token   폴바이스 cafe24 access token (없으면 폴바이스 cafe24 라이브 skip)
+ * @param harriotToken  해리엇 cafe24 access token (없으면 해리엇 cafe24 라이브 skip) — 국내몰 식스샵→카페24 이전
  */
 export async function runRevenueSnapshot(
   cafe24Token: string | null,
+  harriotToken: string | null = null,
 ): Promise<SnapshotResult> {
   // brand → channel → date → revenue
   const buf: Record<Brand, Map<string, Map<string, number>>> = {
@@ -64,9 +66,10 @@ export async function runRevenueSnapshot(
       const record = await loadCafe24Historical(brand);
       if (record.uploads.length === 0) continue;
       const merged = mergeCafe24HistoricalDaily(record);
+      const cafe24Channel = brand === "harriot" ? "cafe24_harriot" : "cafe24";
       for (const d of merged) {
         if (!d.date || !Number.isFinite(d.revenue)) continue;
-        addEntry(brand, "cafe24", d.date, Math.round(d.revenue));
+        addEntry(brand, cafe24Channel, d.date, Math.round(d.revenue));
       }
     } catch (e) {
       console.error(
@@ -76,7 +79,7 @@ export async function runRevenueSnapshot(
     }
   }
 
-  // ── 1b. 카페24 라이브 API (paulvice 만, 토큰 필요) ──────────────────
+  // ── 1b. 카페24 라이브 API (토큰 필요) ──────────────────────────────
   if (cafe24Token) {
     try {
       const data = await getDashboardData(cafe24Token);
@@ -85,7 +88,19 @@ export async function runRevenueSnapshot(
         addEntry("paulvice", "cafe24", d.date, Math.round(d.revenue));
       }
     } catch (e) {
-      console.error("[revenueSnapshot] cafe24 fetch 실패:", (e as Error).message);
+      console.error("[revenueSnapshot] cafe24 fetch 실패(paulvice):", (e as Error).message);
+    }
+  }
+  // 해리엇 카페24 라이브 (국내몰 식스샵→카페24 이전) — harriot 브랜드 cafe24_harriot 채널로.
+  if (harriotToken) {
+    try {
+      const data = await getDashboardData(harriotToken, "harriot");
+      for (const d of data.dailyRevenue ?? [] as DailyData[]) {
+        if (!d.date || !Number.isFinite(d.revenue)) continue;
+        addEntry("harriot", "cafe24_harriot", d.date, Math.round(d.revenue));
+      }
+    } catch (e) {
+      console.error("[revenueSnapshot] cafe24 fetch 실패(harriot):", (e as Error).message);
     }
   }
 

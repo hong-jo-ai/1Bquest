@@ -18,10 +18,14 @@ export async function GET(request: NextRequest) {
   try {
     const token = await getAccessTokenFromStore();
     if (!token) {
-      console.warn("[Cron:revenue-snapshot] cafe24 토큰 없음 — paulvice cafe24 부분 skip");
+      console.warn("[Cron:revenue-snapshot] cafe24 토큰 없음(paulvice) — paulvice cafe24 부분 skip");
+    }
+    const harriotToken = await getAccessTokenFromStore("harriot");
+    if (!harriotToken) {
+      console.warn("[Cron:revenue-snapshot] cafe24 토큰 없음(harriot) — harriot cafe24 부분 skip");
     }
 
-    const result = await runRevenueSnapshot(token ?? null);
+    const result = await runRevenueSnapshot(token ?? null, harriotToken ?? null);
     console.log(
       `[Cron:revenue-snapshot] paulvice=${result.paulvice.days}일/` +
         `${result.paulvice.channels.join(",")} · ` +
