@@ -38,11 +38,11 @@
       // 포토 스트립
       ".pv-rv-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 0 16px;-webkit-overflow-scrolling:touch}",
       ".pv-rv-strip::-webkit-scrollbar{height:0}",
-      ".pv-rv-strip img{width:72px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto;cursor:pointer;border:1px solid "+LINE+"}",
+      ".pv-rv-strip img{width:72px!important;height:72px!important;max-width:72px!important;object-fit:cover;border-radius:8px;flex:0 0 auto;cursor:pointer;border:1px solid "+LINE+";margin:0!important;padding:0!important;display:block!important}",
       ".pv-rv-strip .more{flex:0 0 auto;width:72px;height:72px;border-radius:8px;border:1px solid "+LINE+";display:flex;align-items:center;justify-content:center;font-size:12px;color:"+SUB+";background:"+IVORY+";cursor:pointer}",
       // 상단 그리드
       ".pv-rv-topgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 8px}",
-      ".pv-rv-topgrid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer}",
+      ".pv-rv-topgrid img{width:100%!important;max-width:100%!important;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;margin:0!important;display:block!important}",
       // 필터
       ".pv-rv-filter{display:flex;gap:8px;margin:4px 0 2px;padding-bottom:4px}",
       ".pv-rv-filter button{font:inherit;font-size:12px;padding:7px 14px;border:1px solid "+LINE+";background:#fff;border-radius:999px;color:"+SUB+";cursor:pointer;transition:.15s}",
@@ -56,7 +56,7 @@
       ".pv-rv-card .body{font-size:14px;line-height:1.75;white-space:pre-line;word-break:break-word;color:#33302b}",
       ".pv-rv-card .rm{display:inline;margin-left:4px;font-size:13px;color:"+SUB+";text-decoration:underline;cursor:pointer}",
       ".pv-rv-card .ph{display:flex;gap:7px;margin:11px 0 0;flex-wrap:wrap}",
-      ".pv-rv-card .ph img{width:84px;height:84px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid "+LINE+"}",
+      ".pv-rv-card .ph img{width:84px!important;height:84px!important;max-width:84px!important;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid "+LINE+";margin:0!important;display:block!important}",
       ".pv-rv-more{display:block;width:100%;margin:22px 0 4px;padding:14px;font:inherit;font-size:13px;letter-spacing:.06em;background:#fff;border:1px solid "+INK+";color:"+INK+";border-radius:2px;cursor:pointer}",
       ".pv-rv-empty{padding:30px 0;text-align:center;color:"+SUB+";font-size:13px}",
       ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.93);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out}",
