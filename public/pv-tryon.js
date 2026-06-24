@@ -105,7 +105,7 @@
   function init(){
     var host=document.getElementById("pv-tryon-btn");if(!host)return;
     var pno=getProductNo(host);if(!pno)return;
-    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL,{credentials:"omit"})
+    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&v=2",{credentials:"omit"})
       .then(function(r){return r.json();})
       .then(function(j){
         if(!j||!j.ok)return;
