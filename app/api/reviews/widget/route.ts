@@ -9,8 +9,69 @@
 import { type NextRequest } from "next/server";
 import { cafe24Get, type MallId } from "@/lib/cafe24Client";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
+import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
+
+interface AiSummary { summary: string; keywords: string[] }
+
+/** 실제 후기를 claude-haiku로 요약 + 키워드. kv 캐시(후기수 동일하면 재사용). */
+async function getAiSummary(
+  mall: MallId,
+  productNo: number,
+  reviews: Array<{ rating: number; content: string }>,
+  count: number,
+): Promise<AiSummary | null> {
+  const texts = reviews.map((r) => (r.content || "").trim()).filter((t) => t.length >= 4);
+  if (texts.length < 3) return null; // 후기 너무 적으면 요약 생략
+  const sbUrl = process.env.SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const sb = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
+  const cacheKey = `review_ai_summary:${mall}:${productNo}`;
+
+  if (sb) {
+    const { data } = await sb.from("kv_store").select("data").eq("key", cacheKey).maybeSingle();
+    const c = data?.data as (AiSummary & { count?: number }) | undefined;
+    if (c && c.count === count && c.summary) return { summary: c.summary, keywords: c.keywords || [] };
+  }
+  if (!apiKey) return null;
+
+  try {
+    const sample = texts.slice(0, 60).map((t, i) => `${i + 1}. ${t.slice(0, 220)}`).join("\n");
+    const client = new Anthropic({ apiKey });
+    const res = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 500,
+      system:
+        "너는 쇼핑몰 상품후기 요약가다. 실제 후기에 근거해서만 작성하고, 없는 내용은 절대 지어내지 마라. 광고 문구 톤이 아니라 담백하고 신뢰감 있게. 한국어로만.",
+      messages: [
+        {
+          role: "user",
+          content:
+            `아래는 한 여성 패션시계 상품의 실제 고객 후기다. 구매를 고민하는 고객에게 도움이 되도록 요약하라.\n` +
+            `반드시 이 JSON 형식으로만 응답:\n{"summary":"후기 전반을 2~3문장으로 요약(디자인/사이즈/착용감/만족도 위주, 과장 금지)","keywords":["고객들이 자주 언급한 장점 키워드 3~5개(짧게)"]}\n\n후기:\n${sample}`,
+        },
+      ],
+    });
+    const raw = (res.content[0] as { text: string }).text.trim();
+    const parsed = JSON.parse(raw.startsWith("{") ? raw : raw.replace(/^```json\n?/, "").replace(/\n?```$/, "")) as AiSummary;
+    const out: AiSummary = {
+      summary: String(parsed.summary || "").trim(),
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5).map((k) => String(k).trim()).filter(Boolean) : [],
+    };
+    if (!out.summary) return null;
+    if (sb) {
+      await sb.from("kv_store").upsert(
+        { key: cacheKey, data: { ...out, count }, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -127,11 +188,15 @@ export async function GET(req: NextRequest) {
     const dist: Record<string, number> = { "5": 0, "4": 0, "3": 0, "2": 0, "1": 0 };
     rated.forEach((r) => { const k = String(Math.min(5, Math.max(1, Math.round(r.rating)))); dist[k] = (dist[k] || 0) + 1; });
 
+    let aiSummary: AiSummary | null = null;
+    try { aiSummary = await getAiSummary(mall, productNo, reviews, count); } catch { /* 요약 실패해도 위젯은 정상 */ }
+
     return Response.json(
       {
         ok: true,
         product_no: productNo,
         summary: { count, avg: Math.round(avg * 10) / 10, photoCount, distribution: dist },
+        aiSummary,
         reviews,
       },
       { status: 200, headers: CORS },

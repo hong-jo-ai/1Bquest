@@ -22,6 +22,13 @@
       ".pv-rv *{box-sizing:border-box}",
       // 상단 타이틀
       ".pv-rv-ttl{font-size:13px;letter-spacing:.22em;font-weight:700;color:"+INK+";text-align:center;padding:8px 0 18px;border-top:1px solid "+INK+";margin-top:6px}",
+      // AI 요약 박스
+      ".pv-rv-ai{background:linear-gradient(180deg,#fbf9f5,#fff);border:1px solid "+LINE+";border-radius:8px;padding:16px 18px;margin:0 0 16px}",
+      ".pv-rv-ai .h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:"+INK+";margin:0 0 9px}",
+      ".pv-rv-ai .aibadge{font-size:10px;font-weight:800;letter-spacing:.06em;color:#fff;background:"+GOLD+";border-radius:4px;padding:2px 6px}",
+      ".pv-rv-ai .tx{font-size:13.5px;line-height:1.72;color:#33302b}",
+      ".pv-rv-ai .kw{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}",
+      ".pv-rv-ai .kw span{font-size:11.5px;color:"+INK+";background:"+IVORY+";border:1px solid "+LINE+";border-radius:999px;padding:4px 11px}",
       // 요약 블록
       ".pv-rv-sum{display:flex;gap:22px;align-items:center;background:"+IVORY+";border:1px solid "+LINE+";border-radius:4px;padding:22px 24px;margin:0 0 16px}",
       ".pv-rv-big{flex:0 0 auto;text-align:center;min-width:104px;border-right:1px solid "+LINE+";padding-right:22px}",
@@ -40,9 +47,19 @@
       ".pv-rv-strip::-webkit-scrollbar{height:0}",
       ".pv-rv-strip img{width:72px!important;height:72px!important;max-width:72px!important;object-fit:cover;border-radius:8px;flex:0 0 auto;cursor:pointer;border:1px solid "+LINE+";margin:0!important;padding:0!important;display:block!important}",
       ".pv-rv-strip .more{flex:0 0 auto;width:72px;height:72px;border-radius:8px;border:1px solid "+LINE+";display:flex;align-items:center;justify-content:center;font-size:12px;color:"+SUB+";background:"+IVORY+";cursor:pointer}",
-      // 상단 그리드
+      // 상단 요약 + 그리드 (리뷰에이드 스타일)
+      ".pv-rv-top{border-top:1px solid "+INK+";padding:15px 0 6px;margin-top:6px}",
+      ".pv-rv-tophead{display:flex;align-items:center;justify-content:space-between;margin:0 0 13px}",
+      ".pv-rv-tl{display:flex;align-items:center;gap:7px}",
+      ".pv-rv-tl .sc{font-size:21px;font-weight:800;letter-spacing:-.02em}",
+      ".pv-rv-tl .ct{font-size:12px;color:"+SUB+";margin-left:3px}",
+      ".pv-rv-all{font-size:12px;color:"+SUB+";cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:2px}",
+      ".pv-rv-toptitle{font-size:13.5px;font-weight:600;color:"+INK+";margin:0 0 10px}",
       ".pv-rv-topgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 8px}",
+      ".pv-rv-cell{position:relative;line-height:0}",
       ".pv-rv-topgrid img{width:100%!important;max-width:100%!important;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;margin:0!important;display:block!important}",
+      ".pv-rv-badge{position:absolute;left:5px;bottom:5px;background:rgba(20,18,15,.62);color:#fff;font-size:10px;font-weight:600;border-radius:4px;padding:1px 6px;letter-spacing:.02em;line-height:1.5}",
+      ".pv-rv-badge b{color:"+GOLD+";font-weight:700}",
       // 필터
       ".pv-rv-filter{display:flex;gap:8px;margin:4px 0 2px;padding-bottom:4px}",
       ".pv-rv-filter button{font:inherit;font-size:12px;padding:7px 14px;border:1px solid "+LINE+";background:#fff;border-radius:999px;color:"+SUB+";cursor:pointer;transition:.15s}",
@@ -77,9 +94,15 @@
     bindImgs(el);
   }
   function renderTop(el,data){
-    var ph=allPhotos(data);if(!ph.length){el.style.display="none";return;}
-    el.className="pv-rv";
-    el.innerHTML='<div class="pv-rv-topgrid">'+ph.slice(0,8).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>';
+    var s=data.summary||{};
+    var photos=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){photos.push({u:u,rating:r.rating});});});
+    if(!photos.length){el.style.display="none";return;}
+    el.className="pv-rv pv-rv-top";
+    var head='<div class="pv-rv-tophead"><div class="pv-rv-tl"><span class="sc">'+(s.avg||0).toFixed(1)+'</span>'+stars(s.avg,14)+'<span class="ct">리뷰 '+(s.count||0)+'개'+(s.photoCount?' · 포토 '+s.photoCount:'')+'</span></div><span class="pv-rv-all" data-gotolist="1">전체보기 ›</span></div>';
+    var title='<div class="pv-rv-toptitle">고객 포토 후기</div>';
+    var grid='<div class="pv-rv-topgrid">'+photos.slice(0,8).map(function(p){return '<div class="pv-rv-cell"><img src="'+esc(p.u)+'" data-full="'+esc(p.u)+'" loading="lazy"><span class="pv-rv-badge"><b>★</b> '+p.rating+'</span></div>';}).join("")+'</div>';
+    el.innerHTML=head+title+grid;
+    var go=el.querySelector('[data-gotolist]');if(go)go.addEventListener("click",function(){var t=document.getElementById("pv-review-list");if(t)t.scrollIntoView({behavior:"smooth",block:"start"});});
     bindImgs(el);
   }
 
@@ -111,7 +134,9 @@
     }
     function draw(){
       var list=state.photoOnly?data.reviews.filter(function(r){return r.photos.length;}):data.reviews;
-      var html='<div class="pv-rv-ttl">REAL REVIEW</div>'+summary()+strip()+
+      var ai=data.aiSummary;
+      var aiBox=(ai&&ai.summary)?'<div class="pv-rv-ai"><div class="h"><span class="aibadge">AI</span> 리뷰 요약</div><div class="tx">'+esc(ai.summary)+'</div>'+((ai.keywords&&ai.keywords.length)?'<div class="kw">'+ai.keywords.map(function(k){return '<span># '+esc(k)+'</span>';}).join("")+'</div>':'')+'</div>':'';
+      var html='<div class="pv-rv-ttl">REAL REVIEW</div>'+aiBox+summary()+strip()+
         '<div class="pv-rv-filter"><button data-f="all" class="'+(state.photoOnly?"":"on")+'">전체 '+total+'</button><button data-f="photo" class="'+(state.photoOnly?"on":"")+'">📷 포토 '+(s.photoCount||0)+'</button></div>'+
         (list.length?list.slice(0,state.shown).map(card).join(""):'<div class="pv-rv-empty">아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.</div>')+
         (list.length>state.shown?'<button class="pv-rv-more">후기 더보기 (+'+(list.length-state.shown)+')</button>':"");
