@@ -57,7 +57,9 @@ export function tokenKeyForMall(mall: MallId): string {
 }
 
 const API_VERSION = "2026-03-01";
-const SCOPES = [
+
+// 두 몰 공통 기본 스코프(원래 검증된 세트).
+const BASE_SCOPES = [
   "mall.read_order",
   "mall.write_order",
   "mall.write_shipping",
@@ -70,12 +72,22 @@ const SCOPES = [
   "mall.write_community",
   "mall.read_application",
   "mall.write_application",
-  // 리뷰 보상(적립금) 자동지급 + 회원 매칭
+];
+
+// 해리엇 전용 추가 스코프 — 리뷰 보상(적립금) 자동지급 + 회원 매칭.
+// ⚠️ mileage 는 앱별 승인제(개발자센터). 해리엇 앱만 승인받음 → 폴바이스에 넣으면 동의 단계가 깨짐.
+const HARRIOT_EXTRA_SCOPES = [
   "mall.read_customer",
   "mall.write_customer",
   "mall.read_mileage",
   "mall.write_mileage",
-].join(" ");
+];
+
+/** 몰별 OAuth 스코프 문자열. 폴바이스=기본, 해리엇=기본+적립금/회원. */
+function scopesFor(mall: MallId): string {
+  const list = mall === "harriot" ? [...BASE_SCOPES, ...HARRIOT_EXTRA_SCOPES] : BASE_SCOPES;
+  return list.join(" ");
+}
 
 /**
  * Cafe24 API fetch + 401 자동 재시도.
@@ -125,7 +137,7 @@ export function getAuthUrl(mall: MallId = DEFAULT_MALL): string {
     client_id: c.clientId,
     state: c.state,
     redirect_uri: c.redirectUri,
-    scope: SCOPES,
+    scope: scopesFor(mall),
   });
   return `${baseUrlFor(mall)}/api/v2/oauth/authorize?${params}`;
 }
