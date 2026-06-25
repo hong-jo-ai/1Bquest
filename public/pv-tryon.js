@@ -29,7 +29,7 @@
       ".pv-tryon .hd .t{font-size:12px;letter-spacing:.18em;font-weight:700}",
       ".pv-tryon .hd .c{font-size:12px;color:"+SUB+"}.pv-tryon .hd .c b{color:"+INK+"}",
       ".pv-tryon .stage{background:"+IVORY+";display:flex;justify-content:center;padding:4px 0}",
-      ".pv-wrist{position:relative;width:100%;max-width:280px;overflow:hidden}",
+      ".pv-wrist{position:relative;width:100%;max-width:280px;overflow:hidden;background:#d1d1d1}",
       ".pv-wrist img.base{width:100%;display:block;transition:transform .25s ease}",
       ".pv-strap{position:absolute;transform:translate(-50%,-50%);background:#46413a;border-radius:3px;height:14px;opacity:.95;z-index:1;transition:width .25s ease}",
       ".pv-case{position:absolute;transform:translate(-50%,-50%);border:2.5px solid #2b2620;border-radius:50%;background:rgba(245,242,237,.9);box-shadow:0 1px 4px rgba(0,0,0,.18);z-index:2;display:flex;align-items:center;justify-content:center}",
