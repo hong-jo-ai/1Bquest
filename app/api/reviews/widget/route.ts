@@ -127,12 +127,36 @@ function maskName(name?: string): string {
 }
 
 function normalizePhotos(a: Cafe24ReviewArticle): string[] {
+  const fix = (u: string) => (u.startsWith("//") ? "https:" + u : u);
+  // 1) 카페24 첨부파일
   const raw = a.attach_file_urls;
-  const arr = Array.isArray(raw) ? raw : [];
-  return arr
+  const fromAttach = (Array.isArray(raw) ? raw : [])
     .map((f) => (f && typeof f === "object" ? f.url : undefined))
     .filter((u): u is string => !!u)
-    .map((u) => (u.startsWith("//") ? "https:" + u : u));
+    .map(fix);
+  // 2) 본문 HTML <img> (앱수집·이관 리뷰는 이미지가 본문에 들어감)
+  const fromContent: string[] = [];
+  const re = /<img[^>]+src=["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(a.content || ""))) {
+    const u = fix(m[1]);
+    if (/^https?:/i.test(u) && !/icon|blank|spacer|emoticon/i.test(u)) fromContent.push(u);
+  }
+  return [...new Set([...fromAttach, ...fromContent])];
+}
+
+/** 상품이 속한 연결그룹의 모든 product_no (없으면 자기 자신만). */
+async function groupProductNos(mall: MallId, productNo: number): Promise<number[]> {
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return [productNo];
+  try {
+    const sb = createClient(url, key);
+    const { data: self } = await sb.from("review_link_groups").select("group_key").eq("mall", mall).eq("product_no", productNo).maybeSingle();
+    if (!self?.group_key) return [productNo];
+    const { data: members } = await sb.from("review_link_groups").select("product_no").eq("mall", mall).eq("group_key", self.group_key);
+    const nos = (members || []).map((r) => Number(r.product_no)).filter(Boolean);
+    return nos.length ? nos : [productNo];
+  } catch { return [productNo]; }
 }
 
 export async function GET(req: NextRequest) {
@@ -155,19 +179,23 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const json = (await cafe24Get(
-      `/api/v2/admin/boards/${boardNo}/articles?product_no=${productNo}&limit=${limit}&offset=0`,
-      token,
-      mall,
-    )) as { articles?: Cafe24ReviewArticle[] };
-
-    const articles = (json.articles ?? []).filter(
-      (a) =>
-        !a.parent_article_no &&            // 운영자 답글 제외 (원글만)
-        a.deleted !== "T" &&
-        a.display !== "F" &&
-        a.secret !== "T",
-    );
+    // 연결그룹: 색상만 다른 같은 컬렉션 등은 묶인 상품들의 리뷰를 함께 노출.
+    const productNos = await groupProductNos(mall, productNo);
+    const seen = new Set<number>();
+    const articles: Cafe24ReviewArticle[] = [];
+    for (const pno of productNos) {
+      const json = (await cafe24Get(
+        `/api/v2/admin/boards/${boardNo}/articles?product_no=${pno}&limit=${limit}&offset=0`,
+        token,
+        mall,
+      )) as { articles?: Cafe24ReviewArticle[] };
+      for (const a of json.articles ?? []) {
+        if (a.parent_article_no || a.deleted === "T" || a.display === "F" || a.secret === "T") continue;
+        if (seen.has(a.article_no)) continue;
+        seen.add(a.article_no);
+        articles.push(a);
+      }
+    }
 
     const reviews = articles
       .map((a) => ({
@@ -178,7 +206,8 @@ export async function GET(req: NextRequest) {
         date: (a.created_date || "").slice(0, 10),
         photos: normalizePhotos(a),
       }))
-      .filter((r) => r.content || r.photos.length); // 빈 리뷰 제외
+      .filter((r) => r.content || r.photos.length) // 빈 리뷰 제외
+      .sort((a, b) => (b.date || "").localeCompare(a.date || "")); // 최신순
 
     const count = reviews.length;
     const rated = reviews.filter((r) => r.rating > 0);
