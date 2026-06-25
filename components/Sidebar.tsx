@@ -98,11 +98,13 @@ const EXTERNAL_ITEMS: { href: string; label: string; icon: React.ElementType }[]
 
 interface SidebarProps {
   cafe24Connected?: boolean;
+  harriotConnected?: boolean;
   metaConnected?: boolean;
 }
 
 export default function Sidebar({
   cafe24Connected = false,
+  harriotConnected = false,
   metaConnected = false,
 }: SidebarProps = {}) {
   const pathname = usePathname();
@@ -235,35 +237,30 @@ export default function Sidebar({
       {/* 외부 서비스 연결 (모바일 전용) */}
       {isMobile && (
         <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
-          {/* 카페24 */}
+          {/* 카페24 — 폴바이스/해리엇 두 몰 각각 연결 */}
           <div className="space-y-1">
             <div className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
               <Store size={11} />
               카페24
-              {cafe24Connected && (
-                <span className="text-emerald-500 normal-case font-medium ml-auto">● 연결됨</span>
-              )}
             </div>
-            <a
-              href="/api/auth/login"
-              className={`w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm ${
-                cafe24Connected
-                  ? "font-medium bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 active:bg-sky-100"
-                  : "font-semibold bg-violet-600 text-white active:bg-violet-700"
-              }`}
-            >
-              <LogIn size={16} />
-              {cafe24Connected ? "재연결" : "연결하기"}
-            </a>
-            {cafe24Connected && (
+            {([
+              { mall: "paulvice", label: "폴바이스", connected: cafe24Connected, href: "/api/auth/login" },
+              { mall: "harriot", label: "해리엇", connected: harriotConnected, href: "/api/auth/login?mall=harriot" },
+            ] as const).map((m) => (
               <a
-                href="/api/auth/logout"
-                className="w-full flex items-center gap-2 px-3 h-10 rounded-lg text-xs text-zinc-500 dark:text-zinc-500 active:bg-zinc-100 dark:active:bg-zinc-800"
+                key={m.mall}
+                href={m.href}
+                className={`w-full flex items-center gap-2 px-3 h-11 rounded-lg text-sm ${
+                  m.connected
+                    ? "font-medium bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 active:bg-sky-100"
+                    : "font-semibold bg-violet-600 text-white active:bg-violet-700"
+                }`}
               >
-                <LogOut size={14} />
-                연결 해제
+                <LogIn size={16} />
+                <span className="flex-1 text-left">{m.label} {m.connected ? "재연결" : "연결하기"}</span>
+                {m.connected && <span className="text-emerald-500 text-xs font-medium">● 연결됨</span>}
               </a>
-            )}
+            ))}
           </div>
 
           {/* 메타 광고 */}

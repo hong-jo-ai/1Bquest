@@ -14,12 +14,13 @@ export default async function HubLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cafe24Connected = !!(await readRefreshTokenFromStore());
-  const metaConnected   = !!(await getMetaTokenServer());
+  const cafe24Connected  = !!(await readRefreshTokenFromStore());          // 폴바이스(기본)
+  const harriotConnected = !!(await readRefreshTokenFromStore("harriot"));  // 해리엇
+  const metaConnected    = !!(await getMetaTokenServer());
 
   return (
     <div className="min-h-screen flex">
-      <Sidebar cafe24Connected={cafe24Connected} metaConnected={metaConnected} />
+      <Sidebar cafe24Connected={cafe24Connected} harriotConnected={harriotConnected} metaConnected={metaConnected} />
       <div className="flex-1 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 pt-12 md:pt-0">
         {children}
       </div>
