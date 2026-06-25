@@ -172,7 +172,13 @@
     var els=[],pno=null;
     targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);var dm=e.getAttribute("data-mall");if(dm)MALL=dm;}});
     if(!els.length||!pno||!/^\d+$/.test(pno))return;
-    load(pno,function(data){els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});});
+    load(pno,function(data){
+      els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});
+      // 상세 탭의 리뷰 개수 뱃지 채우기(.pv-rv-count) — 그룹 합산 개수
+      var cnt=(data&&data.summary&&data.summary.count)||0;
+      var badges=document.querySelectorAll(".pv-rv-count");
+      for(var i=0;i<badges.length;i++) badges[i].textContent=cnt;
+    });
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
 })();
