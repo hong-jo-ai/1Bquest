@@ -71,10 +71,10 @@ export async function issueReward(args: {
   const memberId = await findMemberIdByPhone(mall.cafe24Mall, mall.shopNo, args.phone, at);
   if (!memberId) return { status: "skipped", note: "카페24 회원 아님(전화 미매칭)" };
 
-  // 2) 적립금 지급 — 카페24 공식 신규 API(앱스토어 공지): POST /api/v2/admin/mileage
-  //    스코프 mall.write_mileage 는 "특정 클라이언트만" → 개발자센터 문의·승인으로 획득.
-  //    엔드포인트는 env(REVIEW_MILEAGE_PATH)로 덮어쓰기 가능(/points 폴백 대비).
-  const path = process.env.REVIEW_MILEAGE_PATH || "/api/v2/admin/mileage";
+  // 2) 적립금 지급 — POST /api/v2/admin/points (검증완료 2026-06-25, 201).
+  //    스코프 mall.write_mileage 필요("특정 클라이언트만" → 개발자센터 승인). 공지의 /mileage URL은 404, /points가 실제 엔드포인트.
+  //    엔드포인트는 env(REVIEW_MILEAGE_PATH)로 덮어쓰기 가능.
+  const path = process.env.REVIEW_MILEAGE_PATH || "/api/v2/admin/points";
   const reason = `리뷰 작성 감사 적립${args.productName ? ` — ${args.productName}` : ""}`;
   try {
     const res = await cafe24Post(
