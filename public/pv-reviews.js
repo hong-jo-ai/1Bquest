@@ -8,7 +8,7 @@
 (function () {
   "use strict";
   var API = "https://paulvice-dashboard.vercel.app/api/reviews/widget";
-  var MALL = "paulvice";
+  var MALL = "paulvice"; // 컨테이너 data-mall 로 덮어씀(해리엇=harriot). 미지정 시 폴바이스.
   var GOLD = "#b3935f", INK = "#1c1a17", SUB = "#8c8278", LINE = "#e7e1d8", IVORY = "#faf8f5", TRACK = "#ebe6dd";
 
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -170,7 +170,7 @@
     injectCss();
     var targets=[["pv-review-photostrip",renderStrip],["pv-review-phototop",renderTop],["pv-review-list",renderList]];
     var els=[],pno=null;
-    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);}});
+    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);var dm=e.getAttribute("data-mall");if(dm)MALL=dm;}});
     if(!els.length||!pno||!/^\d+$/.test(pno))return;
     load(pno,function(data){els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});});
   }
