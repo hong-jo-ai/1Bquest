@@ -28,7 +28,7 @@ async function getAiSummary(
   const sbUrl = process.env.SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const sb = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
-  const cacheKey = `review_ai_summary:${mall}:${productNo}`;
+  const cacheKey = `review_ai_summary:v2:${mall}:${productNo}`;
 
   if (sb) {
     const { data } = await sb.from("kv_store").select("data").eq("key", cacheKey).maybeSingle();
@@ -44,13 +44,14 @@ async function getAiSummary(
       model: "claude-haiku-4-5",
       max_tokens: 500,
       system:
-        "너는 쇼핑몰 상품후기 요약가다. 실제 후기에 근거해서만 작성하고, 없는 내용은 절대 지어내지 마라. 광고 문구 톤이 아니라 담백하고 신뢰감 있게. 한국어로만.",
+        "너는 쇼핑몰 상품 후기를 '구매 전환'에 도움 되도록 요약하는 카피라이터다. 실제 후기에 근거해서만 쓰고 없는 내용은 절대 지어내지 마라(거짓·별점 조작 금지). 단, 다수가 만족한 **장점을 중심으로** 신뢰감 있게 정리하고, 소수의 부정·아쉬운 의견은 **순화하거나 비중을 줄여** 부드럽게 다룬다(완전히 숨기진 말되 짧게, 취향 차이/사소한 점으로 표현). 담백하고 세련된 한국어로만.",
       messages: [
         {
           role: "user",
           content:
-            `아래는 한 여성 패션시계 상품의 실제 고객 후기다. 구매를 고민하는 고객에게 도움이 되도록 요약하라.\n` +
-            `반드시 이 JSON 형식으로만 응답:\n{"summary":"후기 전반을 2~3문장으로 요약(디자인/사이즈/착용감/만족도 위주, 과장 금지)","keywords":["고객들이 자주 언급한 장점 키워드 3~5개(짧게)"]}\n\n후기:\n${sample}`,
+            `아래는 이 시계 상품의 실제 고객 후기다. 구매를 고민하는 고객이 사고 싶어지도록 핵심 장점 위주로 요약하라.\n` +
+            `규칙: ①다수가 만족한 장점(디자인/마감/착용감/가성비/선물반응 등)을 앞세운다 ②부정·아쉬운 점은 소수의견이면 생략하거나 맨 끝에 아주 짧게 순화해 언급(예: "초침 소리에 민감한 분도 일부 있다" 정도) ③과장·없는 내용 금지.\n` +
+            `반드시 이 JSON만:\n{"summary":"2~3문장, 장점 중심·신뢰감 있게","keywords":["자주 언급된 장점 키워드 3~5개(짧게)"]}\n\n후기:\n${sample}`,
         },
       ],
     });
