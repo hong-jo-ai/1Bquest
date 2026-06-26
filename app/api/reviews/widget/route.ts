@@ -80,6 +80,57 @@ async function getAiSummary(
   }
 }
 
+/** 후기 본문을 영어로 번역(claude-haiku) + kv 캐시. 후기수 동일하면 재사용. */
+async function translateReviews<T extends { id: number; content: string }>(
+  mall: MallId,
+  productNo: number,
+  reviews: T[],
+  count: number,
+): Promise<T[]> {
+  const items = reviews.filter((r) => (r.content || "").trim().length > 0);
+  if (!items.length) return reviews;
+  const sbUrl = process.env.SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const sb = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
+  const cacheKey = `review_trans:v1:${mall}:${productNo}:en`;
+  let map: Record<string, string> = {};
+  if (sb) {
+    const { data } = await sb.from("kv_store").select("data").eq("key", cacheKey).maybeSingle();
+    const c = data?.data as { count?: number; map?: Record<string, string> } | undefined;
+    if (c && c.count === count && c.map) map = c.map;
+  }
+  const missing = items.filter((r) => !map[r.id]);
+  if (missing.length && apiKey) {
+    try {
+      const client = new Anthropic({ apiKey });
+      const B = 40;
+      for (let i = 0; i < missing.length; i += B) {
+        const batch = missing.slice(i, i + B);
+        const input = batch.map((r) => r.content.slice(0, 400));
+        const res = await client.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 4000,
+          system:
+            "You translate Korean shopping-mall product reviews into natural, friendly English. Keep the casual customer tone and meaning. Do not add or remove content. Return ONLY a JSON array of translated strings, same length and order as the input.",
+          messages: [{ role: "user", content: JSON.stringify(input) }],
+        });
+        let txt = (res.content[0] as { text: string }).text.trim();
+        const a = txt.indexOf("["), b = txt.lastIndexOf("]");
+        if (a >= 0) txt = txt.slice(a, b + 1);
+        const out = JSON.parse(txt) as string[];
+        batch.forEach((r, j) => { if (out[j]) map[r.id] = String(out[j]); });
+      }
+      if (sb) {
+        await sb.from("kv_store").upsert(
+          { key: cacheKey, data: { count, map }, updated_at: new Date().toISOString() },
+          { onConflict: "key" },
+        );
+      }
+    } catch { /* 번역 실패 시 원문 유지 */ }
+  }
+  return reviews.map((r) => (map[r.id] ? { ...r, content: map[r.id] } : r));
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -228,13 +279,17 @@ export async function GET(req: NextRequest) {
     let aiSummary: AiSummary | null = null;
     try { aiSummary = await getAiSummary(mall, productNo, reviews, count, lang); } catch { /* 요약 실패해도 위젯은 정상 */ }
 
+    // 영문몰: 후기 본문 영어로 번역해서 노출 (요약은 원문 기반 유지)
+    let outReviews = reviews;
+    if (lang === "en") { try { outReviews = await translateReviews(mall, productNo, reviews, count); } catch { /* 실패 시 원문 */ } }
+
     return Response.json(
       {
         ok: true,
         product_no: productNo,
         summary: { count, avg: Math.round(avg * 10) / 10, photoCount, distribution: dist },
         aiSummary,
-        reviews,
+        reviews: outReviews,
       },
       { status: 200, headers: CORS },
     );

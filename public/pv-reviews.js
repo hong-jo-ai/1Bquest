@@ -89,7 +89,9 @@
       ".pv-rv-empty{padding:30px 0;text-align:center;color:"+SUB+";font-size:13px}",
       ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.93);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out}",
       ".pv-rv-lb img{max-width:92vw;max-height:88vh;border-radius:6px}",
-      "@media(max-width:480px){.pv-rv-sum{gap:16px;padding:18px}.pv-rv-big{min-width:88px;padding-right:16px}.pv-rv-big .num{font-size:38px}}"
+      "@media(max-width:480px){.pv-rv-sum{gap:16px;padding:18px}.pv-rv-big{min-width:88px;padding-right:16px}.pv-rv-big .num{font-size:38px}}",
+      // 모바일 좌우 여백 (양옆 딱붙음 방지) — 위젯 루트(리스트/포토top/스트립) 공통
+      "@media(max-width:767px){.pv-rv{padding-left:16px!important;padding-right:16px!important}}"
     ].join("");
     document.head.appendChild(c);
   }
