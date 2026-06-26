@@ -39,6 +39,8 @@ export interface CreateAdInput {
   endTime?: string;
   /** 타깃 오버라이드. 생략 시 KR 여성 25-50 자동노출. */
   targeting?: Record<string, unknown>;
+  /** OUTCOME_SALES 최적화 이벤트. 기본 PURCHASE. 콜드 시작은 ADD_TO_CART 등으로 학습 가속. */
+  customEventType?: string;
 }
 
 export interface CreateAdResult {
@@ -114,6 +116,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     imageUrl, imageHash: givenHash,
     instagramActorId,
     startTime, endTime,
+    customEventType = "PURCHASE", // OUTCOME_SALES 최적화 이벤트(PURCHASE | ADD_TO_CART | ...)
   } = input;
 
   if (!givenHash && !imageUrl) throw new Error("imageUrl 또는 imageHash가 필요합니다.");
@@ -166,7 +169,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
   };
   if (objective === "OUTCOME_SALES" && pixelId) {
     adsetParams.optimization_goal = "OFFSITE_CONVERSIONS";
-    adsetParams.promoted_object = JSON.stringify({ pixel_id: pixelId, custom_event_type: "PURCHASE" });
+    adsetParams.promoted_object = JSON.stringify({ pixel_id: pixelId, custom_event_type: customEventType });
   } else if (objective === "OUTCOME_TRAFFIC") {
     adsetParams.optimization_goal = "LANDING_PAGE_VIEWS";
   } else {

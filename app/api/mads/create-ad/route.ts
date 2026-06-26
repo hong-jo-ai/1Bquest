@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
       startTime: body.startTime ?? SUMMER_DEFAULTS.startTime,
       endTime: body.endTime ?? SUMMER_DEFAULTS.endTime,
       targeting: body.targeting,
+      customEventType: body.customEventType,
     };
 
     // 안전장치: confirm 없으면 미리보기만
