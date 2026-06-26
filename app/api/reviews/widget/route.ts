@@ -80,45 +80,46 @@ async function getAiSummary(
   }
 }
 
-/** 후기 본문을 영어로 번역(claude-haiku) + kv 캐시. 후기수 동일하면 재사용. */
-async function translateReviews<T extends { id: number; content: string }>(
+/** 후기 본문(+작성자명 로마자) 영어화(claude-haiku) + kv 캐시. 후기수 동일하면 재사용. */
+async function translateReviews<T extends { id: number; content: string; author: string }>(
   mall: MallId,
   productNo: number,
   reviews: T[],
   count: number,
 ): Promise<T[]> {
-  const items = reviews.filter((r) => (r.content || "").trim().length > 0);
-  if (!items.length) return reviews;
+  if (!reviews.length) return reviews;
   const sbUrl = process.env.SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const sb = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
-  const cacheKey = `review_trans:v1:${mall}:${productNo}:en`;
-  let map: Record<string, string> = {};
+  const cacheKey = `review_trans:v2:${mall}:${productNo}:en`;
+  type Ent = { c: string; n: string };
+  let map: Record<string, Ent> = {};
   if (sb) {
     const { data } = await sb.from("kv_store").select("data").eq("key", cacheKey).maybeSingle();
-    const c = data?.data as { count?: number; map?: Record<string, string> } | undefined;
+    const c = data?.data as { count?: number; map?: Record<string, Ent> } | undefined;
     if (c && c.count === count && c.map) map = c.map;
   }
-  const missing = items.filter((r) => !map[r.id]);
+  const hasKo = (s: string) => /[가-힣]/.test(s || "");
+  const missing = reviews.filter((r) => !map[r.id] && (hasKo(r.content) || hasKo(r.author)));
   if (missing.length && apiKey) {
     try {
       const client = new Anthropic({ apiKey });
       const B = 40;
       for (let i = 0; i < missing.length; i += B) {
         const batch = missing.slice(i, i + B);
-        const input = batch.map((r) => r.content.slice(0, 400));
+        const input = batch.map((r) => ({ c: (r.content || "").slice(0, 400), n: r.author || "" }));
         const res = await client.messages.create({
           model: "claude-haiku-4-5",
           max_tokens: 4000,
           system:
-            "You translate Korean shopping-mall product reviews into natural, friendly English. Keep the casual customer tone and meaning. Do not add or remove content. Return ONLY a JSON array of translated strings, same length and order as the input.",
+            "You localize Korean shopping-mall reviews for an English store. For each item: 'c' = translate the review text into natural, friendly English (keep casual tone & meaning; don't add/remove content); 'n' = romanize the Korean reviewer name to standard English romanization, KEEPING any masking asterisks exactly (e.g. '박*연'→'Park*yeon', '김*수'→'Kim*su'); if already non-Korean keep as-is. Return ONLY a JSON array of objects {\"c\":\"...\",\"n\":\"...\"}, same length & order as input.",
           messages: [{ role: "user", content: JSON.stringify(input) }],
         });
         let txt = (res.content[0] as { text: string }).text.trim();
         const a = txt.indexOf("["), b = txt.lastIndexOf("]");
         if (a >= 0) txt = txt.slice(a, b + 1);
-        const out = JSON.parse(txt) as string[];
-        batch.forEach((r, j) => { if (out[j]) map[r.id] = String(out[j]); });
+        const out = JSON.parse(txt) as Array<{ c?: string; n?: string }>;
+        batch.forEach((r, j) => { const o = out[j]; if (o) map[r.id] = { c: String(o.c ?? r.content), n: String(o.n ?? r.author) }; });
       }
       if (sb) {
         await sb.from("kv_store").upsert(
@@ -128,7 +129,7 @@ async function translateReviews<T extends { id: number; content: string }>(
       }
     } catch { /* 번역 실패 시 원문 유지 */ }
   }
-  return reviews.map((r) => (map[r.id] ? { ...r, content: map[r.id] } : r));
+  return reviews.map((r) => (map[r.id] ? { ...r, content: map[r.id].c, author: map[r.id].n } : r));
 }
 
 const CORS = {
