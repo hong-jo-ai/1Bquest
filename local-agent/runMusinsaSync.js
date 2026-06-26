@@ -34,6 +34,7 @@ function ymd(d) {
     log(`✅ 완료 — 파일=${r.downloadedFile} 건수=${r.rowCount ?? "?"} 저장=${r.stored ? "OK" : "?"}`);
   } catch (e) {
     log(`❌ 실패: ${e && e.message ? e.message : e}`, "error");
+    try { await require("./notifyFail").notifyFail("무신사 주문수집", e && e.message ? e.message : e); } catch (_) {}
     process.exitCode = 1;
   } finally {
     await closeMarketplaceBrowsers().catch(() => {});

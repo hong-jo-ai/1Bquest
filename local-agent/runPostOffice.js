@@ -36,14 +36,20 @@ function run(script, label, env = {}) {
   }
 }
 
-(function main() {
+(async function main() {
   log("=== 우체국 실행 시작 ===");
+  const fails = [];
   // 1) 식스샵 국내 export 갱신 (실패해도 직전 export로 진행)
-  run("sixshopOutboundExport.js", "식스샵 국내 export 갱신");
+  if (!run("sixshopOutboundExport.js", "식스샵 국내 export 갱신")) fails.push("식스샵 국내 export 갱신");
   // 2) W컨셉 2계정 로그인 → 주문확인 + Ready 캐시 갱신 (SMS는 chat.db 자동추출). 실패해도 직전 캐시로 진행
-  run("wconceptOutbound.js", "W컨셉 라이브 수집");
+  if (!run("wconceptOutbound.js", "W컨셉 라이브 수집")) fails.push("W컨셉 라이브 수집");
   // 3) 집계 + 우체국 접수 + 텔레그램/이메일 (항상 시도)
   const ok = run("buildPostOffice.js", "우체국 접수/발송");
+  if (!ok) fails.push("★우체국 접수/발송(등록) — 배송 누락 위험");
   log(`=== 우체국 실행 종료 (등록 ${ok ? "성공" : "실패"}) ===`);
+  // 실패 단계가 있으면 텔레그램 경고 (조용한 배송 누락 방지)
+  if (fails.length) {
+    try { await require("./notifyFail").notifyFail("우체국 발송 파이프라인", `실패 단계: ${fails.join(" / ")}`); } catch (_) {}
+  }
   process.exit(ok ? 0 : 1);
 })();
