@@ -10,6 +10,17 @@
   var API = "https://paulvice-dashboard.vercel.app/api/reviews/widget";
   var MALL = "paulvice"; // 컨테이너 data-mall 로 덮어씀(해리엇=harriot). 미지정 시 폴바이스.
   var GOLD = "#b3935f", INK = "#1c1a17", SUB = "#8c8278", LINE = "#e7e1d8", IVORY = "#faf8f5", TRACK = "#ebe6dd";
+  // 영문몰 감지 (html lang=en 또는 paulvice.kr) → 영문 라벨
+  var EN = /^en/i.test((document.documentElement.getAttribute("lang")||"")) || /paulvice\.kr/i.test(location.hostname);
+  var L = EN ? {
+    reviews:function(n){return n+" review"+(n==1?"":"s");}, photo:" · ", photoN:function(n){return n+" photos";},
+    viewAll:"View all ›", photoTitle:"Customer Photo Reviews", more:"more", verified:"Verified Purchase",
+    aiSummary:"Review Summary", all:"All ", photoFilter:"📷 Photos ", empty:"No reviews yet. Be the first to write one.", moreReviews:function(n){return "View more reviews (+"+n+")";}
+  } : {
+    reviews:function(n){return "리뷰 "+n+"개";}, photo:" · 포토 ", photoN:function(n){return n;},
+    viewAll:"전체보기 ›", photoTitle:"고객 포토 후기", more:"더보기", verified:"구매확인",
+    aiSummary:"리뷰 요약", all:"전체 ", photoFilter:"📷 포토 ", empty:"아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.", moreReviews:function(n){return "후기 더보기 (+"+n+")";}
+  };
 
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
   function stars(n,size){var f=Math.round(n||0),s='<span style="letter-spacing:1px;font-size:'+(size||13)+'px">';for(var i=1;i<=5;i++)s+='<span style="color:'+(i<=f?GOLD:"#dcd7cf")+'">★</span>';return s+"</span>";}
@@ -98,8 +109,8 @@
     var photos=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){photos.push({u:u,rating:r.rating});});});
     if(!photos.length){el.style.display="none";return;}
     el.className="pv-rv pv-rv-top";
-    var head='<div class="pv-rv-tophead"><div class="pv-rv-tl"><span class="sc">'+(s.avg||0).toFixed(1)+'</span>'+stars(s.avg,14)+'<span class="ct">리뷰 '+(s.count||0)+'개'+(s.photoCount?' · 포토 '+s.photoCount:'')+'</span></div><span class="pv-rv-all" data-gotolist="1">전체보기 ›</span></div>';
-    var title='<div class="pv-rv-toptitle">고객 포토 후기</div>';
+    var head='<div class="pv-rv-tophead"><div class="pv-rv-tl"><span class="sc">'+(s.avg||0).toFixed(1)+'</span>'+stars(s.avg,14)+'<span class="ct">'+L.reviews(s.count||0)+(s.photoCount?L.photo+L.photoN(s.photoCount):'')+'</span></div><span class="pv-rv-all" data-gotolist="1">'+L.viewAll+'</span></div>';
+    var title='<div class="pv-rv-toptitle">'+L.photoTitle+'</div>';
     var grid='<div class="pv-rv-topgrid">'+photos.slice(0,8).map(function(p){return '<div class="pv-rv-cell"><img src="'+esc(p.u)+'" data-full="'+esc(p.u)+'" loading="lazy"><span class="pv-rv-badge"><b>★</b> '+p.rating+'</span></div>';}).join("")+'</div>';
     el.innerHTML=head+title+grid;
     var go=el.querySelector('[data-gotolist]');if(go)go.addEventListener("click",function(){var t=document.getElementById("pv-review-list");if(t)t.scrollIntoView({behavior:"smooth",block:"start"});});
@@ -116,7 +127,7 @@
       var bars="";
       for(var st=5;st>=1;st--){var n=dist[st]||0;var pct=total?Math.round(n/total*100):0;
         bars+='<div class="pv-rv-bar"><span class="lab"><b>★</b>'+st+'</span><span class="track"><span class="fill" style="width:'+pct+'%"></span></span><span class="cnt">'+n+'</span></div>';}
-      return '<div class="pv-rv-sum"><div class="pv-rv-big"><div class="num">'+(s.avg||0).toFixed(1)+'</div><div class="st">'+stars(s.avg,15)+'</div><div class="ct">리뷰 '+(s.count||0)+'개</div></div><div class="pv-rv-bars">'+bars+'</div></div>';
+      return '<div class="pv-rv-sum"><div class="pv-rv-big"><div class="num">'+(s.avg||0).toFixed(1)+'</div><div class="st">'+stars(s.avg,15)+'</div><div class="ct">'+L.reviews(s.count||0)+'</div></div><div class="pv-rv-bars">'+bars+'</div></div>';
     }
     function strip(){
       if(!ph.length)return"";
@@ -126,8 +137,8 @@
     }
     function card(r,idx){
       var long=(r.content||"").length>140, exp=state.expanded[r.id];
-      var body=r.content?(long&&!exp?esc(r.content.slice(0,140))+'…<span class="rm" data-exp="'+r.id+'">더보기</span>':esc(r.content)):"";
-      return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span><span class="vb">구매확인</span></div>'+
+      var body=r.content?(long&&!exp?esc(r.content.slice(0,140))+'…<span class="rm" data-exp="'+r.id+'">'+L.more+'</span>':esc(r.content)):"";
+      return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span><span class="vb">'+L.verified+'</span></div>'+
         (body?'<div class="body">'+body+'</div>':'')+
         (r.photos.length?'<div class="ph">'+r.photos.map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>':'')+
         '</div>';
@@ -135,11 +146,11 @@
     function draw(){
       var list=state.photoOnly?data.reviews.filter(function(r){return r.photos.length;}):data.reviews;
       var ai=data.aiSummary;
-      var aiBox=(ai&&ai.summary)?'<div class="pv-rv-ai"><div class="h"><span class="aibadge">AI</span> 리뷰 요약</div><div class="tx">'+esc(ai.summary)+'</div>'+((ai.keywords&&ai.keywords.length)?'<div class="kw">'+ai.keywords.map(function(k){return '<span># '+esc(k)+'</span>';}).join("")+'</div>':'')+'</div>':'';
+      var aiBox=(ai&&ai.summary)?'<div class="pv-rv-ai"><div class="h"><span class="aibadge">AI</span> '+L.aiSummary+'</div><div class="tx">'+esc(ai.summary)+'</div>'+((ai.keywords&&ai.keywords.length)?'<div class="kw">'+ai.keywords.map(function(k){return '<span># '+esc(k)+'</span>';}).join("")+'</div>':'')+'</div>':'';
       var html='<div class="pv-rv-ttl">REAL REVIEW</div>'+aiBox+summary()+strip()+
-        '<div class="pv-rv-filter"><button data-f="all" class="'+(state.photoOnly?"":"on")+'">전체 '+total+'</button><button data-f="photo" class="'+(state.photoOnly?"on":"")+'">📷 포토 '+(s.photoCount||0)+'</button></div>'+
-        (list.length?list.slice(0,state.shown).map(card).join(""):'<div class="pv-rv-empty">아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.</div>')+
-        (list.length>state.shown?'<button class="pv-rv-more">후기 더보기 (+'+(list.length-state.shown)+')</button>':"");
+        '<div class="pv-rv-filter"><button data-f="all" class="'+(state.photoOnly?"":"on")+'">'+L.all+total+'</button><button data-f="photo" class="'+(state.photoOnly?"on":"")+'">'+L.photoFilter+(s.photoCount||0)+'</button></div>'+
+        (list.length?list.slice(0,state.shown).map(card).join(""):'<div class="pv-rv-empty">'+L.empty+'</div>')+
+        (list.length>state.shown?'<button class="pv-rv-more">'+L.moreReviews(list.length-state.shown)+'</button>':"");
       el.innerHTML=html;
       el.querySelectorAll(".pv-rv-filter button").forEach(function(b){b.addEventListener("click",function(){state.photoOnly=this.getAttribute("data-f")==="photo";state.shown=5;draw();});});
       var pf=el.querySelector('[data-photofilter]');if(pf)pf.addEventListener("click",function(){state.photoOnly=true;state.shown=5;draw();});
@@ -153,7 +164,7 @@
   var cache={};
   function load(pno,cb){
     if(cache[pno])return cb(cache[pno]);
-    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=100",{credentials:"omit"})
+    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=100"+(EN?"&lang=en":""),{credentials:"omit"})
       .then(function(r){return r.json();})
       .then(function(j){if(!j||!j.ok)j={ok:false,reviews:[],summary:{count:0}};cache[pno]=j;cb(j);})
       .catch(function(){cb({ok:false,reviews:[],summary:{count:0}});});

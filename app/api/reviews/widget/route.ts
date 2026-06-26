@@ -22,13 +22,15 @@ async function getAiSummary(
   productNo: number,
   reviews: Array<{ rating: number; content: string }>,
   count: number,
+  lang: string = "ko",
 ): Promise<AiSummary | null> {
+  const en = lang === "en";
   const texts = reviews.map((r) => (r.content || "").trim()).filter((t) => t.length >= 4);
   if (texts.length < 3) return null; // 후기 너무 적으면 요약 생략
   const sbUrl = process.env.SUPABASE_URL, sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const sb = sbUrl && sbKey ? createClient(sbUrl, sbKey) : null;
-  const cacheKey = `review_ai_summary:v2:${mall}:${productNo}`;
+  const cacheKey = `review_ai_summary:v2:${mall}:${productNo}${en ? ":en" : ""}`;
 
   if (sb) {
     const { data } = await sb.from("kv_store").select("data").eq("key", cacheKey).maybeSingle();
@@ -43,15 +45,19 @@ async function getAiSummary(
     const res = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 500,
-      system:
-        "너는 쇼핑몰 상품 후기를 '구매 전환'에 도움 되도록 요약하는 카피라이터다. 실제 후기에 근거해서만 쓰고 없는 내용은 절대 지어내지 마라(거짓·별점 조작 금지). 단, 다수가 만족한 **장점을 중심으로** 신뢰감 있게 정리하고, 소수의 부정·아쉬운 의견은 **순화하거나 비중을 줄여** 부드럽게 다룬다(완전히 숨기진 말되 짧게, 취향 차이/사소한 점으로 표현). 담백하고 세련된 한국어로만.",
+      system: en
+        ? "You are a copywriter who summarizes product reviews to help conversion. Write ONLY from the actual reviews — never invent anything (no fake claims or rating manipulation). Lead with the strengths most customers loved, framed credibly; soften and downplay the few negative/mixed opinions (don't fully hide them, but keep them brief, as matters of taste or minor points). Clean, refined English only."
+        : "너는 쇼핑몰 상품 후기를 '구매 전환'에 도움 되도록 요약하는 카피라이터다. 실제 후기에 근거해서만 쓰고 없는 내용은 절대 지어내지 마라(거짓·별점 조작 금지). 단, 다수가 만족한 **장점을 중심으로** 신뢰감 있게 정리하고, 소수의 부정·아쉬운 의견은 **순화하거나 비중을 줄여** 부드럽게 다룬다(완전히 숨기진 말되 짧게, 취향 차이/사소한 점으로 표현). 담백하고 세련된 한국어로만.",
       messages: [
         {
           role: "user",
-          content:
-            `아래는 이 시계 상품의 실제 고객 후기다. 구매를 고민하는 고객이 사고 싶어지도록 핵심 장점 위주로 요약하라.\n` +
-            `규칙: ①다수가 만족한 장점(디자인/마감/착용감/가성비/선물반응 등)을 앞세운다 ②부정·아쉬운 점은 소수의견이면 생략하거나 맨 끝에 아주 짧게 순화해 언급(예: "초침 소리에 민감한 분도 일부 있다" 정도) ③과장·없는 내용 금지.\n` +
-            `반드시 이 JSON만:\n{"summary":"2~3문장, 장점 중심·신뢰감 있게","keywords":["자주 언급된 장점 키워드 3~5개(짧게)"]}\n\n후기:\n${sample}`,
+          content: en
+            ? `Below are real customer reviews for this watch. Summarize the key strengths so a hesitant shopper feels confident buying. The reviews may be in Korean — write the summary in natural English.\n` +
+              `Rules: ① lead with the strengths most loved (design/finish/comfort/value/gift reaction) ② if negatives are a minority, omit them or mention very briefly and softened at the end ③ no exaggeration or invented content.\n` +
+              `Return ONLY this JSON:\n{"summary":"2-3 sentences, strengths-led and credible","keywords":["3-5 short frequently-mentioned strength keywords (English)"]}\n\nReviews:\n${sample}`
+            : `아래는 이 시계 상품의 실제 고객 후기다. 구매를 고민하는 고객이 사고 싶어지도록 핵심 장점 위주로 요약하라.\n` +
+              `규칙: ①다수가 만족한 장점(디자인/마감/착용감/가성비/선물반응 등)을 앞세운다 ②부정·아쉬운 점은 소수의견이면 생략하거나 맨 끝에 아주 짧게 순화해 언급(예: "초침 소리에 민감한 분도 일부 있다" 정도) ③과장·없는 내용 금지.\n` +
+              `반드시 이 JSON만:\n{"summary":"2~3문장, 장점 중심·신뢰감 있게","keywords":["자주 언급된 장점 키워드 3~5개(짧게)"]}\n\n후기:\n${sample}`,
         },
       ],
     });
@@ -166,6 +172,7 @@ export async function GET(req: NextRequest) {
   const mall: MallId = sp.get("mall") === "harriot" ? "harriot" : "paulvice";
   const boardNo = Number(sp.get("board") || 4);
   const limit = Math.min(Number(sp.get("limit") || 50), 100);
+  const lang = sp.get("lang") === "en" ? "en" : "ko";
 
   if (!productNo) {
     return Response.json({ ok: false, error: "product_no required" }, { status: 400, headers: CORS });
@@ -219,7 +226,7 @@ export async function GET(req: NextRequest) {
     rated.forEach((r) => { const k = String(Math.min(5, Math.max(1, Math.round(r.rating)))); dist[k] = (dist[k] || 0) + 1; });
 
     let aiSummary: AiSummary | null = null;
-    try { aiSummary = await getAiSummary(mall, productNo, reviews, count); } catch { /* 요약 실패해도 위젯은 정상 */ }
+    try { aiSummary = await getAiSummary(mall, productNo, reviews, count, lang); } catch { /* 요약 실패해도 위젯은 정상 */ }
 
     return Response.json(
       {
