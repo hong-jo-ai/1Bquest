@@ -7,6 +7,7 @@
 
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getDashboardData, type DashboardData } from "@/lib/cafe24Data";
+import { cafe24Get } from "@/lib/cafe24Client";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { loadInventoryFromStore } from "@/lib/inventorySync";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
@@ -20,6 +21,25 @@ async function loadDashboard(): Promise<DashboardData | null> {
   const token = await getValidC24Token();
   if (!token) return null;
   return getDashboardData(token, "paulvice");
+}
+
+/** 베이스라인: 어제 같은 시각(KST)까지 들어온 폴바이스 주문 수. "오늘 0건"이 정상인지 비교용. */
+async function yesterdayOrdersByNow(): Promise<number | null> {
+  try {
+    const token = await getValidC24Token();
+    if (!token) return null;
+    const nowKst = new Date(Date.now() + 9 * 3600e3);
+    const hm = nowKst.toISOString().slice(11, 16); // 현재 KST HH:MM
+    const yest = new Date(nowKst.getTime() - 86400e3).toISOString().slice(0, 10);
+    const data = (await cafe24Get(
+      `/api/v2/admin/orders?start_date=${yest}&end_date=${yest}&date_type=order_date&limit=200&fields=order_id,order_date`,
+      token,
+      "paulvice",
+    )) as { orders?: Array<{ order_date?: string }> };
+    return (data.orders ?? []).filter((o) => (o.order_date ?? "").slice(11, 16) <= hm).length;
+  } catch {
+    return null;
+  }
 }
 
 function salesLine(d: DashboardData | null): string {
@@ -104,17 +124,34 @@ function buildPriorities(input: {
   lowCount: number;
   pendingTasks: number;
   firstTask?: string;
+  kstHour: number;
+  yesterdayByNow: number | null; // 어제 같은 시각까지 들어온 주문 수(베이스라인)
 }): string[] {
   const priorities: string[] = [];
   const todayOrders = input.d?.salesSummary.today.orders ?? null;
+  // 국내 쇼핑은 구매가 오후·저녁에 몰린다(실측: 첫 실주문 ~13시). 오전의 0주문/0구매는 정상 범위.
+  const EARLY = input.kstHour < 13;
 
-  if (todayOrders === 0) {
-    priorities.push("오늘 주문 0건이면 광고 집행 여부와 클릭 후 전환 문제부터 확인");
-  }
+  // (1) 광고가 아예 안 돌면 시간 무관 실제 문제 — 항상 먼저
   if (input.ad.ok && input.ad.spend === 0 && input.ad.impressions === 0) {
-    priorities.push("광고 지출·노출 0이면 캠페인 중단, 예산 소진, 심사 상태 확인");
-  } else if (input.ad.ok && input.ad.clicks > 0 && input.ad.purchases === 0) {
-    priorities.push("광고 클릭은 있는데 구매 0이면 상세페이지, 가격, 품절, 결제 흐름 확인");
+    priorities.push("광고 지출·노출 0 — 캠페인 중단/예산 소진/심사 상태 확인(시간 무관 실제 신호)");
+  }
+
+  // (2) 전환(0주문, 클릭은 있는데 구매0)은 오전엔 '정상'으로 보고 오후 이후에만 문제로 취급(양치기소년 방지)
+  const convSignal =
+    todayOrders === 0 || (input.ad.ok && input.ad.clicks > 0 && input.ad.purchases === 0);
+  if (convSignal) {
+    const base = input.yesterdayByNow != null ? ` (어제 이 시각 ${input.yesterdayByNow}건)` : "";
+    if (EARLY) {
+      priorities.push(
+        `아직 오전이라 주문·구매 0은 정상 범위${base} — 국내는 오후·저녁 구매 집중. 지금은 광고 정상 집행 여부만 보고 전환 판단은 13시 이후 흐름으로`
+      );
+    } else {
+      const cl = input.ad.ok ? input.ad.clicks : 0;
+      priorities.push(
+        `오후인데 ${cl > 0 ? `광고 클릭 ${cl}건에도 ` : ""}구매 0${base} — 전환 병목 가능성. 상세페이지·가격·품절·결제 흐름 점검(가능하면 GA4 퍼널에서 이탈 단계 확인)`
+      );
+    }
   }
   if (input.unanswered != null && input.unanswered > 0) {
     priorities.push(`CS 미답변 ${input.unanswered}건 먼저 정리`);
@@ -135,7 +172,7 @@ function buildPriorities(input: {
 
 export async function buildOperatingBrief(): Promise<string> {
   const today = todayKstDate();
-  const [d, ad, cs, po, tasks, calendar] = await Promise.all([
+  const [d, ad, cs, po, tasks, calendar, yesterdayByNow] = await Promise.all([
     loadDashboard().catch(() => null),
     fetchAdSummary(today, today),
     countThreadsByStatus({ brand: "all" }).catch(() => null),
@@ -145,10 +182,12 @@ export async function buildOperatingBrief(): Promise<string> {
       pendingCount: 0,
     })),
     calendarLine().catch((e: any) => `일정: (불러오기 실패: ${e?.message ?? "오류"})`),
+    yesterdayOrdersByNow().catch(() => null),
   ]);
 
   const inventory = await inventoryLine(d).catch(() => ({ text: "재고: (불러오기 실패)", lowCount: 0 }));
   const unanswered = cs?.unanswered ?? null;
+  const kstHour = new Date(Date.now() + 9 * 3600e3).getUTCHours();
   const priorities = buildPriorities({
     d,
     ad,
@@ -156,6 +195,8 @@ export async function buildOperatingBrief(): Promise<string> {
     lowCount: inventory.lowCount,
     pendingTasks: tasks.pendingCount,
     firstTask: tasks.firstTask,
+    kstHour,
+    yesterdayByNow,
   });
 
   return `오늘 운영 브리핑 (${today}, KST)
