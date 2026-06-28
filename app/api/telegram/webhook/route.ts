@@ -502,7 +502,8 @@ export async function POST(req: NextRequest) {
     const cancelCmd = parseCancelCommand(text);
     if (cancelCmd) {
       try {
-        const sum = await fetchOrderSummary(cancelCmd.orderId);
+        const brandLabel = cancelCmd.brand === "harriot" ? "해리엇" : "폴바이스";
+        const sum = await fetchOrderSummary(cancelCmd.orderId, cancelCmd.brand);
         if (!sum.ok) {
           await sendTelegramReply(message.chat.id, `⚠️ 주문 조회 실패: ${sum.error}`, message.message_id);
           return Response.json({ ok: true, cafe24Cancel: "lookup_failed" });
@@ -511,10 +512,10 @@ export async function POST(req: NextRequest) {
           await sendTelegramReply(message.chat.id, `이미 취소된 주문이에요.\n${sum.summary}`, message.message_id);
           return Response.json({ ok: true, cafe24Cancel: "already_canceled" });
         }
-        await setCancelPending({ orderId: cancelCmd.orderId, brand: "paulvice", reason: cancelCmd.reason, summary: sum.summary, at: new Date().toISOString() });
+        await setCancelPending({ orderId: cancelCmd.orderId, brand: cancelCmd.brand, reason: cancelCmd.reason, summary: sum.summary, at: new Date().toISOString() });
         await sendTelegramReply(
           message.chat.id,
-          `🟠 <b>주문취소 확인</b> (폴바이스)\n${sum.summary}\n\n사유: ${cancelCmd.reason}(${CANCEL_REASONS[cancelCmd.reason]})\n신용카드는 승인취소(환불)됩니다.\n\n이 주문 취소할까요? <b>예</b> / <b>아니오</b>`,
+          `🟠 <b>주문취소 확인</b> (${brandLabel})\n${sum.summary}\n\n사유: ${cancelCmd.reason}(${CANCEL_REASONS[cancelCmd.reason]})\n신용카드는 승인취소(환불)됩니다.\n\n이 주문 취소할까요? <b>예</b> / <b>아니오</b>`,
           message.message_id,
         );
         return Response.json({ ok: true, cafe24Cancel: "confirm_requested" });

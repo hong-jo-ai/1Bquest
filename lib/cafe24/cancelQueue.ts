@@ -30,37 +30,40 @@ function db() {
   return createClient(url, key);
 }
 
+export type CancelBrand = "paulvice" | "harriot";
+
 export interface CancelPending {
   orderId: string;
-  brand: "paulvice";
+  brand: CancelBrand;
   reason: string; // cs_type 코드
   summary: string;
   at: string;
 }
 
-/** "주문취소 20260627-0000050 [사유]" 파싱. 사유는 코드(A~L) 또는 키워드. 기본 A(고객변심). */
-export function parseCancelCommand(text: string): { orderId: string; reason: string } | null {
-  const m = text.match(/(?:주문\s*취소|취소)\s+(\d{8}-\d{7})(?:\s+(\S+))?/);
+/** "주문취소 [해리엇] 20260627-0000050 [사유]" 파싱. 해리엇 키워드 있으면 harriot, 없으면 paulvice. 사유 기본 A. */
+export function parseCancelCommand(text: string): { orderId: string; reason: string; brand: CancelBrand } | null {
+  const m = text.match(/(?:주문\s*취소|취소)\s+(?:(해리엇|harriot)\s+)?(\d{8}-\d{7})(?:\s+(\S+))?/i);
   if (!m) return null;
-  const orderId = m[1];
+  const brand: CancelBrand = m[1] ? "harriot" : "paulvice";
+  const orderId = m[2];
   let reason = "A";
-  const tok = (m[2] || "").trim();
+  const tok = (m[3] || "").trim();
   if (tok) {
     const up = tok.toUpperCase();
     if (CANCEL_REASONS[up]) reason = up;
     else if (REASON_KEYWORD[tok]) reason = REASON_KEYWORD[tok];
   }
-  return { orderId, reason };
+  return { orderId, reason, brand };
 }
 
-/** 주문 요약(확인용). 폴바이스만. */
-export async function fetchOrderSummary(orderId: string): Promise<
+/** 주문 요약(확인용). brand 별 몰/토큰. */
+export async function fetchOrderSummary(orderId: string, brand: CancelBrand = "paulvice"): Promise<
   { ok: true; summary: string; amount: number; canceled: boolean } | { ok: false; error: string }
 > {
-  const token = await getAccessTokenFromStore(); // 폴바이스
+  const token = brand === "harriot" ? await getAccessTokenFromStore("harriot") : await getAccessTokenFromStore();
   if (!token) return { ok: false, error: "카페24 토큰 없음" };
   try {
-    const data = (await cafe24Get(`/api/v2/admin/orders/${orderId}?embed=items`, token)) as {
+    const data = (await cafe24Get(`/api/v2/admin/orders/${orderId}?embed=items`, token, brand === "harriot" ? "harriot" : "paulvice")) as {
       order?: { canceled?: string; payment_amount?: string; payment_method_name?: string[]; items?: Array<{ product_name?: string; quantity?: number; order_status?: string }> };
     };
     const o = data.order;
