@@ -31,6 +31,7 @@ import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncReques
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
 import { resolveEscalationReply } from "@/lib/cs/csEscalation";
+import { parseCancelCommand, fetchOrderSummary, setCancelPending, resolveCancelPending, CANCEL_REASONS } from "@/lib/cafe24/cancelQueue";
 import { parseParcelBookingCommand, buildBookingInstruction } from "@/lib/postParcel/telegramBooking";
 import { parseHoldCommand, applyHoldCommand } from "@/lib/postParcel/holdCommand";
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
@@ -463,6 +464,23 @@ export async function POST(req: NextRequest) {
     // Claude 확인 게이트 — 위험작업 대기중일 때 "예/아니오" 응답 처리 (다른 명령보다 먼저)
     const yn = parseYesNo(text);
     if (yn !== null) {
+      // 카페24 주문취소 확인게이트(있으면 먼저 처리)
+      try {
+        const cancelRes = await resolveCancelPending(yn);
+        if (cancelRes) {
+          await sendTelegramReply(
+            message.chat.id,
+            cancelRes.enqueued
+              ? `✅ 주문 ${cancelRes.orderId} 취소 작업을 큐에 넣었어요. 잠시 후 처리하고 결과를 보고할게요.`
+              : `❌ 주문 ${cancelRes.orderId} 취소를 진행하지 않습니다.`,
+            message.message_id,
+          );
+          return Response.json({ ok: true, cafe24Cancel: cancelRes.enqueued ? "queued" : "denied" });
+        }
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 취소 확인 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+        return Response.json({ ok: true, cafe24Cancel: "error" });
+      }
       try {
         const action = await resolveClaudeConfirm(yn);
         if (action) {
@@ -477,6 +495,32 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         await sendTelegramReply(message.chat.id, `⚠️ 확인 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
         return Response.json({ ok: true, claudeConfirm: "error" });
+      }
+    }
+
+    // 카페24 주문취소 명령 — "주문취소 20260627-0000050 [사유]" → 주문확인 + 예/아니오 게이트
+    const cancelCmd = parseCancelCommand(text);
+    if (cancelCmd) {
+      try {
+        const sum = await fetchOrderSummary(cancelCmd.orderId);
+        if (!sum.ok) {
+          await sendTelegramReply(message.chat.id, `⚠️ 주문 조회 실패: ${sum.error}`, message.message_id);
+          return Response.json({ ok: true, cafe24Cancel: "lookup_failed" });
+        }
+        if (sum.canceled) {
+          await sendTelegramReply(message.chat.id, `이미 취소된 주문이에요.\n${sum.summary}`, message.message_id);
+          return Response.json({ ok: true, cafe24Cancel: "already_canceled" });
+        }
+        await setCancelPending({ orderId: cancelCmd.orderId, brand: "paulvice", reason: cancelCmd.reason, summary: sum.summary, at: new Date().toISOString() });
+        await sendTelegramReply(
+          message.chat.id,
+          `🟠 <b>주문취소 확인</b> (폴바이스)\n${sum.summary}\n\n사유: ${cancelCmd.reason}(${CANCEL_REASONS[cancelCmd.reason]})\n신용카드는 승인취소(환불)됩니다.\n\n이 주문 취소할까요? <b>예</b> / <b>아니오</b>`,
+          message.message_id,
+        );
+        return Response.json({ ok: true, cafe24Cancel: "confirm_requested" });
+      } catch (e) {
+        await sendTelegramReply(message.chat.id, `⚠️ 취소 요청 처리 실패: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+        return Response.json({ ok: true, cafe24Cancel: "error" });
       }
     }
 
