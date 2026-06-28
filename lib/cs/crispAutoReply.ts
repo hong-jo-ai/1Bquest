@@ -1,9 +1,14 @@
 import { generateDraft } from "./draft";
 import { sendReply } from "./reply";
 import { getThread, getCsSupabase } from "./store";
-import type { CsBrandId, CsMessage } from "./types";
+import { escalateUncertainToTelegram } from "./csEscalation";
+import { isKoreanPublicHoliday } from "@/lib/alba/attendance";
+import type { CsBrandId, CsChannel, CsMessage } from "./types";
 
 type AutoReplyMode = "off" | "off_hours" | "always";
+
+/** 자동응대를 켤 채널 (자체 웹챗 + Crisp). */
+const AUTO_CHANNELS: ReadonlySet<CsChannel> = new Set<CsChannel>(["webchat", "crisp"]);
 
 export interface CrispAutoReplyResult {
   ok: boolean;
@@ -15,28 +20,6 @@ export interface CrispAutoReplyResult {
   error?: string;
 }
 
-const FAQ_PATTERNS = [
-  /store|shop|offline|visit|seoul|korea|where.*buy|buy.*in/i,
-  /매장|오프라인|방문|서울|한국.*구매|구매.*한국/i,
-  /restock|back\s*in\s*stock|available\s*again|sold\s*out/i,
-  /재입고|품절|다시\s*입고|입고\s*예정/i,
-  /engraving|engrave|personalization|personalized/i,
-  /각인/i,
-  /hotel|accommodation|travel|trip|delivery.*date|ship.*hotel/i,
-  /숙소|호텔|여행|수령일|배송일/i,
-];
-
-const HIGH_RISK_PATTERNS = [
-  /refund|return|exchange|cancel|chargeback|dispute|complaint/i,
-  /환불|반품|교환|취소|분쟁|클레임|불만|컴플레인/i,
-  /discount|coupon|wholesale|bulk|partnership|collaboration/i,
-  /할인|쿠폰|도매|대량|제휴|협업/i,
-  /repair|battery|warranty|broken|not working|service/i,
-  /수리|배터리|보증|고장|작동|AS|A\/S/i,
-  /address change|wrong address|tracking|customs|tax|duty/i,
-  /주소\s*변경|오배송|송장|통관|관세|세금/i,
-];
-
 function autoReplyMode(): AutoReplyMode {
   const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "off_hours").toLowerCase();
   if (raw === "always" || raw === "off" || raw === "off_hours") return raw;
@@ -44,7 +27,8 @@ function autoReplyMode(): AutoReplyMode {
 }
 
 function enabledBrands(): Set<CsBrandId> {
-  const raw = process.env.CS_CRISP_AUTO_REPLY_BRANDS ?? "harriot";
+  // 기본값: 폴바이스 + 해리엇 둘 다. (env 로 좁힐 수 있음)
+  const raw = process.env.CS_CRISP_AUTO_REPLY_BRANDS ?? "paulvice,harriot";
   return new Set(
     raw
       .split(",")
@@ -59,6 +43,18 @@ function maxInboundAgeMs(): number {
   return safeMinutes * 60 * 1000;
 }
 
+/** KST 기준 "YYYY-MM-DD" (공휴일 조회용). */
+function kstDateString(date: Date): string {
+  // en-CA 로케일은 YYYY-MM-DD 형식
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** 업무외 시간 여부: 주말 · 공휴일(종일) · 평일 10시 이전/18시 이후. */
 function isOffHoursKst(date = new Date()): boolean {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Seoul",
@@ -69,7 +65,9 @@ function isOffHoursKst(date = new Date()): boolean {
   const weekday = parts.find((p) => p.type === "weekday")?.value;
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
   const weekend = weekday === "Sat" || weekday === "Sun";
-  return weekend || hour < 10 || hour >= 18;
+  if (weekend) return true;
+  if (isKoreanPublicHoliday(kstDateString(date))) return true;
+  return hour < 10 || hour >= 18;
 }
 
 function latestMessage(messages: CsMessage[]): CsMessage | undefined {
@@ -78,28 +76,36 @@ function latestMessage(messages: CsMessage[]): CsMessage | undefined {
   })[messages.length - 1];
 }
 
-function textLooksAutomatable(text: string): boolean {
-  if (!text.trim()) return false;
-  if (HIGH_RISK_PATTERNS.some((pattern) => pattern.test(text))) return false;
-  return FAQ_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-async function alreadyAutoHandled(threadId: string, latestInboundId: string | null) {
-  if (!latestInboundId) return false;
+/** 같은 인입 메시지에 이미 자동응대했는지 (중복 발송 방지). 웹챗은 external_message_id 가 없을 수 있어 message id 로 폴백. */
+async function alreadyAutoHandled(threadId: string, inboundKey: string | null) {
+  if (!inboundKey) return false;
   const db = getCsSupabase();
   const { data } = await db
     .from("cs_messages")
     .select("id")
     .eq("thread_id", threadId)
     .contains("raw", {
-      sent_via: "crisp_auto_reply",
-      reply_to_external_message_id: latestInboundId,
+      sent_via: "auto_reply_off_hours",
+      reply_to_external_message_id: inboundKey,
     })
     .limit(1);
   return Boolean(data?.length);
 }
 
-export async function maybeAutoReplyToCrispThread(
+/** "가볍게 표시" — 자동응대임을 알리는 한 줄 (고객 언어에 맞춤). */
+function disclosureLine(draftText: string): string {
+  const hasKorean = /[가-힣]/.test(draftText);
+  return hasKorean
+    ? "💬 영업시간 외라 자동으로 먼저 안내드려요. 추가 확인이 필요한 내용은 영업시간에 담당자가 이어서 도와드릴게요.\n\n"
+    : "💬 Quick automated reply outside our business hours — our team will follow up during business hours if anything else is needed.\n\n";
+}
+
+/**
+ * 업무외 시간/휴일에 들어온 CS 문의(자체 웹챗·Crisp)에 자동으로 1차 답변.
+ * - 최대한 다 자동응대(FAQ 제한 없음). 단 generateDraft 가 needsConfirmation 을 남기면(불확실/조치필요) 발송하지 않고 보류.
+ * - 응답 앞에 "자동 안내" 한 줄(가볍게 표시).
+ */
+export async function maybeAutoReplyOffHours(
   threadId: string
 ): Promise<CrispAutoReplyResult> {
   const mode = autoReplyMode();
@@ -112,8 +118,8 @@ export async function maybeAutoReplyToCrispThread(
   if (!data) return { ok: false, sent: false, reason: "thread_not_found" };
 
   const { thread, messages } = data;
-  if (thread.channel !== "crisp") {
-    return { ok: true, sent: false, reason: "not_crisp" };
+  if (!AUTO_CHANNELS.has(thread.channel)) {
+    return { ok: true, sent: false, reason: `channel_${thread.channel}_disabled` };
   }
   if (!enabledBrands().has(thread.brand)) {
     return { ok: true, sent: false, reason: "brand_disabled" };
@@ -130,18 +136,31 @@ export async function maybeAutoReplyToCrispThread(
   if (!Number.isFinite(latestAt) || Date.now() - latestAt > maxInboundAgeMs()) {
     return { ok: true, sent: false, reason: "latest_inbound_too_old" };
   }
-  if (await alreadyAutoHandled(threadId, latest.external_message_id)) {
+  const inboundKey = latest.external_message_id ?? latest.id;
+  if (await alreadyAutoHandled(threadId, inboundKey)) {
     return { ok: true, sent: false, reason: "already_auto_handled" };
   }
 
   const text = latest.body_text ?? "";
-  if (!textLooksAutomatable(text)) {
-    return { ok: true, sent: false, reason: "not_in_auto_faq_scope" };
+  if (!text.trim()) {
+    return { ok: true, sent: false, reason: "empty_inbound" };
   }
 
   try {
     const draft = await generateDraft(threadId);
     if (draft.needsConfirmation.length > 0) {
+      // 불확실하거나 조치(환불·주소변경 등)가 필요한 건 — 자동발송하지 않고 사장님 텔레그램으로 에스컬레이션.
+      // 사장님이 방향을 답장하면 정식 답변으로 다듬어 발송(csEscalation).
+      await escalateUncertainToTelegram({
+        threadId,
+        brand: thread.brand,
+        customerName: thread.customer_name,
+        customerQuestion: text,
+        draft: draft.draft,
+        needsConfirmation: draft.needsConfirmation,
+      }).catch((e) =>
+        console.warn("[auto-reply] 에스컬레이션 실패:", e instanceof Error ? e.message : String(e))
+      );
       return {
         ok: true,
         sent: false,
@@ -150,10 +169,11 @@ export async function maybeAutoReplyToCrispThread(
       };
     }
 
-    const reply = await sendReply(threadId, draft.draft, {
-      sentVia: "crisp_auto_reply",
+    const finalText = disclosureLine(draft.draft) + draft.draft;
+    const reply = await sendReply(threadId, finalText, {
+      sentVia: "auto_reply_off_hours",
       rawExtra: {
-        reply_to_external_message_id: latest.external_message_id,
+        reply_to_external_message_id: inboundKey,
         rationale: draft.rationale,
       },
     });
@@ -170,7 +190,7 @@ export async function maybeAutoReplyToCrispThread(
       ok: true,
       sent: true,
       reason: "sent",
-      draft: draft.draft,
+      draft: finalText,
       externalMessageId: reply.externalMessageId,
     };
   } catch (e) {
@@ -182,3 +202,6 @@ export async function maybeAutoReplyToCrispThread(
     };
   }
 }
+
+/** 하위호환 별칭 (Crisp 웹훅에서 사용). 채널 무관하게 동작. */
+export const maybeAutoReplyToCrispThread = maybeAutoReplyOffHours;

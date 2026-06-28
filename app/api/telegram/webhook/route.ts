@@ -30,6 +30,7 @@ import { storeSmsCode, parseWcCodeMessage } from "@/lib/marketplace/smsCode";
 import { storeSyncRequest, parseSyncCommand } from "@/lib/marketplace/syncRequest";
 import { hasPendingClassify, applyCardClassify } from "@/lib/finance/cardClassify";
 import { parseClaudeCommand, enqueueClaudeTask, parseYesNo, resolveClaudeConfirm } from "@/lib/claudeBridge/queue";
+import { resolveEscalationReply } from "@/lib/cs/csEscalation";
 import { parseParcelBookingCommand, buildBookingInstruction } from "@/lib/postParcel/telegramBooking";
 import { parseHoldCommand, applyHoldCommand } from "@/lib/postParcel/holdCommand";
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
@@ -116,6 +117,7 @@ interface TelegramMessage {
   photo?: TelegramPhoto[]; // smallest → largest
   voice?: { file_id: string; duration?: number; mime_type?: string };
   audio?: { file_id: string; duration?: number; mime_type?: string };
+  reply_to_message?: { message_id: number };
 }
 
 interface TelegramUpdate {
@@ -431,6 +433,19 @@ export async function POST(req: NextRequest) {
     }
   }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
+
+  // CS 자동응대 에스컬레이션 답장 — 보류된 CS 문의 메시지에 swipe-reply 로 "방향"을 주면
+  // 정식 답변으로 다듬어 미리보기 → "발송" 답장 시 고객에게 전송. (reply_to 로 스레드 정확 매칭)
+  if (text && message.reply_to_message?.message_id) {
+    try {
+      const esc = await resolveEscalationReply(message.reply_to_message.message_id, text);
+      if (esc?.handled) {
+        return Response.json({ ok: true, csEscalation: true });
+      }
+    } catch (e) {
+      console.error("[telegram-webhook] CS 에스컬레이션 처리 오류:", e instanceof Error ? e.message : String(e));
+    }
+  }
 
   // W컨셉 등 SMS 인증번호 릴레이 — "wc 123456" 이면 코드 저장 후 종료 (다른 처리로 안 넘김)
   if (text) {

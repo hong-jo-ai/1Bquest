@@ -9,6 +9,7 @@ import {
   webchatJson,
   webchatOptionsResponse,
 } from "@/lib/cs/webchat";
+import { maybeAutoReplyOffHours } from "@/lib/cs/crispAutoReply";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,18 @@ export async function POST(req: Request) {
         }
       } catch (e) {
         console.warn("[webchat] 텔레그램 알림 오류:", e instanceof Error ? e.message : String(e));
+      }
+
+      // 업무외 시간/휴일이면 자동 1차 응대 (근무시간이면 내부에서 스킵)
+      try {
+        const auto = await maybeAutoReplyOffHours(inserted.threadId);
+        if (auto.sent) {
+          console.log("[webchat] 업무외 자동응대 발송:", inserted.threadId);
+        } else if (!auto.ok) {
+          console.warn("[webchat] 자동응대 실패:", auto.reason, auto.error ?? "");
+        }
+      } catch (e) {
+        console.warn("[webchat] 자동응대 오류:", e instanceof Error ? e.message : String(e));
       }
     }
 

@@ -50,6 +50,11 @@ export function isWorkday(dateStr: string): boolean {
   return ALBA.workdays.includes(weekdayOf(dateStr)) && !HOLIDAYS.has(dateStr);
 }
 
+/** 2026 대한민국 법정공휴일(+대체공휴일) 여부. dateStr = "YYYY-MM-DD". */
+export function isKoreanPublicHoliday(dateStr: string): boolean {
+  return HOLIDAYS.has(dateStr);
+}
+
 // ── kv 입출력 ────────────────────────────────────────────
 async function readKv<T>(key: string, fallback: T): Promise<T> {
   const c = db(); if (!c) return fallback;
