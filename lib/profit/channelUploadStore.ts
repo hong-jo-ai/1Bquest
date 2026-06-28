@@ -52,6 +52,25 @@ function normalizeStored(raw: unknown): StoredRecord {
 }
 
 /**
+ * 채널의 현재 누적 저장값을 읽어 머지된 결과(MultiChannelData)를 반환.
+ * 업로드 이력 없으면 null. (대시보드와 동일 머지 로직 — salesSummary 포함)
+ */
+export async function loadChannelUpload(
+  channel: UploadableChannel
+): Promise<MergedChannelUpload | null> {
+  const db = getDb();
+  if (!db) return null;
+  const { data: row } = await db
+    .from("kv_store")
+    .select("data")
+    .eq("key", `${KEY_PREFIX}${channel}`)
+    .maybeSingle();
+  const stored = normalizeStored((row as { data?: unknown } | null)?.data);
+  if (!stored.uploads.length) return null;
+  return mergeUploads(stored.uploads);
+}
+
+/**
  * 새 업로드 1건을 채널 누적 저장소에 반영하고, 머지된 결과를 반환.
  * 동일 fileName 은 교체(재적재), 다른 파일명은 누적.
  */

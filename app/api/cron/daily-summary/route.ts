@@ -12,6 +12,8 @@ import { getDashboardData } from "@/lib/cafe24Data";
 import { computeInventoryLevels } from "@/lib/inventorySync";
 import { cafe24Get } from "@/lib/cafe24Client";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
+import { loadChannelUpload } from "@/lib/profit/channelUploadStore";
+import type { UploadableChannel } from "@/lib/multiChannelData";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { createClient } from "@supabase/supabase-js";
@@ -58,23 +60,47 @@ async function run() {
   const blocks: string[] = [`🌙 <b>일일 마감 리포트</b> (${today})`];
   const names: Record<string, string> = token ? await skuNameMap(token).catch(() => ({})) : {};
 
-  // ── 매출 ──────────────────────────────────────────────
+  // ── 매출 (전 채널: 카페24 폴바이스/해리엇 + 공동구매 + 마켓플레이스 업로드) ──
   try {
+    const lines: Array<{ name: string; revenue: number; orders: number }> = [];
+    // 카페24 폴바이스 (라이브) + 공동구매
     if (token) {
       const d = await getDashboardData(token);
       const c = d.salesSummary.today;
-      const g = d.groupBuyLive?.salesSummary.today ?? { revenue: 0, orders: 0, avgOrder: 0 };
-      const total = c.revenue + g.revenue;
-      blocks.push(
-        [
-          ``,
-          `💰 <b>오늘 매출</b>`,
-          `· 카페24: ${krw(c.revenue)} (${c.orders}건)`,
-          ...(g.revenue > 0 ? [`· 공동구매: ${krw(g.revenue)} (${g.orders}건)`] : []),
-          `· <b>합계: ${krw(total)}</b>`,
-        ].join("\n"),
-      );
+      if (c.revenue > 0 || c.orders > 0) lines.push({ name: "카페24(폴바이스)", revenue: c.revenue, orders: c.orders });
+      const g = d.groupBuyLive?.salesSummary.today;
+      if (g && (g.revenue > 0 || g.orders > 0)) lines.push({ name: "공동구매", revenue: g.revenue, orders: g.orders });
     }
+    // 카페24 해리엇 (라이브)
+    try {
+      const ht = await getAccessTokenFromStore("harriot");
+      if (ht) {
+        const h = (await getDashboardData(ht, "harriot")).salesSummary.today;
+        if (h.revenue > 0 || h.orders > 0) lines.push({ name: "카페24(해리엇)", revenue: h.revenue, orders: h.orders });
+      }
+    } catch { /* 해리엇 카페24 실패 무시 */ }
+    // 마켓플레이스 등 업로드 채널 (channel_upload:*) — 마지막 동기화(17:00) 스냅샷 기준
+    const UP: Array<[UploadableChannel, string]> = [
+      ["musinsa", "무신사"], ["wconcept", "W컨셉"], ["29cm", "29CM"],
+      ["sixshop", "식스샵"], ["naver_smartstore", "네이버"], ["sixshop_global", "식스샵글로벌"],
+      ["kakao_gift", "카카오선물"], ["lotte_dutyfree", "롯데면세"], ["shinsegae_dutyfree", "신세계면세"],
+    ];
+    for (const [ch, nm] of UP) {
+      try {
+        const t = (await loadChannelUpload(ch))?.data?.salesSummary?.today;
+        if (t && (t.revenue > 0 || t.orders > 0)) lines.push({ name: nm, revenue: t.revenue, orders: t.orders });
+      } catch { /* 채널 실패 무시 */ }
+    }
+    const totalRev = lines.reduce((s, l) => s + l.revenue, 0);
+    const totalOrders = lines.reduce((s, l) => s + l.orders, 0);
+    blocks.push(
+      [
+        ``,
+        `💰 <b>오늘 매출</b>`,
+        ...(lines.length ? lines.map((l) => `· ${l.name}: ${krw(l.revenue)} (${l.orders}건)`) : [`· 매출 없음`]),
+        `· <b>합계: ${krw(totalRev)} (${totalOrders}건)</b>`,
+      ].join("\n"),
+    );
   } catch (e) {
     blocks.push(`\n💰 <b>오늘 매출</b>\n· 조회 실패 (${e instanceof Error ? e.message : "오류"})`);
   }
