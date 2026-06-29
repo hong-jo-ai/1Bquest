@@ -107,8 +107,10 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
   inserted: number;
   skipped: number;
   errors: string[];
+  newInboundThreadIds: string[]; // 이번에 새로 적재된 고객(in) 메시지의 스레드 — 자동응대 트리거용
 }> {
   const errors: string[] = [];
+  const newInbound = new Set<string>();
   // 스레드/메시지 id 네임스페이스 — 몰별 board_no/article_no 충돌 방지(store 중복판정=channel+id).
   // 폴바이스는 기존 id 유지(후방호환), 해리엇 등은 몰 접두.
   const idPrefix = mall === "paulvice" ? "cafe24" : `${mall}_cafe24`;
@@ -122,6 +124,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
       errors: [
         `Cafe24 토큰 없음(${mall}) — 대시보드에서 Cafe24 재연결 필요 (mall.read_community 스코프 추가)`,
       ],
+      newInboundThreadIds: [],
     };
   }
 
@@ -138,7 +141,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
     } else {
       errors.push(`게시판 목록 조회 실패: ${msg}`);
     }
-    return { boards: 0, articles: 0, inserted: 0, skipped: 0, errors };
+    return { boards: 0, articles: 0, inserted: 0, skipped: 0, errors, newInboundThreadIds: [] };
   }
 
   const csBoards = allBoards.filter(isCsBoard);
@@ -146,7 +149,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
     errors.push(
       `CS 게시판을 찾지 못함. 확인한 게시판: ${allBoards.map((b) => b.board_name).join(", ") || "없음"}`
     );
-    return { boards: 0, articles: 0, inserted: 0, skipped: 0, errors };
+    return { boards: 0, articles: 0, inserted: 0, skipped: 0, errors, newInboundThreadIds: [] };
   }
 
   const sinceDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -227,7 +230,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
       };
 
       const r1 = await ingestMessage(inPayload);
-      if (r1.inserted) inserted++;
+      if (r1.inserted) { inserted++; newInbound.add(r1.threadId); }
       else skipped++;
 
       // 2) 운영자 답글이 이미 있으면 placeholder 메시지 추가 → 상태를 waiting으로
@@ -270,7 +273,7 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
             raw: { comment: c, comment_writer: c.writer, board_no: board.board_no },
           };
           const rc = await ingestMessage(cPayload);
-          if (rc.inserted) inserted++;
+          if (rc.inserted) { inserted++; if (fromCustomer) newInbound.add(rc.threadId); }
           else skipped++;
         }
       } catch (e) {
@@ -298,5 +301,6 @@ export async function syncCafe24Boards(mall: MallId = "paulvice"): Promise<{
     inserted,
     skipped,
     errors,
+    newInboundThreadIds: [...newInbound],
   };
 }

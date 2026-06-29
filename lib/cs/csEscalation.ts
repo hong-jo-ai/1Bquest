@@ -105,8 +105,8 @@ export async function escalateUncertainToTelegram(input: {
       ? `\n⚠️ <b>확인 필요</b>\n${input.needsConfirmation.map((c) => `· ${esc(c)}`).join("\n")}`
       : "",
     ``,
-    `↪️ 이 메시지에 <b>답장</b>으로 방향만 알려주시면 정식 답변으로 다듬어 보여드릴게요.`,
-    `   (예: "환불 처리, 배송비 6천원 공제하고 안내")`,
+    `↪️ 이 메시지에 <b>답장</b>으로 — 초안 그대로면 <b>"발송"</b>, 고치려면 방향을 적어주세요.`,
+    `   (방향 예: "환불 처리, 배송비 6천원 공제하고 안내")`,
     `🔗 ${link}`,
   ].filter((l) => l !== "");
   const messageId = await tgSend(lines.join("\n"));
@@ -115,6 +115,7 @@ export async function escalateUncertainToTelegram(input: {
     threadId: input.threadId,
     brand: input.brand,
     stage: "await_direction",
+    draft: input.draft, // "발송"하면 이 초안 그대로 전송
     customerName: input.customerName ?? undefined,
     createdAt: new Date().toISOString(),
   });
@@ -133,35 +134,26 @@ export async function resolveEscalationReply(
   if (!state) return null;
   await clearState(replyToMessageId); // 소비
 
-  // 미리보기 확정 단계: "발송"이면 고객에게 전송, "아니/취소"면 중단, 그 외 텍스트는 새 방향으로 재생성
-  if (state.stage === "await_confirm") {
-    const t = operatorText.trim().toLowerCase().replace(/[.!~\s]+$/g, "");
-    const isSend = /^(발송|발송해|발송해줘|보내|보내줘|전송|전송해|확정|컨펌)$/i.test(t) || parseYesNo(operatorText) === true;
-    const isCancel = /^(보류|그만)$/i.test(t) || parseYesNo(operatorText) === false;
-    const yn = isSend ? true : isCancel ? false : null;
-    if (yn === true) {
-      if (!state.draft) {
-        await tgSend("⚠️ 보낼 초안이 없어요. 방향을 다시 알려주세요.");
-        return { handled: true };
-      }
-      const reply = await sendReply(state.threadId, state.draft, {
-        sentVia: "telegram_operator_reply",
-      });
-      await tgSend(reply.ok ? "✅ 고객에게 발송했어요." : `⚠️ 발송 실패: ${reply.error ?? "오류"}`);
-      if (!reply.ok) {
-        // 실패 시 같은 메시지로 재시도할 수 있게 상태 복구
-        await saveState(replyToMessageId, state);
-      }
+  // 어느 단계든: "발송"=보여준 초안 그대로 등록 / "보류"=중단 / 그 외 텍스트=새 방향으로 다듬기
+  const t = operatorText.trim().toLowerCase().replace(/[.!~\s]+$/g, "");
+  const isSend = /^(발송|발송해|발송해줘|보내|보내줘|전송|전송해|확정|컨펌|등록)$/i.test(t) || parseYesNo(operatorText) === true;
+  const isCancel = /^(보류|그만)$/i.test(t) || parseYesNo(operatorText) === false;
+  if (isSend) {
+    if (!state.draft) {
+      await tgSend("⚠️ 보낼 초안이 없어요. 방향을 알려주시면 만들어 드릴게요.");
       return { handled: true };
     }
-    if (yn === false) {
-      await tgSend("❌ 발송을 취소했어요. 대시보드 인박스에서 직접 처리하실 수 있어요.");
-      return { handled: true };
-    }
-    // 그 외: 새 방향으로 간주 → 재생성
+    const reply = await sendReply(state.threadId, state.draft, { sentVia: "telegram_operator_reply" });
+    await tgSend(reply.ok ? "✅ 고객에게 등록했어요." : `⚠️ 발송 실패: ${reply.error ?? "오류"}`);
+    if (!reply.ok) await saveState(replyToMessageId, state); // 재시도용 상태 복구
+    return { handled: true };
+  }
+  if (isCancel) {
+    await tgSend("❌ 보류했어요. 대시보드 인박스에서 직접 처리하실 수 있어요.");
+    return { handled: true };
   }
 
-  // 방향 → 정식 답변 다듬기 → 미리보기
+  // 그 외 = 방향 → 정식 답변 다듬기 → 미리보기
   try {
     const draft = await generateDraft(state.threadId, { operatorNotes: operatorText });
     const previewLines = [

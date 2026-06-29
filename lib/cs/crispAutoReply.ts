@@ -8,7 +8,9 @@ import type { CsBrandId, CsChannel, CsMessage } from "./types";
 type AutoReplyMode = "off" | "off_hours" | "always";
 
 /** 자동응대를 켤 채널 (자체 웹챗 + Crisp). */
-const AUTO_CHANNELS: ReadonlySet<CsChannel> = new Set<CsChannel>(["webchat", "crisp"]);
+const AUTO_CHANNELS: ReadonlySet<CsChannel> = new Set<CsChannel>(["webchat", "crisp", "cafe24_board"]);
+// 이 채널들은 자동발송하지 않고 항상 사장님 텔레그램 확인 후 등록(공개글·상품확인 필요)
+const CONFIRM_ONLY_CHANNELS: ReadonlySet<CsChannel> = new Set<CsChannel>(["cafe24_board"]);
 
 export interface CrispAutoReplyResult {
   ok: boolean;
@@ -139,8 +141,9 @@ export async function maybeAutoReplyOffHours(
   if (!latest || latest.direction !== "in") {
     return { ok: true, sent: false, reason: "latest_not_inbound" };
   }
+  // 게시판은 폴링 인입이라 글이 좀 묵을 수 있어 나이 체크 제외(채팅 채널만 30분 가드)
   const latestAt = new Date(latest.sent_at).getTime();
-  if (!Number.isFinite(latestAt) || Date.now() - latestAt > maxInboundAgeMs()) {
+  if (!CONFIRM_ONLY_CHANNELS.has(thread.channel) && (!Number.isFinite(latestAt) || Date.now() - latestAt > maxInboundAgeMs())) {
     return { ok: true, sent: false, reason: "latest_inbound_too_old" };
   }
   const inboundKey = latest.external_message_id ?? latest.id;
@@ -155,9 +158,8 @@ export async function maybeAutoReplyOffHours(
 
   try {
     const draft = await generateDraft(threadId);
-    if (draft.needsConfirmation.length > 0) {
-      // 불확실하거나 조치(환불·주소변경 등)가 필요한 건 — 자동발송하지 않고 사장님 텔레그램으로 에스컬레이션.
-      // 사장님이 방향을 답장하면 정식 답변으로 다듬어 발송(csEscalation).
+    // 불확실(needsConfirmation) 이거나, 항상-확인 채널(게시판)이면 자동발송하지 않고 사장님 텔레그램으로 에스컬레이션.
+    if (draft.needsConfirmation.length > 0 || CONFIRM_ONLY_CHANNELS.has(thread.channel)) {
       await escalateUncertainToTelegram({
         threadId,
         brand: thread.brand,
