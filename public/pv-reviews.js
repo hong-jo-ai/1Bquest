@@ -10,17 +10,19 @@
   var API = "https://paulvice-dashboard.vercel.app/api/reviews/widget";
   var MALL = "paulvice"; // 컨테이너 data-mall 로 덮어씀(해리엇=harriot). 미지정 시 폴바이스.
   var GOLD = "#b3935f", INK = "#1c1a17", SUB = "#8c8278", LINE = "#e7e1d8", IVORY = "#faf8f5", TRACK = "#ebe6dd";
-  // 영문몰 감지 (html lang=en 또는 paulvice.kr) → 영문 라벨
-  var EN = /^en/i.test((document.documentElement.getAttribute("lang")||"")) || /paulvice\.kr/i.test(location.hostname);
-  var L = EN ? {
+  // 영문몰 감지 (html lang=en, paulvice.kr, 또는 컨테이너 data-lang="en") → 영문 라벨
+  var L_EN = {
     reviews:function(n){return n+" review"+(n==1?"":"s");}, photo:" · ", photoN:function(n){return n+" photos";},
     viewAll:"View all ›", photoTitle:"Customer Photo Reviews", more:"more", verified:"Verified Purchase",
     aiSummary:"Review Summary", all:"All ", photoFilter:"📷 Photos ", empty:"No reviews yet. Be the first to write one.", moreReviews:function(n){return "View more reviews (+"+n+")";}
-  } : {
+  };
+  var L_KO = {
     reviews:function(n){return "리뷰 "+n+"개";}, photo:" · 포토 ", photoN:function(n){return n;},
     viewAll:"전체보기 ›", photoTitle:"고객 포토 후기", more:"더보기", verified:"구매확인",
     aiSummary:"리뷰 요약", all:"전체 ", photoFilter:"📷 포토 ", empty:"아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.", moreReviews:function(n){return "후기 더보기 (+"+n+")";}
   };
+  var EN = /^en/i.test((document.documentElement.getAttribute("lang")||"")) || /paulvice\.kr/i.test(location.hostname);
+  var L = EN ? L_EN : L_KO;
 
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
   function stars(n,size){var f=Math.round(n||0),s='<span style="letter-spacing:1px;font-size:'+(size||13)+'px">';for(var i=1;i<=5;i++)s+='<span style="color:'+(i<=f?GOLD:"#dcd7cf")+'">★</span>';return s+"</span>";}
@@ -183,7 +185,7 @@
     injectCss();
     var targets=[["pv-review-photostrip",renderStrip],["pv-review-phototop",renderTop],["pv-review-list",renderList]];
     var els=[],pno=null;
-    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);var dm=e.getAttribute("data-mall");if(dm)MALL=dm;}});
+    targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);var dm=e.getAttribute("data-mall");if(dm)MALL=dm;var dl=e.getAttribute("data-lang");if(dl){EN=/^en/i.test(dl);L=EN?L_EN:L_KO;}}});
     if(!els.length||!pno||!/^\d+$/.test(pno))return;
     load(pno,function(data){
       els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});
