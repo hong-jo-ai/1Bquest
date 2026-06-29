@@ -225,7 +225,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
     for (const m of metaDaily) {
       if (m.date >= startDate && m.date <= endDate) totalMetaSpend += m.spend;
     }
-    const cafe24Visible = visibleChannels.some((c) => c.id === "cafe24");
+    // 메타 광고는 각 브랜드 자사몰(폴바이스=cafe24, 해리엇=cafe24_harriot) 유입용 → 둘 다 인정
+    const cafe24Visible = visibleChannels.some((c) => c.id === "cafe24" || c.id === "cafe24_harriot");
     const totalMetaSpendForChannel = cafe24Visible ? totalMetaSpend : 0;
 
     // W컨셉 플랫폼 내 광고비 — W컨셉 채널 매출에만 귀속 (다른 채널엔 영향 없음)
@@ -252,23 +253,31 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
         : totalRevAllChannels > 0
           ? totalRev / totalRevAllChannels
           : 0;
-    const fixedAllocated = fullPeriodFixed * channelShare;
+    // 공통 고정비/간접비(임대료·인건비·카드·세금계산서·부자재 등)는 brand 컬럼이 없어 회사 전체값이라,
+    // 폴바이스·해리엇 두 브랜드가 반씩(÷2) 부담 — 양쪽에 전액 중복 차감되던 것 방지(사장님 지시 2026-06-30).
+    const brandShare = brand ? 0.5 : 1;
+    const sharedShare = channelShare * brandShare;
+    const fixedAllocated = fullPeriodFixed * sharedShare;
 
     // 재무 자동 고정비 — 기간 내 실제 발생액 (카드+통장 / 월 환산 안 함, 그대로 안분 적용)
     // + 세금계산서(매입) 실비 보강: 추정치(채널수수료·배송비)와 겹치는 수수료/택배비·매입(COGS)·비용아닌 것은 제외.
     const INVOICE_OVERLAP = new Set<string>(["수수료", "택배비", "매입", "매출", "카드결제", "송금"]);
-    const autoFixedItems: { cat: string; amount: number; count: number }[] = AUTO_FIXED_CATEGORIES
+    // share: 항목별 분배계수. shared=공통비(두 브랜드 반씩 ÷2), 외부 광고비=폴바이스 전용(아래).
+    const autoFixedItems: { cat: string; amount: number; count: number; share: number; shared: boolean }[] = AUTO_FIXED_CATEGORIES
       .map((cat) => {
         const inv = INVOICE_OVERLAP.has(cat) ? 0 : (invoiceByCategory[cat]?.amount ?? 0);
         const invCnt = INVOICE_OVERLAP.has(cat) ? 0 : (invoiceByCategory[cat]?.count ?? 0);
-        return { cat: cat as string, amount: (categorySpend[cat]?.amount ?? 0) + inv, count: (categorySpend[cat]?.count ?? 0) + invCnt };
+        return { cat: cat as string, amount: (categorySpend[cat]?.amount ?? 0) + inv, count: (categorySpend[cat]?.count ?? 0) + invCnt, share: sharedShare, shared: true };
       })
       .filter((x) => x.amount > 0);
-    // 세금계산서 광고비(구글·네이버·무신사 등) — Meta/W컨셉과 별개 플랫폼이라 별도 가산
+    // 세금계산서 광고비(구글·네이버·무신사 등) = 외부채널 마케팅 → 폴바이스 전용.
+    // 해리엇은 공홈에서만 판매 + 메타광고만 집행 → 외부채널 광고비 해당 없음(공통비 ÷2 대상 아님, 사장님 2026-06-30).
     const invoiceAds = invoiceByCategory["광고비"]?.amount ?? 0;
-    if (invoiceAds > 0) autoFixedItems.push({ cat: "광고비(세금계산서)", amount: invoiceAds, count: invoiceByCategory["광고비"]?.count ?? 0 });
+    if (invoiceAds > 0 && brand !== "harriot") {
+      autoFixedItems.push({ cat: "광고비(세금계산서)", amount: invoiceAds, count: invoiceByCategory["광고비"]?.count ?? 0, share: channelShare, shared: false });
+    }
     const autoFixedTotal = autoFixedItems.reduce((s, x) => s + x.amount, 0);
-    const autoFixedAllocated = autoFixedTotal * channelShare;
+    const autoFixedAllocated = autoFixedItems.reduce((s, x) => s + x.amount * x.share, 0);
     // 매입 세금계산서(상품제작·원가) — COGS 판매시점 매칭 대기(상품 원가 미설정). 손익 차감 안 함, 표시만.
     const pendingCogsInvoice = invoiceByCategory["매입"]?.amount ?? 0;
 
@@ -338,12 +347,14 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
       autoFixedAllocated,
       pendingCogsInvoice,
       channelShare,
+      brandShare,
+      sharedShare,
       operatingProfit,
       margin,
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend, invoiceByCategory]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend, invoiceByCategory, brand]);
 
   return (
     <section className="space-y-4 min-w-0">
@@ -543,11 +554,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
 
         {/* 고정비 */}
         <PnlSection
-          title={
-            activeChannel === "all"
-              ? "고정비 / 운영비"
-              : `고정비 / 운영비 (매출 비중 ${(calc.channelShare * 100).toFixed(1)}%)`
-          }
+          title={`고정비 / 운영비${calc.brandShare < 1 ? " · 2개 브랜드 공통비 반씩(÷2)" : ""}${activeChannel !== "all" ? ` · 매출비중 ${(calc.channelShare * 100).toFixed(1)}%` : ""}`}
         >
           {/* 재무 자동 연동 (재무 페이지 거래내역 카테고리별 합계) */}
           {calc.autoFixedItems.length > 0 && (
@@ -556,8 +563,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
                 <PnlRow
                   key={`auto-${it.cat}`}
                   label={`${it.cat}`}
-                  sub={`재무 자동 · ${calc.days}일 ${it.count}건${activeChannel !== "all" ? ` × 비중 ${(calc.channelShare * 100).toFixed(1)}%` : ""}`}
-                  amount={-it.amount * calc.channelShare}
+                  sub={`재무 자동 · ${calc.days}일 ${it.count}건${it.shared && calc.brandShare < 1 ? " · 공통비÷2" : ""}${!it.shared ? " · 폴바이스 전용" : ""}${activeChannel !== "all" ? ` × 비중 ${(calc.channelShare * 100).toFixed(1)}%` : ""}`}
+                  amount={-it.amount * it.share}
                 />
               ))}
               <PnlRow
@@ -576,12 +583,12 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
             </div>
           ) : (
             settings.fixedCosts.map((c) => {
-              const allocated = (c.monthly / 30) * calc.days * calc.channelShare;
+              const allocated = (c.monthly / 30) * calc.days * calc.sharedShare;
               return (
                 <PnlRow
                   key={c.id}
                   label={c.name}
-                  sub={`수동 · 월 ${fmtKrw(c.monthly)} → ${calc.days}일 안분`}
+                  sub={`수동 · 월 ${fmtKrw(c.monthly)} → ${calc.days}일 안분${calc.brandShare < 1 ? " · 공통비÷2" : ""}`}
                   amount={-allocated}
                 />
               );
