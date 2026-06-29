@@ -21,9 +21,10 @@ export interface CrispAutoReplyResult {
 }
 
 function autoReplyMode(): AutoReplyMode {
-  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "off_hours").toLowerCase();
+  // 기본 always — 업무시간 포함 상시 자동응대(불확실 건만 텔레그램 에스컬레이션). env로 off_hours/off 전환 가능.
+  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "always").toLowerCase();
   if (raw === "always" || raw === "off" || raw === "off_hours") return raw;
-  return "off_hours";
+  return "always";
 }
 
 function enabledBrands(): Set<CsBrandId> {
@@ -92,12 +93,18 @@ async function alreadyAutoHandled(threadId: string, inboundKey: string | null) {
   return Boolean(data?.length);
 }
 
-/** "가볍게 표시" — 자동응대임을 알리는 한 줄 (고객 언어에 맞춤). */
-function disclosureLine(draftText: string): string {
+/** "가볍게 표시" — 자동응대임을 알리는 한 줄 (고객 언어 + 시간대에 맞춤). */
+function disclosureLine(draftText: string, offHours: boolean): string {
   const hasKorean = /[가-힣]/.test(draftText);
+  if (offHours) {
+    return hasKorean
+      ? "💬 영업시간 외라 자동으로 먼저 안내드려요. 추가 확인이 필요한 내용은 영업시간에 담당자가 이어서 도와드릴게요.\n\n"
+      : "💬 Quick automated reply outside our business hours — our team will follow up during business hours if anything else is needed.\n\n";
+  }
+  // 업무시간: '영업시간 외' 문구 없이 가벼운 자동 안내
   return hasKorean
-    ? "💬 영업시간 외라 자동으로 먼저 안내드려요. 추가 확인이 필요한 내용은 영업시간에 담당자가 이어서 도와드릴게요.\n\n"
-    : "💬 Quick automated reply outside our business hours — our team will follow up during business hours if anything else is needed.\n\n";
+    ? "💬 빠르게 자동으로 먼저 안내드려요. 더 확인이 필요하면 담당자가 이어서 도와드릴게요.\n\n"
+    : "💬 Quick automated reply — our team will follow up if anything else is needed.\n\n";
 }
 
 /**
@@ -169,7 +176,7 @@ export async function maybeAutoReplyOffHours(
       };
     }
 
-    const finalText = disclosureLine(draft.draft) + draft.draft;
+    const finalText = disclosureLine(draft.draft, isOffHoursKst()) + draft.draft;
     const reply = await sendReply(threadId, finalText, {
       sentVia: "auto_reply_off_hours",
       rawExtra: {
