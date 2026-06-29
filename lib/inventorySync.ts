@@ -160,7 +160,7 @@ async function updateVariantStock(token: string, productNo: number, quantity: nu
  *
  * v2: fetchAllOrders 로 페이징 (이전엔 limit=100 한 페이지만 → 누락 발생).
  */
-async function fetchSalesBySku(token: string, startDate: string, mall: MallId = "paulvice"): Promise<Record<string, number>> {
+export async function fetchSalesBySku(token: string, startDate: string, mall: MallId = "paulvice"): Promise<Record<string, number>> {
   const salesBySku: Record<string, number> = {};
   try {
     const endDate = new Date().toISOString().slice(0, 10);
