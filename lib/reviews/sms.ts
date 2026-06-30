@@ -79,13 +79,15 @@ export function buildReviewKakao(t: SmsTarget, url: string): { text: string; var
   const name = (t.customer_name || "고객").replace(/\s+/g, " ").trim();
   const product = t.product_name || "주문하신 시계";
   const linkNoProtocol = url.replace(/^https?:\/\//, ""); // 버튼 URL은 https://#{리뷰링크} 라 프로토콜 제외
+  // ⚠️ 적립금/혜택 문구는 카카오 알림톡 검수상 '광고'로 분류돼 불가(2026-06-30 반려).
+  //    정보성 후기요청만 — 적립금은 여전히 지급하되 후기 작성 페이지에서 안내.
   const text =
     brand === "해리엇"
       ? `${name}님, 해리엇을 선택해 주셔서 감사합니다.\n\n` +
-        `${product} 잘 받으셨나요?\n착용 후기를 남겨주시면 적립금을 드립니다.\n(사진·동영상 후기는 적립금이 더 커집니다)\n\n` +
+        `${product} 잘 받으셨나요?\n사용해 보신 후기를 남겨주시면 다른 고객분들께 큰 도움이 됩니다.\n\n` +
         `▶ 아래 버튼으로 1분이면 완료 (로그인 불필요)`
       : `${name}님, 폴바이스를 이용해 주셔서 감사합니다.😄\n\n` +
-        `주문하신 ${product}, 마음에 드셨나요?\n사용 후기를 남겨주시면 적립금으로 보답해 드립니다.\n(사진·동영상 후기는 적립금이 더 커집니다)\n\n` +
+        `주문하신 ${product}, 마음에 드셨나요?\n사용해 보신 후기를 남겨주시면 다른 고객분들께 큰 도움이 됩니다.\n\n` +
         `▶ 아래 버튼으로 1분이면 완료 (로그인 불필요)`;
   return { text, variables: { "#{고객명}": name, "#{상품명}": product, "#{리뷰링크}": linkNoProtocol } };
 }
