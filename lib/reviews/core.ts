@@ -53,7 +53,8 @@ export const MALLS: Record<MallId, MallConfig> = {
   paulvice_kr: {
     id: "paulvice_kr", label: "Paulvice (KR)", cafe24Mall: "paulvice",
     shopNo: 1, reviewBoardNo: 4, boardCategoryNo: 1, currency: "KRW",
-    reward: { text: 3000, photo: 7000, video: 12000 },
+    // 폴바이스는 판매단가가 낮아 적립금도 해리엇보다 낮게(사장님 2026-06-30): 글1500/사진3000/동영상5000
+    reward: { text: 1500, photo: 3000, video: 5000 },
   },
   paulvice_global: {
     id: "paulvice_global", label: "Paulvice (Global)", cafe24Mall: "paulvice",
