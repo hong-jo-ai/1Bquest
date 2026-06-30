@@ -74,7 +74,28 @@ export function smsConfigured(): { ok: boolean; missing: string[] } {
   return { ok: missing.length === 0, missing };
 }
 
-interface OutMessage { to: string; from: string; text: string; type: "SMS" | "LMS"; subject?: string }
+/**
+ * 카카오 알림톡(ATA) 옵션. message 에 실리면 type=ATA 로 발송된다.
+ *   pfId       : Solapi에 연동한 카카오 비즈채널 ID
+ *   templateId : 카카오 승인된 알림톡 템플릿 ID
+ *   variables  : 템플릿 변수 치환값 ({ "#{고객명}": "홍길동", ... })
+ *   disableSms : false(기본)면 알림톡 실패 시 같은 text로 SMS/LMS 대체발송
+ */
+export interface KakaoOptions {
+  pfId: string;
+  templateId: string;
+  variables?: Record<string, string>;
+  disableSms?: boolean;
+}
+
+interface OutMessage {
+  to: string;
+  from: string;
+  text: string;
+  type: "SMS" | "LMS" | "ATA";
+  subject?: string;
+  kakaoOptions?: KakaoOptions;
+}
 
 /**
  * LMS 기본 제목. 제목을 비우면 Solapi 가 본문 앞부분을 잘라 제목으로 자동 생성하는데
@@ -87,12 +108,22 @@ export const DEFAULT_LMS_SUBJECT = "폴바이스 고객 안내";
  * Solapi 는 부분 실패를 허용하므로 그룹 결과에서 건별 상태를 파싱한다.
  */
 export async function sendMany(
-  messages: Array<{ to: string; text: string; subject?: string }>,
+  messages: Array<{ to: string; text: string; subject?: string; kakaoOptions?: KakaoOptions }>,
 ): Promise<SendOutcome> {
   if (messages.length === 0) return { ok: true, results: [], successCount: 0, failCount: 0 };
   const from = getSender();
   const payload: { messages: OutMessage[] } = {
     messages: messages.map((m) => {
+      // 카카오 알림톡(ATA): kakaoOptions 가 있으면 알림톡으로 발송(실패 시 disableSms=false면 SMS 대체).
+      if (m.kakaoOptions) {
+        return {
+          to: m.to.replace(/\D/g, ""),
+          from,
+          text: m.text,
+          type: "ATA" as const,
+          kakaoOptions: { disableSms: false, ...m.kakaoOptions },
+        };
+      }
       const type = detectMessageType(m.text);
       // LMS 는 제목 필수 — 미지정 시 기본 제목으로 채워 자동생성(본문 잘림)을 막는다.
       return {

@@ -13,7 +13,8 @@ import { payPendingRewards } from "@/lib/reviews/reward";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const MALL = "harriot_kr" as const;
+// 국내 두 브랜드 모두 리뷰요청 — 해리엇 + 폴바이스. 한 몰 실패해도 다른 몰 진행.
+const MALLS = ["harriot_kr", "paulvice_kr"] as const;
 
 function autoEnabled(): boolean {
   const v = (process.env.REVIEW_SMS_AUTO_ENABLED || "").toLowerCase();
@@ -24,11 +25,19 @@ async function run() {
   if (!autoEnabled()) {
     return Response.json({ ok: true, skipped: "REVIEW_SMS_AUTO_ENABLED 꺼짐 — 발송 안 함" });
   }
-  // 1) 어제~오늘 배송완료분에 리뷰요청 문자
-  const sms = await runAutoSms(MALL, { days: 3 });
-  // 2) 그동안 작성된 리뷰의 적립금 보상 지급(회원 매칭분)
-  const reward = await payPendingRewards(MALL, 100);
-  return Response.json({ ok: true, sms: { sent: sms.successCount, fail: sms.failCount, total: sms.total }, reward });
+  const malls: Record<string, unknown> = {};
+  for (const mall of MALLS) {
+    try {
+      // 1) 어제~오늘 배송완료분에 리뷰요청(알림톡 설정 시 카톡, 아니면 문자)
+      const sms = await runAutoSms(mall, { days: 3 });
+      // 2) 그동안 작성된 리뷰의 적립금 보상 지급(회원 매칭분)
+      const reward = await payPendingRewards(mall, 100);
+      malls[mall] = { sms: { sent: sms.successCount, fail: sms.failCount, total: sms.total }, reward };
+    } catch (e) {
+      malls[mall] = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return Response.json({ ok: true, malls });
 }
 
 export async function GET(req: Request) {

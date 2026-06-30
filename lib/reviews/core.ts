@@ -66,6 +66,34 @@ export function getMall(id: string): MallConfig | null {
   return (MALLS as Record<string, MallConfig>)[id] ?? null;
 }
 
+/** 메시지·발신 표기용 한글 브랜드명(브랜드별 분기). */
+export function brandLabelKo(mall: MallConfig): string {
+  return mall.cafe24Mall === "harriot" ? "해리엇" : "폴바이스";
+}
+
+/** 리뷰 페이지 base URL(브랜드별). 폴바이스는 전용 도메인(env), 미설정 시 해리엇 기본으로 폴백. */
+export function reviewBaseUrl(mall: MallConfig): string {
+  const harriot = (process.env.REVIEW_BASE_URL || "https://review.harriotwatches.co.kr").replace(/\/$/, "");
+  if (mall.cafe24Mall === "paulvice") {
+    return (process.env.REVIEW_BASE_URL_PAULVICE || harriot).replace(/\/$/, "");
+  }
+  return harriot;
+}
+
+/**
+ * 카카오 알림톡 발송 설정(브랜드별). pfId(채널)·templateId(승인 템플릿)가 둘 다 env에 있어야 알림톡 사용.
+ * 없으면 null → 리뷰요청은 기존 SMS/LMS로 폴백(무회귀).
+ *   REVIEW_KAKAO_PFID_HARRIOT / REVIEW_KAKAO_TEMPLATE_HARRIOT
+ *   REVIEW_KAKAO_PFID_PAULVICE / REVIEW_KAKAO_TEMPLATE_PAULVICE
+ */
+export interface KakaoReviewConfig { pfId: string; templateId: string; }
+export function kakaoReviewConfig(mall: MallConfig): KakaoReviewConfig | null {
+  const suffix = mall.cafe24Mall === "harriot" ? "HARRIOT" : "PAULVICE";
+  const pfId = process.env[`REVIEW_KAKAO_PFID_${suffix}`];
+  const templateId = process.env[`REVIEW_KAKAO_TEMPLATE_${suffix}`];
+  return pfId && templateId ? { pfId, templateId } : null;
+}
+
 export type MediaType = "none" | "photo" | "video";
 export function rewardFor(mall: MallConfig, type: MediaType): number {
   if (type === "video") return mall.reward.video;
