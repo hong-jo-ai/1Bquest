@@ -76,7 +76,7 @@
       if (!window.product_submit.__pv) {
         var orig = window.product_submit;
         var w = function (type, url) {
-          try { if (/basket/i.test(String(url || ""))) setTimeout(track, 100); } catch (e) {}
+          try { if (/basket/i.test(String(url || ""))) track(); } catch (e) {}
           return orig.apply(this, arguments);
         };
         w.__pv = true;
@@ -94,7 +94,7 @@
   if (window.fetch) {
     var of = window.fetch;
     window.fetch = function (input) {
-      try { var u = typeof input === "string" ? input : (input && input.url) || ""; if (BASKET_RE.test(u)) setTimeout(track, 50); } catch (e) {}
+      try { var u = typeof input === "string" ? input : (input && input.url) || ""; if (BASKET_RE.test(u)) track(); } catch (e) {}
       return of.apply(this, arguments);
     };
   }
@@ -105,7 +105,7 @@
   };
   var os = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function () {
-    try { if (this.__pvBasket) setTimeout(track, 50); } catch (e) {}
+    try { if (this.__pvBasket) track(); } catch (e) {}
     return os.apply(this, arguments);
   };
 
@@ -113,8 +113,11 @@
   document.addEventListener("click", function (e) {
     var t = e.target;
     for (var i = 0; i < 4 && t; i++) {
-      if (t.classList && t.classList.contains("actionCart")) { setTimeout(track, 100); return; }
+      if (t.classList && t.classList.contains("actionCart")) { track(); return; }
       t = t.parentElement;
     }
   }, true);
+
+  // 페이지 떠나기 직전(담기→basket.html 이동 등) 큐에 남은 게 있으면 마지막 전송 시도.
+  window.addEventListener("pagehide", function () { if (memberId) flush(); }, false);
 })();
