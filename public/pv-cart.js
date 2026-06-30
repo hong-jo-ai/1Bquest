@@ -52,7 +52,8 @@
     ev.memberId = memberId; // 전송 시점의 회원ID
     var payload = JSON.stringify(ev);
     try {
-      if (navigator.sendBeacon) navigator.sendBeacon(API, new Blob([payload], { type: "application/json" }));
+      // text/plain = CORS 안전목록(preflight 불필요) → 크로스오리진 beacon 성공. 서버 req.json()이 파싱.
+      if (navigator.sendBeacon) navigator.sendBeacon(API, new Blob([payload], { type: "text/plain" }));
       else fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true, mode: "cors" });
     } catch (e) {}
   }
