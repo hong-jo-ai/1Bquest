@@ -84,7 +84,7 @@ export function buildReviewKakao(t: SmsTarget, url: string): { text: string; var
       ? `${name}님, 해리엇을 선택해 주셔서 감사합니다.\n\n` +
         `${product} 잘 받으셨나요?\n착용 후기를 남겨주시면 적립금을 드립니다.\n(사진·동영상 후기는 적립금이 더 커집니다)\n\n` +
         `▶ 아래 버튼으로 1분이면 완료 (로그인 불필요)`
-      : `${name}님, 폴바이스를 이용해 주셔서 감사합니다.\n\n` +
+      : `${name}님, 폴바이스를 이용해 주셔서 감사합니다.😄\n\n` +
         `주문하신 ${product}, 마음에 드셨나요?\n사용 후기를 남겨주시면 적립금으로 보답해 드립니다.\n(사진·동영상 후기는 적립금이 더 커집니다)\n\n` +
         `▶ 아래 버튼으로 1분이면 완료 (로그인 불필요)`;
   return { text, variables: { "#{고객명}": name, "#{상품명}": product, "#{리뷰링크}": linkNoProtocol } };
