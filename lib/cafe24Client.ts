@@ -74,19 +74,18 @@ const BASE_SCOPES = [
   "mall.write_application",
 ];
 
-// 해리엇 전용 추가 스코프 — 리뷰 보상(적립금) 자동지급 + 회원 매칭.
-// ⚠️ mileage 는 앱별 승인제(개발자센터). 해리엇 앱만 승인받음 → 폴바이스에 넣으면 동의 단계가 깨짐.
-const HARRIOT_EXTRA_SCOPES = [
+// 적립금(mileage)·회원(customer) 추가 스코프 — 리뷰 보상 자동지급 + 회원 매칭.
+// mileage 는 앱별 승인제(개발자센터). 해리엇 앱(2026-06-25)·폴바이스 앱(2026-06-30) 둘 다 승인 완료 → 양쪽 요청.
+const EXTRA_SCOPES = [
   "mall.read_customer",
   "mall.write_customer",
   "mall.read_mileage",
   "mall.write_mileage",
 ];
 
-/** 몰별 OAuth 스코프 문자열. 폴바이스=기본, 해리엇=기본+적립금/회원. */
-function scopesFor(mall: MallId): string {
-  const list = mall === "harriot" ? [...BASE_SCOPES, ...HARRIOT_EXTRA_SCOPES] : BASE_SCOPES;
-  return list.join(" ");
+/** OAuth 스코프 문자열. 두 몰 모두 적립금/회원 스코프 승인 완료 → 동일하게 요청. */
+function scopesFor(_mall: MallId): string {
+  return [...BASE_SCOPES, ...EXTRA_SCOPES].join(" ");
 }
 
 /**
