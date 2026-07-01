@@ -115,6 +115,8 @@ export async function POST(req: NextRequest) {
       endTime: body.endTime ?? SUMMER_DEFAULTS.endTime,
       targeting: body.targeting,
       customEventType: body.customEventType,
+      // 기본 PAUSED(안전). body.status:"ACTIVE" + confirm 일 때만 즉시 노출·과금.
+      status: body.status === "ACTIVE" ? "ACTIVE" as const : "PAUSED" as const,
     };
 
     // 안전장치: confirm 없으면 미리보기만

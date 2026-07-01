@@ -41,6 +41,8 @@ export interface CreateAdInput {
   targeting?: Record<string, unknown>;
   /** OUTCOME_SALES 최적화 이벤트. 기본 PURCHASE. 콜드 시작은 ADD_TO_CART 등으로 학습 가속. */
   customEventType?: string;
+  /** 생성 상태. 기본 PAUSED(안전). "ACTIVE"면 즉시 노출·과금 시작. */
+  status?: "PAUSED" | "ACTIVE";
 }
 
 export interface CreateAdResult {
@@ -51,7 +53,7 @@ export interface CreateAdResult {
   imageHash: string;
   pageId: string;
   pixelId: string | null;
-  status: "PAUSED";
+  status: "PAUSED" | "ACTIVE";
   managerUrl: string;
 }
 
@@ -117,6 +119,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     instagramActorId,
     startTime, endTime,
     customEventType = "PURCHASE", // OUTCOME_SALES 최적화 이벤트(PURCHASE | ADD_TO_CART | ...)
+    status = "PAUSED",
   } = input;
 
   if (!givenHash && !imageUrl) throw new Error("imageUrl 또는 imageHash가 필요합니다.");
@@ -132,7 +135,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
   const campaign = (await metaPost(`/${accountId}/campaigns`, token, {
     name: `${name} | 캠페인`,
     objective,
-    status: "PAUSED",
+    status,
     special_ad_categories: "[]",
     is_adset_budget_sharing_enabled: "false",
   })) as { id: string };
@@ -165,7 +168,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     billing_event: "IMPRESSIONS",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: JSON.stringify(input.targeting ?? defaultTargeting()),
-    status: "PAUSED",
+    status,
   };
   if (objective === "OUTCOME_SALES" && pixelId) {
     adsetParams.optimization_goal = "OFFSITE_CONVERSIONS";
@@ -186,7 +189,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     name: `${name} | 광고`,
     adset_id: adset.id,
     creative: JSON.stringify({ creative_id: creative.id }),
-    status: "PAUSED",
+    status,
   })) as { id: string };
 
   const acctNum = accountId.replace(/^act_/, "");
@@ -198,7 +201,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     imageHash,
     pageId,
     pixelId,
-    status: "PAUSED",
+    status,
     managerUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${acctNum}&selected_campaign_ids=${campaign.id}`,
   };
   } catch (err) {
