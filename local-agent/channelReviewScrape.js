@@ -177,6 +177,7 @@ async function scrapeWconcept(products) {
     console.log(`W컨셉 상품 ${goods.length}개, 리뷰 있는 상품 ${withRev.length}개`);
 
     let token = null, total = 0, matchedGoods = 0;
+    const seen = new Set(); // W컨셉이 같은 상품을 여러 itemCd(변형)로 등록 + 리뷰 복제 → (상품+내용+작성자) 중복 제거
     for (const g of withRev) {
       let reqBody = null, first = null;
       const revHandler = async (resp) => {
@@ -203,7 +204,10 @@ async function scrapeWconcept(products) {
         await sleep(300);
       }
       const prod = matchProduct(g.itemName, products);
-      const rows = [...new Map(reviews.map((r) => [String(r.reviewMasterSeqNo), r])).values()].map((r) => mapWconceptReview(r, g, prod)).filter((x) => x.content || x.photos.length);
+      const rows = [...new Map(reviews.map((r) => [String(r.reviewMasterSeqNo), r])).values()].map((r) => mapWconceptReview(r, g, prod)).filter((x) => x.content || x.photos.length).filter((x) => {
+        const k = (x.product_no ?? "x") + "|" + x.content + "|" + x.author;
+        if (seen.has(k)) return false; seen.add(k); return true;
+      });
       if (rows.length) {
         for (let i = 0; i < rows.length; i += 200) {
           const { error } = await db.from("channel_reviews").upsert(rows.slice(i, i + 200), { onConflict: "channel,channel_review_id" });

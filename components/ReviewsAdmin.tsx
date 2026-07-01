@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import BackToHubButton from "@/components/BackToHubButton";
 import ReviewCampaignPanel from "@/components/ReviewCampaignPanel";
 import ReviewSmsKrPanel from "@/components/ReviewSmsKrPanel";
+import ReviewLinkManager from "@/components/ReviewLinkManager";
 
 interface MediaItem { type: "image" | "video"; url: string }
 interface Review {
@@ -44,6 +45,7 @@ export default function ReviewsAdmin() {
   const [counts, setCounts] = useState<Counts>({ published: 0, hidden: 0, spam: 0, total: 0 });
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "links">("list");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +82,15 @@ export default function ReviewsAdmin() {
         <h1 className="text-2xl font-bold">리뷰 관리</h1>
         <button onClick={exportCsv} className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50">CSV 내보내기</button>
       </div>
+
+      {/* 탭: 리뷰 목록 / 상품 연동 */}
+      <div className="flex gap-1 mb-4 border-b">
+        {([["list", "리뷰 목록"], ["links", "상품 연동"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${view === k ? "border-zinc-900 text-zinc-900" : "border-transparent text-gray-400"}`}>{l}</button>
+        ))}
+      </div>
+
+      {view === "links" ? <ReviewLinkManager mall={mall} /> : (<>
 
       {/* 국내(KR)는 문자+적립금, 그 외(글로벌)는 이메일 캠페인 */}
       {mall === "harriot_kr" || mall === "paulvice_kr"
@@ -149,6 +160,7 @@ export default function ReviewsAdmin() {
           ))}
         </div>
       )}
+      </>)}
     </div>
   );
 }

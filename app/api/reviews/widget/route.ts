@@ -236,7 +236,7 @@ async function fetchChannelReviews(
       .eq("mall", mallKey)
       .in("product_no", productNos)
       .limit(300);
-    return (data || [])
+    const mapped = (data || [])
       .map((r) => ({
         id: "ch_" + r.id,
         rating: Number(r.rating) || 0,
@@ -247,6 +247,9 @@ async function fetchChannelReviews(
         source: CHANNEL_LABEL[r.channel] || r.channel,
       }))
       .filter((r) => r.content || r.photos.length);
+    // 변형 리스팅 간 동일 리뷰 중복 제거(내용+작성자 기준)
+    const seen = new Set<string>();
+    return mapped.filter((r) => { const k = (r.content || "") + "|" + (r.author || ""); if (seen.has(k)) return false; seen.add(k); return true; });
   } catch { return []; }
 }
 
