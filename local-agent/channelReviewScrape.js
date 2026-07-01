@@ -134,11 +134,94 @@ async function scrapeMusinsa(products) {
   console.log(`\n무신사 완료: 리뷰 ${total}건 저장, 매칭 ${matchedGoods}/${withRev.length}상품`);
 }
 
+// ── W컨셉 (브라우저 기반: API가 x-authorization 토큰 + 상품메타 필요) ──────
+const WC_BRAND = process.env.WCONCEPT_BRAND_CD || "102136"; // 폴바이스
+function mapWconceptReview(r, g, prod) {
+  const photos = (r.reviewFiles || []).filter((f) => f.filePath && (f.fileType === 1 || !f.fileType)).map((f) => f.filePath);
+  return {
+    channel: "wconcept",
+    channel_review_id: String(r.reviewMasterSeqNo),
+    channel_goods_no: String(g.itemCd),
+    channel_goods_name: g.itemName,
+    product_no: prod ? prod.product_no : null,
+    mall: "paulvice_kr",
+    rating: Number(r.reviewRating) || null,
+    content: (r.contents || "").trim(),
+    author: r.custId || "W컨셉 구매자",
+    photos,
+    review_date: r.reviewRegDate ? r.reviewRegDate.replace(" ", "T") + "+09:00" : null,
+  };
+}
+async function scrapeWconcept(products) {
+  const { chromium } = require(path.join(__dirname, "node_modules", "playwright"));
+  const REV_URL = "https://gw-backend.wconcept.co.kr/api/v2/review/tab/list/with-summary";
+  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const page = await browser.newPage({ userAgent: UA });
+  try {
+    // 1) 브랜드 상품 나열(브라우저에서 응답 가로채기)
+    const collected = [];
+    const brandHandler = async (resp) => {
+      if (/brand\/v2\/brand\/\d+\/products/i.test(resp.url())) {
+        try { const j = await resp.json(); if (j && j.data && j.data.content) collected.push(...j.data.content); } catch {}
+      }
+    };
+    page.on("response", brandHandler);
+    await page.goto(`https://display.wconcept.co.kr/rn/brand/${WC_BRAND}`, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+    await page.waitForTimeout(4000);
+    for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, 3000).catch(() => {}); await page.waitForTimeout(1600); }
+    page.off("response", brandHandler);
+    const goods = [...new Map(collected.map((c) => [String(c.itemCd), { itemCd: String(c.itemCd), itemName: c.itemName, reviewCnt: c.reviewCnt || 0 }])).values()];
+    const withRev = goods.filter((g) => g.reviewCnt > 0);
+    console.log(`W컨셉 상품 ${goods.length}개, 리뷰 있는 상품 ${withRev.length}개`);
+
+    let token = null, total = 0, matchedGoods = 0;
+    for (const g of withRev) {
+      let reqBody = null, first = null;
+      const revHandler = async (resp) => {
+        if (/review\/tab\/list\/with-summary/i.test(resp.url())) {
+          try { reqBody = JSON.parse(resp.request().postData() || "{}"); if (!token) token = resp.request().headers()["x-authorization"]; first = await resp.json(); } catch {}
+        }
+      };
+      page.on("response", revHandler);
+      await page.goto(`https://www.wconcept.co.kr/Product/${g.itemCd}`, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+      await page.waitForTimeout(3000);
+      for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, 2500).catch(() => {}); await page.waitForTimeout(1000); }
+      for (const sel of ['text=리뷰', 'button:has-text("리뷰")', 'a:has-text("리뷰")']) { try { const el = page.locator(sel).first(); if (await el.count()) { await el.click({ timeout: 2500 }); await page.waitForTimeout(2000); break; } } catch {} }
+      await page.waitForTimeout(1500);
+      page.off("response", revHandler);
+      if (!reqBody || !first || !first.data) { console.log(`  ${g.itemName.slice(0, 30).padEnd(30)} → 요청 못잡음`); await sleep(300); continue; }
+
+      let reviews = first.data.reviews || [];
+      const totalPages = first.data.reviewTotalPages || 1;
+      const size = reqBody.pageSize || 10;
+      for (let p = 2; p <= totalPages && p <= 40; p++) {
+        const b = { ...reqBody, pageNo: p, pageSize: size };
+        const j = await fetch(REV_URL, { method: "POST", headers: { "Content-Type": "application/json", "X-Authorization": token, "Origin": "https://www.wconcept.co.kr", "User-Agent": UA }, body: JSON.stringify(b) }).then((r) => r.json()).catch(() => null);
+        if (j && j.data && j.data.reviews) reviews.push(...j.data.reviews); else break;
+        await sleep(300);
+      }
+      const prod = matchProduct(g.itemName, products);
+      const rows = [...new Map(reviews.map((r) => [String(r.reviewMasterSeqNo), r])).values()].map((r) => mapWconceptReview(r, g, prod)).filter((x) => x.content || x.photos.length);
+      if (rows.length) {
+        for (let i = 0; i < rows.length; i += 200) {
+          const { error } = await db.from("channel_reviews").upsert(rows.slice(i, i + 200), { onConflict: "channel,channel_review_id" });
+          if (error) console.log(`  ⚠️ upsert: ${error.message}`);
+        }
+        total += rows.length; if (prod) matchedGoods++;
+      }
+      console.log(`  ${g.itemName.slice(0, 30).padEnd(30)} → 리뷰 ${String(rows.length).padStart(3)} ${prod ? `✓#${prod.product_no}` : "✗미매칭"}`);
+      await sleep(400);
+    }
+    console.log(`\nW컨셉 완료: 리뷰 ${total}건 저장, 매칭 ${matchedGoods}/${withRev.length}상품`);
+  } finally { await browser.close().catch(() => {}); }
+}
+
 (async () => {
   const which = process.argv[2] || "musinsa";
   console.log("자사몰 상품 로딩...");
   const products = await loadCafe24Products();
   console.log(`자사몰 상품 ${products.length}개 로딩`);
   if (which === "musinsa" || which === "all") await scrapeMusinsa(products);
+  if (which === "wconcept" || which === "all") await scrapeWconcept(products);
   process.exit(0);
 })().catch((e) => { console.error("ERR", e.stack || e.message); process.exit(1); });
