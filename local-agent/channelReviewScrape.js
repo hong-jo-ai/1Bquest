@@ -19,8 +19,10 @@ const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_R
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 const MSS_IMG = "https://image.msscdn.net";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function getJson(url) {
-  const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+async function getJson(url, origin) {
+  const h = { "User-Agent": UA, "Accept": "application/json" };
+  if (origin) { h["Origin"] = origin; h["Referer"] = origin + "/"; }
+  const r = await fetch(url, { headers: h });
   return r.json();
 }
 
@@ -216,6 +218,62 @@ async function scrapeWconcept(products) {
   } finally { await browser.close().catch(() => {}); }
 }
 
+// ── 29CM (오픈 GET API, 리뷰 적음) ───────────────────────────────
+const CM29_BRAND = process.env.CM29_FRONT_BRAND_NO || "116837"; // 폴바이스
+async function cm29Goods() {
+  let all = [];
+  for (let page = 1; page <= 10; page++) {
+    const d = await getJson(`https://search-api.29cm.co.kr/api/v4/products/brand?frontBrandNo=${CM29_BRAND}&page=${page}&size=100`, "https://www.29cm.co.kr");
+    const arr = Array.isArray(d.data) ? d.data : (d.data && (d.data.products || d.data.content || d.data.items)) || [];
+    if (!arr.length) break;
+    all = all.concat(arr.map((g) => ({ itemNo: String(g.itemNo), itemName: g.itemName, reviewCount: g.reviewCount || 0 })));
+    if (arr.length < 100) break;
+    await sleep(200);
+  }
+  return all;
+}
+async function cm29Reviews(itemNo) {
+  let out = [];
+  for (let page = 0; page < 30; page++) {
+    const d = await getJson(`https://review-api.29cm.co.kr/api/v4/reviews?itemId=${itemNo}&page=${page}&size=100&sort=BEST`, "https://www.29cm.co.kr");
+    const arr = (d.data && d.data.results) || [];
+    if (!arr.length) break;
+    out = out.concat(arr);
+    const total = (d.data && d.data.count) || 0;
+    if (out.length >= total || arr.length < 100) break;
+    await sleep(250);
+  }
+  return out;
+}
+function mapCm29Review(r, g, prod) {
+  const photos = (r.uploadFiles || []).map((f) => (typeof f === "string" ? f : f.url || f.fileUrl || f.imageUrl || f.thumbnailUrl || "")).filter(Boolean);
+  let date = null; const t = r.insertTimestamp; if (t) date = typeof t === "number" ? new Date(t).toISOString() : String(t);
+  return {
+    channel: "29cm", channel_review_id: String(r.itemReviewNo), channel_goods_no: String(g.itemNo),
+    channel_goods_name: g.itemName, product_no: prod ? prod.product_no : null, mall: "paulvice_kr",
+    rating: Number(r.point) || null, content: (r.contents || "").trim(), author: r.userId || "29CM 구매자", photos, review_date: date,
+  };
+}
+async function scrape29cm(products) {
+  const goods = await cm29Goods();
+  const withRev = goods.filter((g) => g.reviewCount > 0);
+  console.log(`29CM 상품 ${goods.length}개, 리뷰 있는 상품 ${withRev.length}개`);
+  let total = 0, matchedGoods = 0;
+  for (const g of withRev) {
+    const prod = matchProduct(g.itemName, products);
+    let reviews; try { reviews = await cm29Reviews(g.itemNo); } catch (e) { console.log(`  ⚠️ ${g.itemNo}: ${e.message}`); continue; }
+    const rows = reviews.filter((r) => !r.isBlind).map((r) => mapCm29Review(r, g, prod)).filter((x) => x.content || x.photos.length);
+    if (rows.length) {
+      const { error } = await db.from("channel_reviews").upsert(rows, { onConflict: "channel,channel_review_id" });
+      if (error) console.log(`  ⚠️ upsert: ${error.message}`);
+      total += rows.length; if (prod) matchedGoods++;
+    }
+    console.log(`  ${g.itemName.slice(0, 30).padEnd(30)} → 리뷰 ${String(rows.length).padStart(3)} ${prod ? `✓#${prod.product_no}` : "✗미매칭"}`);
+    await sleep(300);
+  }
+  console.log(`\n29CM 완료: 리뷰 ${total}건, 매칭 ${matchedGoods}/${withRev.length}상품`);
+}
+
 (async () => {
   const which = process.argv[2] || "musinsa";
   console.log("자사몰 상품 로딩...");
@@ -223,5 +281,6 @@ async function scrapeWconcept(products) {
   console.log(`자사몰 상품 ${products.length}개 로딩`);
   if (which === "musinsa" || which === "all") await scrapeMusinsa(products);
   if (which === "wconcept" || which === "all") await scrapeWconcept(products);
+  if (which === "29cm" || which === "all") await scrape29cm(products);
   process.exit(0);
 })().catch((e) => { console.error("ERR", e.stack || e.message); process.exit(1); });
