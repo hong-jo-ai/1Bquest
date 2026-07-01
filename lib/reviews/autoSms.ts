@@ -18,12 +18,15 @@ function ymd(d: Date): string {
 export async function collectDeliveredTargets(
   mallId: MallId,
   days: number,
+  delayDays = 0,
 ): Promise<{ targets: SmsTarget[]; scanned: number; alreadySent: number; statusDist: Record<string, number> }> {
   const mall = getMall(mallId)!;
   const at = await getAccessTokenFromStore(mall.cafe24Mall);
   if (!at) throw new Error("cafe24 토큰 없음");
 
-  const end = new Date();
+  // 배송완료 직후가 아니라 며칠 뒤(고객이 써본 뒤) 발송 — 결제일 기준 delayDays 지난 주문만 대상.
+  // (익일배송 기준 ≈ 배송완료 +(delayDays-1)일 뒤. 결제일 프록시라 각인 등 지연배송 건은 더 이르게 갈 수 있음.)
+  const end = new Date(Date.now() - delayDays * 86400_000);
   const start = new Date(end.getTime() - days * 86400_000);
   const sb = reviewsDb();
   const { data: sent } = await sb.from("review_request_log").select("email").eq("mall", mallId).eq("channel", "sms");
@@ -76,10 +79,12 @@ export async function collectDeliveredTargets(
 /** 배송완료분 리뷰요청 문자 발송 + 멱등 로그. */
 export async function runAutoSms(
   mallId: MallId,
-  opts: { days?: number; limit?: number } = {},
+  opts: { days?: number; limit?: number; delayDays?: number } = {},
 ): Promise<SmsCampaignResult & { mode: "live"; mall: MallId }> {
   const days = Math.min(60, Math.max(1, opts.days || 14));
-  const { targets } = await collectDeliveredTargets(mallId, days);
+  // 발송 딜레이(결제 후 N일 뒤 = 고객이 받아서 써본 뒤). 기본 5일, env REVIEW_SMS_DELAY_DAYS 로 조정.
+  const delayDays = Math.max(0, opts.delayDays ?? (Number(process.env.REVIEW_SMS_DELAY_DAYS ?? 5) || 0));
+  const { targets } = await collectDeliveredTargets(mallId, days, delayDays);
   const limited = opts.limit ? targets.slice(0, opts.limit) : targets;
   if (limited.length === 0) {
     return { ok: true, total: 0, successCount: 0, failCount: 0, type: "LMS", estCost: 0, results: [], mode: "live", mall: mallId };
