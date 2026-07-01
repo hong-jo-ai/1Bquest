@@ -39,19 +39,33 @@ function jaccard(a, b) {
   let inter = 0; for (const x of A) if (B.has(x)) inter++;
   return inter / (A.size + B.size - inter);
 }
+// 너무 흔해서 모델 식별에 못 쓰는 토큰(이걸로 폴백 매칭하면 오매칭)
+const STOP = new Set(["여성", "남성", "프리미엄", "가죽", "손목시계", "시계", "컬렉션", "여성시계", "남성시계", "메탈", "실리콘", "키링", "열쇠고리", "커플", "패션", "워치",
+  "골드", "실버", "블랙", "화이트", "로즈골드", "네이비", "핑크", "그레이", "블루", "그린", "레드", "민트", "샴페인", "브라운", "차콜", "아쿠아", "선셋", "퍼플", "6color"]);
+// 영문 리스팅 → 한글 키워드 (W컨셉 영문 상품명 매칭용)
+const EN2KO = { "single-line": "싱글라인", "mother of pearl": "자개", tennis: "테니스", cubic: "큐빅", snake: "스네이크", chain: "체인", necklace: "목걸이", earrings: "귀걸이", earring: "귀걸이", earcuff: "이어커프", bracelet: "팔찌", pearl: "진주", heart: "하트", daisy: "데이지", ball: "볼", beaded: "비드", bead: "비드", pendant: "펜던트", oval: "오벌", mix: "믹스", flower: "플라워", single: "싱글", line: "라인", rectangle: "렉탱글", crystal: "크리스탈", cuff: "커프", enamel: "에나멜", nametag: "네임택", giant: "자이언트", spade: "스페이드", petite: "쁘띠", square: "스퀘어", womens: "", women: "", watch: "시계", sunset: "선셋", rosegold: "로즈골드", silver: "실버", gold: "골드", black: "블랙", white: "화이트", navy: "네이비", pink: "핑크", gray: "그레이", grey: "그레이", blue: "블루", green: "그린", red: "레드", mint: "민트", champagne: "샴페인" };
+function translateName(name) {
+  let s = " " + String(name || "").toLowerCase() + " ";
+  for (const [en, ko] of Object.entries(EN2KO)) s = s.replace(new RegExp("\\b" + en.replace(/-/g, "\\-") + "\\b", "g"), " " + ko + " ");
+  return s;
+}
 function matchProduct(goodsName, products) {
-  const core = norm(String(goodsName).split(" - ")[0]) || norm(goodsName);
-  const model = norm(String(goodsName).trim().split(/\s+/)[0]); // 첫 단어(모델명)
-  let best = null, score = 0, modelBest = null, modelScore = -1;
-  for (const p of products) {
-    const pn = norm(p.product_name);
-    const s = jaccard(core, pn);
-    if (s > score) { score = s; best = p; }
-    // 모델명(≥2자)이 자사몰 상품명에 포함되면 폴백 후보
-    if (model.length >= 2 && pn.includes(model) && s > modelScore) { modelScore = s; modelBest = p; }
-  }
+  const origCore = norm(String(goodsName).split(" - ")[0]) || norm(goodsName);
+  const trans = translateName(goodsName);
+  const transCore = norm(trans.split(" - ")[0]) || norm(trans);
+  const sc = (pn) => Math.max(jaccard(origCore, pn), jaccard(transCore, pn));
+  // 구별력 토큰(원문 영문 + 번역 한글, 스톱워드·색상 제외)
+  const raw = (String(goodsName) + " " + trans).toLowerCase();
+  const tokens = [...new Set(raw.replace(/[^가-힣a-z\s]/g, " ").split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 2 && !STOP.has(t)).map(norm).filter((t) => t.length >= 2))];
+  // 1) 모델 토큰을 포함하는 상품 중 bigram 최고 (모델명 우선 → 흔한 단어에 안 밀림)
+  let tBest = null, tScore = -1;
+  for (const p of products) { const pn = norm(p.product_name); if (tokens.some((t) => pn.includes(t))) { const s = sc(pn); if (s > tScore) { tScore = s; tBest = p; } } }
+  if (tBest && tScore >= 0.16) return { ...tBest, _score: tScore, _by: "token" };
+  // 2) 폴백: 전체 이름 bigram
+  let best = null, score = 0;
+  for (const p of products) { const s = sc(norm(p.product_name)); if (s > score) { score = s; best = p; } }
   if (score >= 0.45) return { ...best, _score: score };
-  if (modelBest) return { ...modelBest, _score: modelScore, _by: "model" }; // 모델명 매칭 폴백
+  if (tBest) return { ...tBest, _score: tScore, _by: "tok-low" };
   return null;
 }
 
@@ -278,11 +292,26 @@ async function scrape29cm(products) {
   console.log(`\n29CM 완료: 리뷰 ${total}건, 매칭 ${matchedGoods}/${withRev.length}상품`);
 }
 
+// 재스크랩 없이 기존 channel_reviews 를 개선된 매처로 다시 매칭(product_no 갱신)
+async function rematchAll(products) {
+  const { data } = await db.from("channel_reviews").select("id,channel_goods_name,product_no");
+  const cache = new Map();
+  let changed = 0, nulls = 0;
+  for (const r of data || []) {
+    let m = cache.get(r.channel_goods_name);
+    if (m === undefined) { const p = matchProduct(r.channel_goods_name, products); m = p ? p.product_no : null; cache.set(r.channel_goods_name, m); }
+    if (m == null) nulls++;
+    if (m !== r.product_no) { await db.from("channel_reviews").update({ product_no: m }).eq("id", r.id); changed++; }
+  }
+  console.log(`재매칭 완료: ${changed}건 product_no 변경, 미매칭 리뷰 ${nulls}건`);
+}
+
 (async () => {
   const which = process.argv[2] || "musinsa";
   console.log("자사몰 상품 로딩...");
   const products = await loadCafe24Products();
   console.log(`자사몰 상품 ${products.length}개 로딩`);
+  if (which === "rematch") { await rematchAll(products); process.exit(0); }
   if (which === "musinsa" || which === "all") await scrapeMusinsa(products);
   if (which === "wconcept" || which === "all") await scrapeWconcept(products);
   if (which === "29cm" || which === "all") await scrape29cm(products);
