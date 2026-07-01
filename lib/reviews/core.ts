@@ -72,6 +72,15 @@ export function brandLabelKo(mall: MallConfig): string {
   return mall.cafe24Mall === "harriot" ? "해리엇" : "폴바이스";
 }
 
+/** 리뷰 페이지 브라우저 탭 제목(브랜드별). 앱 기본("Harriotwatches Dashboard") 대신 노출 — 고객 혼동 방지. */
+export function reviewTitleFromToken(token: string | null): string {
+  const tok = token ? verifyReviewToken(token) : null;
+  const mall = tok ? getMall(tok.mall) : null;
+  if (!mall) return "리뷰 작성";
+  const brand = mall.cafe24Mall === "harriot" ? "HARRIOT" : "PAULVICE";
+  return mall.currency === "KRW" ? `${brand} 리뷰` : `${brand} Review`;
+}
+
 /** 리뷰 페이지 base URL(브랜드별). 폴바이스는 전용 도메인(env), 미설정 시 해리엇 기본으로 폴백. */
 export function reviewBaseUrl(mall: MallConfig): string {
   const harriot = (process.env.REVIEW_BASE_URL || "https://review.harriotwatches.co.kr").replace(/\/$/, "");
