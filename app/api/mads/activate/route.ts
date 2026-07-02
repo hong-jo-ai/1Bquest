@@ -6,18 +6,29 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * POST /api/mads/activate  { campaignId, status? }
- * 캠페인 + 그 안의 광고세트 + 광고를 모두 ACTIVE(또는 PAUSED)로 전환.
- * 실제 과금 시작 — 관리자 게이트 보호(/api/mads/*).
+ * POST /api/mads/activate  { campaignId, status?, dailyBudget? }
+ * - status: 캠페인 + 그 안의 광고세트 + 광고를 모두 ACTIVE(또는 PAUSED)로 전환.
+ * - dailyBudget(원, status 없이): CBO 캠페인 일예산만 변경(상태 불변). manual-budget-bump 는
+ *   광고세트 전용이라 CBO 는 여기서 처리.
+ * 실제 과금 영향 — 관리자 게이트 보호(/api/mads/*).
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { campaignId?: string; status?: string };
+    const body = (await req.json().catch(() => ({}))) as { campaignId?: string; status?: string; dailyBudget?: number };
     const campaignId = body.campaignId;
-    const status = (body.status ?? "ACTIVE").toUpperCase();
     if (!campaignId) return NextResponse.json({ ok: false, error: "campaignId 필요" }, { status: 400 });
     const token = await getMetaTokenServer();
     if (!token) return NextResponse.json({ ok: false, error: "Meta 토큰 없음" }, { status: 401 });
+
+    // 예산만 변경 (status 미지정 + dailyBudget 지정) — 상태는 건드리지 않음
+    const dailyBudget = Number(body.dailyBudget);
+    if (!body.status && Number.isFinite(dailyBudget) && dailyBudget > 0) {
+      await metaPost(`/${campaignId}`, token, { daily_budget: String(Math.round(dailyBudget)) }); // KRW zero-decimal
+      const after = (await metaGet(`/${campaignId}`, token, { fields: "id,name,daily_budget,status" })) as Record<string, unknown>;
+      return NextResponse.json({ ok: true, campaignId, dailyBudget: Math.round(dailyBudget), campaign: after });
+    }
+
+    const status = (body.status ?? "ACTIVE").toUpperCase();
 
     const result: Record<string, unknown> = { campaignId, status };
     // 1) 광고세트 + 광고를 먼저 ACTIVE (캠페인만 켜고 하위가 PAUSED면 안 돎)
