@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { type MallId } from "@/lib/cafe24Client";
 import { runInventorySync } from "@/lib/inventorySync";
+import { runBatterySync } from "@/lib/batterySync";
 
 /**
  * 매일 오전 7시(KST) 실행 — 폴바이스 + 해리엇 두 몰의 재고를 각각 카페24에 동기화.
@@ -36,5 +37,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, malls });
+  // 시계 판매분 → 배터리 부자재 자동차감 (재고 동기화 후, 델타 방식)
+  let battery: unknown;
+  try {
+    battery = await runBatterySync();
+    console.log(`[Cron:inventory-sync] 배터리 차감:`, JSON.stringify(battery));
+  } catch (e: any) {
+    battery = { error: e?.message ?? String(e) };
+    console.error(`[Cron:inventory-sync] 배터리 차감 실패:`, e);
+  }
+
+  return NextResponse.json({ success: true, malls, battery });
 }
