@@ -173,6 +173,9 @@
     if(!n)return;
     var t=document.querySelector('.detail-tab__item[data-link="prd-review"]');
     if(t && !/\(\d/.test(t.textContent)) t.textContent=t.textContent.trim()+" ("+n+")";
+    /* 모바일 플로팅 "리뷰 보기" 배지({$review_count}=자사몰만)도 위젯 count로 통일 */
+    var f=document.querySelector('.mobile-fix-footer .review-count');
+    if(f) f.textContent=String(n);
   }
   function load(pno,cb){
     if(cache[pno]){updateReviewTab(cache[pno].summary&&cache[pno].summary.count);return cb(cache[pno]);}
