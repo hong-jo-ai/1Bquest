@@ -339,6 +339,14 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
   // 카카오 PO 데이터에서 옵션-aware 차감 — 시계처럼 부모 SKU + 옵션 → 색상별 Cafe24 코드.
   // 카카오선물은 폴바이스 전용이므로 해리엇 몰에서는 PO 차감도 건너뜀.
   if (mall !== "paulvice") return out;
+  // 카카오 차감 컷오프: kv `kakao_gift_dedux_since`({since:"YYYY-MM-DD"}) 이후(포함) PO만 차감.
+  // 카카오 PO가 4월부터 누적돼 전부 합산하면 실사(초기재고) 기준과 이중차감 → 컷오프로 방지.
+  const { data: sinceRow } = await supabase
+    .from("kv_store").select("data").eq("key", "kakao_gift_dedux_since").maybeSingle();
+  const kakaoSince: string | null =
+    sinceRow?.data && typeof sinceRow.data === "object"
+      ? ((sinceRow.data as { since?: string }).since ?? null)
+      : typeof sinceRow?.data === "string" ? (sinceRow.data as string) : null;
   const { data: poRows } = await supabase
     .from("kv_store")
     .select("data")
@@ -349,6 +357,7 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
       !!d && typeof d === "object" && Array.isArray((d as { orders?: unknown }).orders),
     );
   for (const po of pos) {
+    if (kakaoSince && po.date && po.date < kakaoSince) continue; // 컷오프 이전 스킵(이중차감 방지)
     for (const o of po.orders) {
       const cleanedOption = (o.option ?? "").replace(/^[^:：]+[:：]\s*/, "").trim();
       const sku = kakaoNameToSku.get(o.product);
