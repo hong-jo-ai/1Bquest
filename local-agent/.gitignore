@@ -1,0 +1,12 @@
+_*.js
+_*.py
+probe*.js
+cm29Dl*.js
+cm29Full.js
+cm29Prepare2.js
+cm29ShipDiag.js
+cm29WriteProbe.js
+cm29_locate.js
+logs/
+*.state.json
+necklaceReconcile.state.json
