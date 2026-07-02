@@ -95,16 +95,19 @@ async function applyDutyfreeOut(sb, items, log) {
     if (b.length < 100) break;
   }
   const inv = (await kvGet(sb, "paulvice_inventory_v1")) || {};
+  // 면세점 자체코드(PVJ/PVOVO 등)가 cafe24 custom_product_code 와 안 맞는 경우용 override 맵.
+  // kv `dutyfree_ref_map` = { 면세점ref: 카페24 product_code }.
+  const refMap = (await kvGet(sb, "dutyfree_ref_map")) || {};
   const byRef = {};
   for (const it of items) byRef[it.ref] = (byRef[it.ref] || 0) + it.qty;
   let applied = 0; const skip = [];
   for (const [ref, qty] of Object.entries(byRef)) {
-    const pc = custom.get(ref);
+    const pc = custom.get(ref) || refMap[ref];   // custom_code 우선, 없으면 override 맵
     if (pc && inv[pc]) { inv[pc].dutyfreeOut = (inv[pc].dutyfreeOut || 0) + qty; applied++; }
     else skip.push(ref);
   }
   if (applied) await kvSet(sb, "paulvice_inventory_v1", inv);
-  if (skip.length) log(`  완제품 재고 미추적/면세점전용: ${skip.join(",")}`);
+  if (skip.length) log(`  ⚠️완제품 재고 미매핑(dutyfree_ref_map 에 추가 필요): ${skip.join(",")}`);
   return { applied, skipped: skip.length };
 }
 async function tg(msg) { await require("./telegramRelay").relayText(msg); }
