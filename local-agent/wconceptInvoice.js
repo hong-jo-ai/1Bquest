@@ -29,8 +29,12 @@ async function fetchTrackMap(log){
   if(!process.env.SUPABASE_URL){ log&&log("Supabase 미설정 — 송장입력 스킵"); return new Map(); }
   const { createClient }=require(DASH+"/node_modules/@supabase/supabase-js");
   const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const {data}=await sb.from("pp_shipments").select("order_number,regi_no").eq("channel","W컨셉").eq("req_type","1").eq("is_test",false).eq("status","submitted").not("regi_no","is",null);
-  return new Map((data||[]).map(r=>[String(r.order_number),r.regi_no]));
+  const {data}=await sb.from("pp_shipments").select("order_number,regi_no,created_at").eq("channel","W컨셉").eq("req_type","1").eq("is_test",false).eq("status","submitted").not("regi_no","is",null).order("created_at",{ascending:true});
+  // 교환/재발송은 주문번호에 -EX/-RE 접미사를 붙여 접수(같은 W컨셉 주문번호). 페이지 행은 접미사 없는 Z번호라
+  // 접미사를 벗겨 정규화하고, created_at 오름차순이라 나중(=최신) 접수가 덮어써 새 송장이 옛 송장을 이김.
+  const m=new Map();
+  for(const r of data||[]){ const base=String(r.order_number).replace(/-(EX|RE)\d*$/i,""); m.set(base, r.regi_no); }
+  return m;
 }
 
 /** 로그인된 page 로 Ready 송장입력 수행. 반환 {filled, saved}. 절대 throw 안 하도록 호출측에서 catch 권장. */
