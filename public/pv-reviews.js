@@ -168,11 +168,17 @@
   }
 
   var cache={};
+  /* 상세 탭 "상품 리뷰"에 리뷰수 표기 — 해리엇과 동일 UX */
+  function updateReviewTab(n){
+    if(!n)return;
+    var t=document.querySelector('.detail-tab__item[data-link="prd-review"]');
+    if(t && !/\(\d/.test(t.textContent)) t.textContent=t.textContent.trim()+" ("+n+")";
+  }
   function load(pno,cb){
-    if(cache[pno])return cb(cache[pno]);
+    if(cache[pno]){updateReviewTab(cache[pno].summary&&cache[pno].summary.count);return cb(cache[pno]);}
     fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=1000"+(EN?"&lang=en":""),{credentials:"omit"})
       .then(function(r){return r.json();})
-      .then(function(j){if(!j||!j.ok)j={ok:false,reviews:[],summary:{count:0}};cache[pno]=j;cb(j);})
+      .then(function(j){if(!j||!j.ok)j={ok:false,reviews:[],summary:{count:0}};cache[pno]=j;updateReviewTab(j.summary&&j.summary.count);cb(j);})
       .catch(function(){cb({ok:false,reviews:[],summary:{count:0}});});
   }
   function getProductNo(el){
