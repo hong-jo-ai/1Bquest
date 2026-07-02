@@ -304,7 +304,8 @@ const HOURS_24 = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "
 const WEEK_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 function fmtKstDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // 이름은 KST인데 실제론 서버 로컬(UTC) 날짜를 쓰던 버그 — 오전 9시 전 "오늘 매출"이 하루 밀림 (2026-07-02 감사 수정)
+  return new Date(d.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
 }
 
 function sumDailySlice(daily: DailyData[], predicate: (date: string) => boolean) {
