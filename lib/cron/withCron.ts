@@ -35,6 +35,18 @@ async function recordHeartbeat(name: string, ok: boolean, ms: number, note?: str
 
 async function alertFail(name: string, detail: string) {
   try {
+    // 같은 크론 60분 내 재알림 억제 — 시간당 여러 번 도는 크론이 고장나면 알림 폭탄 방지
+    const sb = kv();
+    if (sb) {
+      const dedupKey = `cron_alerted:${name}`;
+      const { data } = await sb.from("kv_store").select("data").eq("key", dedupKey).maybeSingle();
+      const last = data?.data?.at ? new Date(data.data.at as string).getTime() : 0;
+      if (Date.now() - last < 60 * 60 * 1000) return;
+      await sb.from("kv_store").upsert(
+        { key: dedupKey, data: { at: new Date().toISOString() }, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    }
     await sendTelegramMessage(`🔴 <b>크론 실패</b> — ${name}\n${detail.slice(0, 500)}`);
   } catch { /* 알림 실패는 삼킴 */ }
 }
