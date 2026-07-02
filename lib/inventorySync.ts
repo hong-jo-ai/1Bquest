@@ -359,7 +359,13 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
   for (const po of pos) {
     if (kakaoSince && po.date && po.date < kakaoSince) continue; // 컷오프 이전 스킵(이중차감 방지)
     for (const o of po.orders) {
-      const cleanedOption = (o.option ?? "").replace(/^[^:：]+[:：]\s*/, "").trim();
+      // 옵션에서 색상/변형만 추출: "선택:" prefix 제거 + 각인문구/메세지카드 뒷부분 잘라냄.
+      // 예) "선택: 큐빅…팔찌-실버, 메세지 카드: X" → "큐빅…팔찌-실버"
+      //     "골드 / 각인문구: X" → "골드"  (시계류)
+      const cleanedOption = (o.option ?? "")
+        .replace(/^\s*선택\s*[:：]\s*/, "")
+        .split(/\s*[/,]\s*(?:각인문구|메세지\s*?카드)\s*[:：]?/)[0]
+        .trim();
       const sku = kakaoNameToSku.get(o.product);
       if (!sku || !cleanedOption) continue;
       // 1차: 정확
