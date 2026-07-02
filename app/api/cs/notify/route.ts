@@ -15,18 +15,30 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode") ?? "new";
 
+  // 웹챗 미통보 답변 스위퍼 — 고객이 탭을 강제종료해 away 신호가 안 온 케이스 회수.
+  // 사장님 텔레그램 알림(아래)과 달리 고객 대상이라 주말에도 돌린다. mode=new(10분 주기)에서만.
+  let webchatSweep: { checked: number; sent: number } | null = null;
+  if (mode !== "stale") {
+    try {
+      const { sweepWebchatReplyNotifications } = await import("@/lib/cs/webchat");
+      webchatSweep = await sweepWebchatReplyNotifications();
+    } catch (e) {
+      console.warn("[cs-notify] 웹챗 스위퍼 오류:", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // 주말(한국시간 토·일)에는 CS 알림을 보내지 않음 (사장님 요청).
   // notify 함수를 호출하지 않아 last_notify 워터마크가 전진하지 않음 →
   // 월요일 첫 실행 때 주말 동안 쌓인 미답변까지 한 번에 통지됨(알림 유실 없음).
   const kstDay = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay(); // 0=일,6=토 (KST 기준)
   if (kstDay === 0 || kstDay === 6) {
-    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0 });
+    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0, webchatSweep });
   }
 
   try {
     const result =
       mode === "stale" ? await notifyStaleUnanswered() : await notifyNewUnanswered();
-    return Response.json({ ok: true, mode, ...result });
+    return Response.json({ ok: true, mode, ...result, webchatSweep });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return Response.json({ ok: false, error: msg }, { status: 500 });

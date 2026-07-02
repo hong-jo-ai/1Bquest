@@ -367,10 +367,12 @@ export async function notifyWebchatReplyBySms(threadId: string): Promise<{
     if (activeNow) return { ok: false, skipped: "visitor_present" };
   }
 
-  // ── 채팅당 1회 제한(atomic) ─────────────────────────────────────
-  // everSentKey 를 unique insert 로 선점한다. 이미 있으면(보냈거나 보내는 중) 발송하지 않는다.
-  // 동시에 여러 경로(답변 직후·away 신호)에서 호출돼도 단 한 번만 통과한다.
-  const everSentKey = `webchat_sms_ever_sent:${threadId}`;
+  // ── 답변 라운드당 1회 제한(atomic) ──────────────────────────────
+  // ⚠️ 원래 "채팅당 평생 1회"였는데, 고객이 재문의→사장님 재답변 시 SMS가 영영 안 가서
+  //    "답변 못 받았다" 불만 발생(2026-07-02 수정, 실사례 3건). 이제 고객의 마지막 메시지
+  //    (=답변 라운드) 기준으로 1회 — 사장님이 연속 여러 개 답해도 라운드당 SMS는 1통.
+  // unique insert 로 선점: 동시에 여러 경로(답변 직후·away 신호·스위퍼)에서 호출돼도 1번만 통과.
+  const everSentKey = `webchat_sms_sent:${threadId}:${latestInbound.id}`;
   const claimAt = new Date().toISOString();
   const { error: claimError } = await db.from("kv_store").insert({
     key: everSentKey,
@@ -546,4 +548,29 @@ function normalizePhone(value: string | null | undefined): string | null {
 function isInternalSystemMessage(raw: unknown): boolean {
   const kind = (raw as { kind?: string } | null)?.kind;
   return kind === "webchat_session_started";
+}
+
+/**
+ * 미통보 답변 스위퍼 — 10분 주기(cs/notify 크론에서 호출).
+ * 고객이 탭을 강제종료하면 away 신호가 안 와서 답변 SMS가 영영 안 나가는 케이스를 회수한다.
+ * (모바일 91% — iOS에서 pagehide 미발화 흔함) notifyWebchatReplyBySms 가 자체 가드
+ * (이미 봄/화면 보는 중/라운드당 1회 선점)를 가지므로 여기선 후보만 순회하면 안전.
+ */
+export async function sweepWebchatReplyNotifications(): Promise<{ checked: number; sent: number }> {
+  const db = getCsSupabase();
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { data: threads } = await db
+    .from("cs_threads")
+    .select("id")
+    .eq("channel", "webchat")
+    .gte("last_message_at", since)
+    .limit(50);
+  let sent = 0;
+  for (const t of threads || []) {
+    try {
+      const res = await notifyWebchatReplyBySms(t.id);
+      if (res.ok) sent++;
+    } catch { /* 개별 실패 무시 */ }
+  }
+  return { checked: (threads || []).length, sent };
 }
