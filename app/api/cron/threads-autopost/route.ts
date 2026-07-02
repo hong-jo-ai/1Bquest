@@ -1,7 +1,7 @@
 export const maxDuration = 45;
 
 import { NextResponse } from "next/server";
-import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
+import { getThreadsTokenFromStore, refreshThreadsTokenIfNeeded } from "@/lib/threadsTokenStore";
 import {
   dequeueAutoPostByBrand,
   dequeuePost,
@@ -34,6 +34,9 @@ async function restoreDequeuedPost(post: QueuedPost): Promise<number> {
 async function cronMain(request: Request) {
 
   const targetBrand = (new URL(request.url).searchParams.get("brand") ?? "") as BrandId;
+
+  // 장기토큰 자동연장(7일 주기) — 만료 사고 재발 방지. 게시 여부와 무관하게 매 크론마다 체크.
+  if (targetBrand) await refreshThreadsTokenIfNeeded(targetBrand);
 
   const scheduledPost = targetBrand
     ? await dequeueScheduledPostByBrand(targetBrand)
