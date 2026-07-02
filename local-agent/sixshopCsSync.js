@@ -171,5 +171,6 @@ async function scrapeInquiries(log) {
       }
     } catch (e) { log("문의 수집 실패: " + e.message); }
   }
+  await require("./heartbeat").beat("sixshop-cs-sync");
   log("=== 완료 ===");
-})().catch((e) => { console.error("ERR", e); process.exit(1); });
+})().catch(async (e) => { console.error("ERR", e); try { await require("./notifyFail").notifyFail("식스샵 CS 동기화", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });

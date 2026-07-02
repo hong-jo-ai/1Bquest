@@ -6,6 +6,7 @@
  */
 import { checkPromoDeadlines } from "@/lib/promo/analyze";
 import { createClient } from "@supabase/supabase-js";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,7 +20,7 @@ function getDb() {
   return createClient(url, key);
 }
 
-export async function GET() {
+async function cronMain() {
   try {
     const result = await checkPromoDeadlines();
     const db = getDb();
@@ -43,3 +44,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCron("promo-deadline-check", () => cronMain());

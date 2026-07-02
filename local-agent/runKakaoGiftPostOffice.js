@@ -10,7 +10,7 @@ require("dotenv").config({ override: true });
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const XLSX = require(path.join(DASH, "node_modules/xlsx"));
 const { getKakaoGiftRows } = require("./kakaoGiftOutbound");
-const { sendTelegram, sendEmail, HEADER } = require("./buildPostOffice");
+const { sendTelegram, sendEmail, HEADER, mergeByRecipient } = require("./buildPostOffice");
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 (async () => {
@@ -38,13 +38,17 @@ const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
   log(`카카오선물하기 출고대기(신규) ${rows.length}건`);
   if (!rows.length) { log("신규 주문 없음 — 종료(텔레그램/이메일 생략)"); return; }
 
+  // 합배송: 동일 수취인의 여러 주문/상품을 송장 1장(엑셀 1행)으로 표시. 접수도 register.js 가 수취인별로 묶음.
+  const ex = mergeByRecipient(rows);
+  if (ex.length !== rows.length) log(`합배송 병합: ${rows.length}행 → ${ex.length}건(동일 수취인 묶음)`);
+
   // 우체국 양식 엑셀
-  const aoa=[HEADER, ...rows.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
+  const aoa=[HEADER, ...ex.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_카카오선물_${date}_1.xlsx`; XLSX.writeFile(wb,out);
-  rows.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
+  ex.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
 
-  // 우체국 송장등록 (testYn 제어)
+  // 우체국 송장등록 (testYn 제어) — 원본(주문별) 행을 넘기면 register.js 가 수취인별로 묶어 접수
   let regMsg = "";
   try {
     const { registerRows } = require("./postParcel/register");
@@ -53,7 +57,7 @@ const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
     log(`송장등록: ok ${r.ok}/skip ${r.skipped}/fail ${r.failed}`);
   } catch(e){ regMsg = `\n📮 우체국 송장등록 실패: ${e.message}`; log("송장등록 실패: "+e.message); }
 
-  const summary = `카카오선물하기 ${rows.length}건`;
+  const summary = ex.length !== rows.length ? `카카오선물하기 ${ex.length}건(주문 ${rows.length}건 합배송)` : `카카오선물하기 ${rows.length}건`;
   const cap = `🎁 카카오선물하기 우체국 송장등록 (${date})\n${summary}${regMsg}`;
   try { await sendTelegram(out, cap); } catch(e){ log("텔레그램 실패: "+e.message); }
   try { await sendEmail(out, `카카오선물하기 우체국 송장등록 ${date}`, `카카오선물하기 발주서 기준 우체국 송장등록 결과입니다.\n${summary}${regMsg}`); } catch(e){ log("이메일 실패: "+e.message); }

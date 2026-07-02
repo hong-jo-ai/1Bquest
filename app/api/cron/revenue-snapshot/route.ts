@@ -1,19 +1,16 @@
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { runRevenueSnapshot } from "@/lib/finance/revenueSnapshot";
+import { withCron } from "@/lib/cron/withCron";
 
 /**
  * 매일 KST 03:30 실행.
  * 카페24 + channel_upload:* 의 dailyRevenue 를 모아 brand 별 매출 히스토리에 적재.
  * 매출 추이 그래프(대시보드)의 데이터 소스.
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain() {
 
   try {
     const token = await getAccessTokenFromStore();
@@ -37,3 +34,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
+
+export const GET = withCron("revenue-snapshot", () => cronMain());

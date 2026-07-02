@@ -17,6 +17,7 @@ function ymd(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOS
   try {
     const r = await syncMarketplaceSales({ channel: "29cm", startDate: start, endDate: end, ingest: true }, log);
     log(`✅ 완료 — 파일=${r.downloadedFile} 건수=${r.rowCount ?? "?"} 저장=${r.stored ? "OK" : "?"}`);
+    await require("./heartbeat").beat("cm29-sync");
   } catch (e) {
     log(`❌ 실패: ${e && e.message ? e.message : e}`, "error");
     try { await require("./notifyFail").notifyFail("29CM 주문수집", e && e.message ? e.message : e); } catch (_) {}

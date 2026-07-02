@@ -1,4 +1,5 @@
 import { notifyNewCafe24Orders } from "@/lib/cafe24OrdersNotify";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,16 +14,7 @@ async function run() {
   }
 }
 
-export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
-  }
-  return run();
-}
+export const GET = withCron("cafe24-orders-notify", () => run());
 
 export async function POST() {
   return run();

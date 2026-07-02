@@ -4,11 +4,12 @@
  */
 import { syncInbox } from "@/lib/today-hub/inboxClassifier";
 import { saveStatus } from "@/lib/today-hub/inboxStore";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function GET() {
+async function cronMain() {
   try {
     const status = await syncInbox();
     await saveStatus(status);
@@ -22,3 +23,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCron("inbox-classify", () => cronMain());

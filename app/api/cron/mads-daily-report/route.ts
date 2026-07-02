@@ -1,9 +1,10 @@
 import { buildAndSendDailyReport } from "@/lib/mads/dailyReport";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-export async function GET() {
+async function cronMain() {
   try {
     const result = await buildAndSendDailyReport();
     return Response.json(result);
@@ -14,3 +15,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCron("mads-daily-report", () => cronMain());

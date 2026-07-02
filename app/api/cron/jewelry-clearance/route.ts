@@ -1,19 +1,15 @@
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { runJewelryClearance } from "@/lib/jewelryClearance";
 import { runClearanceAds } from "@/lib/clearanceAdEngine";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { getMetaTokenFromStore } from "@/lib/metaTokenStore";
+import { withCron } from "@/lib/cron/withCron";
 
 // Vercel Cron이 매일 오전 7시(KST) = 22:00(UTC, 전날)에 호출
 
-export async function GET(request: NextRequest) {
-  // Vercel Cron 인증 확인
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain() {
 
   try {
     // 1. 카페24 토큰으로 청산 엔진 실행
@@ -54,3 +50,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+export const GET = withCron("jewelry-clearance", () => cronMain());

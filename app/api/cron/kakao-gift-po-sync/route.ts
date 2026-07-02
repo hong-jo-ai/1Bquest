@@ -4,6 +4,7 @@
  */
 import { syncKakaoGiftPos } from "@/lib/finance/kakaoGiftPoSync";
 import { createClient } from "@supabase/supabase-js";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,7 +18,7 @@ function getDb() {
   return createClient(url, key);
 }
 
-export async function GET() {
+async function cronMain() {
   try {
     const result = await syncKakaoGiftPos();
     const db = getDb();
@@ -49,3 +50,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCron("kakao-gift-po-sync", () => cronMain());

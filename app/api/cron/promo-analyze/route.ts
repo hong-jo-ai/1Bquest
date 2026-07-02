@@ -5,6 +5,7 @@
  */
 import { scanAndAnalyzePromoEmails } from "@/lib/promo/analyze";
 import { createClient } from "@supabase/supabase-js";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -18,7 +19,7 @@ function getDb() {
   return createClient(url, key);
 }
 
-export async function GET() {
+async function cronMain() {
   try {
     const result = await scanAndAnalyzePromoEmails();
     const db = getDb();
@@ -42,3 +43,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCron("promo-analyze", () => cronMain());

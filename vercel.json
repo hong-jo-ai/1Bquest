@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/watchdog",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/promo-analyze",
       "schedule": "10 0 * * 1,2,3,4,5"
     },

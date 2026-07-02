@@ -13,6 +13,7 @@ import { resolveDeposit, formatNotification, type ResolveResult } from "@/lib/ba
 import { listPending, bumpPendingAttempt, removePending, RETRY_WINDOW_MS } from "@/lib/bankDeposit/pending";
 import { enqueueConfirm } from "@/lib/bankDeposit/confirmQueue";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic    = "force-dynamic";
 export const maxDuration = 60;
@@ -68,16 +69,7 @@ async function run() {
   return Response.json({ ok: true, pending: pending.length, confirmed, resolved, expired, stillWaiting });
 }
 
-export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
-  }
-  return run();
-}
+export const GET = withCron("bank-deposit-retry", () => run());
 
 export async function POST() {
   return run();

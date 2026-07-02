@@ -1,6 +1,6 @@
 export const maxDuration = 45;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 import {
   dequeueAutoPostByBrand,
@@ -13,6 +13,7 @@ import {
   type QueuedPost,
 } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
+import { withCron } from "@/lib/cron/withCron";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 const THREADS_TEXT_LIMIT = 500;
@@ -30,13 +31,9 @@ async function restoreDequeuedPost(post: QueuedPost): Promise<number> {
  * 매시간 호출 — 설정된 하루 게시 횟수에 따라 게시 여부를 자동 판단
  * 큐에서 1개를 꺼내 해당 브랜드의 Threads 계정에 게시
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain(request: Request) {
 
-  const targetBrand = (request.nextUrl.searchParams.get("brand") ?? "") as BrandId;
+  const targetBrand = (new URL(request.url).searchParams.get("brand") ?? "") as BrandId;
 
   const scheduledPost = targetBrand
     ? await dequeueScheduledPostByBrand(targetBrand)
@@ -175,3 +172,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message, restored: true, queueSize: restoredCount }, { status: 500 });
   }
 }
+
+export const GET = withCron("threads-autopost", (req) => cronMain(req));

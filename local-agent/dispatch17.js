@@ -42,7 +42,7 @@ async function tg(msg) {
 
 async function main() {
   log("=== 17시 송장입력 (카페24 + 29CM + 식스샵 + 무신사 + 카카오선물) ===");
-  const r1 = await run("cafe24Dispatch.js", { CAFE24_DISPATCH_LIMIT: "50" });
+  const r1 = await run("cafe24Dispatch.js", { CAFE24_DISPATCH_LIMIT: "300" }); // 옛 'submitted' 누적 + 주말백로그 대비(최신순 정렬과 함께)
   const r3 = await run("cm29Dispatch.js", {});       // 이메일 자동로그인(SMS X), 멱등
   const r4 = await run("sixshopDispatch.js", {});    // iframe 송장칸, 멱등(이미 송장 스킵), 네이버페이 스킵
   const r5 = await run("musinsaDispatch.js", {});    // 배송출고처리 택배송장일괄입력→출고완료, 멱등(목록서 빠짐)
@@ -56,9 +56,10 @@ async function main() {
   const kakao = /카카오 회신 발송/.test(r2.out) ? "발송" : (/스킵|채울 건 없음|메일 없음/.test(r2.out) ? "스킵" : "확인필요");
   const held = await heldSummary();
   await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 식스샵: ${sixMsg}\n- 무신사: ${muMsg}\n- 카카오선물: ${kakao}${held}`);
+  await require("./heartbeat").beat("dispatch17");
   log("=== 완료 ===");
 }
 
 if (require.main === module) {
-  main().catch((e) => { console.error("ERR", e); process.exit(1); });
+  main().catch(async (e) => { console.error("ERR", e); try { await require("./notifyFail").notifyFail("17시 송장입력(dispatch17)", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });
 }

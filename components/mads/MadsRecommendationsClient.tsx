@@ -46,7 +46,7 @@ export default function MadsRecommendationsClient() {
     setRunning(true);
     setRunMsg(null);
     try {
-      const res = await fetch("/api/cron/mads-evaluate");
+      const res = await fetch("/api/cron/mads-evaluate", { method: "POST" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.errors?.[0]?.error ?? "평가 실패");
       const c = data.counts ?? {};

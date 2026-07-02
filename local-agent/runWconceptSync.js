@@ -26,6 +26,7 @@ function ymd(d) {
   try {
     const r = await syncWconcept({ startDate: start, endDate: end, ingest: true }, log);
     log(`✅ 완료 — 합산 ${r.combinedRows}행, 적재 ${r.rowCount ?? "?"}건 저장=${r.stored ? "OK" : "?"}`);
+    await require("./heartbeat").beat("wconcept-sync");
   } catch (e) {
     log(`❌ 실패: ${e && e.message ? e.message : e}`, "error");
     try { await require("./notifyFail").notifyFail("W컨셉 주문수집", e && e.message ? e.message : e); } catch (_) {}

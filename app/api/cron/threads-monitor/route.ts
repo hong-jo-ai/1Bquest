@@ -1,10 +1,11 @@
 export const maxDuration = 30;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getThreadsTokenFromStore } from "@/lib/threadsTokenStore";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 import { getRecentPublished, getNotifiedIds, markNotified, getPostQueue } from "@/lib/threadsScheduler";
 import type { BrandId } from "@/lib/threadsBrands";
+import { withCron } from "@/lib/cron/withCron";
 
 const THREADS_BASE = "https://graph.threads.net/v1.0";
 const NOTIFY_EMAIL = "shong@harriotwatches.com";
@@ -49,11 +50,7 @@ async function sendGmail(accessToken: string, to: string, subject: string, htmlB
  * 최근 15일 이내 게시물의 좋아요/댓글 수를 확인
  * 기준 초과 시 Gmail로 이메일 알림
  */
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain() {
 
   const published = await getRecentPublished();
   if (published.length === 0) {
@@ -195,3 +192,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ success: true, notified: hits.length, checked: published.length });
 }
+
+export const GET = withCron("threads-monitor", () => cronMain());

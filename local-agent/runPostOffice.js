@@ -47,6 +47,7 @@ function run(script, label, env = {}) {
   const ok = run("buildPostOffice.js", "우체국 접수/발송");
   if (!ok) fails.push("★우체국 접수/발송(등록) — 배송 누락 위험");
   log(`=== 우체국 실행 종료 (등록 ${ok ? "성공" : "실패"}) ===`);
+  if (ok) await require("./heartbeat").beat("postoffice-outbound");
   // 실패 단계가 있으면 텔레그램 경고 (조용한 배송 누락 방지)
   if (fails.length) {
     try { await require("./notifyFail").notifyFail("우체국 발송 파이프라인", `실패 단계: ${fails.join(" / ")}`); } catch (_) {}

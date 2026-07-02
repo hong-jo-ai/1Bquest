@@ -69,7 +69,8 @@ async function main() {
   const cursor = await getCursor(db);
   const rows = readNew(cursor);
   if (rows === null) return; // 읽기 실패
-  if (!rows.length) { log("새 우리카드 문자 없음"); await enrichNpay(); return; }
+  if (!rows.length) { log("새 우리카드 문자 없음"); await require("./heartbeat").beat("woori-card-sms");
+  await enrichNpay(); return; }
 
   const messages = rows.map((r) => ({
     text: r.text,
@@ -97,4 +98,4 @@ async function main() {
   await enrichNpay();
 }
 
-main().catch((e) => { console.error("ERR", e); process.exit(1); });
+main().catch(async (e) => { console.error("ERR", e); try { await require("./notifyFail").notifyFail("우리카드 SMS 수집", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });

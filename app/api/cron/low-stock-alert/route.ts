@@ -15,6 +15,7 @@ import { cafe24Get } from "@/lib/cafe24Client";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { createClient } from "@supabase/supabase-js";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -149,18 +150,7 @@ async function run() {
   return Response.json({ ok: true, reorder: reorder.length, imminent: imminent.length, dead: dead.length, dup: dupCount, weeklyDue });
 }
 
-export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
-  try {
-    return await run();
-  } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-  }
-}
+export const GET = withCron("low-stock-alert", () => run());
 
 export async function POST() {
   try {

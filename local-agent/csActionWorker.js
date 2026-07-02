@@ -230,8 +230,16 @@ async function tick() {
 
 (async () => {
   log("CS 액션 워커 시작 (poll " + POLL_MS + "ms)");
+  let failStreak = 0, lastBeat = 0;
   for (;;) {
-    try { await tick(); } catch (e) { log("tick 예외: " + (e && e.message)); }
+    try { await tick(); failStreak = 0; }
+    catch (e) {
+      log("tick 예외: " + (e && e.message));
+      failStreak++;
+      if (failStreak === 5) { try { await require("./notifyFail").notifyFail("CS 액션 워커 연속 실패", e && e.message ? e.message : String(e)); } catch (_) {} }
+    }
+    // 생존 하트비트(5분 스로틀) — watchdog 이 프로세스 사망 감지
+    if (Date.now() - lastBeat > 5 * 60 * 1000) { lastBeat = Date.now(); await require("./heartbeat").beat("cs-action-worker"); }
     await sleep(POLL_MS);
   }
 })();

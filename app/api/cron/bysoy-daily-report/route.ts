@@ -11,6 +11,7 @@ import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { buildBysoyReport, renderBysoyReportPdf, type BysoyReport } from "@/lib/bysoyReport";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { sendTelegramDocument } from "@/lib/cs/telegramDocument";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -102,24 +103,7 @@ async function run(opts: { manual?: boolean; date?: string } = {}) {
   });
 }
 
-export async function GET(req: Request) {
-  // ?ping=1 — 발송 없이 배포 버전 확인용 (date 옵션 지원 여부). 인증 불필요.
-  if (new URL(req.url).searchParams.get("ping") === "1") {
-    return Response.json({ pong: true, supportsDate: true });
-  }
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
-    }
-  }
-  try {
-    return await run();
-  } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-  }
-}
+export const GET = withCron("bysoy-daily-report", () => run());
 
 export async function POST(req: Request) {
   const url = new URL(req.url);

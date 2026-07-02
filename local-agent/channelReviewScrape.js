@@ -315,5 +315,6 @@ async function rematchAll(products) {
   if (which === "musinsa" || which === "all") await scrapeMusinsa(products);
   if (which === "wconcept" || which === "all") await scrapeWconcept(products);
   if (which === "29cm" || which === "all") await scrape29cm(products);
+  await require("./heartbeat").beat("channel-review-scrape");
   process.exit(0);
-})().catch((e) => { console.error("ERR", e.stack || e.message); process.exit(1); });
+})().catch(async (e) => { console.error("ERR", e.stack || e.message); try { await require("./notifyFail").notifyFail("채널리뷰 수집", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });

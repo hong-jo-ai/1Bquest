@@ -1,10 +1,11 @@
 export const maxDuration = 120;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { type MallId } from "@/lib/cafe24Client";
 import { runInventorySync } from "@/lib/inventorySync";
 import { runBatterySync } from "@/lib/batterySync";
+import { withCron } from "@/lib/cron/withCron";
 
 /**
  * 매일 오전 7시(KST) 실행 — 폴바이스 + 해리엇 두 몰의 재고를 각각 카페24에 동기화.
@@ -13,11 +14,7 @@ import { runBatterySync } from "@/lib/batterySync";
  */
 const MALLS: MallId[] = ["paulvice", "harriot"];
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain() {
 
   const malls: Record<string, unknown> = {};
   for (const mall of MALLS) {
@@ -47,5 +44,15 @@ export async function GET(request: NextRequest) {
     console.error(`[Cron:inventory-sync] 배터리 차감 실패:`, e);
   }
 
+  // 두 몰 전부 에러/스킵이면 실패로 처리 (감사 지적: 전부 실패해도 success:true 반환하던 버그)
+  const allFailed = MALLS.every((m) => {
+    const r = malls[m] as Record<string, unknown> | undefined;
+    return !r || "error" in r || "skipped" in r;
+  });
+  if (allFailed) {
+    return NextResponse.json({ success: false, malls, battery }, { status: 500 });
+  }
   return NextResponse.json({ success: true, malls, battery });
 }
+
+export const GET = withCron("inventory-sync", () => cronMain());

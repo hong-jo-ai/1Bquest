@@ -95,5 +95,6 @@ async function scrapeClaims(page, claimType, log) {
     body: JSON.stringify({ claims }),
   });
   log(`반품 적재: ${JSON.stringify(await res.json().catch(() => ({})))}`);
+  await require("./heartbeat").beat("wconcept-cs-sync");
   log("=== 완료 ===");
-})().catch((e) => { console.error("ERR", e); process.exit(1); });
+})().catch(async (e) => { console.error("ERR", e); try { await require("./notifyFail").notifyFail("W컨셉 CS 동기화", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });

@@ -8,10 +8,10 @@
  * ⚠️ edge 런타임: 인스타가 Vercel serverless egress IP를 막으므로 Cloudflare 네트워크로 해석.
  * 한 번에 다 처리하면 시간 초과 → 회당 MAX_PER_RUN 건만(매일 반복되며 점진 충전).
  */
-import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { captureAvatarToStorage, AVATAR_BUCKET } from "@/lib/influencer/avatarResolve";
 import { INFLUENCERS_KEY, type StoredInfluencer } from "@/lib/influencer/register";
+import { withCron } from "@/lib/cron/withCron";
 
 export const runtime = "edge";
 
@@ -32,10 +32,7 @@ function needsCapture(profileImage: string): boolean {
   return !v.includes(STORAGE_MARKER);
 }
 
-export async function GET(req: NextRequest) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
-  }
+async function cronMain() {
 
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -77,3 +74,5 @@ export async function GET(req: NextRequest) {
     { headers: { "Content-Type": "application/json" } },
   );
 }
+
+export const GET = withCron("influencer-avatars", () => cronMain());

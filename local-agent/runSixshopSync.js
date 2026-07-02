@@ -11,6 +11,7 @@ const { syncSixshop } = require("./sixshopSync");
   try {
     const r = await syncSixshop({}, log);
     log(`✅ 완료 — 국내 ${r.sixshop ?? "?"}건 / 글로벌 ${r.sixshop_global ?? "?"}건`);
+    await require("./heartbeat").beat("sixshop-sync");
   } catch (e) {
     log(`❌ 실패: ${e && e.message ? e.message : e}`, "error");
     try { await require("./notifyFail").notifyFail("식스샵 주문수집", e && e.message ? e.message : e); } catch (_) {}

@@ -11,10 +11,11 @@
  * 권장 스케줄(vercel.json): 30분마다. 사무시간/조용모드 게이트는 펄스 내부가 처리.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { runPulse, drainQueue } from "@/lib/mori/pulse";
 import { isAway } from "@/lib/mori/presence";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
+import { withCron } from "@/lib/cron/withCron";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -24,11 +25,7 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function cronMain() {
 
   try {
     await runPulse(); // 신호 있으면 생성·큐 적재(없으면 저렴하게 종료)
@@ -57,3 +54,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: e?.message ?? "mori-pulse 오류" }, { status: 500 });
   }
 }
+
+export const GET = withCron("mori-pulse", () => cronMain());

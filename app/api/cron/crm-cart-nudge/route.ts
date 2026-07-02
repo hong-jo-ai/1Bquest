@@ -6,6 +6,7 @@
  */
 import { runCartNudge } from "@/lib/crm/cartNudge";
 import { type CrmMall } from "@/lib/crm/cartStore";
+import { withCron } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -30,15 +31,7 @@ async function run() {
   return Response.json({ ok: true, dryRun, malls });
 }
 
-export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
-  try { return await run(); }
-  catch (e) { return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
-}
+export const GET = withCron("crm-cart-nudge", () => run());
 
 export async function POST() {
   try { return await run(); }
