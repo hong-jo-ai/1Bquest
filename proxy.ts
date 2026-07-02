@@ -34,6 +34,7 @@ const ALLOW_PREFIX = [
   "/api/reviews/submit",  // 리뷰 제출 (익명, 토큰검증)
   "/api/reviews/upload",  // 리뷰 미디어 업로드 (익명, 토큰검증)
   "/api/reviews/widget",  // 스토어프론트 리뷰 위젯 데이터 (공개 읽기, CORS)
+  "/api/reviews/counts",  // 상품별 리뷰수 맵 (watchshop 타일 등, 공개 읽기, CORS)
   "/pv-reviews.js",       // 스토어프론트 리뷰 위젯 스크립트 (공개 정적파일)
   "/api/tryon",           // 착용해보기 위젯 데이터 (공개 읽기, CORS)
   "/pv-tryon.js",         // 착용해보기 위젯 스크립트 (공개 정적파일)
