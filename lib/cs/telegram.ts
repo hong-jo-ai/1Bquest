@@ -6,7 +6,8 @@ const LAST_NOTIFY_KEY = "cs_inbox_telegram_last_notify_at";
 
 export interface TelegramButton {
   text: string;
-  url: string;
+  url?: string;            // 링크 버튼
+  callback_data?: string;  // 콜백 버튼(웹훅 callback_query로 수신) — 둘 중 하나 필수
 }
 
 export async function sendTelegramMessage(
@@ -33,10 +34,11 @@ export async function sendTelegramMessage(
           ? {
               reply_markup: {
                 inline_keyboard: [
-                  options.buttons.map((button) => ({
-                    text: button.text,
-                    url: button.url,
-                  })),
+                  options.buttons.map((button) =>
+                    button.callback_data
+                      ? { text: button.text, callback_data: button.callback_data }
+                      : { text: button.text, url: button.url },
+                  ),
                 ],
               },
             }

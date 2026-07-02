@@ -125,6 +125,12 @@ interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
+  callback_query?: {
+    id: string;
+    from?: { id: number; first_name?: string };
+    message?: { message_id: number; chat: { id: number }; text?: string };
+    data?: string;
+  };
 }
 
 async function sendTelegramReply(
@@ -392,6 +398,50 @@ export async function POST(req: NextRequest) {
     update = await req.json();
   } catch {
     return Response.json({ ok: false, error: "invalid json" });
+  }
+
+  // ── 인라인 버튼 콜백 (mads 광고 추천 확인카드 등) ─────────────────
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    const allowed = process.env.TELEGRAM_CHAT_ID;
+    const chatId = cb.message?.chat?.id;
+    if (!allowed || String(chatId) !== allowed) {
+      return Response.json({ ok: true, ignored: "unauthorized callback" });
+    }
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const answer = (text: string) =>
+      fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callback_query_id: cb.id, text: text.slice(0, 190) }),
+      }).catch(() => {});
+    const editAppend = (line: string) =>
+      fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId, message_id: cb.message?.message_id,
+          text: `${cb.message?.text ?? ""}
+
+${line}`,
+        }),
+      }).catch(() => {});
+
+    const m = String(cb.data || "").match(/^mads:(accept|reject):(.+)$/);
+    if (m) {
+      try {
+        const { decideRecommendation } = await import("@/lib/mads/decide");
+        const res = await decideRecommendation(m[2], m[1] as "accept" | "reject");
+        const line = res.ok
+          ? (m[1] === "accept" ? `✅ 승인 — ${res.summary ?? "적용 완료"}` : "❌ 거절 처리됨")
+          : `⚠️ 실패: ${res.error ?? "알 수 없음"}`;
+        await answer(res.ok ? "처리 완료" : `실패: ${res.error ?? ""}`);
+        await editAppend(line);
+      } catch (e) {
+        await answer("오류: " + (e instanceof Error ? e.message : String(e)).slice(0, 150));
+      }
+      return Response.json({ ok: true });
+    }
+    await answer("알 수 없는 버튼");
+    return Response.json({ ok: true, ignored: "unknown callback" });
   }
 
   const message = update.message || update.edited_message;
