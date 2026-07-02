@@ -471,7 +471,7 @@ export default function RevenueActionsWidget({
           <Flag size={13} />
         </div>
         <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex-1">성장 운영판</h3>
-        <span className="text-[10px] font-medium text-zinc-400">{brandLabel}</span>
+        <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full shrink-0">{brandLabel} 기준</span>
       </div>
 
       <div className="p-4 space-y-4">
@@ -484,7 +484,7 @@ export default function RevenueActionsWidget({
         <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
           <div className="flex items-center justify-between gap-2 mb-3">
             <div>
-              <p className="text-[11px] font-semibold text-zinc-500">이번 달 스코어</p>
+              <p className="text-[11px] font-semibold text-zinc-500">이번 달 스코어 <span className="font-normal text-zinc-400">· {brandLabel} 매출 기준 (전체매출과 다름)</span></p>
               <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
                 <span className="text-base font-bold text-zinc-900 dark:text-zinc-50 tabular-nums">{fmtKRW(currentRevenue)}</span>
                 <span className="text-zinc-400 text-xs">/</span>

@@ -53,7 +53,8 @@ export const MALLS: Record<MallId, MallConfig> = {
   paulvice_kr: {
     id: "paulvice_kr", label: "Paulvice (KR)", cafe24Mall: "paulvice",
     shopNo: 1, reviewBoardNo: 4, boardCategoryNo: 1, currency: "KRW",
-    reward: { text: 3000, photo: 7000, video: 12000 },
+    // 폴바이스는 판매단가가 낮아 적립금도 해리엇보다 낮게(사장님 2026-06-30): 글1500/사진3000/동영상5000
+    reward: { text: 1500, photo: 3000, video: 5000 },
   },
   paulvice_global: {
     id: "paulvice_global", label: "Paulvice (Global)", cafe24Mall: "paulvice",
@@ -64,6 +65,43 @@ export const MALLS: Record<MallId, MallConfig> = {
 
 export function getMall(id: string): MallConfig | null {
   return (MALLS as Record<string, MallConfig>)[id] ?? null;
+}
+
+/** 메시지·발신 표기용 한글 브랜드명(브랜드별 분기). */
+export function brandLabelKo(mall: MallConfig): string {
+  return mall.cafe24Mall === "harriot" ? "해리엇" : "폴바이스";
+}
+
+/** 리뷰 페이지 브라우저 탭 제목(브랜드별). 앱 기본("Harriotwatches Dashboard") 대신 노출 — 고객 혼동 방지. */
+export function reviewTitleFromToken(token: string | null): string {
+  const tok = token ? verifyReviewToken(token) : null;
+  const mall = tok ? getMall(tok.mall) : null;
+  if (!mall) return "리뷰 작성";
+  const brand = mall.cafe24Mall === "harriot" ? "HARRIOT" : "PAULVICE";
+  return mall.currency === "KRW" ? `${brand} 리뷰` : `${brand} Review`;
+}
+
+/** 리뷰 페이지 base URL(브랜드별). 폴바이스는 전용 도메인(env), 미설정 시 해리엇 기본으로 폴백. */
+export function reviewBaseUrl(mall: MallConfig): string {
+  const harriot = (process.env.REVIEW_BASE_URL || "https://review.harriotwatches.co.kr").replace(/\/$/, "");
+  if (mall.cafe24Mall === "paulvice") {
+    return (process.env.REVIEW_BASE_URL_PAULVICE || harriot).replace(/\/$/, "");
+  }
+  return harriot;
+}
+
+/**
+ * 카카오 알림톡 발송 설정(브랜드별). pfId(채널)·templateId(승인 템플릿)가 둘 다 env에 있어야 알림톡 사용.
+ * 없으면 null → 리뷰요청은 기존 SMS/LMS로 폴백(무회귀).
+ *   REVIEW_KAKAO_PFID_HARRIOT / REVIEW_KAKAO_TEMPLATE_HARRIOT
+ *   REVIEW_KAKAO_PFID_PAULVICE / REVIEW_KAKAO_TEMPLATE_PAULVICE
+ */
+export interface KakaoReviewConfig { pfId: string; templateId: string; }
+export function kakaoReviewConfig(mall: MallConfig): KakaoReviewConfig | null {
+  const suffix = mall.cafe24Mall === "harriot" ? "HARRIOT" : "PAULVICE";
+  const pfId = process.env[`REVIEW_KAKAO_PFID_${suffix}`];
+  const templateId = process.env[`REVIEW_KAKAO_TEMPLATE_${suffix}`];
+  return pfId && templateId ? { pfId, templateId } : null;
 }
 
 export type MediaType = "none" | "photo" | "video";

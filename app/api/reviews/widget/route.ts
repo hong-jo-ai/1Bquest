@@ -81,7 +81,7 @@ async function getAiSummary(
 }
 
 /** 후기 본문(+작성자명 로마자) 영어화(claude-haiku) + kv 캐시. 후기수 동일하면 재사용. */
-async function translateReviews<T extends { id: number; content: string; author: string }>(
+async function translateReviews<T extends { id: string; content: string; author: string }>(
   mall: MallId,
   productNo: number,
   reviews: T[],
@@ -218,6 +218,41 @@ async function groupProductNos(mall: MallId, productNo: number): Promise<number[
   } catch { return [productNo]; }
 }
 
+const CHANNEL_LABEL: Record<string, string> = { musinsa: "무신사", "29cm": "29CM", wconcept: "W컨셉" };
+
+/** 외부 채널 상품평(channel_reviews)을 위젯 리뷰 형태로 — 매칭된 product_no + 몰 기준. */
+async function fetchChannelReviews(
+  mall: MallId,
+  productNos: number[],
+): Promise<Array<{ id: string; rating: number; content: string; author: string; date: string; photos: string[]; source: string | null }>> {
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key || !productNos.length) return [];
+  const mallKey = mall === "harriot" ? "harriot_kr" : "paulvice_kr";
+  try {
+    const sb = createClient(url, key);
+    const { data } = await sb
+      .from("channel_reviews")
+      .select("id,channel,rating,content,author,photos,review_date")
+      .eq("mall", mallKey)
+      .in("product_no", productNos)
+      .limit(300);
+    const mapped = (data || [])
+      .map((r) => ({
+        id: "ch_" + r.id,
+        rating: Number(r.rating) || 0,
+        content: (r.content || "").trim(),
+        author: maskName(r.author || ""),
+        date: (r.review_date || "").slice(0, 10),
+        photos: Array.isArray(r.photos) ? (r.photos as string[]) : [],
+        source: CHANNEL_LABEL[r.channel] || r.channel,
+      }))
+      .filter((r) => r.content || r.photos.length);
+    // 변형 리스팅 간 동일 리뷰 중복 제거(내용+작성자 기준)
+    const seen = new Set<string>();
+    return mapped.filter((r) => { const k = (r.content || "") + "|" + (r.author || ""); if (seen.has(k)) return false; seen.add(k); return true; });
+  } catch { return []; }
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const productNo = Number(sp.get("product_no") || 0);
@@ -259,30 +294,35 @@ export async function GET(req: NextRequest) {
 
     const reviews = articles
       .map((a) => ({
-        id: a.article_no,
+        id: String(a.article_no),
         rating: Number(a.rating) || 0,
         content: cleanContent(a.content),
         author: maskName(a.nick_name || a.writer),
         date: (a.created_date || "").slice(0, 10),
         photos: normalizePhotos(a),
+        source: /네이버/.test(a.writer || a.nick_name || "") ? "네이버" : null,  // 연동된 네이버 구매평 표기
       }))
       .filter((r) => r.content || r.photos.length) // 빈 리뷰 제외
       .sort((a, b) => (b.date || "").localeCompare(a.date || "")); // 최신순
 
-    const count = reviews.length;
-    const rated = reviews.filter((r) => r.rating > 0);
+    // 외부 채널(무신사 등) 상품평 병합 — 출처(source) 표기. 자사몰 리뷰 + 채널 리뷰 합산.
+    const channelReviews = await fetchChannelReviews(mall, productNos);
+    const merged = [...reviews, ...channelReviews].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    const count = merged.length;
+    const rated = merged.filter((r) => r.rating > 0);
     const avg = rated.length ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0;
-    const photoCount = reviews.filter((r) => r.photos.length).length;
+    const photoCount = merged.filter((r) => r.photos.length).length;
     // 별점 분포 (5→1)
     const dist: Record<string, number> = { "5": 0, "4": 0, "3": 0, "2": 0, "1": 0 };
     rated.forEach((r) => { const k = String(Math.min(5, Math.max(1, Math.round(r.rating)))); dist[k] = (dist[k] || 0) + 1; });
 
     let aiSummary: AiSummary | null = null;
-    try { aiSummary = await getAiSummary(mall, productNo, reviews, count, lang); } catch { /* 요약 실패해도 위젯은 정상 */ }
+    try { aiSummary = await getAiSummary(mall, productNo, merged, count, lang); } catch { /* 요약 실패해도 위젯은 정상 */ }
 
     // 영문몰: 후기 본문 영어로 번역해서 노출 (요약은 원문 기반 유지)
-    let outReviews = reviews;
-    if (lang === "en") { try { outReviews = await translateReviews(mall, productNo, reviews, count); } catch { /* 실패 시 원문 */ } }
+    let outReviews = merged;
+    if (lang === "en") { try { outReviews = await translateReviews(mall, productNo, merged, count); } catch { /* 실패 시 원문 */ } }
 
     return Response.json(
       {

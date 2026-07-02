@@ -50,6 +50,7 @@ export default async function ReviewPage({ token }: { token: string | null }) {
   const lang = langOf(mall.id);
   const home = HOME_URL[mall.id];
   const ko = lang === "ko";
+  const brand = mall.cafe24Mall === "harriot" ? (ko ? "해리엇" : "HARRIOT") : (ko ? "폴바이스" : "PAULVICE");
 
   // 이미 작성한 사람이 다시 들어온 경우 — 안내(중복 작성·중복 보상 방지)
   if (tok.orderRef || tok.phone || tok.email) {
@@ -65,7 +66,7 @@ export default async function ReviewPage({ token }: { token: string | null }) {
           title={ko ? "이미 후기를 남겨주셨어요" : "You've already reviewed this"}
           body={ko ? "소중한 후기 감사합니다. 적립금은 순차적으로 지급해 드립니다." : "Thank you — your reward will be sent shortly."}
           home={home}
-          backLabel={ko ? "해리엇으로 돌아가기" : "Back to Harriot"}
+          backLabel={ko ? `${brand} 홈으로 →` : `Back to ${brand} →`}
         />
       );
     }
@@ -78,6 +79,7 @@ export default async function ReviewPage({ token }: { token: string | null }) {
       name={tok.name || ""}
       lang={lang}
       homeUrl={home}
+      brand={brand}
       reward={{ text: money(mall, mall.reward.text), photo: money(mall, mall.reward.photo), video: money(mall, mall.reward.video) }}
     />
   );

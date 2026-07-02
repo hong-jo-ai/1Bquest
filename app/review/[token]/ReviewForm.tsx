@@ -8,18 +8,22 @@ type Lang = "ko" | "en";
 
 const STR = {
   ko: {
-    headerSub: "해리엇 · 후기 작성",
-    rewardBanner: (r: { text: string; photo: string; video: string }) => `후기 작성하고 적립금 받으세요 — 글 ${r.text} · 사진 ${r.photo} · 동영상 ${r.video}`,
-    ratingLabel: "별점",
-    reviewLabel: "후기",
-    reviewPlaceholder: "해리엇 시계, 어떠세요? 누구를 위해, 왜 구매하셨나요? 솔직한 후기가 다른 분들께 큰 도움이 됩니다.",
+    headerSub: (b: string) => `${b} · 후기 작성`,
+    rewardBanner: (r: { text: string; photo: string; video: string }) => `후기 작성하고 적립금 받으세요 — 글 ${r.text} · 📷 사진 ${r.photo} · 🎬 동영상 ${r.video}`,
+    ratingPrompt: "직접 써보시니 어떠셨어요?",
+    ratingHint: "별점을 눌러주세요",
+    ratingWords: ["", "아쉬워요", "그저 그래요", "괜찮아요", "좋아요 👍", "최고예요! 🙌"],
+    reviewLabel: "한 줄이면 충분해요",
+    aspectHint: "👇 눌러서 시작해 보세요",
+    aspects: ["디자인", "가성비", "사이즈", "선물용", "배송"],
+    reviewPlaceholder: "예) 생각보다 고급스럽고 가벼워서 매일 차게 돼요. 선물했는데 정말 좋아하더라고요!",
     mediaLabel: "사진 / 동영상 첨부",
-    mediaMore: "(적립금 더!)",
+    mediaMore: "사진·동영상은 적립금 UP ⬆",
     uploadIdle: "📷 사진 또는 🎬 동영상 추가",
     uploading: "업로드 중…",
     nameLabel: "표시 이름",
     namePlaceholder: "예) 홍길동",
-    submit: "후기 등록",
+    submit: "후기 등록하고 적립금 받기",
     submitting: "등록 중…",
     footer: "로그인 불필요 · 작성하신 후기는 상품 페이지에 노출될 수 있습니다.",
     errRating: "별점을 선택해 주세요.",
@@ -28,21 +32,25 @@ const STR = {
     errNetwork: "네트워크 오류. 다시 시도해 주세요.",
     thanks: "감사합니다!",
     thanksBody: (product: string, reward: string) => `<b>${product}</b> 후기가 등록되었습니다.<br/>적립금 <b style="color:${GOLD}">${reward}</b>을 곧 지급해 드릴게요.`,
-    back: "해리엇으로 돌아가기",
+    back: (b: string) => `${b} 홈으로 →`,
   },
   en: {
-    headerSub: "HARRIOT · WRITE A REVIEW",
-    rewardBanner: (r: { text: string; photo: string; video: string }) => `Get a reward for your review — Text ${r.text} · Photo ${r.photo} · Video ${r.video}`,
-    ratingLabel: "Your rating",
-    reviewLabel: "Your review",
-    reviewPlaceholder: "How is your Harriot watch? Who did you buy it for, and why? Your story helps others.",
+    headerSub: (b: string) => `${b} · WRITE A REVIEW`,
+    rewardBanner: (r: { text: string; photo: string; video: string }) => `Get a reward for your review — Text ${r.text} · 📷 Photo ${r.photo} · 🎬 Video ${r.video}`,
+    ratingPrompt: "How was it for you?",
+    ratingHint: "Tap to rate",
+    ratingWords: ["", "Poor", "Fair", "Good", "Great 👍", "Love it! 🙌"],
+    reviewLabel: "One line is enough",
+    aspectHint: "👇 Tap to get started",
+    aspects: ["Design", "Value", "Fit", "As a gift", "Shipping"],
+    reviewPlaceholder: "e.g. Lighter and more premium than I expected — I wear it every day. Gave one as a gift and they loved it!",
     mediaLabel: "Add photos / video",
-    mediaMore: "(more reward!)",
+    mediaMore: "Photo/video = bigger reward ⬆",
     uploadIdle: "📷  Tap to add photo or 🎬 video",
     uploading: "Uploading…",
     nameLabel: "Display name",
     namePlaceholder: "e.g. James K.",
-    submit: "Submit review",
+    submit: "Submit & get reward",
     submitting: "Submitting…",
     footer: "No login required · Your review may appear on the product page.",
     errRating: "Please tap a star rating.",
@@ -51,14 +59,14 @@ const STR = {
     errNetwork: "Network error. Please try again.",
     thanks: "Thank you!",
     thanksBody: (product: string, reward: string) => `Your review for <b>${product}</b> has been received.<br/>We&apos;ll send your <b style="color:${GOLD}">${reward} reward</b> shortly.`,
-    back: "Back to Harriot",
+    back: (b: string) => `Back to ${b} →`,
   },
 } as const;
 
-export default function ReviewForm({ token, productName, name: initialName, reward, lang = "en", homeUrl = "https://harriotwatches.com" }: {
+export default function ReviewForm({ token, productName, name: initialName, reward, lang = "en", homeUrl = "https://harriotwatches.com", brand = "HARRIOT" }: {
   token: string; productName: string; name: string;
   reward: { text: string; photo: string; video: string };
-  lang?: Lang; homeUrl?: string;
+  lang?: Lang; homeUrl?: string; brand?: string;
 }) {
   const t = STR[lang];
   const [rating, setRating] = useState(0);
@@ -71,10 +79,16 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
   const [done, setDone] = useState<null | { reward: string }>(null);
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const hasVideo = media.some((m) => m.type === "video");
   const hasPhoto = media.some((m) => m.type === "image");
   const tier = hasVideo ? reward.video : hasPhoto ? reward.photo : reward.text;
+
+  function addAspect(a: string) {
+    setContent((c) => (c.trim() ? c.replace(/\s+$/, "") + " " : "") + a + " ");
+    setTimeout(() => textRef.current?.focus(), 0);
+  }
 
   async function onFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -91,7 +105,7 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
   }
 
   async function submit() {
-    if (!rating) { setErr(t.errRating); return; }
+    if (!rating) { setErr(t.errRating); textRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     setErr(""); setSubmitting(true);
     try {
       const r = await fetch("/api/reviews/submit", {
@@ -114,15 +128,17 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
         <div style={{ fontSize: 48 }}>🙏</div>
         <h1 style={{ fontSize: 22, margin: "16px 0 8px" }}>{t.thanks}</h1>
         <p style={{ color: "#666", lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: t.thanksBody(productName, done.reward) }} />
-        <a href={homeUrl} style={{ marginTop: 24, color: GOLD, textDecoration: "underline", fontSize: 14 }}>{t.back}</a>
+        <a href={homeUrl} style={{ marginTop: 24, color: GOLD, textDecoration: "underline", fontSize: 14 }}>{t.back(brand)}</a>
       </div></main>
     );
   }
 
+  const ratingWord = (hover || rating) ? t.ratingWords[hover || rating] : "";
+
   return (
     <main style={wrap}><div style={card}>
       <div style={{ background: DARK, color: "#fff", padding: "26px 24px", textAlign: "center" }}>
-        <div style={{ color: GOLD, fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>{t.headerSub}</div>
+        <div style={{ color: GOLD, fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>{t.headerSub(brand)}</div>
         <div style={{ fontSize: 19, fontWeight: 600 }}>{productName}</div>
       </div>
 
@@ -131,24 +147,36 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
       </div>
 
       <div style={{ padding: 24 }}>
-        {/* 별점 */}
-        <label style={{ fontSize: 14, fontWeight: 600 }}>{t.ratingLabel}</label>
-        <div style={{ fontSize: 38, margin: "8px 0 22px", letterSpacing: 4 }} onMouseLeave={() => setHover(0)}>
-          {[1, 2, 3, 4, 5].map((s) => (
-            <span key={s} onClick={() => setRating(s)} onMouseEnter={() => setHover(s)}
-              style={{ cursor: "pointer", color: (hover || rating) >= s ? GOLD : "#ddd" }}>★</span>
-          ))}
+        {/* 별점 — 큼직하게 먼저, 선택 시 한마디 표시 */}
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{t.ratingPrompt}</div>
+          <div style={{ fontSize: 44, margin: "10px 0 2px", letterSpacing: 6 }} onMouseLeave={() => setHover(0)}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <span key={s} role="button" aria-label={`${s}`} onClick={() => setRating(s)} onMouseEnter={() => setHover(s)}
+                style={{ cursor: "pointer", color: (hover || rating) >= s ? GOLD : "#ddd" }}>★</span>
+            ))}
+          </div>
+          <div style={{ fontSize: 13, color: ratingWord ? GOLD : "#bbb", fontWeight: 600, height: 18 }}>{ratingWord || t.ratingHint}</div>
         </div>
 
-        {/* 글 */}
-        <label style={{ fontSize: 14, fontWeight: 600 }}>{t.reviewLabel}</label>
-        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5}
+        {/* 글 — 질문 칩으로 빈 페이지 공포 제거 */}
+        <label style={{ fontSize: 14, fontWeight: 600, marginTop: 20, display: "block" }}>{t.reviewLabel}</label>
+        <div style={{ fontSize: 12, color: "#999", margin: "6px 0 8px" }}>{t.aspectHint}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+          {t.aspects.map((a) => (
+            <button key={a} type="button" onClick={() => addAspect(a)}
+              style={{ padding: "7px 13px", border: `1px solid ${GOLD}`, background: "#fffdf8", color: "#7a6a44", borderRadius: 999, fontSize: 13, cursor: "pointer" }}>
+              {a}
+            </button>
+          ))}
+        </div>
+        <textarea ref={textRef} value={content} onChange={(e) => setContent(e.target.value)} rows={4}
           placeholder={t.reviewPlaceholder}
-          style={{ width: "100%", marginTop: 8, padding: 12, border: "1px solid #ddd", borderRadius: 8, fontSize: 15, resize: "vertical", boxSizing: "border-box" }} />
+          style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 8, fontSize: 15, resize: "vertical", boxSizing: "border-box" }} />
 
         {/* 미디어 — capture 미지정: 모바일에서 카메라/앨범 선택 가능 */}
         <div style={{ marginTop: 16 }}>
-          <label style={{ fontSize: 14, fontWeight: 600 }}>{t.mediaLabel} <span style={{ color: GOLD, fontWeight: 400 }}>{t.mediaMore}</span></label>
+          <label style={{ fontSize: 14, fontWeight: 600 }}>{t.mediaLabel} <span style={{ color: GOLD, fontWeight: 600, fontSize: 12 }}>{t.mediaMore}</span></label>
           <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={(e) => onFiles(e.target.files)} style={{ display: "none" }} />
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || media.length >= 10}
             style={{ marginTop: 8, width: "100%", padding: "14px", border: `1.5px dashed ${GOLD}`, background: "#fffdf8", color: "#7a6a44", borderRadius: 8, fontSize: 14, cursor: "pointer" }}>

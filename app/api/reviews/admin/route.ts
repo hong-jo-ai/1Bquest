@@ -36,7 +36,33 @@ export async function GET(req: NextRequest) {
   const { data: all } = await cq;
   for (const r of all || []) { counts[r.status as string] = (counts[r.status as string] || 0) + 1; counts.total++; }
 
-  return Response.json({ ok: true, reviews: data || [], count: count || 0, counts });
+  // 외부 채널(무신사·W컨셉·29CM) 수집 리뷰 병합 — 읽기전용. status가 all/published일 때만 노출.
+  const CH_LABEL: Record<string, string> = { musinsa: "무신사", "29cm": "29CM", wconcept: "W컨셉" };
+  let channelRows: Record<string, unknown>[] = [];
+  let channelCount = 0;
+  if (status === "all" || status === "published") {
+    let chq = sb.from("channel_reviews").select("*", { count: "exact" }).order("review_date", { ascending: false }).range(offset, offset + limit - 1);
+    if (mall) chq = chq.eq("mall", mall);
+    if (productNo) chq = chq.eq("product_no", Number(productNo));
+    if (q) chq = chq.or(`content.ilike.%${q}%,channel_goods_name.ilike.%${q}%,author.ilike.%${q}%`);
+    const { data: ch, count: cc } = await chq;
+    channelCount = cc || 0;
+    channelRows = (ch || []).map((r) => ({
+      id: "ch_" + r.id, mall: r.mall, product_no: r.product_no,
+      product_name: r.channel_goods_name, customer_name: r.author, customer_email: null,
+      rating: r.rating, content: r.content,
+      media_type: Array.isArray(r.photos) && r.photos.length ? "photo" : "none",
+      media: (Array.isArray(r.photos) ? r.photos : []).map((u: string) => ({ type: "photo", url: u })),
+      reward_points: 0, status: "published", cafe24_article_no: null, cafe24_synced: false,
+      created_at: r.review_date, source: CH_LABEL[r.channel as string] || r.channel, readonly: true,
+    }));
+  }
+  const merged = [...(data || []), ...channelRows].sort(
+    (a, b) => String((b as { created_at?: string }).created_at || "").localeCompare(String((a as { created_at?: string }).created_at || "")),
+  );
+  counts.channel = channelCount;
+
+  return Response.json({ ok: true, reviews: merged, count: (count || 0) + channelCount, counts });
 }
 
 /** 상태 변경 (hide / publish / spam) — 카페24 노출도 동기화 */

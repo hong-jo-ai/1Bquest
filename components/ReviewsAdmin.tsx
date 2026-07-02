@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import BackToHubButton from "@/components/BackToHubButton";
 import ReviewCampaignPanel from "@/components/ReviewCampaignPanel";
 import ReviewSmsKrPanel from "@/components/ReviewSmsKrPanel";
+import ReviewLinkManager from "@/components/ReviewLinkManager";
 
 interface MediaItem { type: "image" | "video"; url: string }
 interface Review {
@@ -11,8 +12,10 @@ interface Review {
   content: string; media: MediaItem[]; media_type: string; reward_points: number;
   status: "published" | "hidden" | "spam"; cafe24_article_no: number | null;
   cafe24_synced: boolean; created_at: string;
+  source?: string;      // 외부 채널 출처(무신사/W컨셉/29CM). 있으면 수집 리뷰
+  readonly?: boolean;   // 채널 수집 리뷰는 상태변경 불가(읽기전용)
 }
-interface Counts { published: number; hidden: number; spam: number; total: number }
+interface Counts { published: number; hidden: number; spam: number; total: number; channel?: number }
 
 const MALLS = [
   { id: "harriot_global", label: "Harriot (Global)" },
@@ -42,6 +45,7 @@ export default function ReviewsAdmin() {
   const [counts, setCounts] = useState<Counts>({ published: 0, hidden: 0, spam: 0, total: 0 });
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "links">("list");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,14 +83,23 @@ export default function ReviewsAdmin() {
         <button onClick={exportCsv} className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50">CSV 내보내기</button>
       </div>
 
+      {/* 탭: 리뷰 목록 / 상품 연동 */}
+      <div className="flex gap-1 mb-4 border-b">
+        {([["list", "리뷰 목록"], ["links", "상품 연동"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${view === k ? "border-zinc-900 text-zinc-900" : "border-transparent text-gray-400"}`}>{l}</button>
+        ))}
+      </div>
+
+      {view === "links" ? <ReviewLinkManager mall={mall} /> : (<>
+
       {/* 국내(KR)는 문자+적립금, 그 외(글로벌)는 이메일 캠페인 */}
       {mall === "harriot_kr" || mall === "paulvice_kr"
         ? <ReviewSmsKrPanel mall={mall} />
         : <ReviewCampaignPanel mall={mall} />}
 
       {/* 통계 */}
-      <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-4">
-        {([["total", "전체"], ["published", "게시중"], ["hidden", "숨김"], ["spam", "스팸"]] as const).map(([k, l]) => (
+      <div className="grid grid-cols-5 gap-2 sm:gap-3 mb-4">
+        {([["total", "전체"], ["published", "게시중"], ["hidden", "숨김"], ["spam", "스팸"], ["channel", "채널수집"]] as const).map(([k, l]) => (
           <div key={k} className="bg-white border rounded-lg p-3 text-center">
             <div className="text-xl font-bold">{counts[k as keyof Counts] ?? 0}</div>
             <div className="text-xs text-gray-500">{l}</div>
@@ -118,17 +131,22 @@ export default function ReviewsAdmin() {
                     {badge(r.status)}
                     {r.media_type === "video" && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 rounded">🎬 동영상</span>}
                     {r.media_type === "photo" && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 rounded">📷 사진</span>}
-                    {r.cafe24_article_no ? <span className="text-xs text-gray-400">카페24 #{r.cafe24_article_no}</span> : <span className="text-xs text-orange-400">카페24 미게시</span>}
+                    {r.source && <span className="text-xs bg-zinc-900 text-white px-1.5 rounded">{r.source}</span>}
+                    {!r.readonly && (r.cafe24_article_no ? <span className="text-xs text-gray-400">카페24 #{r.cafe24_article_no}</span> : <span className="text-xs text-orange-400">카페24 미게시</span>)}
                   </div>
                   <div className="text-sm text-gray-500 mt-1">
                     <b className="text-gray-700">{r.customer_name}</b> · {r.product_name} · {new Date(r.created_at).toLocaleDateString("ko-KR")} · 보상 {r.reward_points.toLocaleString()}
                   </div>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  {r.status !== "published" && <button disabled={busy === r.id} onClick={() => act(r.id, "publish")} className="text-xs px-2.5 py-1 rounded bg-green-600 text-white disabled:opacity-50">게시</button>}
-                  {r.status !== "hidden" && <button disabled={busy === r.id} onClick={() => act(r.id, "hide")} className="text-xs px-2.5 py-1 rounded border disabled:opacity-50">숨김</button>}
-                  {r.status !== "spam" && <button disabled={busy === r.id} onClick={() => act(r.id, "spam")} className="text-xs px-2.5 py-1 rounded border border-red-300 text-red-600 disabled:opacity-50">스팸</button>}
-                </div>
+                {r.readonly ? (
+                  <span className="text-xs text-gray-400 shrink-0">채널 수집 · 읽기전용</span>
+                ) : (
+                  <div className="flex gap-1.5 shrink-0">
+                    {r.status !== "published" && <button disabled={busy === r.id} onClick={() => act(r.id, "publish")} className="text-xs px-2.5 py-1 rounded bg-green-600 text-white disabled:opacity-50">게시</button>}
+                    {r.status !== "hidden" && <button disabled={busy === r.id} onClick={() => act(r.id, "hide")} className="text-xs px-2.5 py-1 rounded border disabled:opacity-50">숨김</button>}
+                    {r.status !== "spam" && <button disabled={busy === r.id} onClick={() => act(r.id, "spam")} className="text-xs px-2.5 py-1 rounded border border-red-300 text-red-600 disabled:opacity-50">스팸</button>}
+                  </div>
+                )}
               </div>
               {r.content && <p className="text-sm text-gray-800 mt-2 whitespace-pre-wrap">{r.content}</p>}
               {r.media?.length > 0 && (
@@ -142,6 +160,7 @@ export default function ReviewsAdmin() {
           ))}
         </div>
       )}
+      </>)}
     </div>
   );
 }

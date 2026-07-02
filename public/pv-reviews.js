@@ -83,6 +83,7 @@
       ".pv-rv-card .meta .au{font-size:13px;color:"+INK+";font-weight:600}",
       ".pv-rv-card .meta .dt{font-size:12px;color:"+SUB+"}",
       ".pv-rv-card .vb{font-size:10.5px;letter-spacing:.02em;color:"+GOLD+";border:1px solid "+GOLD+";border-radius:999px;padding:1px 7px;font-weight:600}",
+      ".pv-rv-card .src{font-size:10.5px;letter-spacing:.02em;color:#fff;background:"+INK+";border-radius:999px;padding:1px 7px;font-weight:600}",
       ".pv-rv-card .body{font-size:14px;line-height:1.75;white-space:pre-line;word-break:break-word;color:#33302b}",
       ".pv-rv-card .rm{display:inline;margin-left:4px;font-size:13px;color:"+SUB+";text-decoration:underline;cursor:pointer}",
       ".pv-rv-card .ph{display:flex;gap:7px;margin:11px 0 0;flex-wrap:wrap}",
@@ -142,7 +143,8 @@
     function card(r,idx){
       var long=(r.content||"").length>140, exp=state.expanded[r.id];
       var body=r.content?(long&&!exp?esc(r.content.slice(0,140))+'…<span class="rm" data-exp="'+r.id+'">'+L.more+'</span>':esc(r.content)):"";
-      return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span><span class="vb">'+L.verified+'</span></div>'+
+      var badge=r.source?'<span class="src">'+esc(r.source)+'</span>':'<span class="vb">'+L.verified+'</span>';
+      return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span>'+badge+'</div>'+
         (body?'<div class="body">'+body+'</div>':'')+
         (r.photos.length?'<div class="ph">'+r.photos.map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>':'')+
         '</div>';

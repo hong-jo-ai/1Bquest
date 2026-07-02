@@ -51,21 +51,28 @@ async function dispatchInvoicesOnPage(page, log=console.log){
 
   const rows=page.locator('tr').filter({has:page.locator('select')});
   const n=await rows.count().catch(()=>0);
-  let filled=0; const seen=new Set(); const skipped=[];
+  // ⚠️ 다상품 주문 = 상품(행)별로 모두 채워야 함(한 주문이 N개 상품행). 한 주문의 첫 행만 채우면
+  //    나머지 상품이 미출고로 남음(2026-07-01 버그수정, 29CM와 동일). seen 스킵 제거 — 같은 주문의
+  //    모든 상품행에 같은 송장을 채운다. 배달완료 가드만 주문당 1회 체크(중복 API 방지).
+  let filled=0; const checkedDelivery=new Set(); const deliveredOrders=new Set(); const skipped=[];
   for(let i=0;i<n;i++){
     const row=rows.nth(i);
     const orderNo=((await row.innerText().catch(()=>"")).match(/Z\d{6,}/)||[])[0]||"";
     const t=map.get(orderNo);
-    if(!t||seen.has(orderNo)) continue;
-    // 가드: 이미 배달완료된 송장이면 입력 차단(교환 재배송 의심 — 옛 송장 재입력 사고 방지)
-    if(await isDelivered(t)){ seen.add(orderNo); skipped.push({orderNo,t}); log(`  ⚠️ ${orderNo}: 송장 ${t} 이미 배달완료 → 재입력 차단(교환 재배송 의심, 새 송장 수동 확인 필요)`); continue; }
+    if(!t) continue;
+    if(deliveredOrders.has(orderNo)) continue; // 배달완료 판정된 주문의 다른 상품행도 스킵
+    // 가드: 이미 배달완료된 송장이면 입력 차단(교환 재배송 의심). 주문당 1회만 체크.
+    if(!checkedDelivery.has(orderNo)){
+      checkedDelivery.add(orderNo);
+      if(await isDelivered(t)){ deliveredOrders.add(orderNo); skipped.push({orderNo,t}); log(`  ⚠️ ${orderNo}: 송장 ${t} 이미 배달완료 → 재입력 차단(교환 재배송 의심, 새 송장 수동 확인 필요)`); continue; }
+    }
     const sel=row.locator('select').first();
     await sel.selectOption({label:/우체국택배/}).catch(async()=>{ await sel.selectOption({label:"우체국택배"}).catch(()=>{}); });
     let inputEl=row.locator('input[name*="invoice" i],input[id*="invoice" i],input[placeholder*="송장" i]').first();
     if(!(await inputEl.count())) inputEl=row.locator('input[type="text"]').first();
     await inputEl.fill(t).catch(async()=>{ await inputEl.click().catch(()=>{}); await inputEl.pressSequentially(t,{delay:30}).catch(()=>{}); });
     const v=await inputEl.inputValue().catch(()=>"");
-    if(v===t){ filled++; seen.add(orderNo); log(`  ${orderNo}: 우체국택배 + 송장 ${t}`); }
+    if(v===t){ filled++; log(`  ${orderNo}: 우체국택배 + 송장 ${t} (행 ${i+1})`); }
     await sleep(250);
   }
   if(skipped.length){

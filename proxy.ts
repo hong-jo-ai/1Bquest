@@ -37,6 +37,8 @@ const ALLOW_PREFIX = [
   "/pv-reviews.js",       // 스토어프론트 리뷰 위젯 스크립트 (공개 정적파일)
   "/api/tryon",           // 착용해보기 위젯 데이터 (공개 읽기, CORS)
   "/pv-tryon.js",         // 착용해보기 위젯 스크립트 (공개 정적파일)
+  "/api/crm/cart-event",  // 장바구니 담기 이벤트 수집 (자사몰 스크립트, 교차출처 CORS)
+  "/pv-cart.js",          // 장바구니 이탈 추적 스크립트 (공개 정적파일)
   "/api/app-icons/",   // 홈화면/PWA 아이콘은 로그인 전에도 브라우저가 가져갈 수 있어야 함
   "/_next/",
   "/manifest-",

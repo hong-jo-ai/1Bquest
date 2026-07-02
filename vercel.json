@@ -121,6 +121,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/cron/crm-cart-nudge",
+      "schedule": "23 * * * *"
+    },
+    {
       "path": "/api/alba/ask",
       "schedule": "0 4 * * 1,2,3,4,5"
     },
