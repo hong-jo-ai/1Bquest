@@ -170,7 +170,7 @@
   var cache={};
   function load(pno,cb){
     if(cache[pno])return cb(cache[pno]);
-    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=100"+(EN?"&lang=en":""),{credentials:"omit"})
+    fetch(API+"?product_no="+encodeURIComponent(pno)+"&mall="+MALL+"&limit=1000"+(EN?"&lang=en":""),{credentials:"omit"})
       .then(function(r){return r.json();})
       .then(function(j){if(!j||!j.ok)j={ok:false,reviews:[],summary:{count:0}};cache[pno]=j;cb(j);})
       .catch(function(){cb({ok:false,reviews:[],summary:{count:0}});});

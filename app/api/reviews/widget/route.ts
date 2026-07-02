@@ -258,7 +258,8 @@ export async function GET(req: NextRequest) {
   const productNo = Number(sp.get("product_no") || 0);
   const mall: MallId = sp.get("mall") === "harriot" ? "harriot" : "paulvice";
   const boardNo = Number(sp.get("board") || 4);
-  const limit = Math.min(Number(sp.get("limit") || 50), 100);
+  // cafe24 API는 요청당 최대 100건 — limit 파라미터는 "총 개수" 상한으로 해석하고 offset 페이지네이션으로 채움.
+  const limit = Math.min(Number(sp.get("limit") || 50), 1000);
   const lang = sp.get("lang") === "en" ? "en" : "ko";
 
   if (!productNo) {
@@ -279,16 +280,25 @@ export async function GET(req: NextRequest) {
     const seen = new Set<number>();
     const articles: Cafe24ReviewArticle[] = [];
     for (const pno of productNos) {
-      const json = (await cafe24Get(
-        `/api/v2/admin/boards/${boardNo}/articles?product_no=${pno}&limit=${limit}&offset=0`,
-        token,
-        mall,
-      )) as { articles?: Cafe24ReviewArticle[] };
-      for (const a of json.articles ?? []) {
-        if (a.parent_article_no || a.deleted === "T" || a.display === "F" || a.secret === "T") continue;
-        if (seen.has(a.article_no)) continue;
-        seen.add(a.article_no);
-        articles.push(a);
+      // cafe24 요청당 100건 제한 → offset 페이지네이션 (마이그레이션 리뷰 100+건 상품 대응)
+      let offset = 0;
+      while (articles.length < limit) {
+        const pageSize = Math.min(100, limit - articles.length) || 100;
+        const json = (await cafe24Get(
+          `/api/v2/admin/boards/${boardNo}/articles?product_no=${pno}&limit=${pageSize}&offset=${offset}`,
+          token,
+          mall,
+        )) as { articles?: Cafe24ReviewArticle[] };
+        const page = json.articles ?? [];
+        for (const a of page) {
+          if (a.parent_article_no || a.deleted === "T" || a.display === "F" || a.secret === "T") continue;
+          if (seen.has(a.article_no)) continue;
+          seen.add(a.article_no);
+          articles.push(a);
+        }
+        if (page.length < pageSize) break; // 마지막 페이지
+        offset += pageSize;
+        if (offset >= 1000) break; // 안전 상한 (API 콜 폭주 방지)
       }
     }
 
