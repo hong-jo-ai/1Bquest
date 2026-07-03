@@ -51,6 +51,26 @@ async function alertFail(name: string, detail: string) {
   } catch { /* 알림 실패는 삼킴 */ }
 }
 
+/**
+ * 수동(POST manual) 실행용 래퍼 — 성공/실패 시 GET 크론과 동일하게 하트비트를 남긴다.
+ * 인증은 호출측 책임(수동 트리거는 대개 관리자 UI/텔레그램 뒤). 목적: 수동 재실행만으로도
+ * `cron_last_ok:<name>` 이 갱신돼 워치독 오탐이 자동 회복되게 함.
+ */
+export async function manualRun(name: string, fn: () => Promise<Response>): Promise<Response> {
+  const t0 = Date.now();
+  try {
+    const res = await fn();
+    const ms = Date.now() - t0;
+    await recordHeartbeat(name, res.status < 500, ms, res.status < 500 ? "manual" : `manual HTTP ${res.status}`);
+    return res;
+  } catch (e) {
+    const ms = Date.now() - t0;
+    const msg = e instanceof Error ? e.message : String(e);
+    await recordHeartbeat(name, false, ms, `manual ${msg}`.slice(0, 100));
+    return Response.json({ ok: false, error: msg.slice(0, 300) }, { status: 500 });
+  }
+}
+
 export function withCron(name: string, handler: Handler): Handler {
   return async (req: Request) => {
     // ── 인증: CRON_SECRET 강제 (fail-open 금지) ──

@@ -17,7 +17,7 @@ import type { UploadableChannel } from "@/lib/multiChannelData";
 import { countThreadsByStatus } from "@/lib/cs/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { createClient } from "@supabase/supabase-js";
-import { withCron } from "@/lib/cron/withCron";
+import { withCron, manualRun } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -195,10 +195,4 @@ async function run() {
 
 export const GET = withCron("daily-summary", () => run());
 
-export async function POST() {
-  try {
-    return await run();
-  } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-  }
-}
+export const POST = () => manualRun("daily-summary", () => run());
