@@ -15,6 +15,7 @@ import {
 const BRAND: Record<string, { name: string; accent: string; soft: string }> = {
   PV: { name: "폴바이스", accent: "#A6812F", soft: "#F4EEDD" },
   HR: { name: "해리엇", accent: "#2E5E5B", soft: "#E2ECEB" },
+  KW: { name: "기원", accent: "#3E7C6A", soft: "#E1EEE9" },
 };
 
 const TYPE: Record<string, { label: string; color: string }> = {
@@ -172,7 +173,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
         {/* filters */}
         <div className="flex items-center gap-6 mb-3 flex-wrap">
           <div className="flex items-center gap-1.5">
-            {[["ALL", "전체"], ["PV", "폴바이스"], ["HR", "해리엇"]].map(([k, v]) => (
+            {[["ALL", "전체"], ["PV", "폴바이스"], ["HR", "해리엇"], ["KW", "기원"]].map(([k, v]) => (
               <button
                 key={k}
                 onClick={() => setBrandF(k)}

@@ -15,7 +15,7 @@ export interface DevBrief {
   sampleQty?: string; prodQty?: string; schedule?: string; reqNotes?: string;
 }
 export interface PashoOrder {
-  no: string; brand: "PV" | "HR"; model: string; code: string; type: string;
+  no: string; brand: "PV" | "HR" | "KW"; model: string; code: string; type: string;
   status: string; consign: boolean; consignDate?: string; deposit: number | null;
   date: string; lines: OrderLine[]; note: string; riskFlag?: string;
   unit?: string | null; quoteTotal?: number | null; depositAmt?: number | null; quoteRef?: string | null;
@@ -109,6 +109,12 @@ const SEED: PashoOrder[] = [
       schedule: "디자인 확정 목표 · 샘플 납기 협의",
       reqNotes: "디자인 검토·수정 진행중. 확정 후 견적 요청 예정.",
     },
+  },
+  {
+    no: "K26-001", brand: "KW", model: "기원 비취 (흑색 리메이크)", code: "KIW-JADE-R", type: "리메이크",
+    status: "샘플", consign: false, deposit: null, date: "2026-07-05",
+    lines: [{ variant: "비취 — 다이얼·밴드 신규 / 케이스·바늘·무브·버클 재활용", qty: 80 }],
+    note: "기원 흑색 재고 80개를 비취색으로 리메이크. 다이얼·밴드 신규제작, 케이스·바늘·무브먼트·밴드버클 재활용. ⏳단가 파악중 · 밴드 제작가능여부 확인중(비취용 가죽밴드 1쌍 샘플 파쇼 전달). 확정되면 흑색 80개 사급출고.",
   },
   {
     no: "H26-001", brand: "HR", model: "설월 (雪月)", code: "HRW-007", type: "개발",

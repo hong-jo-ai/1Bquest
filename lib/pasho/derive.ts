@@ -12,7 +12,7 @@ const DEFAULT_LEAD_MIN_DAYS = 14;
 const DEFAULT_LEAD_MAX_DAYS = 21;
 
 const STAGES = ["디자인", "샘플", "컨펌", "생산중", "검품", "납품", "입고", "정산"];
-const brandKo = (b: string) => (b === "HR" ? "해리엇" : "폴바이스");
+const brandKo = (b: string) => (b === "HR" ? "해리엇" : b === "KW" ? "기원" : "폴바이스");
 
 /** 모델명 정규화 — 수동/파쇼 중복 판별용 */
 export function normKey(s: string): string {
