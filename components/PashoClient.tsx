@@ -38,7 +38,8 @@ const STATUS_META: Record<string, { color: string; icon: React.ElementType }> = 
   정산:    { color: "#3F7A57", icon: CheckCircle2 },
 };
 
-interface Line { variant: string; qty: number }
+interface Line { variant: string; qty: number; received?: number; remaining?: number }
+interface Receipt { id: string; orderNo: string; at: string; items: { variant: string; qty: number }[]; note?: string }
 interface Order {
   no: string; brand: string; model: string; code: string; type: string;
   status: string; consign: boolean; consignDate?: string; deposit: number | null;
@@ -47,69 +48,9 @@ interface Order {
   quoteTotal?: number | null; // 견적 총액 USD
   depositAmt?: number | null; // 집행된 선수금 USD
   quoteRef?: string | null;   // 근거 견적
+  orderedQty?: number; receivedQty?: number; remainingQty?: number; // 입고 집계
+  receipts?: Receipt[];
 }
-
-// ─── seeded 6건 (단가 반영) ───────────────────────────────────
-const ORDERS: Order[] = [
-  {
-    no: "P26-001", brand: "PV", model: "에끌라 오벌", code: "PVW-011", type: "리오더",
-    status: "생산중", consign: false, deposit: null, date: "2026-06-28",
-    unit: "$9.58", quoteTotal: 4790, depositAmt: null, quoteRef: "260415-3차 / 발주서 PO-20260415-01",
-    lines: [
-      { variant: "골드",      qty: 400 },
-      { variant: "블랙 다이얼", qty: 100 },
-    ],
-    note: "기존 오벌(타원) 골드 리오더, 100개는 블랙 다이얼 변형. Y121 / 알루이 케이스.",
-  },
-  {
-    no: "P26-002", brand: "PV", model: "옥타곤", code: "PVW-014", type: "신규양산",
-    status: "컨펌", consign: false, deposit: 30, date: "2026-06-30",
-    unit: "$14.53~15.61", quoteTotal: 15174, depositAmt: 4552, quoteRef: "260522-견적(PAULVICE)",
-    lines: [
-      { variant: "골드 (400EA 기준)", qty: 500 },
-      { variant: "실버 (600EA 기준)", qty: 500 },
-    ],
-    note: "VC10E / 3ATM / 가죽+PU 밴드. 선수금 30% $4,552 집행 완료. (견적 수량구성 400/600)",
-  },
-  {
-    no: "P26-003", brand: "PV", model: "오드리 리메이크", code: "PVW-008-R", type: "리메이크",
-    status: "생산중", consign: true, consignDate: "출고완료", deposit: null, date: "2026-07-03",
-    unit: null, quoteTotal: null, depositAmt: null, quoteRef: null,
-    lines: [
-      { variant: "분해 후 다이얼·바늘·밴드 재제작", qty: 620 },
-    ],
-    note: "기존 완제품 620개 파쇼 반출. 사급 — 수량 대사 필수. 위탁가공비 견적 미수령.",
-  },
-  {
-    no: "P26-004", brand: "PV", model: "10mm 메탈밴드 재도금", code: "PVS-band-10", type: "후가공",
-    status: "생산중", consign: true, consignDate: "출고완료", deposit: null, date: "2026-07-01",
-    unit: null, quoteTotal: null, depositAmt: null, quoteRef: null,
-    lines: [
-      { variant: "옐로골드 재도금", qty: 200 },
-      { variant: "실버 재도금",     qty: 150 },
-    ],
-    note: "로즈골드 밴드 → 옐로/실버 재도금. 사급 350개. 재도금 단가 견적 미수령.",
-  },
-  {
-    no: "D26-001", brand: "PV", model: "마고 (Margaux)", code: "PVW-015", type: "개발",
-    status: "디자인", consign: false, deposit: null, date: "2026-07-02",
-    unit: null, quoteTotal: null, depositAmt: null, quoteRef: null,
-    lines: [
-      { variant: "양산 예정", qty: 1000 },
-    ],
-    note: "아주 작은 직사각(쁘띠) 여성 워치. 디자인만 진행중 · 견적 미수령 · 발주 전.",
-  },
-  {
-    no: "H26-001", brand: "HR", model: "설월 (雪月)", code: "HRW-007", type: "개발",
-    status: "컨펌", consign: false, deposit: 30, date: "2026-07-03",
-    riskFlag: "샘플 최종승인 전 선급 30% 집행",
-    unit: "$43.70", quoteTotal: 17664, depositAmt: 5299, quoteRef: "260508-견적(harriot)",
-    lines: [
-      { variant: "역방향 문페이즈 (고정 보름달·한옥 처마 컷아웃)", qty: 300 },
-    ],
-    note: "RONDA 708 / Moon 디스크 3도인쇄. 양산 300개 발주 + 선급 30% $5,299 결제 완료 (순서 역전).",
-  },
-];
 
 const usd = (n: number | null | undefined) => (n == null ? "—" : "$" + n.toLocaleString("en-US"));
 
@@ -155,7 +96,8 @@ function StageTrack({ status }: { status: string }) {
   );
 }
 
-export default function PashoClient() {
+export default function PashoClient({ orders }: { orders: Order[] }) {
+  const ORDERS = orders;
   const [brandF, setBrandF] = useState("ALL");
   const [typeF, setTypeF] = useState("ALL");
   const [sel, setSel] = useState<string | null>(null);
@@ -300,6 +242,12 @@ export default function PashoClient() {
                 <div>
                   <span className="tabular-nums font-semibold text-[14px]">{totQty.toLocaleString("ko-KR")}</span>
                   <span className="text-[11px] text-[#9A968E] ml-1">ea</span>
+                  {(o.receivedQty ?? 0) > 0 && (
+                    <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: (o.remainingQty ?? 0) > 0 ? "#C2711F" : "#3F7A57" }}>
+                      입고 {(o.receivedQty ?? 0).toLocaleString("ko-KR")}
+                      {(o.remainingQty ?? 0) > 0 ? ` · 잔량 ${(o.remainingQty ?? 0).toLocaleString("ko-KR")}` : " · 완료"}
+                    </div>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-[12.5px] font-semibold tabular-nums truncate" style={{ color: o.unit ? "#1C1B1A" : "#C9C5BD" }}>
@@ -376,20 +324,60 @@ export default function PashoClient() {
               <div className="mt-5">
                 <div className="text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider mb-2">라인 아이템</div>
                 <div className="bg-white border border-[#E5E2DC] rounded-lg overflow-hidden">
-                  {selOrder.lines.map((l, i) => (
-                    <div key={i} className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#F0EEE9] last:border-0">
-                      <span className="text-[13px]">{l.variant}</span>
-                      <span className="tabular-nums font-semibold text-[13px]">{l.qty.toLocaleString("ko-KR")} ea</span>
-                    </div>
-                  ))}
+                  {selOrder.lines.map((l, i) => {
+                    const rcv = l.received ?? 0;
+                    const rem = l.remaining ?? l.qty;
+                    return (
+                      <div key={i} className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#F0EEE9] last:border-0">
+                        <span className="text-[13px]">{l.variant}</span>
+                        <span className="text-[13px] tabular-nums text-right">
+                          <span className="font-semibold">{l.qty.toLocaleString("ko-KR")}</span>
+                          <span className="text-[#9A968E]"> ea</span>
+                          {rcv > 0 && (
+                            <span className="ml-2" style={{ color: rem > 0 ? "#C2711F" : "#3F7A57" }}>
+                              입고 {rcv.toLocaleString("ko-KR")}{rem > 0 ? ` / 잔량 ${rem.toLocaleString("ko-KR")}` : " ✓"}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
                   <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#FAF9F6]">
                     <span className="text-[12px] font-semibold text-[#6B6863]">합계</span>
                     <span className="tabular-nums font-bold text-[14px]">
-                      {selOrder.lines.reduce((a, l) => a + l.qty, 0).toLocaleString("ko-KR")} ea
+                      {(selOrder.orderedQty ?? selOrder.lines.reduce((a, l) => a + l.qty, 0)).toLocaleString("ko-KR")} ea
+                      {(selOrder.receivedQty ?? 0) > 0 && (
+                        <span className="ml-2 text-[12px]" style={{ color: (selOrder.remainingQty ?? 0) > 0 ? "#C2711F" : "#3F7A57" }}>
+                          · 입고 {(selOrder.receivedQty ?? 0).toLocaleString("ko-KR")} / 잔량 {(selOrder.remainingQty ?? 0).toLocaleString("ko-KR")}
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
               </div>
+
+              {/* 입고 이력 */}
+              {selOrder.receipts && selOrder.receipts.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider mb-2">입고 이력</div>
+                  <div className="bg-white border border-[#E5E2DC] rounded-lg overflow-hidden">
+                    {selOrder.receipts.map((r) => (
+                      <div key={r.id} className="px-3.5 py-2.5 border-b border-[#F0EEE9] last:border-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-medium text-[#6B6863]">{r.at.slice(0, 10)}</span>
+                          <span className="text-[12px] tabular-nums font-semibold" style={{ color: "#3F7A57" }}>
+                            +{r.items.reduce((a, it) => a + it.qty, 0).toLocaleString("ko-KR")} ea
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#9A968E] mt-0.5">
+                          {r.items.map((it) => `${it.variant} ${it.qty}`).join(" · ")}
+                          {r.note ? ` — ${r.note}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* payment */}
               <div className="mt-5 grid grid-cols-2 gap-3">

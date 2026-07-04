@@ -37,6 +37,7 @@ import { parseHoldCommand, applyHoldCommand } from "@/lib/postParcel/holdCommand
 import { resolveAlbaAttendance, sendPayslip } from "@/lib/alba/attendance";
 import { parseParkingCommand, storeParkingRequest } from "@/lib/parking/request";
 import { transcribeAudio } from "@/lib/mori/stt";
+import { sendTelegramMessage } from "@/lib/cs/telegram";
 import type { CsBrandId } from "@/lib/cs/types";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -440,6 +441,25 @@ ${line}`,
       }
       return Response.json({ ok: true });
     }
+    const pm = String(cb.data || "").match(/^pasho:(accept|reject):(.+)$/);
+    if (pm) {
+      try {
+        const { confirmPendingReceipt, rejectPendingReceipt } = await import("@/lib/pasho/receiptFlow");
+        if (pm[1] === "accept") {
+          const res = await confirmPendingReceipt(pm[2]);
+          await answer(res.ok ? "입고 기록됨" : `실패: ${res.error ?? ""}`);
+          await editAppend(res.ok ? `✅ ${res.summary ?? "입고 기록 완료"}` : `⚠️ 실패: ${res.error ?? "알 수 없음"}`);
+        } else {
+          await rejectPendingReceipt(pm[2]);
+          await answer("취소됨");
+          await editAppend("❌ 입고 취소 — 다시 사진을 보내주세요.");
+        }
+      } catch (e) {
+        await answer("오류: " + (e instanceof Error ? e.message : String(e)).slice(0, 150));
+      }
+      return Response.json({ ok: true });
+    }
+
     await answer("알 수 없는 버튼");
     return Response.json({ ok: true, ignored: "unknown callback" });
   }
@@ -484,6 +504,35 @@ ${line}`,
     }
   }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
+
+  // 파쇼 입고 — 사진 + "입고" 캡션 → 입고증 판독 → 확인카드
+  if (hasPhoto && message.photo && text && /입고/.test(text)) {
+    try {
+      const largest = message.photo[message.photo.length - 1];
+      const img = await downloadTelegramPhoto(largest.file_id);
+      if (!img) {
+        await sendTelegramReply(message.chat.id, "❌ 사진 다운로드 실패. 다시 보내주세요.", message.message_id);
+        return Response.json({ ok: true });
+      }
+      const { extractReceiptFromImage, buildConfirmText, stagePendingReceipt } = await import("@/lib/pasho/receiptFlow");
+      const { receipt, order, error } = await extractReceiptFromImage(img);
+      if (!receipt || !order) {
+        await sendTelegramReply(message.chat.id, `⚠️ 입고증 판독 실패: ${error || "발주 매칭 안 됨"}. 발주번호(P26-xxx)를 캡션에 같이 적어주시면 정확합니다.`, message.message_id);
+        return Response.json({ ok: true });
+      }
+      const pending = await stagePendingReceipt(receipt, order.model);
+      await sendTelegramMessage(buildConfirmText(order, receipt.items, receipt.note), {
+        buttons: [
+          { text: "✅ 맞음", callback_data: `pasho:accept:${pending.id}` },
+          { text: "❌ 취소", callback_data: `pasho:reject:${pending.id}` },
+        ],
+      });
+      return Response.json({ ok: true, pashoReceipt: true });
+    } catch (e) {
+      await sendTelegramReply(message.chat.id, `⚠️ 입고 처리 오류: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      return Response.json({ ok: true });
+    }
+  }
 
   // CS 자동응대 에스컬레이션 답장 — 보류된 CS 문의 메시지에 swipe-reply 로 "방향"을 주면
   // 정식 답변으로 다듬어 미리보기 → "발송" 답장 시 고객에게 전송. (reply_to 로 스레드 정확 매칭)
