@@ -106,13 +106,20 @@ export async function POST(req: NextRequest) {
       headline: body.headline ?? SUMMER_DEFAULTS.headline,
       description: body.description ?? SUMMER_DEFAULTS.description,
       ctaType: body.ctaType ?? SUMMER_DEFAULTS.ctaType,
-      imageUrl: body.imageUrl ?? (body.imageHash ? undefined : SUMMER_DEFAULTS.imageUrl),
+      // 영상 소재(videoUrl/videoId)가 있으면 이미지 기본값을 붙이지 않음.
+      imageUrl: (body.videoUrl || body.videoId)
+        ? undefined
+        : (body.imageUrl ?? (body.imageHash ? undefined : SUMMER_DEFAULTS.imageUrl)),
       imageHash: body.imageHash,
+      videoUrl: body.videoUrl,
+      videoId: body.videoId,
+      thumbnailUrl: body.thumbnailUrl,
       pageId: body.pageId,
       instagramActorId: body.instagramActorId,
       pixelId: body.pixelId,
-      startTime: body.startTime ?? SUMMER_DEFAULTS.startTime,
-      endTime: body.endTime ?? SUMMER_DEFAULTS.endTime,
+      // 영상 소재는 스케줄 기본값 미적용(과거 start_time 오류 방지) — 활성화 시 관리자에서 설정.
+      startTime: (body.videoUrl || body.videoId) ? body.startTime : (body.startTime ?? SUMMER_DEFAULTS.startTime),
+      endTime: (body.videoUrl || body.videoId) ? body.endTime : (body.endTime ?? SUMMER_DEFAULTS.endTime),
       targeting: body.targeting,
       customEventType: body.customEventType,
       // 기본 PAUSED(안전). body.status:"ACTIVE" + confirm 일 때만 즉시 노출·과금.

@@ -1,13 +1,16 @@
 /**
  * Meta 신규 광고 생성 (전부 PAUSED).
  *
- * 흐름: 이미지 업로드(adimages) → 캠페인 → 광고 크리에이티브 → 광고세트 → 광고.
+ * 흐름(이미지): 이미지 업로드(adimages) → 캠페인 → 크리에이티브(link_data) → 광고세트 → 광고.
+ * 흐름(영상): 영상 업로드(advideos, file_url) → 처리대기 → 썸네일 → 크리에이티브(video_data) → …
  * 모든 객체는 status="PAUSED"로 생성 → 실제 과금은 사장님이 광고관리자에서 "켜기" 해야 시작.
  *
  * KRW는 zero-decimal 통화: dailyBudget=20000 → ₩20,000.
  * objective: "OUTCOME_SALES"(픽셀 구매 최적화) | "OUTCOME_TRAFFIC"(랜딩페이지 조회).
  */
 import { metaGet, metaPost, metaDelete } from "../metaClient";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface CreateAdInput {
   /** 광고계정 (act_ 포함). 생략 시 resolveAdAccountId 사용. */
@@ -25,9 +28,14 @@ export interface CreateAdInput {
   headline?: string;
   description?: string;
   ctaType?: string; // 기본 SHOP_NOW
-  /** 소재: 둘 중 하나. imageUrl이면 내부에서 받아 업로드. */
+  /** 소재(이미지): 둘 중 하나. imageUrl이면 내부에서 받아 업로드. */
   imageUrl?: string;
   imageHash?: string;
+  /** 소재(영상): videoUrl(공개 URL, advideos로 업로드) 또는 이미 올린 videoId. 있으면 영상 광고로 생성. */
+  videoUrl?: string;
+  videoId?: string;
+  /** 영상 썸네일 URL(선택). 없으면 Meta 자동 생성 썸네일 사용. */
+  thumbnailUrl?: string;
   /** 페북 페이지 ID. 생략 시 자동탐색(첫 페이지). */
   pageId?: string;
   /** 인스타그램 actor ID(선택). */
@@ -51,6 +59,7 @@ export interface CreateAdResult {
   creativeId: string;
   adId: string;
   imageHash: string;
+  videoId: string;
   pageId: string;
   pixelId: string | null;
   status: "PAUSED" | "ACTIVE";
@@ -96,6 +105,34 @@ async function uploadImage(token: string, accountId: string, imageUrl: string): 
   return first.hash;
 }
 
+/** 공개 영상 URL을 advideos(file_url)로 업로드 → 처리완료까지 대기 → video_id 반환. */
+async function uploadVideo(token: string, accountId: string, videoUrl: string): Promise<string> {
+  const up = (await metaPost(`/${accountId}/advideos`, token, { file_url: videoUrl })) as { id?: string };
+  if (!up.id) throw new Error(`영상 업로드 응답에 id 없음: ${JSON.stringify(up)}`);
+  // Meta가 file_url을 내려받아 인코딩 → ready 될 때까지 폴링(최대 ~45s).
+  for (let i = 0; i < 15; i++) {
+    const s = (await metaGet(`/${up.id}`, token, { fields: "status" })) as
+      { status?: { video_status?: string } };
+    const st = s.status?.video_status;
+    if (st === "ready") return up.id;
+    if (st === "error") throw new Error(`영상 처리 실패(video_id=${up.id})`);
+    await sleep(3000);
+  }
+  // 아직 처리 중이어도 id는 유효 — 크리에이티브 생성은 대개 통과, 광고는 PAUSED라 문제없음.
+  return up.id;
+}
+
+/** video_id의 Meta 자동 생성 썸네일 URI(선호본 우선) 반환. */
+async function getVideoThumbnailUrl(token: string, videoId: string): Promise<string | undefined> {
+  try {
+    const r = (await metaGet(`/${videoId}/thumbnails`, token, { fields: "uri,is_preferred" })) as
+      { data?: Array<{ uri: string; is_preferred?: boolean }> };
+    return (r.data?.find((t) => t.is_preferred) ?? r.data?.[0])?.uri;
+  } catch {
+    return undefined;
+  }
+}
+
 function defaultTargeting(): Record<string, unknown> {
   return {
     geo_locations: { countries: ["KR"] },
@@ -116,19 +153,35 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     headline, description,
     ctaType = "SHOP_NOW",
     imageUrl, imageHash: givenHash,
+    videoUrl, videoId: givenVideoId, thumbnailUrl,
     instagramActorId,
     startTime, endTime,
     customEventType = "PURCHASE", // OUTCOME_SALES 최적화 이벤트(PURCHASE | ADD_TO_CART | ...)
     status = "PAUSED",
   } = input;
 
-  if (!givenHash && !imageUrl) throw new Error("imageUrl 또는 imageHash가 필요합니다.");
+  const isVideo = Boolean(videoUrl || givenVideoId);
+  if (!isVideo && !givenHash && !imageUrl) {
+    throw new Error("소재가 필요합니다: videoUrl/videoId(영상) 또는 imageUrl/imageHash(이미지).");
+  }
 
   const pageId  = input.pageId  ?? await resolvePageId(token, accountId);
   const pixelId = objective === "OUTCOME_SALES"
     ? (input.pixelId ?? await resolvePixelId(token, accountId))
     : null;
-  const imageHash = givenHash ?? await uploadImage(token, accountId, imageUrl!);
+
+  // 소재 준비: 영상이면 advideos 업로드+썸네일, 아니면 adimages 업로드.
+  let imageHash = "";
+  let videoId = "";
+  let thumbHash: string | undefined;
+  let thumbUrl: string | undefined;
+  if (isVideo) {
+    videoId = givenVideoId ?? await uploadVideo(token, accountId, videoUrl!);
+    if (thumbnailUrl) thumbHash = await uploadImage(token, accountId, thumbnailUrl);
+    else thumbUrl = await getVideoThumbnailUrl(token, videoId);
+  } else {
+    imageHash = givenHash ?? await uploadImage(token, accountId, imageUrl!);
+  }
 
   // 1) 캠페인 (PAUSED)
   // CBO(캠페인 예산) 미사용 → is_adset_budget_sharing_enabled 명시 필수(최신 API).
@@ -142,17 +195,31 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
 
   // 캠페인 이후 단계 실패 시 → 빈 캠페인 롤백(삭제) 후 에러 전파.
   try {
-  // 2) 광고 크리에이티브
-  const linkData: Record<string, unknown> = {
-    image_hash: imageHash,
-    link,
-    message,
-    call_to_action: { type: ctaType, value: { link } },
-  };
-  if (headline) linkData.name = headline;
-  if (description) linkData.description = description;
-
-  const storySpec: Record<string, unknown> = { page_id: pageId, link_data: linkData };
+  // 2) 광고 크리에이티브 (영상=video_data / 이미지=link_data)
+  const storySpec: Record<string, unknown> = { page_id: pageId };
+  if (isVideo) {
+    const videoData: Record<string, unknown> = {
+      video_id: videoId,
+      message,
+      call_to_action: { type: ctaType, value: { link } },
+    };
+    // video_data는 썸네일(image_hash 또는 image_url) 필수.
+    if (thumbHash) videoData.image_hash = thumbHash;
+    else if (thumbUrl) videoData.image_url = thumbUrl;
+    if (headline) videoData.title = headline;
+    if (description) videoData.link_description = description;
+    storySpec.video_data = videoData;
+  } else {
+    const linkData: Record<string, unknown> = {
+      image_hash: imageHash,
+      link,
+      message,
+      call_to_action: { type: ctaType, value: { link } },
+    };
+    if (headline) linkData.name = headline;
+    if (description) linkData.description = description;
+    storySpec.link_data = linkData;
+  }
   if (instagramActorId) storySpec.instagram_actor_id = instagramActorId;
 
   const creative = (await metaPost(`/${accountId}/adcreatives`, token, {
@@ -199,6 +266,7 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     creativeId: creative.id,
     adId: ad.id,
     imageHash,
+    videoId,
     pageId,
     pixelId,
     status,
