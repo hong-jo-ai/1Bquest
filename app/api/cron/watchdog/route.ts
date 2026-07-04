@@ -36,6 +36,7 @@ const JOBS: JobSpec[] = [
   { key: "cron_last_ok:review-sms-kr", label: "리뷰요청 알림톡", maxHours: 26 },
   { key: "cron_last_ok:kakao-gift-po-sync", label: "카카오선물 주문동기화", maxHours: 26 },
   { key: "cron_last_ok:inventory-sync", label: "재고 동기화", maxHours: 26 },
+  { key: "cron_last_ok:bundle-stock-sync", label: "번들 재고차감", maxHours: 3 },
   { key: "cron_last_ok:mads-evaluate", label: "메타광고 평가", maxHours: 26 },
   { key: "cron_last_ok:bank-deposit-retry", label: "입금확인 재시도", maxHours: 1 },
   { key: "cron_last_ok:cafe24-orders-notify", label: "카페24 주문알림", maxHours: 2 },
