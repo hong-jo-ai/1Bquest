@@ -5,6 +5,7 @@
  * 재고/판매와 함께 관리한다. 저장: kv_store.purchase_orders (배열).
  */
 import { createClient } from "@supabase/supabase-js";
+import { pashoToPurchaseOrders, mergeDedup } from "@/lib/pasho/derive";
 
 const KEY = "purchase_orders";
 
@@ -33,6 +34,7 @@ export interface PurchaseOrder {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  derived?: boolean; // 파쇼 발주에서 파생(읽기전용) — 수정은 /pasho 에서
 }
 
 function getDb() {
@@ -42,12 +44,19 @@ function getDb() {
   return createClient(url, key);
 }
 
-export async function listPurchaseOrders(): Promise<PurchaseOrder[]> {
+/** kv 원본(수동입력분)만 — 쓰기 함수 전용(파생분이 kv에 새는 것 방지). */
+async function loadRaw(): Promise<PurchaseOrder[]> {
   const db = getDb();
   if (!db) return [];
   const { data } = await db.from("kv_store").select("data").eq("key", KEY).maybeSingle();
   const arr = data?.data;
   return Array.isArray(arr) ? (arr as PurchaseOrder[]) : [];
+}
+
+/** 소비용(MORI·저재고·데일리서머리·UI) — 수동분 + 파쇼 파생, 모델명 중복 제거(파쇼 우선). */
+export async function listPurchaseOrders(): Promise<PurchaseOrder[]> {
+  const [manual, derived] = await Promise.all([loadRaw(), pashoToPurchaseOrders().catch(() => [])]);
+  return mergeDedup(manual, derived);
 }
 
 async function saveAll(list: PurchaseOrder[]): Promise<void> {
@@ -94,7 +103,7 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<Purchas
     createdAt: now,
     updatedAt: now,
   };
-  const list = await listPurchaseOrders();
+  const list = await loadRaw();
   list.push(po);
   await saveAll(list);
   return po;
@@ -104,7 +113,7 @@ export async function updatePurchaseOrder(
   id: string,
   patch: Partial<Omit<PurchaseOrder, "id" | "createdAt">>,
 ): Promise<PurchaseOrder | null> {
-  const list = await listPurchaseOrders();
+  const list = await loadRaw();
   const idx = list.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   list[idx] = { ...list[idx], ...patch, updatedAt: new Date().toISOString() };
@@ -113,7 +122,7 @@ export async function updatePurchaseOrder(
 }
 
 export async function deletePurchaseOrder(id: string): Promise<boolean> {
-  const list = await listPurchaseOrders();
+  const list = await loadRaw();
   const next = list.filter((p) => p.id !== id);
   if (next.length === list.length) return false;
   await saveAll(next);

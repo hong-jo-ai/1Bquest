@@ -6,6 +6,7 @@
  * 저장: kv_store.upcoming_products (배열).
  */
 import { createClient } from "@supabase/supabase-js";
+import { pashoToUpcoming, mergeDedup } from "@/lib/pasho/derive";
 
 const KEY = "upcoming_products";
 
@@ -28,6 +29,7 @@ export interface UpcomingProduct {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  derived?: boolean; // 파쇼 발주에서 파생(읽기전용) — 수정은 /pasho 에서
 }
 
 function getDb() {
@@ -37,12 +39,19 @@ function getDb() {
   return createClient(url, key);
 }
 
-export async function listUpcomingProducts(): Promise<UpcomingProduct[]> {
+/** kv 원본(수동입력분)만 — 쓰기 함수는 반드시 이걸 써야 파생분이 kv에 새지 않는다. */
+async function loadRaw(): Promise<UpcomingProduct[]> {
   const db = getDb();
   if (!db) return [];
   const { data } = await db.from("kv_store").select("data").eq("key", KEY).maybeSingle();
   const arr = data?.data;
   return Array.isArray(arr) ? (arr as UpcomingProduct[]) : [];
+}
+
+/** 소비용(성장레버·MORI·API·UI) — 수동분 + 파쇼 파생, 모델명 중복 제거(파쇼 우선). */
+export async function listUpcomingProducts(): Promise<UpcomingProduct[]> {
+  const [manual, derived] = await Promise.all([loadRaw(), pashoToUpcoming().catch(() => [])]);
+  return mergeDedup(manual, derived);
 }
 
 async function saveAll(list: UpcomingProduct[]): Promise<void> {
@@ -96,7 +105,7 @@ export async function createUpcomingProduct(input: UpsertInput): Promise<Upcomin
     createdAt: now,
     updatedAt: now,
   };
-  const list = await listUpcomingProducts();
+  const list = await loadRaw();
   list.push(item);
   await saveAll(list);
   return item;
@@ -106,7 +115,7 @@ export async function updateUpcomingProduct(
   id: string,
   patch: Partial<Omit<UpcomingProduct, "id" | "createdAt">>,
 ): Promise<UpcomingProduct | null> {
-  const list = await listUpcomingProducts();
+  const list = await loadRaw();
   const idx = list.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   const next = { ...list[idx], ...patch, updatedAt: new Date().toISOString() };
@@ -117,7 +126,7 @@ export async function updateUpcomingProduct(
 }
 
 export async function deleteUpcomingProduct(id: string): Promise<boolean> {
-  const list = await listUpcomingProducts();
+  const list = await loadRaw();
   const next = list.filter((p) => p.id !== id);
   if (next.length === list.length) return false;
   await saveAll(next);
