@@ -143,15 +143,22 @@ export async function stagePendingReceipt(r: ExtractedReceipt, model: string): P
 async function applyCafe24(orderNo: string, items: ReceiptItem[]): Promise<string> {
   const order = await getOrderWithBalance(orderNo);
   if (!order) return "발주 없음";
-  const mapped = order.lines.filter((l) => l.cafe24);
-  if (mapped.length === 0) return "카페24 미연동(모델 매핑 없음)";
+  // 색상키워드 맵(order.cafe24Map) 우선, 없으면 라인별 cafe24 매핑. 둘 다 없으면 미연동.
+  const kwMap = order.cafe24Map || {};
+  const resolveSku = (variant: string) => {
+    const key = Object.keys(kwMap).find((k) => variant.includes(k));
+    if (key) return kwMap[key];
+    return order.lines.find((l) => l.variant === variant)?.cafe24 || null;
+  };
+  const hasAny = Object.keys(kwMap).length > 0 || order.lines.some((l) => l.cafe24);
+  if (!hasAny) return "카페24 미연동(모델 매핑 없음)";
   try {
     const { getValidC24Token } = await import("@/lib/cafe24Auth");
     const applied: string[] = [];
     for (const it of items) {
-      const line = order.lines.find((l) => l.variant === it.variant);
-      if (!line?.cafe24) continue;
-      const { productNo, variantCode, mall } = line.cafe24;
+      const sku = resolveSku(it.variant);
+      if (!sku) { applied.push(`${it.variant}: 매핑없음`); continue; }
+      const { productNo, variantCode, mall } = sku;
       const token = await getValidC24Token(mall || "paulvice");
       if (!token) { applied.push(`${it.variant}: 토큰없음`); continue; }
       const mallId = (mall || "paulvice") === "harriot" ? process.env.HARRIOT_CAFE24_MALL_ID : process.env.CAFE24_MALL_ID;

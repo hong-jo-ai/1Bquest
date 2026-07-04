@@ -20,6 +20,8 @@ export interface PashoOrder {
   date: string; lines: OrderLine[]; note: string; riskFlag?: string;
   unit?: string | null; quoteTotal?: number | null; depositAmt?: number | null; quoteRef?: string | null;
   dev?: DevBrief;
+  // 입고 → 카페24 재고 반영용 색상키워드 매핑. 입고 라인명(variant)이 key를 포함하면 해당 SKU에 +수량.
+  cafe24Map?: Record<string, Cafe24Map>;
 }
 export interface ReceiptItem { variant: string; qty: number }
 export interface Receipt {
@@ -64,6 +66,10 @@ const SEED: PashoOrder[] = [
     unit: "$9.58", quoteTotal: 4790, depositAmt: null, quoteRef: "260415-3차 / 발주서 PO-20260415-01",
     lines: [{ variant: "골드", qty: 400 }, { variant: "블랙 다이얼", qty: 100 }],
     note: "기존 오벌(타원) 골드 리오더, 100개는 블랙 다이얼 변형. Y121 / 알루이 케이스.",
+    cafe24Map: {
+      "골드": { productNo: 195, variantCode: "P00000HN00CC", mall: "paulvice" },
+      "실버": { productNo: 196, variantCode: "P00000HO000G", mall: "paulvice" },
+    },
   },
   {
     no: "P26-002", brand: "PV", model: "옥타곤", code: "PVW-014", type: "신규양산",
