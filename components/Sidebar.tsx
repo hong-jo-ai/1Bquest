@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Truck,
   Star,
+  Factory,
 } from "lucide-react";
 
 type AppPage =
@@ -47,6 +48,7 @@ type AppPage =
   | "sms"
   | "shipping"
   | "reviews"
+  | "pasho"
   | "mori";
 
 const NAV_ITEMS: {
@@ -65,6 +67,7 @@ const NAV_ITEMS: {
   { href: "/shipping", label: "우체국 발송", icon: Truck, page: "shipping" },
   { href: "/sms", label: "고객 안내 SMS", icon: MessageSquare, page: "sms" },
   { href: "/inventory", label: "재고관리", icon: Package, page: "inventory" },
+  { href: "/pasho", label: "파쇼 발주", icon: Factory, page: "pasho" },
   { href: "/jewelry-clearance", label: "주얼리청산", icon: Gem, page: "jewelry" },
   { href: "/tools/influencer", label: "인플루언서", icon: Users, page: "influencer" },
   { href: "/tools/group-buying", label: "공동구매", icon: ShoppingBag, page: "groupbuying" },
@@ -83,6 +86,7 @@ const HREF_TO_PAGE: Record<string, AppPage> = {
   "/shipping": "shipping",
   "/sms": "sms",
   "/inventory": "inventory",
+  "/pasho": "pasho",
   "/jewelry-clearance": "jewelry",
   "/tools/influencer": "influencer",
   "/tools/group-buying": "groupbuying",

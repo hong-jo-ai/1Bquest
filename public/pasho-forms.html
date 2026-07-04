@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>해리엇와치스 · 파쇼 거래 양식</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --line:#333; --soft:#666; --hair:#bbb; --bg:#e8e6e1;
+    --pv:#8a6d1f; --hr:#2e5e5b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:'Pretendard','Malgun Gothic',-apple-system,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+
+  /* toolbar */
+  .bar{
+    position:sticky; top:0; z-index:10; background:#1c1b1a; color:#fff;
+    padding:12px 20px; display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+    box-shadow:0 2px 12px rgba(0,0,0,.2);
+  }
+  .bar .grp{display:flex; gap:6px; align-items:center;}
+  .bar label{font-size:11px; color:#9a968e; margin-right:2px; letter-spacing:.03em;}
+  .tab{
+    padding:6px 14px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer;
+    background:transparent; color:#c9c5bd; border:1px solid #3a3835;
+  }
+  .tab.on{background:#fff; color:#1c1b1a; border-color:#fff;}
+  select{
+    padding:6px 10px; border-radius:7px; font-size:13px; border:1px solid #3a3835;
+    background:#2a2825; color:#fff; cursor:pointer;
+  }
+  .print-btn{
+    margin-left:auto; padding:7px 18px; border-radius:7px; font-size:13px; font-weight:700;
+    background:#fff; color:#1c1b1a; border:none; cursor:pointer;
+  }
+
+  /* page */
+  .wrap{padding:28px 16px; display:flex; justify-content:center;}
+  .page{
+    width:210mm; min-height:297mm; background:#fff; padding:18mm 16mm;
+    box-shadow:0 4px 24px rgba(0,0,0,.12);
+  }
+
+  .doc-head{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid var(--line); padding-bottom:14px;}
+  .doc-title{font-size:30px; font-weight:800; letter-spacing:.18em;}
+  .doc-title.consign{color:var(--pv);}
+  .brand-tag{font-size:11px; letter-spacing:.22em; color:var(--soft); text-transform:uppercase; margin-bottom:4px;}
+  .doc-meta{font-size:12px; text-align:right; line-height:1.9; color:#333;}
+  .doc-meta b{display:inline-block; min-width:52px; color:var(--soft); font-weight:600;}
+  .doc-meta .val{font-family:'Courier New',monospace; font-weight:700; letter-spacing:.02em;}
+
+  /* parties */
+  .parties{display:grid; grid-template-columns:1fr 1fr; gap:0; margin-top:16px; border:1px solid var(--hair);}
+  .party{padding:12px 14px;}
+  .party+.party{border-left:1px solid var(--hair);}
+  .party .role{font-size:11px; font-weight:700; color:#fff; padding:2px 8px; border-radius:3px; display:inline-block; margin-bottom:8px;}
+  .role.gap{background:#1c1b1a;}
+  .role.eul{background:var(--soft);}
+  .party table{width:100%; font-size:12px; border-collapse:collapse;}
+  .party td{padding:3px 0; vertical-align:top; line-height:1.5;}
+  .party td.k{color:var(--soft); width:64px; font-weight:600;}
+  .party td.v{font-weight:500;}
+  .party td.v.mono{font-family:'Courier New',monospace; font-weight:700;}
+
+  /* items */
+  .sec-label{font-size:11px; font-weight:700; letter-spacing:.1em; color:var(--soft); margin:20px 0 7px; text-transform:uppercase;}
+  table.items{width:100%; border-collapse:collapse; font-size:12.5px;}
+  table.items th{
+    background:#f2f0eb; border:1px solid var(--hair); padding:8px 6px; font-weight:700; font-size:11.5px; color:#333;
+  }
+  table.items td{border:1px solid var(--hair); padding:9px 8px; text-align:center;}
+  table.items td.left{text-align:left;}
+  table.items td.qty{font-family:'Courier New',monospace; font-weight:700; text-align:right; padding-right:12px;}
+  table.items td.money{text-align:right; padding-right:10px; color:#999;}
+  table.items tr.sum td{background:#faf9f6; font-weight:700;}
+  table.items tr.blank td{height:34px;}
+
+  .notice{
+    margin-top:14px; padding:11px 14px; border:1.5px solid var(--pv); border-radius:5px;
+    background:#faf5e8; font-size:12px; line-height:1.6; color:#5a4712;
+  }
+  .notice b{color:var(--pv);}
+
+  .terms{margin-top:16px; font-size:12px; line-height:1.9;}
+  .terms .row{display:flex; gap:10px;}
+  .terms .row b{min-width:74px; color:var(--soft); font-weight:600;}
+
+  /* signatures */
+  .signs{display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:38px;}
+  .sign{font-size:12px;}
+  .sign .cap{color:var(--soft); font-weight:600; margin-bottom:22px;}
+  .sign .linerow{display:flex; align-items:flex-end; gap:8px; margin-bottom:14px;}
+  .sign .linerow span{color:var(--soft); min-width:40px;}
+  .sign .ln{flex:1; border-bottom:1px solid #999; height:20px;}
+  .sign .seal{margin-left:auto; width:56px; height:56px; border:1px dashed #ccc; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#ccc;}
+
+  .foot{margin-top:30px; padding-top:12px; border-top:1px solid var(--hair); font-size:10.5px; color:#aaa; text-align:center; letter-spacing:.03em;}
+
+  @media print{
+    body{background:#fff;}
+    .bar{display:none;}
+    .wrap{padding:0;}
+    .page{box-shadow:none; width:auto; min-height:auto; padding:14mm;}
+    @page{size:A4; margin:0;}
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="grp">
+    <label>양식</label>
+    <button class="tab on" data-doc="po">발주·작업의뢰서</button>
+    <button class="tab" data-doc="ivc">거래명세서</button>
+    <button class="tab" data-doc="csg">사급출고증</button>
+    <button class="tab" data-doc="dev">개발의뢰서</button>
+  </div>
+  <div class="grp">
+    <label>대상 건</label>
+    <select id="pick"></select>
+  </div>
+  <button class="print-btn" onclick="window.print()">🖨 인쇄</button>
+</div>
+
+<div class="wrap">
+  <div class="page" id="page"></div>
+</div>
+
+<script>
+const HARRIOT = {
+  role:"발주자 (甲)", name:"해리엇와치스", reg:"209-27-70599", ceo:"홍성조",
+  addr:"경기도 용인시 수지구 죽전로193번길 35, 107동 1305호", biz:"제조업 / 패션잡화",
+  email:"harriotwatches@gmail.com"
+};
+const PASHO = {
+  role:"수주자 (乙)", name:"파쇼", reg:"129-28-83422", ceo:"조성섭",
+  addr:"경기도 성남시 중원구 둔촌대로 464, 408호 (상대원동, 드림테크노)", biz:"제조 / 시계",
+  email:"watchcho@naver.com"
+};
+
+const ORDERS = [
+  { no:"P26-001", brand:"PV", model:"에끌라 오벌", code:"PVW-011", type:"리오더", date:"2026-06-28", consign:false,
+    lines:[{v:"에끌라 오벌 · 골드",q:400},{v:"에끌라 오벌 · 블랙 다이얼",q:100}],
+    spec:"기존 오벌 골드 리오더. 100개 블랙 다이얼 변형.", terms:"협의단가 · 조건 협의" },
+  { no:"P26-002", brand:"PV", model:"옥타곤", code:"PVW-014", type:"신규양산", date:"2026-06-30", consign:false,
+    lines:[{v:"옥타곤 · 골드",q:500},{v:"옥타곤 · 실버",q:500}],
+    spec:"17.5×23mm / VC10 무브먼트 / 3ATM / 무광 블랙 다이얼 'SEOUL' / 일체형 멀티링크 브레이슬릿.", terms:"협의단가 · 조건 협의" },
+  { no:"P26-003", brand:"PV", model:"오드리 리메이크", code:"PVW-008-R", type:"리메이크", date:"2026-07-03", consign:true,
+    lines:[{v:"오드리 완제품 (분해 후 다이얼·바늘·밴드 재제작)",q:620}],
+    spec:"기존 완제품 620개 반출 → 분해 후 신규 모델 재제작.", purpose:"위탁가공 (분해·재제작)" },
+  { no:"P26-004", brand:"PV", model:"10mm 메탈밴드 재도금", code:"PVS-band-10", type:"후가공", date:"2026-07-01", consign:true,
+    lines:[{v:"10mm 로즈골드 밴드 → 옐로골드 재도금",q:200},{v:"10mm 로즈골드 밴드 → 실버 재도금",q:150}],
+    spec:"기존 로즈골드 도금 밴드 재도금 (색상 변경).", purpose:"위탁가공 (재도금)" },
+  { no:"D26-001", brand:"PV", model:"마고 (Margaux)", code:"PVW-015", type:"개발", date:"2026-07-02", consign:false,
+    lines:[{v:"마고 · 쁘띠 직사각 (디자인 확정 후 양산)",q:1000}],
+    spec:"아주 작은 직사각(쁘띠) 여성 워치. 디자인 검토·수정 진행중. 발주 전 초안.", terms:"협의단가 · 조건 협의",
+    dev:{
+      concept:"쁘띠 직사각(탱크 실루엣) 여성 워치. 아주 작은 케이스로 미니멀·클래식 무드. 손목이 얇은 여성 타깃.",
+      refs:"유사모델: 탱크 계열 소형 직사각 실루엣. (레퍼런스 이미지 별첨)",
+      targetSpec:[
+        {k:"케이스", v:"직사각 쁘띠 — 소형 (여성용, 폭 협의)"},
+        {k:"무브먼트", v:"쿼츠 (VC10 / Y121 급, 협의)"},
+        {k:"글라스", v:"미네랄 (커팅글라스 검토)"},
+        {k:"밴드", v:"가죽 (색상 협의)"},
+        {k:"도금", v:"골드 / 실버 (협의)"},
+      ],
+      sampleQty:"샘플 2~3점 (색상별)",
+      prodQty:"양산 예정 1,000 EA",
+      schedule:"디자인 확정 목표 · 샘플 납기 협의",
+      reqNotes:"디자인 검토·수정 진행중. 확정 후 견적 요청 예정. (단가·수량은 확정 아님)",
+    } },
+  { no:"H26-001", brand:"HR", model:"설월 (雪月)", code:"HRW-007", type:"개발/양산", date:"2026-07-03", consign:false,
+    lines:[{v:"설월 · 역방향 문페이즈 (고정 보름달·한옥 처마 컷아웃)",q:300}],
+    spec:"역방향 문페이즈 기구 (고정 보름달, 한옥 처마 라인 컷아웃). 첫 샘플 확인 완료.", terms:"선급 30% 집행 완료 · 잔금 70% 조건 협의", risk:"샘플 최종승인 전 선급 30%가 집행된 건입니다. 잔금 집행은 샘플 최종 컨펌 이후로 관리하십시오." }
+];
+
+let curDoc = "po";
+const pick = document.getElementById("pick");
+const page = document.getElementById("page");
+
+function fillPicker(){
+  let list = ORDERS;
+  if(curDoc==="csg") list = ORDERS.filter(o=>o.consign);
+  if(curDoc==="dev") list = ORDERS.filter(o=>o.dev);
+  pick.innerHTML = list.map(o=>`<option value="${o.no}">${o.no} · ${o.model}</option>`).join("");
+}
+
+function partyBlock(p, cls){
+  return `<div class="party">
+    <span class="role ${cls}">${p.role}</span>
+    <table>
+      <tr><td class="k">상호</td><td class="v"><b>${p.name}</b></td></tr>
+      <tr><td class="k">등록번호</td><td class="v mono">${p.reg}</td></tr>
+      <tr><td class="k">대표자</td><td class="v">${p.ceo}</td></tr>
+      <tr><td class="k">소재지</td><td class="v">${p.addr}</td></tr>
+      <tr><td class="k">업태/종목</td><td class="v">${p.biz}</td></tr>
+      <tr><td class="k">연락</td><td class="v">${p.email}</td></tr>
+    </table>
+  </div>`;
+}
+
+function sumQty(o){ return o.lines.reduce((a,l)=>a+l.q,0); }
+
+function render(){
+  const o = ORDERS.find(x=>x.no===pick.value) || ORDERS[0];
+  const total = sumQty(o);
+
+  if(curDoc==="po"){
+    const rows = o.lines.map((l,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td class="left">${l.v}</td>
+        <td class="qty">${l.q.toLocaleString('ko-KR')}</td>
+        <td class="money">&nbsp;</td>
+        <td class="money">&nbsp;</td>
+      </tr>`).join("");
+    page.innerHTML = `
+      <div class="doc-head">
+        <div><div class="brand-tag">HARRIOT WATCHES</div><div class="doc-title">발 주 서</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">작업의뢰 겸용 · Purchase Order</div></div>
+        <div class="doc-meta">
+          <div><b>문서번호</b> <span class="val">${o.no}</span></div>
+          <div><b>발주일</b> <span class="val">${o.date}</span></div>
+          <div><b>모델코드</b> <span class="val">${o.code}</span></div>
+          <div><b>납기</b> <span class="val">협의</span></div>
+        </div>
+      </div>
+      <div class="parties">${partyBlock(HARRIOT,'gap')}${partyBlock(PASHO,'eul')}</div>
+      <div class="sec-label">발주 내역 — ${o.model} (${o.type})</div>
+      <table class="items">
+        <thead><tr><th style="width:36px">No</th><th>품목 · 사양</th><th style="width:80px">수량</th><th style="width:96px">단가</th><th style="width:110px">금액</th></tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="blank"><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr class="sum"><td colspan="2" class="left">합계 수량</td><td class="qty">${total.toLocaleString('ko-KR')}</td><td class="money"></td><td class="money"></td></tr>
+        </tbody>
+      </table>
+      <div class="terms">
+        <div class="sec-label">사양 및 조건</div>
+        <div class="row"><b>사양</b><span>${o.spec}</span></div>
+        <div class="row"><b>결제조건</b><span>${o.terms||'협의'}</span></div>
+        <div class="row"><b>비고</b><span>단가·금액은 확정단가 수령 후 기입.</span></div>
+      </div>
+      ${o.risk?`<div class="notice"><b>⚠ 관리 주의</b> — ${o.risk}</div>`:''}
+      <div class="signs">
+        <div class="sign"><div class="cap">발주자 · 해리엇와치스</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+        <div class="sign"><div class="cap">수주 확인 · 파쇼</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+      </div>
+      <div class="foot">본 발주서는 상기 사양·수량에 대한 생산 의뢰이며, 수주자 서명·날인으로 확정됩니다.</div>`;
+  }
+
+  else if(curDoc==="ivc"){
+    const rows = o.lines.map((l,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td class="left">${l.v}</td>
+        <td class="qty">${l.q.toLocaleString('ko-KR')}</td>
+        <td class="money">&nbsp;</td>
+        <td class="money">&nbsp;</td>
+        <td class="money">&nbsp;</td>
+      </tr>`).join("");
+    page.innerHTML = `
+      <div class="doc-head">
+        <div><div class="brand-tag">거래명세 · TRANSACTION STATEMENT</div><div class="doc-title">거 래 명 세 서</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">납품 시 공급자(파쇼) 서명·날인</div></div>
+        <div class="doc-meta">
+          <div><b>명세서No</b> <span class="val">${o.no}-D</span></div>
+          <div><b>거래일자</b> <span class="val">__________</span></div>
+          <div><b>발주번호</b> <span class="val">${o.no}</span></div>
+          <div><b>모델</b> <span class="val">${o.code}</span></div>
+        </div>
+      </div>
+      <div class="parties">${partyBlock(PASHO,'gap')}${partyBlock(HARRIOT,'eul')}</div>
+      <div style="font-size:11px;color:#999;margin-top:4px;">※ 좌: 공급자 / 우: 공급받는자 (세금계산서 발행 기준)</div>
+      <div class="sec-label">납품 내역 — ${o.model}</div>
+      <table class="items">
+        <thead><tr><th style="width:32px">No</th><th>품목 · 규격</th><th style="width:70px">수량</th><th style="width:80px">단가</th><th style="width:96px">공급가액</th><th style="width:80px">세액</th></tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="blank"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr class="sum"><td colspan="2" class="left">합계</td><td class="qty">${total.toLocaleString('ko-KR')}</td><td></td><td class="money"></td><td class="money"></td></tr>
+        </tbody>
+      </table>
+      <div class="terms">
+        <div class="row"><b>공급가액</b><span>₩ ______________</span></div>
+        <div class="row"><b>부가세(10%)</b><span>₩ ______________</span></div>
+        <div class="row"><b>합계금액</b><span>₩ ______________</span></div>
+      </div>
+      <div class="signs">
+        <div class="sign"><div class="cap">공급자 · 파쇼 (상기 물품을 납품함)</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+        <div class="sign"><div class="cap">인수 확인 · 해리엇와치스</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>확인</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+      </div>
+      <div class="foot">본 거래명세서는 상기 수량·금액의 납품 사실을 증빙하며, 전자세금계산서 발행 내역과 일치하여야 합니다.</div>`;
+  }
+
+  else if(curDoc==="dev"){
+    const d = o.dev || {};
+    const specRows = (d.targetSpec||[]).map(s=>`
+      <tr><td class="left" style="width:120px;color:#666;font-weight:600">${s.k}</td><td class="left">${s.v}</td></tr>`).join("");
+    page.innerHTML = `
+      <div class="doc-head">
+        <div><div class="brand-tag">DESIGN &amp; DEVELOPMENT REQUEST</div><div class="doc-title consign">개 발 의 뢰 서</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">디자인·샘플 개발 의뢰 · 단가/수량 미확정 (견적은 본 의뢰 이후 별도)</div></div>
+        <div class="doc-meta">
+          <div><b>의뢰번호</b> <span class="val">${o.no}</span></div>
+          <div><b>의뢰일</b> <span class="val">${o.date}</span></div>
+          <div><b>모델코드</b> <span class="val">${o.code}</span></div>
+          <div><b>단계</b> <span class="val">디자인/개발</span></div>
+        </div>
+      </div>
+      <div class="parties">${partyBlock({...HARRIOT, role:"의뢰자 (甲)"},'gap')}${partyBlock({...PASHO, role:"개발사 (乙)"},'eul')}</div>
+      <div class="sec-label">모델 — ${o.model}</div>
+      <div class="terms">
+        <div class="row"><b>컨셉</b><span>${d.concept||'—'}</span></div>
+        <div class="row"><b>레퍼런스</b><span>${d.refs||'—'}</span></div>
+      </div>
+      <div class="sec-label">희망 사양 (확정 아님 · 협의 대상)</div>
+      <table class="items"><tbody>${specRows||'<tr><td class="left">—</td></tr>'}</tbody></table>
+      <div class="terms" style="margin-top:14px">
+        <div class="row"><b>샘플 요청</b><span>${d.sampleQty||'협의'}</span></div>
+        <div class="row"><b>예상 양산</b><span>${d.prodQty||'협의'}</span></div>
+        <div class="row"><b>일정</b><span>${d.schedule||'협의'}</span></div>
+        <div class="row"><b>요청사항</b><span>${d.reqNotes||'—'}</span></div>
+      </div>
+      <div class="notice" style="border-color:#6B5CA5;background:#f3f0fa;color:#4a3f75">
+        <b>안내</b> — 본 문서는 <b>디자인·샘플 개발 의뢰</b>이며 단가·수량·납기는 확정이 아닙니다.
+        디자인 확정 및 견적 회신 후 <b>정식 발주서</b>로 발주가 이루어집니다.
+      </div>
+      <div class="signs">
+        <div class="sign"><div class="cap">의뢰자 · 해리엇와치스</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+        <div class="sign"><div class="cap">개발 접수 · 파쇼</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+      </div>
+      <div class="foot">본 의뢰서는 디자인/샘플 개발 착수의 의사표시이며, 확정 사양·단가·수량은 추후 견적 및 발주서로 정합니다.</div>`;
+  }
+
+  else {
+    const rows = o.lines.map((l,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td class="left">${l.v}</td>
+        <td class="qty">${l.q.toLocaleString('ko-KR')}</td>
+        <td class="left">${o.purpose||'위탁가공'}</td>
+      </tr>`).join("");
+    page.innerHTML = `
+      <div class="doc-head">
+        <div><div class="brand-tag">사급 반출 · CONSIGNMENT RELEASE</div><div class="doc-title consign">사 급 출 고 증</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">위탁가공 목적 자산 반출 확인</div></div>
+        <div class="doc-meta">
+          <div><b>출고No</b> <span class="val">${o.no}-C</span></div>
+          <div><b>출고일자</b> <span class="val">${o.date}</span></div>
+          <div><b>연계발주</b> <span class="val">${o.no}</span></div>
+        </div>
+      </div>
+      <div class="parties">
+        ${partyBlock({...HARRIOT, role:"출고자 · 소유자 (甲)"},'gap')}
+        ${partyBlock({...PASHO, role:"인수자 · 수탁자 (乙)"},'eul')}
+      </div>
+      <div class="sec-label">반출 품목 — ${o.model}</div>
+      <table class="items">
+        <thead><tr><th style="width:36px">No</th><th>품목 · 규격</th><th style="width:80px">수량</th><th style="width:150px">반출 목적</th></tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="sum"><td colspan="2" class="left">합계 수량</td><td class="qty">${total.toLocaleString('ko-KR')}</td><td class="left">${o.purpose||'위탁가공'}</td></tr>
+        </tbody>
+      </table>
+      <div class="notice">
+        <b>소유권 유보</b> — 본 물품의 소유권은 <b>해리엇와치스</b>에 있으며, 위탁가공 목적으로만 반출됩니다.
+        수탁자(파쇼)는 선량한 관리자의 주의로 보관·가공하며, 가공 완료 후 전량 반환합니다.
+        분실·훼손·불량 발생 시 상기 수량을 기준으로 책임 및 반환·보전 의무를 부담합니다.
+      </div>
+      <div class="signs">
+        <div class="sign"><div class="cap">출고자 · 해리엇와치스</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+        <div class="sign"><div class="cap">인수 확인 · 파쇼 (상기 수량 정히 인수함)</div>
+          <div class="linerow"><span>일자</span><div class="ln"></div></div>
+          <div class="linerow"><span>대표</span><div class="ln"></div><div class="seal">(인)</div></div>
+        </div>
+      </div>
+      <div class="foot">본 출고증은 사급 자산의 반출 수량과 소유권을 증빙하며, 가공 완료품 입고 시 수량 대사의 기준이 됩니다.</div>`;
+  }
+}
+
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    curDoc = t.dataset.doc;
+    fillPicker();
+    render();
+  });
+});
+pick.addEventListener('change', render);
+
+const _qs = new URLSearchParams(location.search);
+const urlNo = _qs.get('no');
+const urlDoc = _qs.get('doc');
+if (urlDoc && ['po','ivc','csg','dev'].includes(urlDoc)) {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on', x.dataset.doc===urlDoc));
+  curDoc = urlDoc;
+}
+fillPicker();
+if (urlNo && [...pick.options].some(o => o.value === urlNo)) pick.value = urlNo;
+render();
+</script>
+</body>
+</html>
