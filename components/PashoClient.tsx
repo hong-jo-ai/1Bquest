@@ -133,7 +133,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
       className="min-h-screen w-full"
       style={{ background: "#F7F6F3", color: "#1C1B1A", fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif" }}
     >
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* header */}
         <div className="flex items-end justify-between border-b border-[#E5E2DC] pb-5 mb-6">
           <div>
@@ -207,7 +207,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
 
         {/* table */}
         <div className="bg-white border border-[#E5E2DC] rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[100px_1fr_84px_96px_92px_130px] gap-3 px-4 py-2.5 border-b border-[#E5E2DC] text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider">
+          <div className="hidden sm:grid grid-cols-[100px_1fr_84px_96px_92px_130px] gap-3 px-4 py-2.5 border-b border-[#E5E2DC] text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider">
             <div>발주번호</div>
             <div>모델</div>
             <div>유형</div>
@@ -218,14 +218,44 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
           {filtered.map((o) => {
             const b = BRAND[o.brand];
             const totQty = o.lines.reduce((a, l) => a + l.qty, 0);
+            const rcv = o.receivedQty ?? 0;
+            const rem = o.remainingQty ?? 0;
             return (
               <button
                 key={o.no}
                 onClick={() => setSel(o.no)}
-                className="w-full grid grid-cols-[100px_1fr_84px_96px_92px_130px] gap-3 px-4 py-3.5 border-b border-[#F0EEE9] items-center text-left hover:bg-[#FAF9F6] transition-colors"
+                className="w-full text-left border-b border-[#F0EEE9] hover:bg-[#FAF9F6] transition-colors px-4 py-3.5 sm:grid sm:grid-cols-[100px_1fr_84px_96px_92px_130px] sm:gap-3 sm:items-center"
               >
-                <div className="font-mono text-[13px] font-semibold tracking-tight tabular-nums">{o.no}</div>
-                <div className="min-w-0">
+                {/* ── 모바일 카드 ── */}
+                <div className="sm:hidden flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-[12px] font-semibold tabular-nums">{o.no}</span>
+                      <TypeBadge type={o.type} />
+                      {o.consign && <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: "#C2711F", background: "#FBF0E2" }}><ArrowUpRight size={10} />사급</span>}
+                      {o.riskFlag && <AlertTriangle size={13} style={{ color: "#B4472E" }} />}
+                    </div>
+                    <StatusPill status={o.status} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: b.accent }} />
+                    <span className="font-semibold text-[15px] truncate">{o.model}</span>
+                    <span className="font-mono text-[11px] text-[#9A968E]">{o.code}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[12.5px] pl-3.5">
+                    <span className="tabular-nums">
+                      <b>{totQty.toLocaleString("ko-KR")}</b> ea
+                      {rcv > 0 && <span style={{ color: rem > 0 ? "#C2711F" : "#3F7A57" }}> · 입고 {rcv.toLocaleString("ko-KR")}{rem > 0 ? ` / 잔량 ${rem.toLocaleString("ko-KR")}` : " 완료"}</span>}
+                    </span>
+                    <span className="tabular-nums font-semibold" style={{ color: o.unit ? "#1C1B1A" : "#C9C5BD" }}>
+                      {o.unit || "견적전"}{o.deposit != null && <span style={{ color: "#3F7A57" }}> · 선급 {o.deposit}%</span>}
+                    </span>
+                  </div>
+                </div>
+
+                {/* ── 데스크탑 그리드 ── */}
+                <div className="hidden sm:block font-mono text-[13px] font-semibold tracking-tight tabular-nums">{o.no}</div>
+                <div className="hidden sm:block min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: b.accent }} />
                     <span className="font-semibold text-[14px] truncate">{o.model}</span>
@@ -238,18 +268,17 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                   </div>
                   <div className="font-mono text-[11px] text-[#9A968E] mt-0.5 ml-3.5">{o.code}</div>
                 </div>
-                <div><TypeBadge type={o.type} /></div>
-                <div>
+                <div className="hidden sm:block"><TypeBadge type={o.type} /></div>
+                <div className="hidden sm:block">
                   <span className="tabular-nums font-semibold text-[14px]">{totQty.toLocaleString("ko-KR")}</span>
                   <span className="text-[11px] text-[#9A968E] ml-1">ea</span>
-                  {(o.receivedQty ?? 0) > 0 && (
-                    <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: (o.remainingQty ?? 0) > 0 ? "#C2711F" : "#3F7A57" }}>
-                      입고 {(o.receivedQty ?? 0).toLocaleString("ko-KR")}
-                      {(o.remainingQty ?? 0) > 0 ? ` · 잔량 ${(o.remainingQty ?? 0).toLocaleString("ko-KR")}` : " · 완료"}
+                  {rcv > 0 && (
+                    <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: rem > 0 ? "#C2711F" : "#3F7A57" }}>
+                      입고 {rcv.toLocaleString("ko-KR")}{rem > 0 ? ` · 잔량 ${rem.toLocaleString("ko-KR")}` : " · 완료"}
                     </div>
                   )}
                 </div>
-                <div className="min-w-0">
+                <div className="hidden sm:block min-w-0">
                   <div className="text-[12.5px] font-semibold tabular-nums truncate" style={{ color: o.unit ? "#1C1B1A" : "#C9C5BD" }}>
                     {o.unit || "견적전"}
                   </div>
@@ -259,7 +288,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                     </span>
                   )}
                 </div>
-                <div>
+                <div className="hidden sm:block">
                   <StatusPill status={o.status} />
                   <StageTrack status={o.status} />
                 </div>
@@ -284,7 +313,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
             className="relative w-full max-w-md h-full bg-[#FCFBF9] border-l border-[#E5E2DC] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-[#FCFBF9] border-b border-[#E5E2DC] px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-[#FCFBF9] border-b border-[#E5E2DC] px-5 sm:px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[15px] font-bold tabular-nums">{selOrder.no}</span>
                 <TypeBadge type={selOrder.type} />
