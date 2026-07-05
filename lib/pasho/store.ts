@@ -115,6 +115,9 @@ const SEED: PashoOrder[] = [
     status: "샘플", consign: false, deposit: null, date: "2026-07-05",
     lines: [{ variant: "비취 — 다이얼·밴드 신규 / 케이스·바늘·무브·버클 재활용", qty: 80 }],
     note: "기원 흑색 재고 80개를 비취색으로 리메이크. 다이얼·밴드 신규제작, 케이스·바늘·무브먼트·밴드버클 재활용. ⏳단가 파악중 · 밴드 제작가능여부 확인중(비취용 가죽밴드 1쌍 샘플 파쇼 전달). 확정되면 흑색 80개 사급출고.",
+    cafe24Map: {
+      "비취": { productNo: 122, variantCode: "P00000ES000A", mall: "harriot" },
+    },
   },
   {
     no: "H26-001", brand: "HR", model: "설월 (雪月)", code: "HRW-007", type: "개발",
