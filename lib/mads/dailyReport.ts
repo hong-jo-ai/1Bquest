@@ -12,6 +12,7 @@ import { listRecommendations, type RecRow } from "./dbStore";
 import { getMarginConfig, resolveThresholds } from "./marginConfig";
 import { getActiveSeasonModifier } from "./seasonModifier";
 import { ACTION_LABEL_KO, TRUST_LABEL_KO } from "./ruleEngine";
+import { computeAllBrandMer, type BrandMer } from "@/lib/profit/mer";
 
 function kstDate(offsetDays = 0): string {
   const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -102,6 +103,7 @@ interface ReportData {
   yesterday: string;
   cafe24: { yest: { revenue: number; orders: number }; last7: { revenue: number; orders: number }; prev7: { revenue: number; orders: number } } | null;
   meta:    { yest: MetaKpi; last7: MetaKpi; prev7: MetaKpi } | null;
+  mer:     BrandMer[] | null;
   pendingRecs: RecRow[];
   thresholds: ReturnType<typeof resolveThresholds>;
 }
@@ -148,8 +150,15 @@ async function collectReportData(): Promise<ReportData> {
     }
   }
 
+  let mer: BrandMer[] | null = null;
+  try {
+    mer = await computeAllBrandMer(7, metaToken);
+  } catch (e) {
+    console.error("[mads-daily-report] MER 실패:", e);
+  }
+
   return {
-    yesterday, cafe24, meta, pendingRecs,
+    yesterday, cafe24, meta, mer, pendingRecs,
     thresholds: resolveThresholds(marginCfg, season),
   };
 }
@@ -206,6 +215,29 @@ function buildHtml(data: ReportData, madsUrl: string): string {
       <div style="margin-top:8px;font-size:11px;color:#666">
         7일 누적: 광고비 <strong>${fmtKRW(meta.last7.spend)}</strong> · 매출 <strong>${fmtKRW(meta.last7.purchaseValue)}</strong> · ROAS <strong>${meta.last7.roas > 0 ? meta.last7.roas.toFixed(2) + "x" : "-"}</strong> · 전환 <strong>${meta.last7.purchaseCount}건</strong>
       </div>
+    </td></tr>` : "";
+
+  const merSection = data.mer && data.mer.length ? `
+    <tr><td style="padding:6px 20px 6px;font-size:12px;color:#888;font-weight:600;letter-spacing:.5px;text-transform:uppercase">MER · 자사몰매출 ÷ 메타광고비 (7일)</td></tr>
+    <tr><td style="padding:0 20px 6px;font-size:11px;color:#999">메타 세트 ROAS는 네이버·직접 유입을 놓쳐 과소평가됩니다. 자사몰 MER로 메타의 실제 기여를 봅니다.</td></tr>
+    <tr><td style="padding:0 20px 18px">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        ${data.mer.map((m) => {
+          const label = m.brand === "harriot" ? "해리엇" : "폴바이스";
+          const merStr = m.mer == null ? "-" : m.mer.toFixed(2);
+          const merColor = m.mer == null ? "#888" : m.mer >= 3 ? "#10b981" : m.mer >= 1.5 ? "#f59e0b" : "#ef4444";
+          return `<tr>
+            <td style="padding:12px 14px;background:#f9fafb;border-radius:10px">
+              <div style="font-size:13px;font-weight:bold;color:#111;margin-bottom:6px">${label}</div>
+              <div style="font-size:11px;color:#666;line-height:1.7">
+                메타 광고비 <strong>${fmtKRW(m.metaSpend)}</strong> · 자사몰 매출 <strong>${fmtKRW(m.selfMallRevenue)}</strong> (${m.selfMallOrders}건)<br>
+                <span style="font-size:15px;font-weight:bold;color:${merColor}">MER ${merStr}</span>
+                <span style="color:#aaa">· 메타 리포트 ROAS ${m.metaRoas > 0 ? m.metaRoas.toFixed(2) + "x" : "-"} · 전환 ${m.metaPurchaseCount}건</span>
+              </div>
+            </td>
+          </tr><tr><td style="height:6px"></td></tr>`;
+        }).join("")}
+      </table>
     </td></tr>` : "";
 
   // 추천 액션 카운트
@@ -289,6 +321,7 @@ function buildHtml(data: ReportData, madsUrl: string): string {
   </td></tr>
   ${cafe24Section}
   ${metaSection}
+  ${merSection}
   ${summarySection}
   ${recListSection}
   ${thrSection}
