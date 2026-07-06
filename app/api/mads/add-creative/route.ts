@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
       adsetId?: string;
+      updateAdId?: string;
       imageUrl?: string;
       imageBase64?: string;
       imageHash?: string;
@@ -78,7 +79,8 @@ export async function POST(req: NextRequest) {
     if (!token) return NextResponse.json({ ok: false, error: "Meta 토큰 없음" }, { status: 401 });
     const accountId = req.nextUrl.searchParams.get("account") ?? (await resolveAdAccountId(token));
 
-    if (!body.adsetId) return NextResponse.json({ ok: false, error: "adsetId 필수" }, { status: 400 });
+    if (!body.adsetId && !body.updateAdId)
+      return NextResponse.json({ ok: false, error: "adsetId(신규광고) 또는 updateAdId(기존광고 소재교체) 필수" }, { status: 400 });
     if (!body.pageId) return NextResponse.json({ ok: false, error: "pageId 필수(브랜드 페이지)" }, { status: 400 });
     if (!body.link) return NextResponse.json({ ok: false, error: "link 필수" }, { status: 400 });
     if (!body.imageBase64 && !body.imageUrl && !body.imageHash)
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
 
     const plan = {
       adsetId: body.adsetId,
+      updateAdId: body.updateAdId,
       pageId: body.pageId,
       link: body.link,
       message: body.message ?? "",
@@ -118,6 +121,20 @@ export async function POST(req: NextRequest) {
       object_story_spec: JSON.stringify(storySpec),
     })) as { id: string };
 
+    const acctNum = accountId.replace(/^act_/, "");
+
+    // updateAdId: 기존 광고의 소재만 교체(광고 ID·학습 유지). 이미지 in-place 불가라 새 크리에이티브로 스왑.
+    if (plan.updateAdId) {
+      await metaPost(`/${plan.updateAdId}`, token, {
+        creative: JSON.stringify({ creative_id: creative.id }),
+      });
+      return NextResponse.json({
+        ok: true, dryRun: false, mode: "update-creative",
+        updatedAdId: plan.updateAdId, creativeId: creative.id, imageHash,
+        managerUrl: `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acctNum}&selected_ad_ids=${plan.updateAdId}`,
+      });
+    }
+
     const ad = (await metaPost(`/${accountId}/ads`, token, {
       name: plan.adName,
       adset_id: plan.adsetId,
@@ -125,7 +142,6 @@ export async function POST(req: NextRequest) {
       status: plan.status,
     })) as { id: string };
 
-    const acctNum = accountId.replace(/^act_/, "");
     return NextResponse.json({
       ok: true,
       dryRun: false,
