@@ -391,6 +391,35 @@ export interface InventoryLevel {
   initialStock: number;
   currentStock: number;
   totalSold: number;
+  liveTracked?: boolean; // 카페24 재고추적 ON → currentStock=카페24 실재고(역산 아님)
+}
+
+/**
+ * 카페24 재고추적(use_inventory=T) 상품의 실재고를 대량 조회.
+ * 추적 켠 상품은 카페24가 판매마다 정확히 차감하므로, 역산("실사−판매") 대신 이 값이 진실.
+ * 반환: product_code → { quantity(변형 합), tracked }.
+ */
+async function fetchLiveCafe24Stock(token: string, mall: MallId): Promise<Record<string, { quantity: number; tracked: boolean }>> {
+  const out: Record<string, { quantity: number; tracked: boolean }> = {};
+  let offset = 0;
+  for (let page = 0; page < 30; page++) {
+    const d = (await cafe24Get(
+      `/api/v2/admin/products?limit=100&offset=${offset}&embed=variants`,
+      token, mall,
+    )) as { products?: Array<{ product_code?: string; variants?: Array<{ quantity?: number; use_inventory?: string }> }> };
+    const ps = d.products ?? [];
+    for (const p of ps) {
+      if (!p.product_code) continue;
+      const vs = p.variants ?? [];
+      if (vs.length === 0) continue;
+      const qty = vs.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+      const tracked = vs.every((v) => v.use_inventory === "T");
+      out[p.product_code] = { quantity: qty, tracked };
+    }
+    if (ps.length < 100) break;
+    offset += 100;
+  }
+  return out;
 }
 
 /**
@@ -411,21 +440,27 @@ export async function computeInventoryLevels(token: string, mall: MallId = "paul
     .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
     .sort()[0];
   const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-  const [cafe24SalesRaw, otherChannelsRaw, alias] = await Promise.all([
+  const [cafe24SalesRaw, otherChannelsRaw, alias, liveStock] = await Promise.all([
     fetchSalesBySku(token, startDate, mall),
     fetchOtherChannelsSales(token, mall),
     loadSkuAlias(mall),
+    fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>)),
   ]);
   const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
   const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
   return skus.map((sku) => {
     const e = entries[sku];
     const totalSold = (cafe24SalesBySku[sku] ?? 0) + (otherChannelsSales[sku] ?? 0);
+    const computed = Math.max(0, e.initialStock + e.manualAdjustment - totalSold - (e.dutyfreeOut ?? 0));
+    // 카페24 재고추적 ON 상품은 역산 대신 카페24 실재고를 진실로 사용(드리프트 제거).
+    const live = liveStock[sku];
+    const useLive = !!live?.tracked;
     return {
       sku,
       initialStock: e.initialStock,
       totalSold,
-      currentStock: Math.max(0, e.initialStock + e.manualAdjustment - totalSold - (e.dutyfreeOut ?? 0)),
+      currentStock: useLive ? live.quantity : computed,
+      liveTracked: useLive,
     };
   });
 }
