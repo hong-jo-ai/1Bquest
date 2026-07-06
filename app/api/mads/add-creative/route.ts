@@ -135,6 +135,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (!plan.adsetId) return NextResponse.json({ ok: false, error: "adsetId 필수" }, { status: 400 });
     const ad = (await metaPost(`/${accountId}/ads`, token, {
       name: plan.adName,
       adset_id: plan.adsetId,
