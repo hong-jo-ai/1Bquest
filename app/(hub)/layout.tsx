@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Sidebar from "@/components/Sidebar";
-import NotificationBell from "@/components/NotificationBell";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
 
@@ -24,7 +23,6 @@ export default async function HubLayout({
       <div className="flex-1 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 pt-12 md:pt-0">
         {children}
       </div>
-      <NotificationBell />
     </div>
   );
 }
