@@ -50,7 +50,7 @@
     },
     {
       "path": "/api/cs/ingest/crisp",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cs/ingest/instagram",
@@ -65,28 +65,20 @@
       "schedule": "40 * * * *"
     },
     {
-      "path": "/api/cs/ingest/reddit",
-      "schedule": "50 * * * *"
-    },
-    {
       "path": "/api/cs/notify",
-      "schedule": "2,12,22,32,42,52 * * * *"
-    },
-    {
-      "path": "/api/cron/cafe24-orders-notify",
-      "schedule": "5,15,25,35,45,55 * * * *"
+      "schedule": "0 0-11 * * *"
     },
     {
       "path": "/api/cron/bank-deposit-retry",
-      "schedule": "*/3 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cs/notify?mode=stale",
-      "schedule": "30 * * * *"
+      "schedule": "30 0-11 * * *"
     },
     {
       "path": "/api/cs/notify/email",
-      "schedule": "7,17,27,37,47,57 * * * *"
+      "schedule": "0 0-11 * * *"
     },
     {
       "path": "/api/cron/mads-evaluate",

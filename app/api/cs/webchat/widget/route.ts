@@ -110,6 +110,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
   var CONTACT_KEY = "paulvice_webchat_contact";
   var CONV_KEY = "paulvice_webchat_conversations";
   var pollTimer = null;
+  var pollActivityTs = 0;   // 마지막 활동(전송/새 메시지) 시각 — 백오프·중단 판단용
+  var lastMsgCount = -1;    // 새 인바운드 메시지 감지용
   var isOpen = false;
   var currentView = "home";
 
@@ -275,7 +277,14 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       return;
     }
     api("/api/cs/webchat/messages?conversationId=" + encodeURIComponent(id), { method: "GET" })
-      .then(function (json) { if (json.ok) renderMessages(box, json.messages || []); })
+      .then(function (json) {
+        if (!json.ok) return;
+        var msgs = json.messages || [];
+        // 새 메시지(관리자 답변 포함)가 오면 활동 시각 리셋 → 폴링 다시 빨라짐
+        if (lastMsgCount >= 0 && msgs.length > lastMsgCount) pollActivityTs = Date.now();
+        lastMsgCount = msgs.length;
+        renderMessages(box, msgs);
+      })
       .catch(function () {});
   }
 
@@ -491,16 +500,28 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       document.documentElement.classList.add("pv-chat-lock");
       button.style.display = "none";
       showView(targetView || "home");
-      clearInterval(pollTimer);
-      pollTimer = setInterval(function () {
-        if (!isOpen || document.hidden) return;
-        if (currentView === "chat") {
-          loadMessages(messages);
-          // 채팅 화면을 보는 동안은 고객이 답변을 곧 확인한다는 신호.
-          pingPresence("active");
-        }
-        if (currentView === "list") loadConversationList();
-      }, 5000);
+      // 백오프 폴링 시작(활동 직후 5초 → 30초 → 4분 무응답 시 중단, 답변은 SMS로 비동기 전달).
+      pollActivityTs = Date.now();
+      lastMsgCount = -1;
+      startPolling();
+    }
+
+    // 자기예약 setTimeout 백오프 폴링. 새 메시지/전송(pollActivityTs 리셋) 시 다시 빨라짐.
+    function startPolling() {
+      clearTimeout(pollTimer);
+      (function schedulePoll() {
+        var idle = Date.now() - pollActivityTs;
+        if (idle > 240000) return;                 // 4분 무응답 → 중단(SMS 흐름에 위임)
+        var delay = idle < 30000 ? 5000 : (idle < 120000 ? 15000 : 30000);
+        pollTimer = setTimeout(function () {
+          if (!isOpen) return;
+          if (!document.hidden) {
+            if (currentView === "chat") { loadMessages(messages); pingPresence("active"); }
+            if (currentView === "list") loadConversationList();
+          }
+          schedulePoll();
+        }, delay);
+      })();
     }
 
     function closePanel() {
@@ -508,7 +529,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       panel.classList.remove("open");
       document.documentElement.classList.remove("pv-chat-lock");
       button.style.display = "flex";
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       pingPresence("away");
     }
 
@@ -568,7 +589,11 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
             brand: config.brand
           }))
         });
-      }).then(function () { loadMessages(messages); });
+      }).then(function () {
+        loadMessages(messages);
+        pollActivityTs = Date.now();   // 전송 직후엔 빠른 폴링 재개(중단됐다면 재시작)
+        if (isOpen) startPolling();
+      });
     }
 
     function focusComposerIfContactSaved() {
