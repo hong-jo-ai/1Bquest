@@ -1,0 +1,1 @@
+@../.claude/rules/ops.md
