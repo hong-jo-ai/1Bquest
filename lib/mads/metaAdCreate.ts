@@ -9,8 +9,25 @@
  * objective: "OUTCOME_SALES"(픽셀 구매 최적화) | "OUTCOME_TRAFFIC"(랜딩페이지 조회).
  */
 import { metaGet, metaPost, metaDelete } from "../metaClient";
+import { inferBrandFromCampaign, type Brand } from "../metaBrandFilter";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 광고계정(act_3644222039208759)은 폴바이스·해리엇 공유 → 페이지·픽셀이 둘 다 붙어 있다.
+ * 자동탐색(resolvePageId/resolvePixelId)은 "첫 자산"을 잡아 브랜드가 뒤섞이는 사고를 낸다
+ * (폴바이스 광고가 harriot IG로 나가거나, 폴바이스 판매광고에 해리엇 픽셀/전환없음으로 붙음).
+ * → 캠페인 이름으로 브랜드를 추론해 브랜드별 자산을 기본값으로 사용한다.
+ *   우선순위: 명시 input > 브랜드 매핑 > 자동탐색 폴백.
+ */
+const BRAND_PAGES: Record<Brand, string> = {
+  paulvice: "224841717389800",   // 폴바이스 페이지/IG
+  harriot:  "108567565391400",   // harriotwatches 페이지/IG
+};
+const BRAND_PIXELS: Record<Brand, string> = {
+  paulvice: "7740091496041900",  // 폴바이스 자사몰(icaruse2000) 픽셀
+  harriot:  "2532682890498749",  // 해리엇 skin4 주문완료 픽셀
+};
 
 export interface CreateAdInput {
   /** 광고계정 (act_ 포함). 생략 시 resolveAdAccountId 사용. */
@@ -165,9 +182,11 @@ export async function createPausedAd(input: CreateAdInput): Promise<CreateAdResu
     throw new Error("소재가 필요합니다: videoUrl/videoId(영상) 또는 imageUrl/imageHash(이미지).");
   }
 
-  const pageId  = input.pageId  ?? await resolvePageId(token, accountId);
+  // 캠페인 이름으로 브랜드 추론(미매칭=폴바이스) → 브랜드별 페이지·픽셀을 기본값으로.
+  const brand = inferBrandFromCampaign(name);
+  const pageId  = input.pageId  ?? BRAND_PAGES[brand]  ?? await resolvePageId(token, accountId);
   const pixelId = objective === "OUTCOME_SALES"
-    ? (input.pixelId ?? await resolvePixelId(token, accountId))
+    ? (input.pixelId ?? BRAND_PIXELS[brand] ?? await resolvePixelId(token, accountId))
     : null;
 
   // 소재 준비: 영상이면 advideos 업로드+썸네일, 아니면 adimages 업로드.
