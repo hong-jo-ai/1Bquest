@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<!--@import(/moa/layout/head.html)-->
+<body>
+    <script src="https://widget.seoulsend.com"></script>
+    <!--@import(/moa/import/top_banner.html)-->
+    <!--@import(/moa/layout/header.html)-->
+    <!--@import(/moa/layout/aside.html)-->
+    <!--@import(/moa/import/banner_manager.html)-->
+    <div id="wrap">
+
+        <div id="container">
+            <main id="contents">
+                <!--@contents-->
+            </main>
+        </div>
+
+    </div>
+    <!--@import(/moa/layout/footer.html)-->
+    <!--@import(/moa/import/welcome_popup.html)-->
+    <script id="watchshopMenuLink">
+    /* GNB/모바일메뉴 '손목시계'(cate 45) → 컬렉션별 전체보기.
+       모바일 드로어는 동적 생성이라 로드시 재작성 + 클릭 가로채기 이중 처리. */
+    (function(){
+      function isCat45(h){
+        if(!h) return false;
+        try{ h=decodeURIComponent(h); }catch(e){}
+        return /\/category\/[^\/]+\/45\/?($|[?#])/.test(h) || /[?&]cate_no=45(?!\d)/.test(h);
+      }
+      function rewrite(root){
+        (root||document).querySelectorAll('a[href]').forEach(function(a){
+          if(isCat45(a.getAttribute('href'))) a.setAttribute('href','/watchshop.html');
+        });
+      }
+      document.addEventListener('DOMContentLoaded',function(){ rewrite(); });
+      setTimeout(rewrite, 1500); setTimeout(rewrite, 4000);
+      /* 동적 메뉴 대비: 클릭 캡처 단계에서 가로채기 */
+      document.addEventListener('click',function(e){
+        var a=e.target&&e.target.closest ? e.target.closest('a[href]') : null;
+        if(!a) return;
+        if(isCat45(a.getAttribute('href'))){ e.preventDefault(); e.stopPropagation(); location.href='/watchshop.html'; }
+      }, true);
+    })();
+    </script>
+</body>
+</html>

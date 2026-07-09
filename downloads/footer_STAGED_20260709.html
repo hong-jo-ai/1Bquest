@@ -1,0 +1,241 @@
+<footer module="Layout_footer" class="footer">
+    <div class="footer__inner">
+        <div class="container container--footer clearfix">
+            <div class="footer__left webfont pull-left">
+                <!--@import(/moa/import/footer_logo.html)-->
+                <p class="footer__txt footer__txt--copyright">Copyright &copy; {$mall_name}.<br>All rights reserved.</p>
+                <div class="policy relative jsPolicy">
+                   
+                    <!-- 회사소개 제목 : 타이틀을 수정하시려면 '타이틀 작성란'에 원하시는 문구로 수정해주세요. -->
+                    <a href="/about.html" class="policy__about">
+                        <!-- 타이틀 작성란 -->
+                        About
+                    </a>
+                    
+                    <ul class="policy__list">
+                       
+                        <!-- (PC)개인정보 처리방침 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="policy__item">
+                            <a href="/member/privacy.html" class="policy__link">
+                            <!-- 메뉴명 작성란 -->
+                            Privacy policy
+                            </a>
+                        </li>
+                        
+                        <!-- (PC)이용약관 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="policy__item">
+                            <!-- 메뉴명 작성란 -->
+                            <a href="/member/agreement.html" class="policy__link">Agreement</a>
+                        </li>
+                        
+                        <!-- (PC)이용안내 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="policy__item">
+                            <!-- 메뉴명 작성란 -->
+                            <a href="/shopinfo/guide.html" class="policy__link">Guide</a>
+                        </li>
+                        
+                    </ul>
+                    
+                    <select class="policy__select" onchange="window.open(value,'_self');">
+                       
+                        <!-- (모바일)회사소개 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <option value="/about" selected>
+                        <!-- 메뉴명 작성란 -->
+                        About
+                        </option>
+                        
+                        <!-- (모바일)개인정보처리방침 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <option value="/member/privacy.html">
+                        <!-- 메뉴명 작성란 -->
+                        Privacy policy
+                        </option>
+                        
+                        <!-- (모바일)이용약관 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <option value="/member/agreement.html">
+                        <!-- 메뉴명 작성란 -->
+                        Agreement
+                        </option>
+                        
+                        <!-- (모바일)이용안내 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <option value="/shopinfo/guide.html">
+                        <!-- 메뉴명 작성란 -->
+                        Guide
+                        </option>
+                        
+                    </select>
+                </div>
+            </div>
+            <div class="footer__right pull-right clearfix">
+                <div class="footer__column webfont pull-left">
+                   
+                    <!-- 고객센터 제목 : 타이틀을 수정하시려면 '타이틀 작성란'에 원하시는 문구로 수정해주세요. -->
+                    <div class="footer__title">
+                    <!-- 타이틀 작성란 -->
+                    Customer center
+                    </div>
+                    <a href="http://pf.kakao.com/_xcSenC/chat">
+                    <p class="footer__txt">카카오톡 플러스 친구 [폴바이스]</p>
+                    <!--<p class="footer__txt">{$phone}</p>
+                    <p class="footer__txt">{$runtime}</p> -->
+                    
+                </div>
+                <div class="footer__column footer__column--second webfont pull-left">
+                   
+                    <!-- 회사정보 제목 : 타이틀을 수정하시려면 '타이틀 작성란'에 원하시는 문구로 수정해주세요. -->
+                    <div class="footer__title">
+                    <!-- 타이틀 작성란 -->
+                    Company info
+                    </div>
+                    
+                    <!-- 회사정보 : 쇼핑몰 관리자 페이지에서 설정하신 내용과 자동 연동 됩니다. (매뉴얼 참고)  -->
+                    <p class="footer__txt">상호명 : {$company_name}</p>
+                    <p class="footer__txt">대표 : {$president_name}</p>
+                    <p class="footer__txt">주소 : {$mall_addr1} {$mall_addr2}</p>
+                    <p class="footer__txt">사업자 등록번호 : {$company_regno}</p>
+                    <p class="footer__txt">통신판매신고번호 : {$network_regno} <span class="displaynone">{$biz_no_link}</span><br /></p>
+                    <p class="footer__txt">이메일 : {$cpo_email}<br class="RW" /></p>
+                    <p class="footer__txt footer__txt--designby">Designed by <a class="footer__txt footer__txt--link" href="https://moa-studio.com" target="_blank">moa-studio</a> &middot; Hosting by 카페24(주)</p>
+                    
+                </div>
+                <div class="footer__column footer__column--shop-menu webfont pull-left">
+                   
+                    <!-- 샵 메뉴 제목 : 타이틀을 수정하시려면 '타이틀 작성란'에 원하시는 문구로 수정해주세요. -->
+                    <div class="footer__title footer__title--accordion jsAccordionNav">
+                    <!-- 타이틀 작성란 -->
+                    Shop menu
+                    </div>
+                    
+                    <ul class="footer__nav footer__nav--accordion jsAccordionCont">
+                       
+                        <!-- 공지사항 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="footer__menu">
+                            <a class="footer__link footer__txt" href="/board/free/list.html?board_no=1">
+                            <!-- 메뉴명 작성란 -->
+                            Notice
+                            </a>
+                        </li>
+                        
+                        <!-- 마이페이지 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="footer__menu">
+                            <a class="footer__link footer__txt" href="/myshop/index.html">
+                            <!-- 메뉴명 작성란 -->
+                            My page
+                            </a>
+                        </li>
+                        
+                        <!-- Q&A 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="footer__menu">
+                            <a class="footer__link footer__txt" href="/board/product/list.html?board_no=6">
+                            <!-- 메뉴명 작성란 -->
+                            Q&A
+                            </a>
+                        </li>
+                        
+                        <!-- FAQ 메뉴 : 메뉴명을 수정하시려면 '메뉴명 작성란'에 원하시는 문구로 수정해주세요. -->
+                        <li class="footer__menu">
+                            <a class="footer__link footer__txt" href="/board/faq/list.html?board_no=3">
+                            <!-- 메뉴명 작성란 -->
+                            FAQ
+                            </a>
+                        </li>
+ 
+                    </ul>
+                </div>
+                
+                <!-- SNS 링크 영역 : '관리자 > 앱스토어 > 배너매니저' 앱에서 관리 -->
+                <div class="footer__column webfont pull-left" df-banner-code="footer-sns" hidden>
+                   
+                    <!-- SNS 영역 제목 : 타이틀을 수정하시려면 '타이틀 작성란'에 원하시는 문구로 수정해주세요. -->
+                    <div class="footer__title footer__title--accordion jsAccordionNav">
+                    <!-- 타이틀 작성란 -->
+                    Follow us
+                    </div>
+                    
+                    <ul class="footer__nav footer__nav--sns jsAccordionCont">
+                       
+                        <li class="footer__menu" df-banner-clone>
+                            <a class="footer__link footer__txt" href="{#href}">{#title}</a>
+                        </li>
+                        
+                    </ul>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</footer>
+
+<div class="scroll-btn relative flex flex--v-center flex--h-center jsScrollUp">
+    <!--@import(/moa/icon/icon_arrow_up.html)-->
+</div>
+
+<div id="progressPaybar" style="display:none;">
+    <div id="progressPaybarBackground" class="layerProgress"></div>
+    <div id="progressPaybarView">
+        <div class="box">
+            <h3>현재 결제가 진행중입니다.</h3>
+            <p class="txt">
+                본 결제 창은 결제완료 후 자동으로 닫히며,결제 진행 중에 본 결제 창을 닫으시면<br />
+                주문이 되지 않으니 결제 완료 될 때 까지 닫지 마시기 바랍니다.
+            </p>
+            <div class="progressbar"><img src="//img.echosting.cafe24.com/skin/skin/common/img_loading.gif" alt="loading" loading="lazy"></div>
+        </div>
+    </div>
+</div>
+
+<div module="Layout_multishopShipping">
+    <!--@css(/layout/basic/css/ec-base-layer.css)-->
+    <!--@css(/css/module/layout/multishopShipping.css)-->
+    <!--@js(/js/module/layout/multishopShipping.js)-->
+    <div class="worldshipLayer ec-base-layer typeModal">
+        <div class="header">
+            <h3>WORLD SHIPPING</h3>
+        </div>
+        <div class="content">
+            <p class="desc">PLEASE SELECT THE DESTINATION COUNTRY AND LANGUAGE :</p>
+            <select module="Layout_multishopShippingCountrylist">
+                <option value="{$country_code}"{$country_default_selected}>SHIPPING TO : {$country_name}</option>
+                <option value="{$country_code}"{$country_default_selected}>SHIPPING TO : {$country_name}</option>
+            </select>
+            <select module="Layout_multishopShippingLanguagelist">
+                <option value="{$shop_domain}"{$shop_default_selected}>LANGUAGE : {$shop_language_name}</option>
+                <option value="{$shop_domain}"{$shop_default_selected}>LANGUAGE : {$shop_language_name}</option>
+            </select>
+        </div>
+        <div class="ec-base-button">
+            <a href="#none" class="btnSubmitFix sizeM">GO</a>
+        </div>
+        <a href="#none" class="btnClose">닫기</a>
+    </div>
+</div>
+
+<div id="layoutDimmed" class="dimmed"></div>
+<!--@import(/moa/import/popup/IE_popup.html)-->
+<!--@import(/moa/import/popup/login.html)-->
+<div id="chkMoa" module="Layout_footer" class="displaynone chk-moa" data-chk="{$fax}"></div>
+
+<script id="watchshopMenuLink">
+/* GNB/모바일메뉴 '손목시계'(cate 45) → 컬렉션별 전체보기(/watchshop.html).
+   전 페이지 공통 적용을 위해 footer.html 로 이동(2026-07-09) — 이전엔 layout.html 에만 있어
+   홈·상품상세에서 카테고리(45)로 새던 문제 수정. 모바일 드로어 동적 생성 대비 재작성+클릭 가로채기 이중 처리. */
+(function(){
+  if(window.__pvWatchshopMenu) return; window.__pvWatchshopMenu=1;
+  function isCat45(h){
+    if(!h) return false;
+    try{ h=decodeURIComponent(h); }catch(e){}
+    return /\/category\/[^\/]+\/45\/?($|[?#])/.test(h) || /[?&]cate_no=45(?!\d)/.test(h);
+  }
+  function rewrite(root){
+    (root||document).querySelectorAll('a[href]').forEach(function(a){
+      if(isCat45(a.getAttribute('href'))) a.setAttribute('href','/watchshop.html');
+    });
+  }
+  if(document.readyState!=='loading') rewrite(); else document.addEventListener('DOMContentLoaded',function(){ rewrite(); });
+  setTimeout(rewrite, 1500); setTimeout(rewrite, 4000);
+  document.addEventListener('click',function(e){
+    var a=e.target&&e.target.closest ? e.target.closest('a[href]') : null;
+    if(!a) return;
+    if(isCat45(a.getAttribute('href'))){ e.preventDefault(); e.stopPropagation(); location.href='/watchshop.html'; }
+  }, true);
+})();
+</script>
