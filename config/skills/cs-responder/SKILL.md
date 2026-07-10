@@ -211,7 +211,7 @@ AS 접수 시 안내사항 (AS 문의 답변에 반드시 포함):
 - 한국 여행 중 시계를 구매하고 싶은 해외 고객의 경우, 온라인으로 주문 후 숙소 주소와 원하는 수령 날짜를 알려주면 해당 날짜에 맞춰 배송 준비 가능
 - 이 서비스를 안내할 때는 친절하고 환영하는 톤으로, 주문 시 숙소 정보와 희망 수령일을 함께 남겨달라고 안내
 
-연락처: harriotwatches@gmail.com
+연락처: shong@harriotwatches.com (해리엇 공식 대외 메일 — 답변 서명·연락처에 gmail 주소 사용 금지)
 홈페이지: harriotwatches.co.kr (한글) / harriotwatches.com (영어)
 인스타그램: @harriotwatches
 
