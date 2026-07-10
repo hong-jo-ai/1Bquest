@@ -215,9 +215,10 @@
 <div id="chkMoa" module="Layout_footer" class="displaynone chk-moa" data-chk="{$fax}"></div>
 
 <script id="watchshopMenuLink">
-/* GNB/모바일메뉴 '손목시계'(cate 45) → 컬렉션별 전체보기(/watchshop.html).
-   전 페이지 공통 적용을 위해 footer.html 로 이동(2026-07-09) — 이전엔 layout.html 에만 있어
-   홈·상품상세에서 카테고리(45)로 새던 문제 수정. 모바일 드로어 동적 생성 대비 재작성+클릭 가로채기 이중 처리. */
+/* GNB/모바일메뉴 '손목시계'(cate 45) 클릭 → 컬렉션별 전체보기(/watchshop.html).
+   ⚠️ href 재작성은 GNB(li.jsPrdCate)엔 하지 않는다 — 테마 JS가 href의 cate_no(45)로
+   호버 하위메뉴(스트랩·아카이브 등)를 동적 생성하므로 href를 바꾸면 하위메뉴가 사라짐(2026-07-10 수정).
+   → GNB는 클릭 가로채기로만 목적지 변경, 그 외 일반 본문 링크만 재작성. */
 (function(){
   if(window.__pvWatchshopMenu) return; window.__pvWatchshopMenu=1;
   function isCat45(h){
@@ -225,13 +226,16 @@
     try{ h=decodeURIComponent(h); }catch(e){}
     return /\/category\/[^\/]+\/45\/?($|[?#])/.test(h) || /[?&]cate_no=45(?!\d)/.test(h);
   }
+  function inGnb(a){ return !!(a.closest && (a.closest('li.jsPrdCate')||a.closest('.category__item'))); }
   function rewrite(root){
     (root||document).querySelectorAll('a[href]').forEach(function(a){
+      if(inGnb(a)) return; /* GNB는 href 유지(하위메뉴 생성용) */
       if(isCat45(a.getAttribute('href'))) a.setAttribute('href','/watchshop.html');
     });
   }
   if(document.readyState!=='loading') rewrite(); else document.addEventListener('DOMContentLoaded',function(){ rewrite(); });
   setTimeout(rewrite, 1500); setTimeout(rewrite, 4000);
+  /* GNB 포함 전 링크: 클릭 시에만 watchshop 으로 — 하위메뉴 링크(46·50 등)는 cate45 아님 → 영향 없음 */
   document.addEventListener('click',function(e){
     var a=e.target&&e.target.closest ? e.target.closest('a[href]') : null;
     if(!a) return;
