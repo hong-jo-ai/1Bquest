@@ -188,14 +188,18 @@ async function sendGmailReply(
 
   const accessToken = await getGmailAccessToken(account);
 
+  // 웹폼 스레드: 원본이 info@ 도메인 메일함(발송 계정과 다른 메일함)이라 스레드 참조
+  // (threadId/In-Reply-To/References)를 붙이면 발송 계정에서 실패한다 → 고객에게 새 메일로 발송.
+  const isWebform = ((last.raw ?? {}) as Record<string, unknown>).source === "webform";
+
   const headerLines = [
     `To: ${toAddress}`,
     `Subject: ${encodeMimeHeader(subject)}`,
     `Content-Type: text/plain; charset="UTF-8"`,
     `MIME-Version: 1.0`,
   ];
-  if (messageId) headerLines.push(`In-Reply-To: ${messageId}`);
-  if (messageId || references) {
+  if (!isWebform && messageId) headerLines.push(`In-Reply-To: ${messageId}`);
+  if (!isWebform && (messageId || references)) {
     const refs = [references, messageId].filter(Boolean).join(" ");
     headerLines.push(`References: ${refs}`);
   }
@@ -215,7 +219,9 @@ async function sendGmailReply(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ raw, threadId: thread.external_thread_id }),
+      body: JSON.stringify(
+        isWebform ? { raw } : { raw, threadId: thread.external_thread_id },
+      ),
     }
   );
 

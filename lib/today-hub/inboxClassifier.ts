@@ -11,6 +11,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getGoogleAccessTokenFromStore } from "@/lib/googleTokenStore";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
+import { isWebformEmail } from "@/lib/cs/harriotWebform";
 import {
   saveClassifiedEmail, getClassifiedEmail, patchClassifiedEmail,
   listNegativeExamples,
@@ -292,9 +293,13 @@ export async function syncInbox(): Promise<InboxSyncStatus> {
         : new Date().toISOString();
 
       try {
-        const cls = await classifyOne(client, systemPrompt, {
-          fromEmail, fromName: name, subject, snippet, receivedAt,
-        });
+        // 해리엇 홈페이지 문의폼 메일은 CS 인박스(lib/cs/harriotWebform)가 담당 →
+        // Today Hub 는 알림·위젯에서 제외해 이중 알림 방지.
+        const cls = isWebformEmail(subject, snippet)
+          ? { needsReply: false, reason: "홈페이지 문의폼 — CS 인박스에서 처리", confidence: 1 }
+          : await classifyOne(client, systemPrompt, {
+              fromEmail, fromName: name, subject, snippet, receivedAt,
+            });
         const record: ClassifiedEmail = {
           messageId:           msg.id,
           threadId:            msg.threadId,
