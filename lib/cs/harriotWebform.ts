@@ -50,6 +50,25 @@ export function parseWebform(body: string): WebformParsed {
   };
 }
 
+/** HTML 본문 → 평문. 폼 메일이 text/plain 없이 HTML만 올 때 전문 추출용. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#0?39;|&apos;|&rsquo;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]*\n[ \t]*/g, "\n")
+    .trim();
+}
+
 /** 이 메일이 해리엇 웹폼 알림인지 (제목 패턴 또는 본문 라벨 구조). */
 export function isWebformEmail(subject: string, body: string): boolean {
   if (WEBFORM_SUBJECT_RE.test(subject)) return true;
@@ -77,7 +96,7 @@ export async function syncHarriotWebform(): Promise<WebformSyncResult> {
     messages = await fetchRecentInboxMessages(token, {
       maxResults: 40,
       // 백필 노이즈 최소화 위해 최근 3일. 제목에 '폼'/'form' 있는 것만 후보로.
-      query: "in:inbox newer_than:3d (subject:폼 OR subject:form)",
+      query: "in:inbox newer_than:7d (subject:폼 OR subject:form)",
     });
   } catch (e) {
     result.errors.push(`Gmail list 실패: ${e instanceof Error ? e.message : String(e)}`);
@@ -88,8 +107,11 @@ export async function syncHarriotWebform(): Promise<WebformSyncResult> {
   for (const msg of messages) {
     try {
       const subject = extractHeader(msg, "Subject") ?? "";
-      const { text } = extractBody(msg);
-      const body = (text || msg.snippet || "").trim();
+      const { text, html } = extractBody(msg);
+      // text 는 text/plain part 가 없으면 snippet(≈200자 잘림)으로 폴백된다. 폼 메일은
+      // HTML 본문만 오는 경우가 많아, HTML→평문이 더 완전하면 그걸 쓴다(메시지 잘림 방지).
+      const htmlText = html ? htmlToText(html) : "";
+      const body = (htmlText.length >= text.length ? htmlText : text).trim() || msg.snippet || "";
 
       if (!isWebformEmail(subject, body)) {
         result.skipped++;
