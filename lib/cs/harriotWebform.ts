@@ -29,22 +29,24 @@ export interface WebformParsed {
   sentAtRaw: string | null;
 }
 
-/** 라벨형 본문(NAME:/E-MAIL:/SUBJECT:/MESSAGE:/전송일:) 파싱. */
+// 각 필드는 "다음 라벨 직전(또는 본문 끝)까지"만 캡처하기 위한 lookahead.
+// 실제 메일 본문은 줄바꿈이 공백으로 뭉개져 라벨(NAME:/E-MAIL:/...)이 한 줄에 붙는 경우가
+// 있어, 줄 단위(.+) 캡처는 뒤 필드까지 삼킨다 → lookahead 로 다음 라벨 앞에서 끊는다.
+const NEXT_LABEL =
+  "(?=\\s*(?:NAME|E-?MAIL|SUBJECT|MESSAGE|전송일|보낸\\s*날짜|SENT|DATE)\\s*:|$)";
+
+/** 라벨형 본문(NAME:/E-MAIL:/SUBJECT:/MESSAGE:/전송일:) 파싱. 뭉개진 한 줄 형식도 안전. */
 export function parseWebform(body: string): WebformParsed {
-  const pick = (re: RegExp): string | null => {
-    const m = body.match(re);
+  const field = (label: string): string | null => {
+    const m = body.match(new RegExp(`${label}\\s*:\\s*([\\s\\S]*?)${NEXT_LABEL}`, "i"));
     return m ? m[1].trim() : null;
   };
-  // MESSAGE 는 여러 줄일 수 있어 다음 라벨(전송일/SENT/DATE) 또는 끝까지 캡처.
-  const msgMatch = body.match(
-    /MESSAGE\s*:\s*([\s\S]*?)(?:\n\s*(?:전송일|보낸\s*날짜|SENT|DATE)\s*:|$)/i,
-  );
   return {
-    name:      pick(/NAME\s*:\s*(.+)/i),
-    email:     pick(/E-?MAIL\s*:\s*([^\s<>]+@[^\s<>]+)/i),
-    subject:   pick(/SUBJECT\s*:\s*(.+)/i),
-    message:   msgMatch ? msgMatch[1].trim() : null,
-    sentAtRaw: pick(/(?:전송일|보낸\s*날짜)\s*:\s*(.+)/i),
+    name:      field("NAME"),
+    email:     body.match(/E-?MAIL\s*:\s*([^\s<>]+@[^\s<>]+)/i)?.[1] ?? null,
+    subject:   field("SUBJECT"),
+    message:   field("MESSAGE"),
+    sentAtRaw: field("(?:전송일|보낸\\s*날짜)"),
   };
 }
 
