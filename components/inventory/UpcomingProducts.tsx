@@ -20,6 +20,8 @@ interface UpcomingProduct {
   milestones: Milestone[];
   status: Status;
   notes?: string | null;
+  /** 파쇼 발주 파생(읽기전용) — 수정·삭제는 파쇼 원장에서 (lib/upcomingProducts.ts 동일 필드) */
+  derived?: boolean;
 }
 
 const BRANDS = ["해리엇", "폴바이스", "홍성조"];
@@ -168,11 +170,20 @@ export default function UpcomingProducts() {
                     {p.notes && <p className="text-xs text-zinc-500 mt-1">{p.notes}</p>}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => markArrived(p)} disabled={busy === p.id} className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50">
-                      {busy === p.id ? <Loader2 size={12} className="animate-spin" /> : <PackageCheck size={12} />} 입고완료
-                    </button>
-                    <button onClick={() => { setEditing(p); setShowForm(true); }} className="text-zinc-400 hover:text-violet-500 p-1.5" aria-label="수정"><Pencil size={14} /></button>
-                    <button onClick={() => remove(p)} disabled={busy === p.id} className="text-zinc-400 hover:text-red-500 p-1.5" aria-label="삭제"><X size={15} /></button>
+                    {p.derived ? (
+                      /* 파쇼 발주 파생(읽기전용) — kv에 없는 항목이라 여기서 수정하면 404. 원본 수정은 파쇼 원장에서. */
+                      <a href="/pasho" title="파쇼 발주에서 자동 생성된 항목입니다. 단계·내용 수정은 파쇼 원장에서 하세요." className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50 hover:bg-amber-100">
+                        파쇼 연동 · 원장에서 수정
+                      </a>
+                    ) : (
+                      <>
+                        <button onClick={() => markArrived(p)} disabled={busy === p.id} className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50">
+                          {busy === p.id ? <Loader2 size={12} className="animate-spin" /> : <PackageCheck size={12} />} 입고완료
+                        </button>
+                        <button onClick={() => { setEditing(p); setShowForm(true); }} className="text-zinc-400 hover:text-violet-500 p-1.5" aria-label="수정"><Pencil size={14} /></button>
+                        <button onClick={() => remove(p)} disabled={busy === p.id} className="text-zinc-400 hover:text-red-500 p-1.5" aria-label="삭제"><X size={15} /></button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -184,9 +195,9 @@ export default function UpcomingProducts() {
                     return (
                       <button
                         key={i}
-                        onClick={() => toggleMilestone(p, realIdx)}
-                        disabled={busy === p.id}
-                        title={m.done ? "완료 취소" : "완료로 표시"}
+                        onClick={() => { if (!p.derived) toggleMilestone(p, realIdx); }}
+                        disabled={busy === p.id || p.derived}
+                        title={p.derived ? "파쇼 연동 항목 — 단계 변경은 파쇼 원장에서" : (m.done ? "완료 취소" : "완료로 표시")}
                         className={`group flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition disabled:opacity-50 ${
                           m.done
                             ? "border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30"
@@ -221,8 +232,14 @@ export default function UpcomingProducts() {
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500">{p.brand}</span>
                 <span className="font-medium text-zinc-700 dark:text-zinc-200">{p.name}</span>
                 <div className="flex-1" />
-                <button onClick={() => patch(p.id, { status: "tracking" })} className="text-zinc-400 hover:text-violet-500 p-1" title="다시 추적"><RefreshCw size={12} /></button>
-                <button onClick={() => remove(p)} className="text-zinc-300 hover:text-red-500 p-1" aria-label="삭제"><Trash2 size={12} /></button>
+                {p.derived ? (
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400" title="파쇼 발주 파생 — 파쇼 원장에서 관리">파쇼 연동</span>
+                ) : (
+                  <>
+                    <button onClick={() => patch(p.id, { status: "tracking" })} className="text-zinc-400 hover:text-violet-500 p-1" title="다시 추적"><RefreshCw size={12} /></button>
+                    <button onClick={() => remove(p)} className="text-zinc-300 hover:text-red-500 p-1" aria-label="삭제"><Trash2 size={12} /></button>
+                  </>
+                )}
               </div>
             ))}
           </div>

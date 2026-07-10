@@ -6,8 +6,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// 파쇼 발주 파생 항목(id=pasho:*)은 kv에 없는 읽기전용 뷰 — 수정/삭제는 파쇼 원장에서.
+const PASHO_READONLY = "파쇼 발주에서 자동 생성된 항목입니다 — 수정은 파쇼 원장(/pasho)에서 해주세요.";
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (id.startsWith("pasho:")) {
+    return Response.json({ ok: false, error: PASHO_READONLY }, { status: 400 });
+  }
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -28,6 +34,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (id.startsWith("pasho:")) {
+    return Response.json({ ok: false, error: PASHO_READONLY }, { status: 400 });
+  }
   try {
     const ok = await deleteUpcomingProduct(id);
     return Response.json({ ok });
