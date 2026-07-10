@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Package, FileText, AlertTriangle, ArrowUpRight, X, Circle,
   CheckCircle2, Clock, Truck, Paperclip, Printer, Wallet
@@ -99,9 +100,30 @@ function StageTrack({ status }: { status: string }) {
 
 export default function PashoClient({ orders }: { orders: Order[] }) {
   const ORDERS = orders;
+  const router = useRouter();
   const [brandF, setBrandF] = useState("ALL");
   const [typeF, setTypeF] = useState("ALL");
   const [sel, setSel] = useState<string | null>(null);
+  const [stageSaving, setStageSaving] = useState(false);
+
+  /** 진행 단계 변경 — 저장 후 서버 데이터 새로고침(신제품 로드맵 파생도 함께 갱신). */
+  const changeStage = async (o: Order, status: string) => {
+    if (o.status === status || stageSaving) return;
+    if (!confirm(`'${o.model}' 단계를 [${o.status}] → [${status}] 로 변경할까요?`)) return;
+    setStageSaving(true);
+    try {
+      const res = await fetch(`/api/pasho/orders/${encodeURIComponent(o.no)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error ?? "변경 실패");
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStageSaving(false);
+    }
+  };
 
   const filtered = useMemo(
     () =>
@@ -436,26 +458,31 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
 
               {/* timeline */}
               <div className="mt-5">
-                <div className="text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider mb-2">진행 단계</div>
+                <div className="text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider mb-2">
+                  진행 단계 <span className="normal-case font-normal">· 단계를 클릭하면 변경됩니다</span>
+                </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {STAGES.map((s) => {
                     const idx = STAGES.indexOf(selOrder.status);
                     const cur = STAGES.indexOf(s) === idx;
                     const done = STAGES.indexOf(s) < idx;
                     return (
-                      <span
+                      <button
                         key={s}
-                        className="text-[11.5px] px-2 py-1 rounded-md font-medium"
+                        onClick={() => changeStage(selOrder, s)}
+                        disabled={stageSaving || cur}
+                        title={cur ? "현재 단계" : `[${s}] 단계로 변경`}
+                        className="text-[11.5px] px-2 py-1 rounded-md font-medium transition disabled:cursor-default"
                         style={
                           cur
                             ? { background: STATUS_META[selOrder.status]?.color, color: "#fff" }
                             : done
-                            ? { background: "#EAE7E0", color: "#6B6863" }
-                            : { background: "transparent", color: "#C9C5BD", border: "1px solid #EDEAE3" }
+                            ? { background: "#EAE7E0", color: "#6B6863", cursor: "pointer" }
+                            : { background: "transparent", color: "#C9C5BD", border: "1px solid #EDEAE3", cursor: "pointer" }
                         }
                       >
                         {s}
-                      </span>
+                      </button>
                     );
                   })}
                 </div>

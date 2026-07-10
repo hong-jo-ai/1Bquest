@@ -73,10 +73,11 @@ const SEED: PashoOrder[] = [
   },
   {
     no: "P26-002", brand: "PV", model: "옥타곤", code: "PVW-014", type: "신규양산",
-    status: "컨펌", consign: false, deposit: 30, date: "2026-06-30",
-    unit: "$14.53~15.61", quoteTotal: 15174, depositAmt: 4552, quoteRef: "260522-견적(PAULVICE)",
+    status: "컨펌", consign: false, deposit: null, date: "2026-06-30",
+    unit: "$14.53~15.61", quoteTotal: 15174, depositAmt: null, quoteRef: "260522-견적(PAULVICE)",
     lines: [{ variant: "골드 (400EA)", qty: 500 }, { variant: "실버 (600EA)", qty: 500 }],
-    note: "VC10E / 3ATM / 가죽+PU 밴드. 선수금 30% $4,552 집행 완료. (견적 수량구성 400/600)",
+    riskFlag: "선수금 30%(~$4,552) 미납 — 집행 필요 (2026-07-09 확인)",
+    note: "VC10E / 3ATM / 가죽+PU 밴드. ⚠️선수금 30%(~$4,552) 미집행 — 냈다고 착각했으나 미납 확인(2026-07-09). 6/16 송금 8,641,321원은 별건. (견적 수량구성 400/600)",
   },
   {
     no: "P26-003", brand: "PV", model: "오드리 리메이크", code: "PVW-008-R", type: "리메이크",
@@ -125,7 +126,7 @@ const SEED: PashoOrder[] = [
     riskFlag: "샘플 최종승인 전 선급 30% 집행",
     unit: "$43.70", quoteTotal: 17664, depositAmt: 5299, quoteRef: "260508-견적(harriot)",
     lines: [{ variant: "역방향 문페이즈 (고정 보름달·한옥 처마 컷아웃)", qty: 300 }],
-    note: "RONDA 708 / Moon 디스크 3도인쇄. 양산 300개 발주 + 선급 30% $5,299 결제 완료.",
+    note: "RONDA 708 / Moon 디스크 3도인쇄. 양산 300개 발주 + 선급 30% 결제 완료 — 실지급 8,641,321원(부가세 포함) 2026-06-16 송금. (견적 기준 $5,299)",
   },
 ];
 
@@ -171,6 +172,21 @@ function withBalance(o: PashoOrder, rec: Receipt[]): OrderWithBalance {
     remainingQty: Math.max(0, orderedQty - receivedQty),
     receipts: rec.slice().sort((a, b) => b.at.localeCompare(a.at)),
   };
+}
+
+/** 발주 진행 단계 변경 — 신제품 로드맵 파생 마일스톤(lib/pasho/derive.ts)도 이 status를 따라간다. */
+export const ORDER_STAGES = ["디자인", "샘플", "컨펌", "생산중", "검품", "납품", "입고", "정산"] as const;
+
+export async function updateOrderStatus(no: string, status: string): Promise<PashoOrder | null> {
+  if (!ORDER_STAGES.includes(status as (typeof ORDER_STAGES)[number])) {
+    throw new Error(`알 수 없는 단계: ${status}`);
+  }
+  const orders = await getOrders();
+  const idx = orders.findIndex((o) => o.no === no);
+  if (idx < 0) return null;
+  orders[idx] = { ...orders[idx], status };
+  await kvSet(K_ORDERS, orders);
+  return orders[idx];
 }
 
 /** 입고 기록 (색상별). id는 호출측이 시간기반으로 넘겨줌(스크립트 환경 Date 제약 회피). */
