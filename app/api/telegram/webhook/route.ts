@@ -755,6 +755,18 @@ ${line}`,
     }
   }
 
+  // 봇 메시지에 대한 '답장'인데 위의 명시적 답장 핸들러(CS 에스컬레이션·미리보기, 확인게이트, wc코드)가
+  // 아무것도 못 잡았으면 → 이미 처리됐거나 만료된 답장이다. 인플루언서/AS 분류기로 흘려보내면
+  // 엉뚱한 도움말·오등록이 나오므로 여기서 멈추고 안내한다. (사진 첨부 답장은 예외로 통과)
+  if (message.reply_to_message?.message_id && !imageData) {
+    await sendTelegramReply(
+      message.chat.id,
+      "↪️ 이 답장을 처리할 대상을 못 찾았어요 (이미 처리됐거나 만료됐어요).\n답변은 최신 '📝 이렇게 보낼게요' 미리보기 메시지에 답장하거나, 대시보드 CS 인박스에서 처리해 주세요.",
+      message.message_id,
+    );
+    return Response.json({ ok: true, staleReply: true });
+  }
+
   try {
     const { tool, error: extractError } = await extractToolCall(text, imageData);
     if (!tool) {
