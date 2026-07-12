@@ -415,6 +415,20 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
   }
   await sleep(2000);
 
+  // 주문페이지 검색폼(특히 무신사 팝업 레이아웃)이 간헐적으로 늦게/안 렌더돼 날짜칸이 안 보일 때가 있음
+  // → 보일 때까지 대기(15s), 안 뜨면 주문페이지 새로고침 후 재시도(최대 3회).
+  if (cfg.dateStartSelector) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const ok = await page.waitForSelector(cfg.dateStartSelector, { state: "visible", timeout: 15000 }).then(() => true).catch(() => false);
+      if (ok) break;
+      if (attempt < 3) {
+        log(`${cfg.label} 검색 날짜칸 미표시 — 주문페이지 새로고침 재시도 ${attempt}/2`);
+        await page.goto(cfg.ordersUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+        await sleep(3000);
+      }
+    }
+  }
+
   await fillIfVisible(page, cfg.dateStartSelector, startDate, 10000);
   await fillIfVisible(page, cfg.dateEndSelector, endDate, 10000);
   await clickIfConfigured(page, cfg.searchButtonSelector, 10000);
