@@ -34,6 +34,7 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
   const [sentConfirmed, setSentConfirmed] = useState(false);
   const [apiState, setApiState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [apiNotice, setApiNotice] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 실제 인스타 DM 대화 (CS 인박스 cs_messages) — 로컬 messages[] 대신 진짜 대화를 보여준다.
@@ -134,6 +135,28 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
       setApiState("error");
       setApiNotice(e?.message ?? "네트워크 오류");
     }
+  };
+
+  // AI 맞춤 초안 생성 → 템플릿 텍스트에 채움
+  const handleAiDraft = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const kind = inf.status === "dm_sent" ? "followup" : "initial";
+      const r = await fetch("/api/influencer/ai-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handle: inf.handle, kind }),
+      });
+      const j = await r.json();
+      if (j?.ok && j.draft) {
+        setTemplateText(j.draft);
+        setShowTemplates(true);
+      }
+    } catch {
+      /* 무시 — 실패 시 기존 템플릿 유지 */
+    }
+    setAiLoading(false);
   };
 
   const handleSubmitReply = () => {
@@ -315,6 +338,15 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
             <div className="px-5 pb-3 space-y-2">
               {/* 템플릿 선택 */}
               <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={handleAiDraft}
+                  disabled={aiLoading}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-400 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1 disabled:opacity-50"
+                  title="인플루언서에 맞춘 초안을 AI가 작성합니다"
+                >
+                  {aiLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                  AI 초안
+                </button>
                 {DM_TEMPLATES.map((t) => (
                   <button
                     key={t.id}

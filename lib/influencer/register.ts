@@ -29,6 +29,8 @@ export interface StoredInfluencer {
   addedAt: string;
   updatedAt: string;
   messages: unknown[];
+  /** 팔로업 넛지 마지막 발송 시각(ISO) — 중복 넛지 방지(Phase 3). */
+  lastFollowupNudgeAt?: string;
 }
 
 export interface RegisterArgs {
