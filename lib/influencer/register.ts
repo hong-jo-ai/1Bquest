@@ -140,6 +140,43 @@ async function saveInfluencerList(
   if (error) throw new Error(`KV 저장 실패: ${error.message}`);
 }
 
+/** handle(인스타)로 인플루언서 1건 조회 — 인바운드 DM 자동판별용. */
+export async function getInfluencerByHandle(
+  handle: string,
+): Promise<StoredInfluencer | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const h = String(handle).replace(/^@/, "").trim().toLowerCase();
+  if (!h) return null;
+  const list = await getInfluencerList(supabase);
+  return (
+    list.find((x) => x.handle?.toLowerCase() === h && x.platform === "instagram") ??
+    null
+  );
+}
+
+/**
+ * handle 로 인플루언서 레코드를 부분 갱신(read-modify-write).
+ * 인바운드 DM 시 상태 자동전진에 사용. kv 단일 blob 이라 동시쓰기 race 가능(Phase 3 테이블 이전 예정).
+ */
+export async function patchInfluencerByHandle(
+  handle: string,
+  patch: Partial<StoredInfluencer>,
+): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const h = String(handle).replace(/^@/, "").trim().toLowerCase();
+  if (!h) return false;
+  const list = await getInfluencerList(supabase);
+  const idx = list.findIndex(
+    (x) => x.handle?.toLowerCase() === h && x.platform === "instagram",
+  );
+  if (idx < 0) return false;
+  list[idx] = { ...list[idx], ...patch, updatedAt: new Date().toISOString() };
+  await saveInfluencerList(supabase, list);
+  return true;
+}
+
 export async function registerInfluencer(
   args: RegisterArgs,
 ): Promise<RegisterResult> {

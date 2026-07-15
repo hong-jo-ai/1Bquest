@@ -6,6 +6,7 @@ import {
   refreshIgLoginTokenIfNeeded,
   type IgAccount,
 } from "./instagramClient";
+import { handleInfluencerInbound } from "@/lib/influencer/inboundMatch";
 import type { IngestPayload } from "./types";
 
 export async function syncAllIgAccounts(opts: {
@@ -99,6 +100,24 @@ export async function syncAllIgAccounts(opts: {
           const result = await ingestMessage(payload);
           if (result.inserted) inserted++;
           else skipped++;
+
+          // Phase 2: 새로 들어온 인바운드가 등록 인플루언서면 자동판별
+          // (감정분석·상태전진·텔레그램 알림). ingest 는 절대 깨지 않는다.
+          if (result.inserted && !isOut) {
+            try {
+              await handleInfluencerInbound({
+                brand: account.brand,
+                handle: other?.username,
+                text: m.message,
+              });
+            } catch (e) {
+              errors.push(
+                `influencer inbound ${account.displayName}: ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
+              );
+            }
+          }
         }
       }
     } catch (err) {
