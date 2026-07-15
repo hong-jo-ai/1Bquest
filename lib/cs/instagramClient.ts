@@ -3,6 +3,46 @@ import type { CsBrandId } from "./types";
 
 const META_BASE = "https://graph.facebook.com/v22.0";
 
+/**
+ * Meta Graph fetch — 타임아웃 + "reduce the amount of data"(code 1) / 5xx 재시도.
+ *
+ * IG DM 대화 목록(`/{page}/conversations?platform=instagram`)은 Meta 쪽에서
+ * 간헐적으로 500 "Please reduce the amount of data you're asking for" 를 던지거나
+ * 응답이 지연(행)된다. 크론이 한 번에 죽지 않도록 타임아웃·백오프 재시도로 감싼다.
+ */
+async function metaFetch(
+  url: string,
+  opts: { tries?: number; timeoutMs?: number } = {}
+): Promise<Response> {
+  const tries = opts.tries ?? 4;
+  const timeoutMs = opts.timeoutMs ?? 15000;
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { cache: "no-store", signal: controller.signal });
+      clearTimeout(timer);
+      // 5xx(대개 code 1 "reduce data") 는 재시도 대상
+      if (res.status >= 500 && i < tries - 1) {
+        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e; // AbortError(타임아웃) 등 → 재시도
+      if (i < tries - 1) {
+        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+        continue;
+      }
+    }
+  }
+  throw new Error(
+    `Meta 요청 실패(재시도 ${tries}회): ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+  );
+}
+
 // 각 브랜드의 예상 IG 유저네임 (잘못된 계정 연결 방지)
 // 공식 계정만 허용한다. 구 계정은 잘못 연결되면 콘텐츠/DM 데이터가 섞일 수 있어 제외.
 export const EXPECTED_IG_USERNAMES: Record<CsBrandId, string[]> = {
@@ -170,12 +210,14 @@ export async function listIgConversations(
   const maxPages = opts.maxPages ?? 1;
   const all: IgConversation[] = [];
 
-  // 일부 페이지는 limit=25에서 "reduce the amount of data" 에러 → 10으로 줄임
+  // `participants` 확장을 붙이면 Meta가 500 "reduce the amount of data" 를 자주 던진다.
+  // → 목록에선 id,updated_time 만 가볍게 받고(limit 5), 상대방 식별은 메시지의 from/to 에서 도출한다.
   let nextUrl: string | null =
-    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time,participants&limit=10&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time&limit=5&access_token=${encodeURIComponent(account.pageAccessToken)}`;
 
   for (let page = 0; page < maxPages && nextUrl; page++) {
-    const res = await fetch(nextUrl, { cache: "no-store" });
+    // 대화 목록은 Meta가 특히 잘 죽는다(500/행) → 재시도 예산을 넉넉히.
+    const res = await metaFetch(nextUrl, { tries: 8, timeoutMs: 22000 });
     if (!res.ok) throw new Error(`IG 대화 조회 실패: ${await res.text()}`);
     const json = (await res.json()) as {
       data?: IgConversation[];
@@ -208,7 +250,7 @@ export async function fetchIgMessages(
   conversationId: string
 ): Promise<IgMessage[]> {
   const url = `${META_BASE}/${conversationId}?fields=messages.limit(25){id,created_time,from,to,message}&access_token=${encodeURIComponent(account.pageAccessToken)}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await metaFetch(url);
   if (!res.ok) throw new Error(`IG 메시지 조회 실패: ${await res.text()}`);
   const json = (await res.json()) as {
     messages?: { data?: IgMessage[] };

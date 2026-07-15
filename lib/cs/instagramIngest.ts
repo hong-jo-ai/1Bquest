@@ -53,10 +53,23 @@ export async function syncAllIgAccounts(opts: {
             new Date(b.created_time).getTime()
         );
 
-        // 상대방 찾기 (참여자 중 내가 아닌 사람)
-        const other = conv.participants?.data?.find(
-          (p) => p.id !== account.igUserId
-        );
+        // 상대방 찾기.
+        // 대화 목록에서 participants 확장을 떼어냈으므로(500 회피), 메시지의 from/to 에서 도출한다.
+        // 1) 인바운드 메시지의 from(내가 아닌 사람), 2) 없으면 아웃바운드 메시지의 to.
+        let other = conv.participants?.data?.find((p) => p.id !== account.igUserId);
+        if (!other) {
+          for (const m of messages) {
+            if (m.from && m.from.id !== account.igUserId) {
+              other = m.from;
+              break;
+            }
+            const toOther = m.to?.data?.find((t) => t.id !== account.igUserId);
+            if (toOther) {
+              other = toOther;
+              break;
+            }
+          }
+        }
 
         for (const m of messages) {
           if (!m.message) {
