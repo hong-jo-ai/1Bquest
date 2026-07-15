@@ -77,6 +77,11 @@ export function getMetaAppCredentials(brand: CsBrandId): {
   };
 }
 
+// Instagram API with Instagram Login (graph.instagram.com). DM 읽기/답장의 실제 동작 경로.
+// Facebook 로그인(페이지) 경로는 code3/flaky 라 IG 로그인 토큰이 있으면 이 경로를 우선한다.
+const IG_LOGIN_BASE = "https://graph.instagram.com/v22.0";
+const IG_LOGIN_ROOT = "https://graph.instagram.com"; // refresh_access_token 는 버전 프리픽스 없음
+
 export interface IgAccount {
   id: string;
   brand: CsBrandId;
@@ -84,6 +89,10 @@ export interface IgAccount {
   igUserId: string; // instagram business account id
   pageId: string;
   pageAccessToken: string;
+  /** Instagram 로그인 토큰(IGAA…). 있으면 graph.instagram.com 경로 사용. */
+  igLoginToken?: string;
+  /** IG 로그인 토큰 만료(epoch ms). 만료 임박 시 자동 갱신. */
+  igLoginExpiresAt?: number;
 }
 
 interface MetaPageData {
@@ -180,8 +189,44 @@ export async function listIgAccounts(): Promise<IgAccount[]> {
       igUserId: (creds.ig_user_id as string) ?? "",
       pageId: (creds.page_id as string) ?? "",
       pageAccessToken: (creds.page_access_token as string) ?? "",
+      igLoginToken: (creds.ig_login_token as string) || undefined,
+      igLoginExpiresAt: (creds.ig_login_expires_at as number) || undefined,
     };
   });
+}
+
+/**
+ * IG 로그인 토큰(60일)이 만료 임박(10일 이내)이면 자동 갱신 후 저장.
+ * ig_refresh_token 은 앱 시크릿 불필요 — 토큰만으로 갱신되며 매번 60일 연장된다.
+ * 시간 크론(매시)에서 호출되므로 사실상 무기한 유지(수동 갱신 불필요).
+ */
+export async function refreshIgLoginTokenIfNeeded(account: IgAccount): Promise<IgAccount> {
+  if (!account.igLoginToken) return account;
+  const daysLeft = account.igLoginExpiresAt
+    ? (account.igLoginExpiresAt - Date.now()) / 86_400_000
+    : 0;
+  if (daysLeft > 10) return account; // 아직 여유
+  try {
+    const res = await fetch(
+      `${IG_LOGIN_ROOT}/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(account.igLoginToken)}`,
+      { cache: "no-store" },
+    );
+    const json = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) return account;
+    const newExp = Date.now() + (json.expires_in ?? 60 * 86400) * 1000;
+    const db = getCsSupabase();
+    const { data } = await db.from("cs_accounts").select("credentials").eq("id", account.id).single();
+    const creds = {
+      ...((data?.credentials as Record<string, unknown>) ?? {}),
+      ig_login_token: json.access_token,
+      ig_login_expires_at: newExp,
+      ig_login_refreshed_at: new Date().toISOString(),
+    };
+    await db.from("cs_accounts").update({ credentials: creds }).eq("id", account.id);
+    return { ...account, igLoginToken: json.access_token, igLoginExpiresAt: newExp };
+  } catch {
+    return account; // 갱신 실패해도 기존 토큰으로 계속 시도
+  }
 }
 
 interface IgConversation {
@@ -210,10 +255,11 @@ export async function listIgConversations(
   const maxPages = opts.maxPages ?? 1;
   const all: IgConversation[] = [];
 
-  // `participants` 확장을 붙이면 Meta가 500 "reduce the amount of data" 를 자주 던진다.
-  // → 목록에선 id,updated_time 만 가볍게 받고(limit 5), 상대방 식별은 메시지의 from/to 에서 도출한다.
-  let nextUrl: string | null =
-    `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time&limit=5&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+  // IG 로그인 토큰이 있으면 graph.instagram.com/me/conversations (실제 동작 경로).
+  // 없으면 레거시 Facebook 페이지 경로(참고: participants 확장은 500 유발 → 경량 필드).
+  let nextUrl: string | null = account.igLoginToken
+    ? `${IG_LOGIN_BASE}/me/conversations?fields=id,updated_time&limit=20&access_token=${encodeURIComponent(account.igLoginToken)}`
+    : `${META_BASE}/${account.pageId}/conversations?platform=instagram&fields=id,updated_time&limit=5&access_token=${encodeURIComponent(account.pageAccessToken)}`;
 
   for (let page = 0; page < maxPages && nextUrl; page++) {
     // 대화 목록은 Meta가 특히 잘 죽는다(500/행) → 재시도 예산을 넉넉히.
@@ -249,7 +295,9 @@ export async function fetchIgMessages(
   account: IgAccount,
   conversationId: string
 ): Promise<IgMessage[]> {
-  const url = `${META_BASE}/${conversationId}?fields=messages.limit(25){id,created_time,from,to,message}&access_token=${encodeURIComponent(account.pageAccessToken)}`;
+  const base = account.igLoginToken ? IG_LOGIN_BASE : META_BASE;
+  const token = account.igLoginToken ?? account.pageAccessToken;
+  const url = `${base}/${conversationId}?fields=messages.limit(25){id,created_time,from,to,message}&access_token=${encodeURIComponent(token)}`;
   const res = await metaFetch(url);
   if (!res.ok) throw new Error(`IG 메시지 조회 실패: ${await res.text()}`);
   const json = (await res.json()) as {
@@ -267,16 +315,27 @@ export async function sendIgMessage(
   recipientIgsid: string,
   text: string
 ): Promise<{ message_id: string }> {
-  const url = `${META_BASE}/${account.pageId}/messages`;
+  // IG 로그인: POST graph.instagram.com/me/messages (Instagram Login send).
+  // 레거시: Messenger Platform /{page}/messages.
+  const url = account.igLoginToken
+    ? `${IG_LOGIN_BASE}/me/messages`
+    : `${META_BASE}/${account.pageId}/messages`;
+  const body: Record<string, unknown> = account.igLoginToken
+    ? {
+        recipient: { id: recipientIgsid },
+        message: { text },
+        access_token: account.igLoginToken,
+      }
+    : {
+        recipient: { id: recipientIgsid },
+        message: { text },
+        messaging_type: "RESPONSE",
+        access_token: account.pageAccessToken,
+      };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: recipientIgsid },
-      message: { text },
-      messaging_type: "RESPONSE",
-      access_token: account.pageAccessToken,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`IG 메시지 전송 실패: ${await res.text()}`);
   return res.json() as Promise<{ message_id: string }>;

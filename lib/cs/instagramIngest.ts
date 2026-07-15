@@ -3,6 +3,7 @@ import {
   fetchIgMessages,
   listIgAccounts,
   listIgConversations,
+  refreshIgLoginTokenIfNeeded,
   type IgAccount,
 } from "./instagramClient";
 import type { IngestPayload } from "./types";
@@ -26,8 +27,11 @@ export async function syncAllIgAccounts(opts: {
     : undefined;
   const maxPages = opts.maxPages ?? 1;
 
-  for (const account of accounts) {
+  for (let account of accounts) {
     try {
+      // IG 로그인 토큰 만료 임박 시 자동 갱신(무기한 유지).
+      account = await refreshIgLoginTokenIfNeeded(account);
+
       const conversations = await listIgConversations(account, {
         since,
         maxPages,
