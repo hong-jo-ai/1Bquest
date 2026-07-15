@@ -36,6 +36,34 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
   const [apiNotice, setApiNotice] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 실제 인스타 DM 대화 (CS 인박스 cs_messages) — 로컬 messages[] 대신 진짜 대화를 보여준다.
+  interface RealMsg { direction: "in" | "out"; text: string; sentAt: string }
+  const [conv, setConv] = useState<{
+    loaded: boolean; hasThread: boolean; canApiReply: boolean;
+    lastInboundAt?: string; messages: RealMsg[];
+  }>({ loaded: false, hasThread: false, canApiReply: false, messages: [] });
+
+  const fetchConv = async () => {
+    try {
+      const r = await fetch(
+        `/api/influencer/conversation?handle=${encodeURIComponent(inf.handle.replace(/^@/, ""))}`,
+      );
+      const j = await r.json();
+      if (j?.ok) {
+        setConv({
+          loaded: true, hasThread: !!j.hasThread, canApiReply: !!j.canApiReply,
+          lastInboundAt: j.lastInboundAt, messages: Array.isArray(j.messages) ? j.messages : [],
+        });
+      } else {
+        setConv((c) => ({ ...c, loaded: true }));
+      }
+    } catch {
+      setConv((c) => ({ ...c, loaded: true }));
+    }
+  };
+  // 열릴 때 + 인플루언서 바뀔 때 실제 대화 로드
+  useEffect(() => { fetchConv(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [inf.id]);
+
   // 추천 템플릿 자동 세팅
   useEffect(() => {
     const recommended = getRecommendedTemplate(inf.status);
@@ -45,7 +73,7 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [inf.messages]);
+  }, [inf.messages, conv.messages]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -79,8 +107,8 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
     reload();
   };
 
-  // 답장이 온 단계에서만 API 직접 발송 가능(인스타 24h 답장 윈도우 정책).
-  const canApiSend = ["replied", "negotiating", "confirmed", "shipped", "posted"].includes(inf.status);
+  // 실제 24시간 답장 윈도우(상대가 최근 24h 내 DM 보냄)일 때만 API 직접 발송 가능.
+  const canApiSend = conv.canApiReply;
 
   const handleApiSend = async () => {
     if (apiState === "sending" || !templateText.trim()) return;
@@ -94,11 +122,10 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
       });
       const j = await res.json().catch(() => ({}));
       if (res.ok && j.ok) {
-        addMessage(inf.id, { direction: "outgoing", content: templateText, isTemplate: true });
         setApiState("done");
         setApiNotice(`${j.account ?? "@paulvice.kr"}로 전송됐어요.`);
         setTimeout(() => setApiState("idle"), 2500);
-        reload();
+        fetchConv(); // 실제 대화에 방금 보낸 메시지 반영
       } else {
         setApiState("error");
         setApiNotice(j.error ?? `전송 실패 (HTTP ${res.status})`);
@@ -179,13 +206,39 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
           </div>
         </div>
 
-        {/* 대화 내역 */}
+        {/* 대화 내역 — 실제 IG DM(cs_messages)이 있으면 그걸, 없으면 로컬 기록/빈 상태 */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          {inf.messages.length === 0 ? (
+          {conv.hasThread && conv.messages.length > 0 ? (
+            <>
+              <div className="flex justify-center">
+                <span className="text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-full px-2.5 py-1">
+                  실제 인스타 DM · @paulvice.kr
+                </span>
+              </div>
+              {conv.messages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.direction === "out" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
+                    msg.direction === "out"
+                      ? "bg-violet-600 text-white rounded-br-sm"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 rounded-bl-sm"
+                  }`}>
+                    {msg.text}
+                    <p className={`text-[10px] mt-1 ${msg.direction === "out" ? "text-violet-200" : "text-zinc-400"}`}>
+                      {new Date(msg.sentAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : inf.messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-400 gap-2">
               <MessageSquare size={32} className="opacity-30" />
               <p className="text-sm">아직 대화 내역이 없습니다</p>
-              <p className="text-xs">아래 DM 템플릿을 복사하여 발송하세요</p>
+              <p className="text-xs">
+                {conv.loaded && !conv.hasThread
+                  ? "아직 DM을 주고받은 적이 없어요. 아래 템플릿을 복사해 먼저 보내보세요"
+                  : "아래 DM 템플릿을 복사하여 발송하세요"}
+              </p>
             </div>
           ) : (
             inf.messages.map((msg) => (
@@ -207,8 +260,8 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 답장 입력 (dm_sent 이후) */}
-        {(inf.status === "dm_sent" || inf.status === "replied" || inf.status === "negotiating") && (
+        {/* 답장 붙여넣기 — 실제 IG 대화가 아직 없을 때만(있으면 답장이 자동 유입됨) */}
+        {!conv.hasThread && (inf.status === "dm_sent" || inf.status === "replied" || inf.status === "negotiating") && (
           <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
             <p className="text-xs text-zinc-400 mb-2 flex items-center gap-1">
               <MessageSquare size={11} />
@@ -316,6 +369,15 @@ export default function ConversationModal({ influencer, onUpdate, onClose }: Pro
                 </p>
               )}
               <p className="mt-1 text-[11px] text-zinc-400">또는 아래로 수동 발송</p>
+            </div>
+          )}
+
+          {/* 실제 대화는 있는데 24h 창이 지난 경우 */}
+          {conv.hasThread && !conv.canApiReply && (
+            <div className="px-5 pb-2">
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                ⏱️ 마지막 답장 후 24시간이 지나 앱에서 바로 전송이 안 돼요(인스타 정책). 아래 &quot;복사 + DM 열기&quot;로 보내주세요.
+              </p>
             </div>
           )}
 

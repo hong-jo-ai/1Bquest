@@ -20,6 +20,8 @@ import {
 
 interface Props {
   influencer: Influencer;
+  /** 실제 IG DM 대화가 있으면 "대화중" 배지 표시 */
+  hasLiveThread?: boolean;
   onConversation: (inf: Influencer) => void;
   onShipping: (inf: Influencer) => void;
   onDelete: (id: string) => void;
@@ -79,6 +81,7 @@ const PlatformIcon = ({ platform }: { platform: Influencer["platform"] }) => {
 
 export default function InfluencerCard({
   influencer: inf,
+  hasLiveThread,
   onConversation,
   onShipping,
   onDelete,
@@ -175,6 +178,14 @@ export default function InfluencerCard({
             >
               {status.label}
             </span>
+            {hasLiveThread && (
+              <span
+                className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+                title="실제 인스타 DM 대화가 있습니다"
+              >
+                <MessageSquare size={9} /> 대화중
+              </span>
+            )}
           </div>
           {inf.name && inf.name !== inf.handle && (
             <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 truncate">

@@ -63,6 +63,8 @@ export default function InfluencerManager() {
   const [showQueue, setShowQueue]       = useState(false);
   const [conversationTarget, setConversationTarget] = useState<Influencer | null>(null);
   const [shippingTarget, setShippingTarget]         = useState<Influencer | null>(null);
+  // 실제 IG DM 대화가 있는 핸들(소문자) — "대화중" 배지용
+  const [liveHandles, setLiveHandles]               = useState<Set<string>>(new Set());
 
   const reload = useCallback(() => {
     setInfluencers(loadInfluencers());
@@ -81,6 +83,11 @@ export default function InfluencerManager() {
       syncInfluencersFromServer().then((serverData) => {
         if (serverData && serverData.length > 0) setInfluencers(serverData);
       });
+      // 실제 IG DM 대화 있는 핸들 갱신(배지)
+      fetch("/api/influencer/live-threads")
+        .then((r) => r.json())
+        .then((j) => { if (j?.ok && Array.isArray(j.handles)) setLiveHandles(new Set(j.handles)); })
+        .catch(() => {});
     };
     sync();
     const id = setInterval(sync, 30_000);
@@ -334,6 +341,7 @@ export default function InfluencerManager() {
               <InfluencerCard
                 key={inf.id}
                 influencer={inf}
+                hasLiveThread={liveHandles.has(inf.handle.replace(/^@/, "").toLowerCase())}
                 onConversation={(i) => setConversationTarget(i)}
                 onShipping={(i) => setShippingTarget(i)}
                 onDelete={handleDelete}
