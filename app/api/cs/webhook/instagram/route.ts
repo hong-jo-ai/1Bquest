@@ -17,9 +17,10 @@ export async function GET(req: Request) {
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
-  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "paulvice-cs-inbox";
+  // 환경변수 값에 실수로 앞뒤 공백/개행이 섞여도 검증되도록 trim (Meta 입력칸엔 개행 입력 불가).
+  const expected = (process.env.META_WEBHOOK_VERIFY_TOKEN ?? "paulvice-cs-inbox").trim();
 
-  if (mode === "subscribe" && token === expected && challenge) {
+  if (mode === "subscribe" && token?.trim() === expected && challenge) {
     return new Response(challenge, { status: 200 });
   }
   return new Response("Forbidden", { status: 403 });
