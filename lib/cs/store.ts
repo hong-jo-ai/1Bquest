@@ -61,7 +61,7 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
   // 2. 기존 스레드 조회
   const { data: existingThread } = await db
     .from("cs_threads")
-    .select("id, status")
+    .select("id, status, last_message_at")
     .eq("channel", payload.channel)
     .eq("external_thread_id", payload.externalThreadId)
     .maybeSingle();
@@ -69,10 +69,17 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
   let threadId: string;
 
   if (existingThread) {
-    // archived / resolved는 보존 — 사용자가 명시적으로 처리한 상태는 덮어쓰지 않음
+    // archived / resolved는 보존 — 사용자가 명시적으로 처리한 상태는 덮어쓰지 않음.
+    // 단, 기존 마지막 메시지보다 "최신" 인바운드면 고객이 다시 말 건 것 → 미답변으로 재오픈.
+    // (백필로 들어오는 과거 메시지는 sentAt이 더 옛날이라 보존 유지 — 2026-07-17)
+    const isNewerInbound =
+      payload.direction === "in" &&
+      (!existingThread.last_message_at ||
+        payload.sentAt.getTime() > new Date(existingThread.last_message_at).getTime());
     const preserve =
-      existingThread.status === "archived" ||
-      existingThread.status === "resolved";
+      (existingThread.status === "archived" ||
+        existingThread.status === "resolved") &&
+      !isNewerInbound;
     const nextStatus = preserve
       ? existingThread.status
       : payload.direction === "in"
