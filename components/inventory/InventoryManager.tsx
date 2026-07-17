@@ -15,6 +15,7 @@ import {
   deleteManualProduct,
   ensureArchiveInventorySeeded,
   hideProduct,
+  unhideProduct,
   loadHiddenSkus,
   clearHiddenSkus,
   syncInventoryFromServer,
@@ -129,6 +130,8 @@ export default function InventoryManager() {
   const [loading, setLoading]           = useState(true);
   const [isConnected, setIsConnected]   = useState(false);
   const [hiddenCount, setHiddenCount]   = useState(0);
+  const [hiddenItems, setHiddenItems]   = useState<{ sku: string; name?: string }[]>([]);
+  const [showHiddenList, setShowHiddenList] = useState(false);
 
   // 동기화 상태
   const [syncing, setSyncing]                 = useState(false);
@@ -180,6 +183,8 @@ export default function InventoryManager() {
     const allProducts = [...cafe24List, ...uniqueManual];
     const hiddenSkus = loadHiddenSkus();
     setHiddenCount(hiddenSkus.size);
+    // 숨긴 SKU 목록(이름 포함) — 선택 복원 패널용. 목록에 없는 SKU(진열제외 등)는 코드만 표시.
+    setHiddenItems([...hiddenSkus].sort().map((sku) => ({ sku, name: allProducts.find((x) => x.sku === sku)?.name })));
     const visible = allProducts.filter((p) => !hiddenSkus.has(p.sku));
     setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads, skuMapRef.current)));
   }, []);
@@ -344,6 +349,13 @@ export default function InventoryManager() {
   const handleRestoreAll = useCallback(() => {
     clearHiddenSkus();
     setHiddenCount(0);
+    setShowHiddenList(false);
+    rebuildProducts(c24.list, c24.sales, channelUploads);
+  }, [c24, channelUploads, rebuildProducts]);
+
+  /** 숨긴 상품 개별 복원 — 선택한 SKU만 목록으로 되살린다. */
+  const handleRestoreOne = useCallback((sku: string) => {
+    unhideProduct(sku);
     rebuildProducts(c24.list, c24.sales, channelUploads);
   }, [c24, channelUploads, rebuildProducts]);
 
@@ -472,16 +484,40 @@ export default function InventoryManager() {
         </div>
       )}
 
-      {/* 숨긴 상품 복원 배너 */}
+      {/* 숨긴 상품 복원 배너 — 클릭하면 목록 펼쳐서 골라서 복원 */}
       {hiddenCount > 0 && (
-        <div className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-3 mb-6 text-sm">
-          <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-            <EyeOff size={14} />
-            숨긴 상품 {hiddenCount}개
-          </span>
-          <button onClick={handleRestoreAll} className="font-semibold text-violet-600 hover:text-violet-700 underline underline-offset-2">
-            모두 복원
-          </button>
+        <div className="bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 rounded-xl mb-6 text-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3">
+            <button
+              onClick={() => setShowHiddenList((v) => !v)}
+              className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              <EyeOff size={14} />
+              숨긴 상품 {hiddenCount}개
+              {showHiddenList ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            <button onClick={handleRestoreAll} className="font-semibold text-violet-600 hover:text-violet-700 underline underline-offset-2">
+              모두 복원
+            </button>
+          </div>
+          {showHiddenList && (
+            <ul className="border-t border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-100 dark:divide-zinc-800 max-h-72 overflow-y-auto">
+              {hiddenItems.map((it) => (
+                <li key={it.sku} className="flex items-center justify-between gap-3 px-4 py-2">
+                  <span className="min-w-0 truncate text-zinc-600 dark:text-zinc-300">
+                    {it.name ?? <span className="text-zinc-400">(목록에 없는 상품)</span>}
+                    <span className="ml-2 text-xs text-zinc-400 font-mono">{it.sku}</span>
+                  </span>
+                  <button
+                    onClick={() => handleRestoreOne(it.sku)}
+                    className="shrink-0 font-semibold text-violet-600 hover:text-violet-700 underline underline-offset-2"
+                  >
+                    복원
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
