@@ -1,11 +1,12 @@
-export const maxDuration = 120;
+// 2026-07-18: 재고 SKU 대량 등록 후 120s 하드 타임아웃(하트비트도 못 남기고 죽음) → 300s로 상향.
+export const maxDuration = 300;
 
 import { NextResponse } from "next/server";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { type MallId } from "@/lib/cafe24Client";
 import { runInventorySync } from "@/lib/inventorySync";
 import { runBatterySync } from "@/lib/batterySync";
-import { withCron } from "@/lib/cron/withCron";
+import { withCron, manualRun } from "@/lib/cron/withCron";
 
 /**
  * 매일 오전 7시(KST) 실행 — 폴바이스 + 해리엇 두 몰의 재고를 각각 카페24에 동기화.
@@ -56,3 +57,5 @@ async function cronMain() {
 }
 
 export const GET = withCron("inventory-sync", () => cronMain());
+// 수동 즉시 실행(관리자 세션) — 성공 시 하트비트도 갱신돼 워치독 오탐이 자동 회복된다.
+export const POST = () => manualRun("inventory-sync", () => cronMain());
