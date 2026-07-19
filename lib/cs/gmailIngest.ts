@@ -79,9 +79,17 @@ export async function syncAllGmailAccounts(): Promise<{
   for (const account of accounts) {
     try {
       const accessToken = await getGmailAccessToken(account);
-      const recent = await fetchRecentInboxMessages(accessToken, {
+      let recent = await fetchRecentInboxMessages(accessToken, {
         maxResults: 50,
       });
+      if (recent.length === 0) {
+        // Google Workspace 계정(shong@ 등)은 받은편지함 카테고리 탭이 없어
+        // 기본 쿼리의 category:primary 가 0건을 반환 → 카테고리 조건 없이 재시도. (2026-07-19)
+        recent = await fetchRecentInboxMessages(accessToken, {
+          maxResults: 50,
+          query: "in:inbox -from:noreply -from:no-reply -from:donotreply newer_than:14d",
+        });
+      }
 
       // threadId로 중복 제거
       const threadIds = Array.from(new Set(recent.map((m) => m.threadId)));
