@@ -163,9 +163,23 @@ async function sendGmailReply(
   if (!data) return { ok: false, error: "thread not found" };
   const { thread, messages } = data;
 
-  const accounts = await listGmailAccounts();
-  const account = accounts.find((a) => a.brand === thread.brand);
-  if (!account) return { ok: false, error: "Gmail 계정 미등록" };
+  const accounts = (await listGmailAccounts()).filter((a) => a.brand === thread.brand);
+  if (!accounts.length) return { ok: false, error: "Gmail 계정 미등록" };
+  // 같은 브랜드에 메일함이 여럿(예: harriotwatches@gmail + shong@harriotwatches.com)이면
+  // 스레드가 실제 존재하는 메일함으로 발송해야 threadId 참조가 성립한다. (2026-07-19)
+  let account = accounts[0];
+  if (accounts.length > 1) {
+    for (const a of accounts) {
+      try {
+        const probe = await getGmailAccessToken(a);
+        const r = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${thread.external_thread_id}?format=minimal`,
+          { headers: { Authorization: `Bearer ${probe}` } },
+        );
+        if (r.ok) { account = a; break; }
+      } catch { /* 다음 계정 시도 */ }
+    }
+  }
 
   const last = [...messages].reverse().find((m) => m.direction === "in");
   if (!last) return { ok: false, error: "원본 수신 메시지 없음" };
