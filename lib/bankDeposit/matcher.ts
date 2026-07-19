@@ -13,7 +13,7 @@
  *    그래서 cafe24 actual_order_amount.total_amount_due(실제 입금해야 할 금액)를 1순위로 쓴다.
  */
 import { fetchAllOrders, orderRevenue } from "../cafe24Data";
-import type { MallId } from "../cafe24Client";
+import { cafe24Get, type MallId } from "../cafe24Client";
 
 export interface Cafe24OrderLite {
   order_id?:             string;
@@ -109,9 +109,22 @@ export async function findDepositCandidates(
     if (orderAmount !== amount) continue;
     const buyerName = (o.buyer_name ?? o.billing_name ?? "").trim();
     const payerName = (o.payer_name ?? o.bank_account_owner ?? "").trim() || null;
-    const nameMatch =
+    let nameMatch =
       namesPossiblyMatch(smsDepositorName, payerName) ||
       namesPossiblyMatch(smsDepositorName, buyerName);
+    // 목록 API엔 buyer_name이 없어 billing_name(주문서 입금자명 입력란)만 비교된다.
+    // 고객이 입금자명을 다르게 적고 본인 계좌로 입금하면(홍수기/김규태 사례 2026-07-18)
+    // 여기서 불일치 → 실제 주문자명(embed=buyer)으로 한 번 더 확인.
+    if (!nameMatch && smsDepositorName && o.order_id) {
+      try {
+        const d = await cafe24Get(`/api/v2/admin/orders/${o.order_id}?embed=buyer,receivers`, token, mall);
+        const realBuyer = (d?.order?.buyer?.name ?? "").trim();
+        const receiver = (d?.order?.receivers?.[0]?.name ?? "").trim();
+        nameMatch =
+          namesPossiblyMatch(smsDepositorName, realBuyer || null) ||
+          namesPossiblyMatch(smsDepositorName, receiver || null);
+      } catch { /* 상세 조회 실패 시 목록 기준 유지 */ }
+    }
     candidates.push({
       order: o,
       amount: orderAmount,
