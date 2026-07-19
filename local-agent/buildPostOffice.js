@@ -1,8 +1,7 @@
 /**
  * 우체국 발송 엑셀 통합 빌더 (출고 Phase 1).
  * 채널별 출고대기 주문 → 11컬럼 우체국 양식(상품별 1행) → 우체국송장양식_YYYYMMDD_1.xlsx
- *   - 카페24: Admin API (배송준비중) — 읽기
- *   - 식스샵 국내: 최신 export (결제완료) — 읽기
+ *   - 카페24: Admin API (배송준비중) — 읽기 (폴바이스 + 해리엇 멀티몰)
  *   - 29CM: 출고관리 상세창(/detail) — 읽기 (cm29Outbound)
  *   - W컨셉/무신사: 추후 추가
  * 카페24/Supabase 자격증명은 대시보드 .env.supabase/.env.local 에서 로드.
@@ -75,23 +74,8 @@ async function cafe24Rows(m){
   return rows;
 }
 
-// ── 식스샵 국내 (최신 export, 결제완료) ──
-function sixshopRows(){
-  const dir=path.join(require("os").tmpdir(),"paulvice-marketplace-downloads");
-  const cands=fs.existsSync(dir)?fs.readdirSync(dir).filter(x=>x.includes("국내")&&/\.xlsx$/.test(x)).map(x=>({x,m:fs.statSync(path.join(dir,x)).mtimeMs})).sort((a,b)=>b.m-a.m):[];
-  if(!cands.length){ log("식스샵 export 없음 — 건너뜀"); return []; }
-  const data=XLSX.utils.sheet_to_json(XLSX.readFile(path.join(dir,cands[0].x)).Sheets[XLSX.readFile(path.join(dir,cands[0].x)).SheetNames[0]],{header:1,defval:""});
-  const C={name:0,phone:1,zip:2,addr:3,req:14,order:6,status:8,pname:47,qty:49,opt:50};
-  const rows=[];
-  for(let i=1;i<data.length;i++){
-    // 결제완료 + 배송준비 둘 다 출고대상(송장 미발급). 배송중/완료/구매확정/취소·반품·교환은 제외.
-    // 이미 접수된 건은 buildPostOffice의 pp_shipments dedup이 거른다.
-    if(!/(결제\s?완료|배송\s?준비)/.test(String(data[i][C.status]||"")))continue;
-    const opt=clean(data[i][C.opt]); const mob=clean(data[i][C.phone]);
-    rows.push({name:clean(data[i][C.name]),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:clean(data[i][C.addr]),zip:clean(data[i][C.zip]),prod:clean(data[i][C.pname])+(opt?" "+opt:""),color:"",qty:clean(data[i][C.qty])||"1",msg:clean(data[i][C.req]),order:clean(data[i][C.order]),seller:"식스샵"});
-  }
-  return rows;
-}
+// 식스샵 국내 수집 제거(2026-07-15): 해리엇 국내몰은 카페24(harriotkorea)로 이전, 식스샵 글로벌은
+// FedEx(우체국 흐름 밖)라 우체국 파이프라인의 식스샵 수집은 폐기. export 버튼 셀렉터 변경으로 매번 실패만 냄.
 
 // ── W컨셉 (현재는 wconceptReadyExtract 캐시 JSON 사용; 추후 인라인 추출) ──
 function wconceptRows(){
@@ -109,6 +93,35 @@ function wconceptRows(){
     byKey.set(k,row); out.push(row);
   }
   return out;
+}
+
+// ── 합배송 병합 (수취인 단위) ──
+// 같은 사람이 같은 주소로 여러 종류를 사면 송장 1장으로. 판매처+이름+연락처+우편번호+주소가 키.
+// 판매처(seller)를 키에 포함 → 채널 간에는 절대 안 섞임(채널별 송장 역입력이 분리돼야 하므로).
+// 표시/엑셀용: 상품 결합·수량 합산·주문번호 '+'결합. 실제 접수 묶음은 register.js groupByRecipient.
+function recipientKey(r){
+  const norm = (s) => String(s||"").replace(/\s+/g,"").trim();      // 이름·주소: 공백 제거
+  const dig = (s) => String(s||"").replace(/\D/g,"");                // 연락처·우편번호: 숫자만(포맷차 흡수)
+  return [r.seller, norm(r.name), dig(r.mobile)||dig(r.tel), dig(r.zip), norm(r.addr)].join("|");
+}
+function mergeByRecipient(rows){
+  const map = new Map();
+  for(const r of rows){
+    const key = recipientKey(r);
+    if(!map.has(key)) map.set(key, { ...r, _orders:[], _prods:[], _qty:0 });
+    const g = map.get(key);
+    if(r.order && !g._orders.includes(r.order)) g._orders.push(r.order);
+    const p = String(r.prod||"").trim();
+    if(p && !g._prods.includes(p)) g._prods.push(p);
+    g._qty += Number(String(r.qty).replace(/\D/g,"")) || 1;
+    if(!g.msg && r.msg) g.msg = r.msg;
+  }
+  return [...map.values()].map((g) => {
+    let prod = g._prods.join(" / ");
+    if(prod.length > 400) prod = prod.slice(0,397) + "..."; // goodsNm 최대 400byte
+    const { _orders, _prods, _qty, ...rest } = g;
+    return { ...rest, prod, qty:String(g._qty||1), order:g._orders.sort().join("+") };
+  });
 }
 
 async function sendTelegram(filePath, caption){
@@ -185,14 +198,13 @@ async function alreadyRegisteredKeys(){
 }
 
 async function collectOutboundRows(){
-  let cafe=[], six=[], cm=[], wc=[], mg=[], md=[];
+  let cafe=[], cm=[], wc=[], mg=[], md=[];
   // 카페24 멀티몰: 폴바이스 + 해리엇(미설정 몰은 건너뜀). 각 몰 실패해도 나머지 진행.
   for(const m of CAFE24_MALLS){
     if(!m.mallId()){ continue; }
     try { const r=await cafe24Rows(m); cafe.push(...r); log(`${m.seller} ${r.length}행`); }
     catch(e){ log(`${m.seller} 실패: `+e.message); }
   }
-  try { six=sixshopRows(); log(`식스샵 ${six.length}행`); } catch(e){ log("식스샵 실패: "+e.message); }
   try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
   // 무신사: 글로벌·일반 모두 국내 우체국 발송. 일반은 상품준비중 변경 후 배송출고처리 엑셀에서 주소 수집.
@@ -201,29 +213,32 @@ async function collectOutboundRows(){
   await closeMarketplaceBrowsers().catch(()=>{});
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
-  const all=[...cafe,...six,...cm,...wc,...mg,...md];
+  const all=[...cafe,...cm,...wc,...mg,...md];
   const done=await alreadyRegisteredKeys();
   const rows=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
   const skipped=all.length-rows.length;
   if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),six:cnt("식스샵"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
+  return { rows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
-module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER };
+module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient };
 
 // CLI: 엑셀 빌드 + 텔레그램/이메일 발송 (기존 동작)
 async function main(){
   const today = new Date();
   const date = process.env.PO_DATE || `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}${String(today.getDate()).padStart(2,"0")}`;
   const { rows, counts } = await collectOutboundRows();
-  const aoa=[HEADER, ...rows.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
+  // 합배송: 동일 수취인의 여러 주문/상품을 송장 1장(엑셀 1행)으로. 접수도 register.js 가 수취인별로 묶음.
+  const ex = mergeByRecipient(rows);
+  const aoa=[HEADER, ...ex.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
-  const summary=`총 ${rows.length}행 (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 식스샵 ${counts.six}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
+  const merged = rows.length - ex.length;
+  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
-  rows.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
+  ex.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
   // 우체국 자동접수 (POSTPARCEL_AUTO_REGISTER=Y). 집계한 rows 재사용(재집계 없음).
   // testYn 은 POSTPARCEL_TEST_YN 로 제어 — 실운영 전까지 Y 권장.
   let autoMsg = "";

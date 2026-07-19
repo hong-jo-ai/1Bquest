@@ -100,9 +100,18 @@ async function fillGrid(page, map){
     log(`출고 처리 클릭`);
     await page.getByRole("button",{name:/출고\s*처리/}).first().click({timeout:8000}).catch(async()=>{ await page.locator('button:has-text("출고 처리")').first().click({timeout:6000}).catch(()=>{}); });
     await sleep(3000);
-    const dlg=page.locator('[role=dialog]:visible, .modal:visible, [class*="modal" i]:visible').last();
-    if(await dlg.count()){ log("모달: "+(await dlg.innerText().catch(()=>"")).replace(/\s+/g," ").slice(0,200)); }
-    for(const t of ["확인","출고처리","예","처리"]){ const b=page.getByRole("button",{name:t,exact:true}).filter({visible:true}).first(); if(await b.count()){ await b.click({timeout:4000}).catch(()=>{}); log("모달 버튼 클릭: "+t); break; } }
+    // ⚠️ 화면 우상단 '모바일 리포트 출시' 토스트에도 '확인' 버튼이 있어, 페이지 전역 .first()로
+    //    '확인'을 누르면 토스트만 닫히고 출고처리 모달은 확정 안 됨 → 주문이 큐에 계속 남는다.
+    //    반드시 출고처리 모달 컨테이너로 스코프해서 확인을 누른다.
+    const confirmScope = page.locator('div').filter({ hasText: /출고 처리 하시겠습니까|배송시작 상태로 변경/ });
+    const confirmBtn = confirmScope.getByRole("button",{name:"확인",exact:true}).first();
+    if(await confirmBtn.count().catch(()=>0)){
+      log("출고처리 모달 확인 클릭(모달 스코프)");
+      await confirmBtn.click({timeout:5000}).catch(async()=>{ await confirmBtn.click({force:true,timeout:3000}).catch(()=>{}); });
+    } else {
+      log("⚠️ 출고처리 확인 모달 못 찾음 — 폴백(전역 확인) 시도");
+      await page.getByRole("button",{name:"확인",exact:true}).filter({visible:true}).last().click({timeout:4000}).catch(()=>{});
+    }
     await sleep(5000); await page.waitForLoadState("networkidle",{timeout:12000}).catch(()=>{});
     totalShipped+=checked;
     log(`패스 ${pass}: 출고처리 완료 (누적 ${totalShipped}행)`);

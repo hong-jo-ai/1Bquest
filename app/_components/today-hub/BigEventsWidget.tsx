@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   PartyPopper, Plus, ChevronDown, ChevronUp, Check, Pencil,
-  Megaphone, ExternalLink,
+  Megaphone, ExternalLink, Archive,
 } from "lucide-react";
 import { daysUntil } from "./dateUtils";
 import EventEditModal from "./EventEditModal";
@@ -208,6 +208,17 @@ export default function BigEventsWidget({
 }: Props) {
   const [editing, setEditing]   = useState<BigEvent | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showEnded, setShowEnded] = useState(false);
+
+  // 종료 판정: targetDate 가 GRACE_DAYS 이상 지난 이벤트는 "종료"로 접는다.
+  // (공구처럼 오픈일=targetDate 이후 며칠 더 진행되는 이벤트가 바로 사라지지 않도록 유예)
+  const GRACE_DAYS = 7;
+  const activeEvents = events
+    .filter((e) => daysUntil(e.targetDate) >= -GRACE_DAYS)
+    .sort((a, b) => a.targetDate.localeCompare(b.targetDate)); // 임박순
+  const endedEvents = events
+    .filter((e) => daysUntil(e.targetDate) < -GRACE_DAYS)
+    .sort((a, b) => b.targetDate.localeCompare(a.targetDate)); // 최근 종료순
 
   const toggleItem = (eid: string, cid: string) =>
     setEvents((prev) =>
@@ -253,7 +264,7 @@ export default function BigEventsWidget({
         {mirroredCampaigns.map((c) => (
           <MirroredCampaignCard key={`campaign:${c.id}`} campaign={c} />
         ))}
-        {events.map((e) => (
+        {activeEvents.map((e) => (
           <EventCard
             key={e.id}
             event={e}
@@ -261,6 +272,34 @@ export default function BigEventsWidget({
             onEdit={() => setEditing(e)}
           />
         ))}
+
+        {endedEvents.length > 0 && (
+          <div className="pt-1">
+            <button
+              onClick={() => setShowEnded((v) => !v)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition"
+            >
+              <Archive size={12} className="shrink-0" />
+              <span>종료된 이벤트 ({endedEvents.length})</span>
+              {showEnded
+                ? <ChevronUp size={13} className="ml-auto shrink-0" />
+                : <ChevronDown size={13} className="ml-auto shrink-0" />}
+            </button>
+            {showEnded && (
+              <div className="space-y-2 mt-1 opacity-60">
+                {endedEvents.map((e) => (
+                  <EventCard
+                    key={e.id}
+                    event={e}
+                    onToggleItem={(cid) => toggleItem(e.id, cid)}
+                    onEdit={() => setEditing(e)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {events.length === 0 && mirroredCampaigns.length === 0 && (
           <p className="text-xs text-zinc-400 text-center py-4">등록된 이벤트가 없습니다.</p>
         )}

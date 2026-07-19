@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { execSync } = require("child_process");
 const { chromium } = require("playwright");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,6 +84,28 @@ function marketplaceProfileDir(channel) {
   return path.join(root, channel);
 }
 
+// 유령 Chrome 정리 — 이 프로필을 아직 점유 중인 이전 실행의 Chrome/락을 제거한다.
+// 미정리 시 새 launchPersistentContext 가 "기존 브라우저 세션에서 여는 중입니다"로 기존
+// 인스턴스에 넘겨주고 즉시 종료돼 "Target page/context/browser has been closed" 실패
+// (특히 12:35 첫 실행이 전일 잔여 프로세스와 충돌해 매일 실패해 옴). 이 프로필에만 스코프됨
+// — user-data-dir 경로가 정확히 일치하는 프로세스만 종료하므로 일반 Chrome/타 채널은 안전.
+function cleanupProfileLock(profileDir, log) {
+  try {
+    // 패턴 앞에 '--' 를 두면 BSD(macOS) pgrep 이 옵션으로 오인 → 선행 대시 없이 매칭.
+    // 'user-data-dir=<프로필경로>' 로 해당 프로필 Chrome 만 특정(타 채널/일반 Chrome 제외).
+    const out = execSync(`pgrep -f ${JSON.stringify("user-data-dir=" + profileDir)}`, { encoding: "utf8" }).trim();
+    const pids = out.split(/\s+/).filter(Boolean);
+    if (pids.length) {
+      try { execSync(`kill -9 ${pids.join(" ")}`, { stdio: "ignore" }); } catch {}
+      log && log(`이전 Chrome 프로세스 정리(프로필=${path.basename(profileDir)}): ${pids.join(", ")}`);
+    }
+  } catch { /* pgrep exit 1 = 매칭 프로세스 없음(정상) */ }
+  // 죽은 프로세스가 남긴 Singleton 락 — '기존 세션' 오탐의 직접 원인이라 함께 제거
+  for (const name of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    try { fs.rmSync(path.join(profileDir, name), { force: true }); } catch {}
+  }
+}
+
 function missingConfig(channel) {
   const cfg = CHANNELS[channel];
   const required = [
@@ -152,6 +175,7 @@ async function getMarketplacePage(channel, log) {
 
   const profileDir = marketplaceProfileDir(channel);
   fs.mkdirSync(profileDir, { recursive: true });
+  cleanupProfileLock(profileDir, log);  // 유령 Chrome/락 선제거 (launch 충돌 방지)
   log(`${CHANNELS[channel].label} 전용 Chrome 프로필 시작: ${profileDir}`);
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: false,
@@ -349,6 +373,18 @@ async function ensureLoggedIn(channel, page, log) {
     } catch (err) {
       log(`${cfg.label} 이메일 인증 단계 스킵/실패: ${err.message}`);
     }
+    // 비밀번호 90일 만료 → 강제 변경 화면 감지. 우회 불가(X·취소 모두 로그인으로 튕김)라
+    // 여기서 막히면 매출/송장 자동화가 '0건'처럼 조용히 실패한다 → 명확히 로그+텔레그램 알림.
+    try {
+      const curUrl = page.url();
+      const bodyTxt = await page.evaluate(() => document.body.innerText || "").catch(() => "");
+      if (/change-password/.test(curUrl) || /비밀번호 변경 후[\s\S]{0,30}90일/.test(bodyTxt)) {
+        const msg = `🔑 ${cfg.label} 로그인 차단: 비밀번호 90일 만료 → 강제 변경 필요. ` +
+          `자동화(매출/송장) 중단 상태. 파트너센터 로그인해 비밀번호 변경 후 ${channel === "29cm" ? "CM29_LOGIN_PASSWORD" : "로그인 비밀번호"} 갱신 요망.`;
+        log(msg);
+        try { const { relayText } = require("./telegramRelay"); await relayText(msg); } catch {}
+      }
+    } catch {}
     if (channel === "musinsa") {
       await handleMusinsaNotices(page, log).catch((e) => log("무신사 공지 처리 예외: " + (e && e.message)));
     }
@@ -524,10 +560,12 @@ async function closeMarketplaceBrowsers() {
 
 module.exports = {
   CHANNELS,
+  cleanupProfileLock,
   closeMarketplaceBrowsers,
   ensureLoggedIn,
   generateTotp,
   getMarketplacePage,
+  marketplaceProfileDir,
   missingConfig,
   syncMarketplaceSales,
 };
