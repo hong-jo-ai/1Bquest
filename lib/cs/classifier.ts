@@ -281,11 +281,12 @@ Body (요약): ${input.bodySnippet.slice(0, 500)}`;
 }
 
 function fallback(reason: string): ClassifyResult {
-  // 분류 실패 시 보수적으로 통과 (놓치는 것보다 노이즈가 낫다)
+  // 분류 실패(429 쿼터 등) 시 이번 사이클은 스킵 — dedup 마커가 안 남으므로 다음 시간 크론이 재분류한다.
+  // (기존 '통과' 정책은 shong@ 백로그 버스트에서 뉴스레터·알림이 CS 인박스로 쏟아지는 사고를 냄 2026-07-19)
   return {
-    isCs: true,
+    isCs: false,
     confidence: 0,
     category: "other",
-    reason: `분류 실패 → 통과: ${reason}`,
+    reason: `분류 실패 → 스킵(다음 사이클 재시도): ${reason}`,
   };
 }

@@ -180,6 +180,8 @@ export async function syncAllGmailAccounts(): Promise<{
           classifiedOut++;
           continue;
         }
+        // Gemini 무료쿼터 429 버스트 방지 — 분류 호출 간 짧은 간격
+        await new Promise((r) => setTimeout(r, 400));
 
         const channel = detectChannel(latestFromHeader, account);
 
