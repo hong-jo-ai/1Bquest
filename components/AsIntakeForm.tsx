@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Hash, Phone, User, Watch, MapPin, Home, Loader2 } from "lucide-react";
 import type { AsDestination } from "@/lib/as/types";
 import { AS_DESTINATION_LABEL } from "@/lib/as/types";
@@ -41,6 +41,35 @@ export default function AsIntakeForm({
   const [destination, setDestination] = useState<AsDestination | "">("");
   const [note, setNote] = useState(initial?.note ?? "");
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+
+  // CS 대화 연결 시: 대화 내용에서 이름·연락처·주소·모델·증상을 AI로 추출해 "빈 칸만" 채운다.
+  useEffect(() => {
+    const tid = initial?.csThreadId;
+    if (!tid) return;
+    let alive = true;
+    setExtracting(true);
+    fetch("/api/as/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadId: tid }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive || !j?.ok) return;
+        const f = j.fields ?? {};
+        if (f.customerName) setCustomerName((v) => v || f.customerName);
+        if (f.customerPhone) setCustomerPhone((v) => v || f.customerPhone);
+        if (f.customerAddress) setCustomerAddress((v) => v || f.customerAddress);
+        if (f.model) setModel((v) => v || f.model);
+        if (f.symptom) setSymptom((v) => v || f.symptom);
+        if (f.note) setNote((v) => v || f.note);
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setExtracting(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial?.csThreadId]);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit() {
@@ -87,8 +116,11 @@ export default function AsIntakeForm({
 
         <div className="p-4 space-y-3">
           {initial?.csThreadId && (
-            <div className="text-[11px] text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-2.5 py-1.5 rounded-lg">
-              이 CS 대화와 연결됩니다 — 나중에 원문/연락처를 바로 찾을 수 있어요.
+            <div className="text-[11px] text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
+              {extracting && <Loader2 size={12} className="animate-spin shrink-0" />}
+              {extracting
+                ? "대화에서 이름·연락처·주소·증상 자동 추출 중…"
+                : "이 CS 대화와 연결됩니다 — 대화에 있던 정보는 자동으로 채워졌어요. 확인 후 등록하세요."}
             </div>
           )}
 
