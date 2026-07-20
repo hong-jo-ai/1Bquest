@@ -10,7 +10,7 @@
  * KRW는 zero-decimal 통화 (Meta가 daily_budget을 cents 변환 안 함).
  */
 import { metaGet, metaPost } from "../metaClient";
-import type { AdSetSummary, DailyMetric, FunnelStage } from "./types";
+import type { AdDailyMetric, AdSetSummary, AdSummary, DailyMetric, FunnelStage } from "./types";
 
 const PURCHASE_ACTIONS = new Set([
   "purchase",
@@ -32,6 +32,10 @@ interface InsightRow {
   impressions?: string;
   clicks?: string;
   ctr?: string;
+  cpm?: string;
+  frequency?: string;
+  reach?: string;
+  ad_id?: string;
   actions?: AdInsightAction[];
   action_values?: AdInsightAction[];
 }
@@ -122,7 +126,7 @@ export async function fetchDailyMetrics(
   const untilStr = new Date().toISOString().slice(0, 10);
 
   const insRes = (await metaGet(`/${metaAdsetId}/insights`, token, {
-    fields: "spend,impressions,clicks,ctr,actions,action_values",
+    fields: "spend,impressions,clicks,ctr,cpm,frequency,reach,actions,action_values",
     time_range: JSON.stringify({ since: sinceStr, until: untilStr }),
     time_increment: "1",
     level: "adset",
@@ -161,8 +165,82 @@ export async function fetchDailyMetrics(
       ctr,
       largestOrderValue,
       isProvisional: date >= yesterdayStr,
+      cpm:       r.cpm ? parseFloat(r.cpm) : null,
+      frequency: r.frequency ? parseFloat(r.frequency) : null,
+      reach:     r.reach ? parseInt(r.reach, 10) : null,
     };
   });
+}
+
+// ── 개별 광고(소재) 레벨 — /ads 현황판용 ────────────────────────────────
+
+interface MetaAdRow {
+  id: string;
+  name?: string;
+  adset_id?: string;
+  effective_status?: string;
+  creative?: MetaCreative & { thumbnail_url?: string };
+}
+
+/**
+ * 계정의 광고(개별 소재) 목록 — 썸네일·포맷·상태 포함.
+ * ACTIVE + PAUSED만 (아카이브 제외). 페이지네이션 없이 200개 한도(현재 계정 규모 충분).
+ */
+export async function listAccountAds(
+  token: string,
+  accountId: string,
+): Promise<AdSummary[]> {
+  const res = (await metaGet(`/${accountId}/ads`, token, {
+    fields: "id,name,adset_id,effective_status,creative{thumbnail_url,object_type,video_id,object_story_spec{video_data,link_data,template_data},asset_feed_spec{videos,images}}",
+    effective_status: JSON.stringify(["ACTIVE", "PAUSED", "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES"]),
+    limit: "200",
+  })) as { data?: MetaAdRow[] };
+
+  return (res.data ?? []).map((a) => ({
+    metaAdId:        a.id,
+    metaAdsetId:     a.adset_id ?? "",
+    metaAccountId:   accountId,
+    name:            a.name ?? "",
+    effectiveStatus: a.effective_status ?? "UNKNOWN",
+    creativeFormat:  detectCreativeFormat(a.creative),
+    thumbnailUrl:    a.creative?.thumbnail_url ?? null,
+  }));
+}
+
+/**
+ * 계정 전체의 광고 레벨 일별 인사이트 (최근 days일) — 계정당 1콜.
+ * ad_id 별 일별 spend/ROAS/CTR/CPM/빈도. limit 넉넉히(일수×광고수).
+ */
+export async function fetchAccountAdDailyInsights(
+  token: string,
+  accountId: string,
+  days = 8,
+): Promise<AdDailyMetric[]> {
+  const since = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const until = new Date().toISOString().slice(0, 10);
+  const res = (await metaGet(`/${accountId}/insights`, token, {
+    fields: "ad_id,spend,impressions,clicks,ctr,cpm,frequency,reach,actions,action_values",
+    time_range: JSON.stringify({ since, until }),
+    time_increment: "1",
+    level: "ad",
+    limit: "1000",
+  })) as { data?: InsightRow[] };
+
+  return (res.data ?? [])
+    .filter((r) => r.ad_id && r.date_start)
+    .map((r) => ({
+      metaAdId:    r.ad_id as string,
+      date:        r.date_start as string,
+      spend:       parseFloat(r.spend ?? "0"),
+      revenue:     sumPurchase(r.action_values),
+      conversions: Math.round(sumPurchase(r.actions)),
+      impressions: parseInt(r.impressions ?? "0", 10),
+      clicks:      parseInt(r.clicks ?? "0", 10),
+      ctr:         r.ctr ? parseFloat(r.ctr) : null,
+      cpm:         r.cpm ? parseFloat(r.cpm) : null,
+      frequency:   r.frequency ? parseFloat(r.frequency) : null,
+      reach:       r.reach ? parseInt(r.reach, 10) : null,
+    }));
 }
 
 interface MetaCreative {

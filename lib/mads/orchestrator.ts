@@ -12,8 +12,10 @@
  */
 import { getMetaTokenServer } from "../metaTokenStore";
 import {
+  fetchAccountAdDailyInsights,
   fetchAdSetCreativeFormats,
   fetchDailyMetrics,
+  listAccountAds,
   listActiveAccounts,
   listActiveAdSets,
 } from "./metaAdsetClient";
@@ -26,6 +28,8 @@ import {
   getRecentMetrics,
   insertRecommendation,
   insertTrustEval,
+  upsertAdDailyMetrics,
+  upsertAds,
   upsertAdSets,
   upsertDailyMetrics,
 } from "./dbStore";
@@ -91,6 +95,19 @@ export async function runEvaluationCycle(): Promise<RunResult> {
     }
 
     seenActiveIds.push(...adsets.map((a) => a.metaAdsetId));
+
+    // 개별 광고(소재) 레벨 sync — /ads 현황판용. 계정당 2콜(목록+인사이트). 실패해도 평가는 계속.
+    try {
+      const [ads, adInsights] = await Promise.all([
+        listAccountAds(token, acc.id),
+        fetchAccountAdDailyInsights(token, acc.id, 8),
+      ]);
+      await upsertAds(ads);
+      await upsertAdDailyMetrics(adInsights);
+    } catch (e) {
+      errors.push({ scope: "ads_level", id: acc.id, error: msg(e) });
+    }
+
     if (adsets.length === 0) continue;
 
     // 소재 포맷 수집 (실패 시 undefined → 기존 값 유지)

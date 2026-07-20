@@ -3,7 +3,9 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import type {
+  AdDailyMetric,
   AdSetSummary,
+  AdSummary,
   DailyMetric,
   Recommendation,
   RecStatus,
@@ -207,11 +209,57 @@ export async function upsertDailyMetrics(
       ctr:                 m.ctr,
       largest_order_value: m.largestOrderValue,
       is_provisional:      m.isProvisional,
+      cpm:                 m.cpm ?? null,
+      frequency:           m.frequency ?? null,
+      reach:               m.reach ?? null,
       fetched_at:          new Date().toISOString(),
     })),
     { onConflict: "meta_adset_id,date" },
   );
   if (error) throw new Error("daily_metrics upsert: " + error.message);
+}
+
+// ── ads (개별 광고 소재) ───────────────────────────────────────────────
+export async function upsertAds(rows: AdSummary[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = getDb();
+  const { error } = await db.from("mads_ads").upsert(
+    rows.map((a) => ({
+      meta_ad_id:       a.metaAdId,
+      meta_adset_id:    a.metaAdsetId,
+      meta_account_id:  a.metaAccountId,
+      name:             a.name,
+      effective_status: a.effectiveStatus,
+      creative_format:  a.creativeFormat,
+      thumbnail_url:    a.thumbnailUrl,
+      last_synced_at:   new Date().toISOString(),
+    })),
+    { onConflict: "meta_ad_id" },
+  );
+  if (error) throw new Error("mads_ads upsert: " + error.message);
+}
+
+export async function upsertAdDailyMetrics(rows: AdDailyMetric[]): Promise<void> {
+  if (rows.length === 0) return;
+  const db = getDb();
+  const { error } = await db.from("mads_ad_daily_metrics").upsert(
+    rows.map((m) => ({
+      meta_ad_id:  m.metaAdId,
+      date:        m.date,
+      spend:       m.spend,
+      revenue:     m.revenue,
+      conversions: m.conversions,
+      impressions: m.impressions,
+      clicks:      m.clicks,
+      ctr:         m.ctr,
+      cpm:         m.cpm,
+      frequency:   m.frequency,
+      reach:       m.reach,
+      fetched_at:  new Date().toISOString(),
+    })),
+    { onConflict: "meta_ad_id,date" },
+  );
+  if (error) throw new Error("mads_ad_daily_metrics upsert: " + error.message);
 }
 
 // ── trust_evaluations ─────────────────────────────────────────────────

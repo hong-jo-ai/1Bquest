@@ -93,6 +93,10 @@
       "schedule": "30 0 * * *"
     },
     {
+      "path": "/api/cron/mads-telegram-brief",
+      "schedule": "35 0 * * *"
+    },
+    {
       "path": "/api/cron/kakao-gift-po-sync",
       "schedule": "0 6 * * *"
     },

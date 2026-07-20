@@ -1,4 +1,5 @@
 import AppHeader from "@/components/AppHeader";
+import MadsOverview from "@/components/mads/MadsOverview";
 import MadsThresholds from "@/components/mads/MadsThresholds";
 import MadsRecommendationsClient from "@/components/mads/MadsRecommendationsClient";
 import MadsGrowthAdvice from "@/components/mads/MadsGrowthAdvice";
@@ -57,6 +58,8 @@ export default async function AdsPage() {
 
         {isConnected && (
           <>
+            <MadsOverview />
+
             <MadsThresholds />
 
             <MadsGrowthAdvice />

@@ -28,6 +28,35 @@ export interface DailyMetric {
   ctr: number;
   largestOrderValue: number;
   isProvisional: boolean;
+  cpm?: number | null;
+  frequency?: number | null;
+  reach?: number | null;
+}
+
+/** 개별 광고(소재) 레지스트리 — 현황판용. */
+export interface AdSummary {
+  metaAdId: string;
+  metaAdsetId: string;
+  metaAccountId: string;
+  name: string;
+  effectiveStatus: string;
+  creativeFormat: "video" | "image" | "unknown";
+  thumbnailUrl: string | null;
+}
+
+/** 개별 광고 일별 인사이트. */
+export interface AdDailyMetric {
+  metaAdId: string;
+  date: string;
+  spend: number;
+  revenue: number;
+  conversions: number;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+  cpm: number | null;
+  frequency: number | null;
+  reach: number | null;
 }
 
 export interface AdSetSummary {
