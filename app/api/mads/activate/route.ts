@@ -14,11 +14,35 @@ export const maxDuration = 60;
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { campaignId?: string; status?: string; dailyBudget?: number };
+    const body = (await req.json().catch(() => ({}))) as {
+      campaignId?: string; adsetId?: string; adId?: string; status?: string; dailyBudget?: number;
+    };
     const campaignId = body.campaignId;
-    if (!campaignId) return NextResponse.json({ ok: false, error: "campaignId 필요" }, { status: 400 });
+    if (!campaignId && !body.adsetId && !body.adId) {
+      return NextResponse.json({ ok: false, error: "campaignId / adsetId / adId 중 하나 필요" }, { status: 400 });
+    }
     const token = await getMetaTokenServer();
     if (!token) return NextResponse.json({ ok: false, error: "Meta 토큰 없음" }, { status: 401 });
+
+    // 개별 광고 상태만 변경 — 캠페인 일괄 전환이 예전 실패 소재까지 켜는 문제 방지용.
+    if (body.adId) {
+      const st = (body.status ?? "PAUSED").toUpperCase();
+      await metaPost(`/${body.adId}`, token, { status: st });
+      const after = (await metaGet(`/${body.adId}`, token, { fields: "id,name,status,effective_status" })) as Record<string, unknown>;
+      return NextResponse.json({ ok: true, adId: body.adId, status: st, ad: after });
+    }
+
+    // 광고세트 단독 제어 — 상태·예산을 세트 단위로만 (하위 광고 상태 불변).
+    if (body.adsetId && !campaignId) {
+      const patch: Record<string, string> = {};
+      const budget = Number(body.dailyBudget);
+      if (Number.isFinite(budget) && budget > 0) patch.daily_budget = String(Math.round(budget));
+      if (body.status) patch.status = body.status.toUpperCase();
+      if (!Object.keys(patch).length) return NextResponse.json({ ok: false, error: "status 또는 dailyBudget 필요" }, { status: 400 });
+      await metaPost(`/${body.adsetId}`, token, patch);
+      const after = (await metaGet(`/${body.adsetId}`, token, { fields: "id,name,status,daily_budget" })) as Record<string, unknown>;
+      return NextResponse.json({ ok: true, adsetId: body.adsetId, adset: after });
+    }
 
     // 예산만 변경 (status 미지정 + dailyBudget 지정) — 상태는 건드리지 않음
     const dailyBudget = Number(body.dailyBudget);
