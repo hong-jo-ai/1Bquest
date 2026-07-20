@@ -140,12 +140,20 @@ JSON만 출력:
 
   const res = await client.messages.create({
     model: MODEL,
-    max_tokens: 3000,
+    max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });
   const text = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
-  const jsonStr = text.replace(/^[\s\S]*?\{/, "{").replace(/\}[^}]*$/, "}");
-  const parsed = JSON.parse(jsonStr) as Omit<GrowthPlan, "generatedAt">;
+  // 첫 { 부터 균형 잡힌 마지막 } 까지 추출 (코드펜스·후행 텍스트 방어)
+  const start = text.indexOf("{");
+  if (start < 0) throw new Error("전략가 응답에 JSON 없음");
+  let depth = 0, end = -1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) throw new Error("전략가 응답 JSON 미완성(잘림)");
+  const parsed = JSON.parse(text.slice(start, end + 1)) as Omit<GrowthPlan, "generatedAt">;
 
   const plan: GrowthPlan = { generatedAt: new Date().toISOString(), ...parsed };
   await db.from("kv_store").upsert(
