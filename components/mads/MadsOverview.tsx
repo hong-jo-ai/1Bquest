@@ -57,6 +57,8 @@ function StatusDot({ status }: { status: string }) {
   const map: Record<string, [string, string]> = {
     ACTIVE: ["bg-emerald-500", "활성"],
     PAUSED: ["bg-zinc-300 dark:bg-zinc-600", "중지"],
+    ADSET_PAUSED: ["bg-zinc-300 dark:bg-zinc-600", "세트중지"],
+    CAMPAIGN_PAUSED: ["bg-zinc-300 dark:bg-zinc-600", "캠페인중지"],
     PENDING_REVIEW: ["bg-amber-400", "검토중"],
     DISAPPROVED: ["bg-red-500", "거부됨"],
     WITH_ISSUES: ["bg-red-400", "문제"],

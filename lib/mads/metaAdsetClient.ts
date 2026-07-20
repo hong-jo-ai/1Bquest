@@ -192,7 +192,7 @@ export async function listAccountAds(
 ): Promise<AdSummary[]> {
   const res = (await metaGet(`/${accountId}/ads`, token, {
     fields: "id,name,adset_id,effective_status,creative{thumbnail_url,object_type,video_id,object_story_spec{video_data,link_data,template_data},asset_feed_spec{videos,images}}",
-    effective_status: JSON.stringify(["ACTIVE", "PAUSED", "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES"]),
+    effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES"]),
     limit: "200",
   })) as { data?: MetaAdRow[] };
 
