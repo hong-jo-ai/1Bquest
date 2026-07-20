@@ -39,7 +39,11 @@ export async function sendMadsTelegramBrief(): Promise<{ sent: boolean; reason?:
   const thresholds = resolveThresholds(marginCfg, seasonMod);
   const be = thresholds.beRoas;
 
-  const adsetById = new Map((adsetsQ.data ?? []).map((a) => [a.meta_adset_id, a]));
+  // 운영 계정만 (META_AD_ACCOUNT_ID) — 휴면 계정 노이즈 제거
+  const onlyAccount = (process.env.META_AD_ACCOUNT_ID ?? "").replace(/^act_/, "");
+  const adsetRows = (adsetsQ.data ?? []).filter(
+    (a) => !onlyAccount || String(a.meta_account_id).replace(/^act_/, "") === onlyAccount);
+  const adsetById = new Map(adsetRows.map((a) => [a.meta_adset_id, a]));
 
   // 계정별 어제 합계 + 지난 7일(어제 제외 6일) 일평균
   interface AccAgg { name: string; ySpend: number; yRevenue: number; yConv: number; prevSpendAvg: number }

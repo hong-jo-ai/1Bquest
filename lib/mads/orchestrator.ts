@@ -34,6 +34,7 @@ import {
   upsertDailyMetrics,
 } from "./dbStore";
 import { getMarginConfig, resolveThresholds } from "./marginConfig";
+import { normalizeAdAccountId } from "../metaBrandFilter";
 import { getActiveSeasonModifier } from "./seasonModifier";
 import type { Recommendation } from "./types";
 
@@ -71,6 +72,9 @@ export async function runEvaluationCycle(): Promise<RunResult> {
   let accounts: Array<{ id: string; name: string }> = [];
   try {
     accounts = await listActiveAccounts(token);
+    // 운영 계정만 평가 (META_AD_ACCOUNT_ID 설정 시) — 휴면 계정 API콜·노이즈 제거.
+    const onlyAccount = normalizeAdAccountId(process.env.META_AD_ACCOUNT_ID);
+    if (onlyAccount) accounts = accounts.filter((a) => a.id === onlyAccount);
   } catch (e) {
     errors.push({ scope: "accounts", error: msg(e) });
     return {

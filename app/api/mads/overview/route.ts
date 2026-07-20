@@ -5,6 +5,7 @@
 import { getCsSupabase } from "@/lib/cs/store";
 import { getMarginConfig, resolveThresholds } from "@/lib/mads/marginConfig";
 import { getActiveSeasonModifier } from "@/lib/mads/seasonModifier";
+import { normalizeAdAccountId } from "@/lib/metaBrandFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -112,9 +113,15 @@ export async function GET() {
       conversions7d: number; ctr7d: number | null; cpmLatest: number | null; frequencyLatest: number | null;
       days: DayPoint[]; ads: unknown[];
     }
+    // 운영 계정만 표시 (사장님 2026-07-20: 해리엇 광고계정만 사용) — env 미설정 시 전체.
+    const onlyAccount = normalizeAdAccountId(process.env.META_AD_ACCOUNT_ID);
+    // 휴면 제외: 활성이 아니고 7일 지출도 없는 세트는 숨김(볼 데이터가 없음).
+    let hiddenDormant = 0;
+
     interface AccountBlock { accountId: string; accountName: string; adsets: AdsetRow[] }
     const accounts = new Map<string, AccountBlock>();
     for (const s of adsetsQ.data ?? []) {
+      if (onlyAccount && s.meta_account_id !== onlyAccount) continue;
       const days = (byAdset.get(s.meta_adset_id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
       const t7 = agg(days);
       const today = days.find((d) => d.date === todayKst);
@@ -134,6 +141,7 @@ export async function GET() {
         ads: (adsByAdset.get(s.meta_adset_id) ?? []).sort(
           (a, b) => (b as { spend7d: number }).spend7d - (a as { spend7d: number }).spend7d),
       };
+      if (row.spend7d <= 0 && s.status !== "ACTIVE") { hiddenDormant++; continue; }
       const acc: AccountBlock = accounts.get(s.meta_account_id) ?? {
         accountId: s.meta_account_id, accountName: s.account_name ?? s.meta_account_id, adsets: [] as AdsetRow[],
       };
@@ -153,7 +161,7 @@ export async function GET() {
       };
     });
 
-    return Response.json({ ok: true, accounts: out, beRoas: thresholds.beRoas, today: todayKst });
+    return Response.json({ ok: true, accounts: out, beRoas: thresholds.beRoas, today: todayKst, hiddenDormant });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

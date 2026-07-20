@@ -3,6 +3,7 @@ import MadsOverview from "@/components/mads/MadsOverview";
 import MadsThresholds from "@/components/mads/MadsThresholds";
 import MadsRecommendationsClient from "@/components/mads/MadsRecommendationsClient";
 import MadsGrowthAdvice from "@/components/mads/MadsGrowthAdvice";
+import MadsGrowthPlan from "@/components/mads/MadsGrowthPlan";
 import MadsSyncButton from "@/components/mads/MadsSyncButton";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { Zap, AlertCircle, LogIn, Brain } from "lucide-react";
@@ -61,6 +62,8 @@ export default async function AdsPage() {
             <MadsOverview />
 
             <MadsThresholds />
+
+            <MadsGrowthPlan />
 
             <MadsGrowthAdvice />
 

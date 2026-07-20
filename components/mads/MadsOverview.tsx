@@ -140,7 +140,7 @@ function AdsetBlock({ a, be }: { a: AdsetRow; be: number }) {
 }
 
 export default function MadsOverview() {
-  const [data, setData] = useState<{ accounts: AccountBlock[]; beRoas: number } | null>(null);
+  const [data, setData] = useState<{ accounts: AccountBlock[]; beRoas: number; hiddenDormant?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -150,7 +150,7 @@ export default function MadsOverview() {
       const res = await fetch("/api/mads/overview");
       const j = await res.json();
       if (!j.ok) throw new Error(j.error ?? "조회 실패");
-      setData({ accounts: j.accounts, beRoas: j.beRoas });
+      setData({ accounts: j.accounts, beRoas: j.beRoas, hiddenDormant: j.hiddenDormant });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "조회 실패");
@@ -190,7 +190,10 @@ export default function MadsOverview() {
           </div>
         </section>
       ))}
-      <p className="text-[11px] text-zinc-400 px-1">손익분기 ROAS {data.beRoas.toFixed(2)} 기준 색상 · 데이터는 매일 09:00 자동 수집(또는 &lsquo;지금 평가&rsquo;)</p>
+      <p className="text-[11px] text-zinc-400 px-1">
+        손익분기 ROAS {data.beRoas.toFixed(2)} 기준 색상 · 데이터는 매일 09:00 자동 수집(또는 &lsquo;지금 평가&rsquo;)
+        {data.hiddenDormant ? ` · 휴면 세트 ${data.hiddenDormant}개 숨김(최근 7일 지출 없음)` : ""}
+      </p>
     </div>
   );
 }
