@@ -153,13 +153,14 @@ ${context}
 - budget: 구체 금액과 근거. expected: 기대 성과(보수적으로).
 - needsFromBoss: 대표 결정/자산이 필요하면 명시, 없으면 null.
 말투: 함께 일하는 팀장. "~하시죠", "~합시다". 책임지고 제안하되 리스크는 숨기지 말 것.
+분량: 각 필드는 간결하게(why 3문장 이내, execution 5스텝 이내, cuts 3개 이내). 전체 JSON이 잘리지 않는 게 최우선.
 
 JSON만 출력:
 {"summary":"현 계정 상태 총평과 이번 주 방향 2~3문장","plans":[{"priority":1,"title":"","why":"","creative":{"concept":"","cuts":["컷1 설명","컷2 설명"],"headline":"","primaryText":"","format":"이미지|릴스"},"execution":["스텝1","스텝2"],"actions":[{"kind":"adset_budget","targetId":"","targetName":"","value":0,"note":""}],"budget":"","expected":"","needsFromBoss":null}]}`;
 
   const res = await client.messages.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: 16000,
     messages: [{ role: "user", content: prompt }],
   });
   const text = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
