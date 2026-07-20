@@ -13,27 +13,42 @@ import { getMarginConfig, resolveThresholds } from "./marginConfig";
 import { getActiveSeasonModifier } from "./seasonModifier";
 
 const MODEL = "claude-sonnet-5";
-const KV_KEY = "mads_growth_plan";
 const CACHE_HOURS = 24;
 
 function getDb() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
+/** 즉시 실행 가능한 API 액션 — Meta에 그대로 적용된다. */
+export interface PlanAction {
+  kind: "adset_budget" | "adset_status" | "ad_status" | "campaign_status";
+  targetId: string;
+  targetName: string;
+  value: string | number; // 예산=원 숫자, 상태="ACTIVE"|"PAUSED"
+  note?: string;
+}
+
+export interface GrowthPlanItem {
+  priority: number;
+  title: string;
+  why: string;
+  creative: { concept: string; cuts: string[]; headline: string; primaryText: string; format: string } | null;
+  execution: string[];
+  actions: PlanAction[];
+  budget: string;
+  expected: string;
+  needsFromBoss: string | null;
+  executedAt?: string | null;
+  executionResults?: Array<{ action: PlanAction; ok: boolean; error?: string }> | null;
+}
+
 export interface GrowthPlan {
   generatedAt: string;
   summary: string;
-  plans: Array<{
-    priority: number;
-    title: string;
-    why: string;
-    creative: { concept: string; cuts: string[]; headline: string; primaryText: string; format: string } | null;
-    execution: string[];
-    budget: string;
-    expected: string;
-    needsFromBoss: string | null;
-  }>;
+  plans: GrowthPlanItem[];
 }
+
+export const GROWTH_PLAN_KV_KEY = "mads_growth_plan";
 
 /** 브랜드 플레이북 — 전략가가 지켜야 할 제작·운영 원칙 (repo 규칙·검증 결과 요약). */
 const BRAND_PLAYBOOK = `
@@ -90,7 +105,7 @@ async function gatherContext(): Promise<string> {
     if (s.status !== "ACTIVE" && spend <= 0) continue; // 휴면 제외
     const rev = ms.reduce((a, m) => a + Number(m.revenue), 0);
     const conv = ms.reduce((a, m) => a + Number(m.conversions), 0);
-    lines.push(`\n[광고세트] ${s.name} | ${s.status} | 일예산 ${s.daily_budget ?? "CBO"} | 퍼널 ${s.funnel_stage}`);
+    lines.push(`\n[광고세트] ${s.name} (adset_id:${s.meta_adset_id}, campaign_id:${s.campaign_id ?? "?"}) | ${s.status} | 일예산 ${s.daily_budget ?? "CBO"} | 퍼널 ${s.funnel_stage}`);
     lines.push(`  14일: 지출 ${Math.round(spend).toLocaleString()}원 · 매출 ${Math.round(rev).toLocaleString()}원 · ROAS ${spend > 0 ? (rev / spend).toFixed(2) : "-"} · 전환 ${conv}건`);
     const setAds = adRows.filter((a) => a.meta_adset_id === s.meta_adset_id);
     for (const ad of setAds) {
@@ -99,7 +114,7 @@ async function gatherContext(): Promise<string> {
       if (aSpend <= 0 && ad.effective_status !== "ACTIVE") continue;
       const aRev = ams.reduce((x, m) => x + Number(m.revenue), 0);
       const lastFreq = ams.length ? ams[ams.length - 1].frequency : null;
-      lines.push(`    [광고] ${ad.name} | ${ad.effective_status} | ${ad.creative_format} | 지출 ${Math.round(aSpend).toLocaleString()} · ROAS ${aSpend > 0 ? (aRev / aSpend).toFixed(2) : "-"} · 빈도 ${lastFreq ?? "-"}`);
+      lines.push(`    [광고] ${ad.name} (ad_id:${ad.meta_ad_id}) | ${ad.effective_status} | ${ad.creative_format} | 지출 ${Math.round(aSpend).toLocaleString()} · ROAS ${aSpend > 0 ? (aRev / aSpend).toFixed(2) : "-"} · 빈도 ${lastFreq ?? "-"}`);
     }
   }
   return lines.join("\n");
@@ -108,7 +123,7 @@ async function gatherContext(): Promise<string> {
 export async function buildGrowthPlan(force = false): Promise<GrowthPlan> {
   const db = getDb();
   if (!force) {
-    const { data } = await db.from("kv_store").select("data,updated_at").eq("key", KV_KEY).maybeSingle();
+    const { data } = await db.from("kv_store").select("data,updated_at").eq("key", GROWTH_PLAN_KV_KEY).maybeSingle();
     if (data?.data && data.updated_at &&
         Date.now() - new Date(data.updated_at).getTime() < CACHE_HOURS * 3600000) {
       return data.data as GrowthPlan;
@@ -131,12 +146,16 @@ ${context}
 - why: 위 실데이터의 구체 숫자를 인용해 "왜 지금 이것"인지. 뻔한 일반론 금지.
 - creative: 소재 기획 — 컨셉, 컷 구성(어떤 실사 소스를 어떻게), 헤드라인·본문 카피 실안(한국어, 브랜드 톤), 포맷(이미지/릴스). 브랜드 소재 원칙(실사 우선, 시계 AI창작 금지, 폴바이스=밝은 컬러) 준수.
 - execution: 스텝바이스텝 (소재 제작 → 세팅 → 검증 기준까지).
+- actions: 이 플랜 중 **API로 즉시 실행 가능한 부분만** 구조화. 반드시 위 데이터의 실제 id를 사용:
+  · {"kind":"adset_budget","targetId":"<adset_id>","targetName":"","value":15000,"note":"이유"}
+  · {"kind":"adset_status"|"ad_status"|"campaign_status","targetId":"<id>","targetName":"","value":"ACTIVE"|"PAUSED","note":""}
+  소재 제작·신규 광고 생성 등 API로 불가능한 스텝은 actions에 넣지 말고 execution에만. 실행할 API 액션이 없으면 빈 배열.
 - budget: 구체 금액과 근거. expected: 기대 성과(보수적으로).
 - needsFromBoss: 대표 결정/자산이 필요하면 명시, 없으면 null.
 말투: 함께 일하는 팀장. "~하시죠", "~합시다". 책임지고 제안하되 리스크는 숨기지 말 것.
 
 JSON만 출력:
-{"summary":"현 계정 상태 총평과 이번 주 방향 2~3문장","plans":[{"priority":1,"title":"","why":"","creative":{"concept":"","cuts":["컷1 설명","컷2 설명"],"headline":"","primaryText":"","format":"이미지|릴스"},"execution":["스텝1","스텝2"],"budget":"","expected":"","needsFromBoss":null}]}`;
+{"summary":"현 계정 상태 총평과 이번 주 방향 2~3문장","plans":[{"priority":1,"title":"","why":"","creative":{"concept":"","cuts":["컷1 설명","컷2 설명"],"headline":"","primaryText":"","format":"이미지|릴스"},"execution":["스텝1","스텝2"],"actions":[{"kind":"adset_budget","targetId":"","targetName":"","value":0,"note":""}],"budget":"","expected":"","needsFromBoss":null}]}`;
 
   const res = await client.messages.create({
     model: MODEL,
@@ -155,9 +174,10 @@ JSON만 출력:
   if (end < 0) throw new Error("전략가 응답 JSON 미완성(잘림)");
   const parsed = JSON.parse(text.slice(start, end + 1)) as Omit<GrowthPlan, "generatedAt">;
 
+  for (const pl of parsed.plans ?? []) { if (!Array.isArray(pl.actions)) pl.actions = []; }
   const plan: GrowthPlan = { generatedAt: new Date().toISOString(), ...parsed };
   await db.from("kv_store").upsert(
-    { key: KV_KEY, data: plan as unknown as object, updated_at: new Date().toISOString() },
+    { key: GROWTH_PLAN_KV_KEY, data: plan as unknown as object, updated_at: new Date().toISOString() },
     { onConflict: "key" });
   return plan;
 }
