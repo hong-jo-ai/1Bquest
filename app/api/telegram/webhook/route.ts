@@ -94,6 +94,23 @@ const CREATE_AS_REQUEST_TOOL = {
   },
 };
 
+// 파쇼 입고 라우팅 전용 툴 — 세부 수량 판독은 receiptFlow에서 별도 처리하고,
+// 여기서는 "이 사진이 협력사 거래명세표/입고증인가"만 판정(고객 AS와 구분).
+const ROUTE_PASHO_RECEIPT_TOOL = {
+  name: "record_pasho_receipt",
+  description:
+    "협력사(파쇼)가 보낸 거래명세표·입고증·수령확인서 사진일 때 호출합니다. " +
+    "발주번호(P26-xxx 등)·모델명·색상(옵션)별 입고 수량이 표/수기로 적힌 '공급사 서류'가 신호입니다. " +
+    "고객 개인정보(고객명·반송주소·증상)가 아니라 발주·수량 문서면 create_as_request가 아니라 반드시 이 도구를 호출하세요. " +
+    "세부 수량 판독은 이후 단계에서 처리하므로 여기서는 라우팅만 합니다.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      orderHint: { type: "string", description: "사진에서 보이는 발주번호(P26-xxx). 안 보이면 생략." },
+    },
+  },
+};
+
 function authOk(req: NextRequest): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!expected) return false;
@@ -256,7 +273,8 @@ async function downloadTelegramAudio(
 type ExtractedTool =
   | { toolName: "register_influencer"; args: RegisterArgs }
   | { toolName: "add_today_task";      args: AddTaskArgs }
-  | { toolName: "create_as_request";   args: CreateAsInput };
+  | { toolName: "create_as_request";   args: CreateAsInput }
+  | { toolName: "pasho_receipt";       args: Record<string, never> };
 
 async function extractToolCall(
   text: string | undefined,
@@ -286,13 +304,15 @@ async function extractToolCall(
     (text && text.trim()
       ? `사용자 메시지: "${text.trim()}"\n\n`
       : "사용자가 사진만 보냈습니다.\n\n") +
-    "위 정보를 보고 셋 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
+    "위 정보를 보고 넷 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
     "1) register_influencer — 인스타/유튜브/틱톡 프로필 스크린샷이거나 인플루언서/계정 등록 의도인 경우.\n" +
     "2) add_today_task — '오늘 할 일', '투두', '대시보드에 할일' 같이 본인 작업 등록 의도인 경우.\n" +
-    "3) create_as_request — 고객 AS/수리 접수 정보인 경우. 이름/전화/주소/모델/증상/AS사유가 들어오면 이 도구를 우선 사용.\n\n" +
-    "휴리스틱:\n" +
-    "- 이미지가 첨부됐으면 거의 항상 인플루언서 등록.\n" +
-    "- 'AS 접수', '수리 접수', '고객명', '전화번호', '반송 주소', '증상', 'AS 사유'가 있으면 create_as_request.\n" +
+    "3) create_as_request — 고객 AS/수리 접수 정보인 경우. 고객명/전화/반송주소/모델/증상/AS사유가 들어오면 이 도구를 사용.\n" +
+    "4) record_pasho_receipt — 협력사(파쇼) 거래명세표·입고증·수령확인서 사진인 경우. 발주번호(P26-xxx)·모델·색상별 입고 수량이 표로 적힌 공급사 서류.\n\n" +
+    "휴리스틱(이미지 종류로 구분 — '사진이면 인플루언서'라고 단정하지 말 것):\n" +
+    "- 인스타/유튜브 프로필 UI(@핸들·팔로워·게시물 그리드) 스크린샷 → register_influencer.\n" +
+    "- 발주번호(P26-xxx)·모델·색상별 수량이 표/수기로 적힌 협력사 서류(거래명세표·입고증) → record_pasho_receipt. 절대 AS로 보내지 말 것.\n" +
+    "- 고객 개인정보(고객명·전화·반송주소·증상)가 담긴 AS 접수 내용 → create_as_request.\n" +
     "- 텍스트만이고 '할일'/'todo'/'task'/'할거'/'추가해줘 (작업명)' 같으면 add_today_task.\n" +
     "- '@핸들' 또는 팔로워/플랫폼 언급은 register_influencer.\n\n" +
     "register_influencer 호출 시:\n" +
@@ -318,8 +338,9 @@ async function extractToolCall(
     max_tokens: 1024,
     system:
       "너는 paulwise 대시보드의 모바일 도우미야. " +
-      "사용자가 보낸 메시지/이미지를 보고 register_influencer, add_today_task, create_as_request 중 정확히 하나의 도구를 호출해. " +
-      "추측 금지 — 명확한 신호로만 판단. 둘 다 애매하면 add_today_task 로 fallback.",
+      "사용자가 보낸 메시지/이미지를 보고 register_influencer, add_today_task, create_as_request, record_pasho_receipt 중 정확히 하나의 도구를 호출해. " +
+      "특히 협력사 거래명세표·입고증(발주번호·수량 표)은 고객 AS가 아니라 record_pasho_receipt 다. " +
+      "추측 금지 — 명확한 신호로만 판단. 애매하면 add_today_task 로 fallback.",
     tools: [
       {
         name: REGISTER_INFLUENCER_TOOL.name,
@@ -338,6 +359,12 @@ async function extractToolCall(
         description: CREATE_AS_REQUEST_TOOL.description,
         input_schema:
           CREATE_AS_REQUEST_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
+      },
+      {
+        name: ROUTE_PASHO_RECEIPT_TOOL.name,
+        description: ROUTE_PASHO_RECEIPT_TOOL.description,
+        input_schema:
+          ROUTE_PASHO_RECEIPT_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
       },
     ],
     tool_choice: { type: "any" },
@@ -360,7 +387,36 @@ async function extractToolCall(
   if (toolUse.name === "create_as_request") {
     return { tool: { toolName: "create_as_request", args: toolUse.input as CreateAsInput } };
   }
+  if (toolUse.name === "record_pasho_receipt") {
+    return { tool: { toolName: "pasho_receipt", args: {} } };
+  }
   return { tool: null, error: `알 수 없는 도구: ${toolUse.name}` };
+}
+
+// 파쇼 입고증 판독 → 확인카드 전송. fast-path(캡션 키워드)와 분류기 라우팅 양쪽에서 재사용.
+async function runPashoReceipt(
+  chatId: number,
+  replyToId: number,
+  img: { data: string; mediaType: ImageMediaType },
+): Promise<Response> {
+  const { extractReceiptFromImage, buildConfirmText, stagePendingReceipt } = await import("@/lib/pasho/receiptFlow");
+  const { receipt, order, error } = await extractReceiptFromImage(img);
+  if (!receipt || !order) {
+    await sendTelegramReply(
+      chatId,
+      `⚠️ 입고증 판독 실패: ${error || "발주 매칭 안 됨"}. 발주번호(P26-xxx)를 캡션에 같이 적어주시면 정확합니다.`,
+      replyToId,
+    );
+    return Response.json({ ok: true });
+  }
+  const pending = await stagePendingReceipt(receipt, order.model);
+  await sendTelegramMessage(buildConfirmText(order, receipt.items, receipt.note), {
+    buttons: [
+      { text: "✅ 맞음", callback_data: `pasho:accept:${pending.id}` },
+      { text: "❌ 취소", callback_data: `pasho:reject:${pending.id}` },
+    ],
+  });
+  return Response.json({ ok: true, pashoReceipt: true });
 }
 
 function shouldProcess(
@@ -505,8 +561,9 @@ ${line}`,
   }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
 
-  // 파쇼 입고 — 사진 + "입고" 캡션 → 입고증 판독 → 확인카드
-  if (hasPhoto && message.photo && text && /입고/.test(text)) {
+  // 파쇼 입고 fast-path — 사진 + 입고/거래명세/명세표/수령확인/파쇼 캡션 → 입고증 판독 → 확인카드
+  // (캡션이 없거나 이 키워드가 없어도 아래 분류기가 거래명세표를 인식해 파쇼로 라우팅한다)
+  if (hasPhoto && message.photo && text && /입고|거래명세|명세표|명세서|수령\s*확인|파쇼/.test(text)) {
     try {
       const largest = message.photo[message.photo.length - 1];
       const img = await downloadTelegramPhoto(largest.file_id);
@@ -514,20 +571,7 @@ ${line}`,
         await sendTelegramReply(message.chat.id, "❌ 사진 다운로드 실패. 다시 보내주세요.", message.message_id);
         return Response.json({ ok: true });
       }
-      const { extractReceiptFromImage, buildConfirmText, stagePendingReceipt } = await import("@/lib/pasho/receiptFlow");
-      const { receipt, order, error } = await extractReceiptFromImage(img);
-      if (!receipt || !order) {
-        await sendTelegramReply(message.chat.id, `⚠️ 입고증 판독 실패: ${error || "발주 매칭 안 됨"}. 발주번호(P26-xxx)를 캡션에 같이 적어주시면 정확합니다.`, message.message_id);
-        return Response.json({ ok: true });
-      }
-      const pending = await stagePendingReceipt(receipt, order.model);
-      await sendTelegramMessage(buildConfirmText(order, receipt.items, receipt.note), {
-        buttons: [
-          { text: "✅ 맞음", callback_data: `pasho:accept:${pending.id}` },
-          { text: "❌ 취소", callback_data: `pasho:reject:${pending.id}` },
-        ],
-      });
-      return Response.json({ ok: true, pashoReceipt: true });
+      return await runPashoReceipt(message.chat.id, message.message_id, img);
     } catch (e) {
       await sendTelegramReply(message.chat.id, `⚠️ 입고 처리 오류: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
       return Response.json({ ok: true });
@@ -776,6 +820,15 @@ ${line}`,
         message.message_id,
       );
       return Response.json({ ok: true });
+    }
+
+    // 거래명세표/입고증으로 분류되면 파쇼 입고 흐름으로(확인카드). imageData는 위에서 이미 받아둠.
+    if (tool.toolName === "pasho_receipt") {
+      if (!imageData) {
+        await sendTelegramReply(message.chat.id, "⚠️ 파쇼 입고증은 사진으로 보내주세요.", message.message_id);
+        return Response.json({ ok: true });
+      }
+      return await runPashoReceipt(message.chat.id, message.message_id, imageData);
     }
 
     let reply: string;
