@@ -12,6 +12,7 @@ function le(p){try{for(const l of fs.readFileSync(p,"utf8").split("\n")){const m
 le(DASH+"/.env.supabase"); le(DASH+"/.env.local");
 const { createClient } = require(DASH+"/node_modules/@supabase/supabase-js");
 const { getMarketplacePage, ensureLoggedIn, closeMarketplaceBrowsers } = require("./marketplaceSync");
+const { dismissOnboardingLayers } = require("./cm29Outbound");
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const log=(m)=>console.log(`[${new Date().toISOString()}] ${m}`);
 function ymd(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
@@ -62,8 +63,8 @@ async function fillGrid(page, map){
     // 2) 운송장 번호
     const inv=row.locator('input[placeholder*="운송장"]').first();
     await inv.fill(tracking).catch(async()=>{ await inv.click().catch(()=>{}); await inv.pressSequentially(tracking,{delay:30}).catch(()=>{}); });
-    // 3) 행 체크
-    await row.locator('td').first().locator('label').first().click({timeout:4000}).catch(async()=>{ await row.locator('input[type=checkbox]').first().check({timeout:3000}).catch(()=>{}); });
+    // 3) 행 체크 — 29CM 개편(2026-07-21): input이 1×1px hidden 커스텀 체크박스라 JS 네이티브 클릭 우선
+    await row.locator('input[type=checkbox]').first().evaluate((el)=>{ if(!el.checked) el.click(); }).catch(async()=>{ await row.locator('td').first().locator('label').first().click({timeout:4000}).catch(async()=>{ await row.locator('input[type=checkbox]').first().check({timeout:3000}).catch(()=>{}); }); });
     log(`  ✏️ 행 ${i} ${orderNo}: 택배사 ${carrierVal} + 송장 ${tracking} + 체크`);
     filled++;
     await sleep(400);
@@ -87,6 +88,7 @@ async function fillGrid(page, map){
     log(`--- 패스 ${pass} ---`);
     await page.goto(SHIPMENT,{waitUntil:"domcontentloaded",timeout:60000}).catch(()=>{});
     await sleep(4000);
+    await dismissOnboardingLayers(page, log); // 29CM 개편(2026-07-21) 온보딩 레이어가 버튼클릭 가로챔
     await page.locator('button:has-text("검색하기")').first().click({timeout:6000}).catch(()=>{});
     await sleep(5000); await page.waitForLoadState("networkidle",{timeout:12000}).catch(()=>{});
 
@@ -98,7 +100,11 @@ async function fillGrid(page, map){
 
     // 출고 처리
     log(`출고 처리 클릭`);
-    await page.getByRole("button",{name:/출고\s*처리/}).first().click({timeout:8000}).catch(async()=>{ await page.locator('button:has-text("출고 처리")').first().click({timeout:6000}).catch(()=>{}); });
+    const shipBtn=page.getByRole("button",{name:/출고\s*처리/}).first();
+    await shipBtn.click({timeout:8000}).catch(async()=>{
+      log("출고처리 물리 클릭 실패 — JS 클릭 폴백");
+      await shipBtn.evaluate((el)=>el.click()).catch(async()=>{ await page.locator('button:has-text("출고 처리")').first().click({timeout:6000}).catch(()=>{}); });
+    });
     await sleep(3000);
     // ⚠️ 화면 우상단 '모바일 리포트 출시' 토스트에도 '확인' 버튼이 있어, 페이지 전역 .first()로
     //    '확인'을 누르면 토스트만 닫히고 출고처리 모달은 확정 안 됨 → 주문이 큐에 계속 남는다.
