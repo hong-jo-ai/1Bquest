@@ -630,9 +630,9 @@ ${line}`,
   }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
 
-  // 나비스트 SKU 매핑 답장 — 확인카드에 "2=195"(여러 개 "1=195, 2=196") 형식으로 답하면
-  // 제품명↔cafe24 상품을 학습(다음 입고부터 자동)하고 확인카드를 갱신해 다시 띄운다.
-  if (text && !hasPhoto && /\d+\s*=\s*\d+/.test(text)) {
+  // 나비스트 SKU 매핑 답장 — 확인카드에 "2=P00000BT"(여러 개 "1=P00000BT, 2=P00000BU") 형식으로 답하면
+  // 미매칭 항목에 cafe24 상품코드를 지정·학습(다음 입고부터 자동)하고 확인카드를 갱신해 다시 띄운다.
+  if (text && !hasPhoto && /\d+\s*=\s*[A-Za-z0-9]+/.test(text)) {
     const { getLatestPending, parseMappingPairs, applyMapping, buildNavistConfirmText } =
       await import("@/lib/navist/receiptFlow");
     const latest = await getLatestPending();
