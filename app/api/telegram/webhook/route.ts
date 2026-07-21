@@ -111,6 +111,22 @@ const ROUTE_PASHO_RECEIPT_TOOL = {
   },
 };
 
+// 나비스트(주얼리 공급처) 거래명세서 라우팅 전용 툴 — 파쇼(시계 발주)와 구분.
+// 세부 제품·수량 판독은 navist/receiptFlow에서 처리, 여기선 "나비스트 명세서인가"만 판정.
+const ROUTE_NAVIST_RECEIPT_TOOL = {
+  name: "record_navist_receipt",
+  description:
+    "주얼리 공급처 (주)나비스트(NABIST) 거래명세서 사진일 때 호출합니다. " +
+    "상단에 NABIST/나비스트 상호가 있거나 주얼리(팔찌·목걸이·반지·귀걸이) 제품명·단가·수량 표가 신호입니다. " +
+    "발주번호(P26-xxx)가 있는 시계 협력사 서류는 record_pasho_receipt, 이건 나비스트 주얼리 명세서일 때만.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      vendorHint: { type: "string", description: "명세서에 보이는 공급처명. 보통 '(주)나비스트'." },
+    },
+  },
+};
+
 function authOk(req: NextRequest): boolean {
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!expected) return false;
@@ -274,7 +290,8 @@ type ExtractedTool =
   | { toolName: "register_influencer"; args: RegisterArgs }
   | { toolName: "add_today_task";      args: AddTaskArgs }
   | { toolName: "create_as_request";   args: CreateAsInput }
-  | { toolName: "pasho_receipt";       args: Record<string, never> };
+  | { toolName: "pasho_receipt";       args: Record<string, never> }
+  | { toolName: "navist_receipt";      args: Record<string, never> };
 
 async function extractToolCall(
   text: string | undefined,
@@ -304,14 +321,17 @@ async function extractToolCall(
     (text && text.trim()
       ? `사용자 메시지: "${text.trim()}"\n\n`
       : "사용자가 사진만 보냈습니다.\n\n") +
-    "위 정보를 보고 넷 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
+    "위 정보를 보고 다섯 중 하나의 도구를 정확히 한 번 호출하세요:\n" +
     "1) register_influencer — 인스타/유튜브/틱톡 프로필 스크린샷이거나 인플루언서/계정 등록 의도인 경우.\n" +
     "2) add_today_task — '오늘 할 일', '투두', '대시보드에 할일' 같이 본인 작업 등록 의도인 경우.\n" +
     "3) create_as_request — 고객 AS/수리 접수 정보인 경우. 고객명/전화/반송주소/모델/증상/AS사유가 들어오면 이 도구를 사용.\n" +
-    "4) record_pasho_receipt — 협력사(파쇼) 거래명세표·입고증·수령확인서 사진인 경우. 발주번호(P26-xxx)·모델·색상별 입고 수량이 표로 적힌 공급사 서류.\n\n" +
+    "4) record_pasho_receipt — 시계 협력사(파쇼) 거래명세표·입고증 사진. 발주번호(P26-xxx)·모델·색상별 입고 수량이 표로 적힌 서류.\n" +
+    "5) record_navist_receipt — 주얼리 공급처 (주)나비스트(NABIST) 거래명세서 사진. NABIST 상호나 주얼리(팔찌·목걸이·반지·귀걸이) 제품·단가·수량 표.\n\n" +
     "휴리스틱(이미지 종류로 구분 — '사진이면 인플루언서'라고 단정하지 말 것):\n" +
     "- 인스타/유튜브 프로필 UI(@핸들·팔로워·게시물 그리드) 스크린샷 → register_influencer.\n" +
-    "- 발주번호(P26-xxx)·모델·색상별 수량이 표/수기로 적힌 협력사 서류(거래명세표·입고증) → record_pasho_receipt. 절대 AS로 보내지 말 것.\n" +
+    "- NABIST/나비스트 상호 또는 주얼리(팔찌·목걸이·반지) 제품 명세서 → record_navist_receipt.\n" +
+    "- 발주번호(P26-xxx)·시계 모델·색상별 수량 서류 → record_pasho_receipt. (둘 다 명세표지만 공급처·품목으로 구분)\n" +
+    "- 거래명세표·입고증류는 절대 AS로 보내지 말 것.\n" +
     "- 고객 개인정보(고객명·전화·반송주소·증상)가 담긴 AS 접수 내용 → create_as_request.\n" +
     "- 텍스트만이고 '할일'/'todo'/'task'/'할거'/'추가해줘 (작업명)' 같으면 add_today_task.\n" +
     "- '@핸들' 또는 팔로워/플랫폼 언급은 register_influencer.\n\n" +
@@ -338,8 +358,8 @@ async function extractToolCall(
     max_tokens: 1024,
     system:
       "너는 paulwise 대시보드의 모바일 도우미야. " +
-      "사용자가 보낸 메시지/이미지를 보고 register_influencer, add_today_task, create_as_request, record_pasho_receipt 중 정확히 하나의 도구를 호출해. " +
-      "특히 협력사 거래명세표·입고증(발주번호·수량 표)은 고객 AS가 아니라 record_pasho_receipt 다. " +
+      "사용자가 보낸 메시지/이미지를 보고 register_influencer, add_today_task, create_as_request, record_pasho_receipt, record_navist_receipt 중 정확히 하나의 도구를 호출해. " +
+      "거래명세표·입고증은 고객 AS가 아니다 — 시계 발주(P26)면 record_pasho_receipt, 나비스트 주얼리면 record_navist_receipt. " +
       "추측 금지 — 명확한 신호로만 판단. 애매하면 add_today_task 로 fallback.",
     tools: [
       {
@@ -366,6 +386,12 @@ async function extractToolCall(
         input_schema:
           ROUTE_PASHO_RECEIPT_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
       },
+      {
+        name: ROUTE_NAVIST_RECEIPT_TOOL.name,
+        description: ROUTE_NAVIST_RECEIPT_TOOL.description,
+        input_schema:
+          ROUTE_NAVIST_RECEIPT_TOOL.inputSchema as unknown as Anthropic.Tool["input_schema"],
+      },
     ],
     tool_choice: { type: "any" },
     messages: [{ role: "user", content: userContent }],
@@ -389,6 +415,9 @@ async function extractToolCall(
   }
   if (toolUse.name === "record_pasho_receipt") {
     return { tool: { toolName: "pasho_receipt", args: {} } };
+  }
+  if (toolUse.name === "record_navist_receipt") {
+    return { tool: { toolName: "navist_receipt", args: {} } };
   }
   return { tool: null, error: `알 수 없는 도구: ${toolUse.name}` };
 }
@@ -417,6 +446,28 @@ async function runPashoReceipt(
     ],
   });
   return Response.json({ ok: true, pashoReceipt: true });
+}
+
+// 나비스트 주얼리 명세서 판독 → 확인카드(미매핑 표시). fast-path·분류기 공용.
+async function runNavistReceipt(
+  chatId: number,
+  replyToId: number,
+  img: { data: string; mediaType: ImageMediaType },
+): Promise<Response> {
+  const { extractNavistReceipt, stageNavistPending, buildNavistConfirmText } = await import("@/lib/navist/receiptFlow");
+  const { receipt, error } = await extractNavistReceipt(img);
+  if (!receipt) {
+    await sendTelegramReply(chatId, `⚠️ 나비스트 명세서 판독 실패: ${error || "제품을 읽지 못함"}. 표가 잘 보이게 다시 찍어주세요.`, replyToId);
+    return Response.json({ ok: true });
+  }
+  const pending = await stageNavistPending(receipt);
+  await sendTelegramMessage(buildNavistConfirmText(pending), {
+    buttons: [
+      { text: "✅ 맞음", callback_data: `navist:accept:${pending.id}` },
+      { text: "❌ 취소", callback_data: `navist:reject:${pending.id}` },
+    ],
+  });
+  return Response.json({ ok: true, navistReceipt: true });
 }
 
 function shouldProcess(
@@ -515,6 +566,24 @@ ${line}`,
       }
       return Response.json({ ok: true });
     }
+    const nm = String(cb.data || "").match(/^navist:(accept|reject):(.+)$/);
+    if (nm) {
+      try {
+        const { confirmNavistPending, rejectNavistPending } = await import("@/lib/navist/receiptFlow");
+        if (nm[1] === "accept") {
+          const res = await confirmNavistPending(nm[2]);
+          await answer(res.ok ? "입고 기록됨" : `실패: ${res.error ?? ""}`);
+          await editAppend(res.ok ? `✅ ${res.summary ?? "입고 기록 완료"}` : `⚠️ 실패: ${res.error ?? "알 수 없음"}`);
+        } else {
+          await rejectNavistPending(nm[2]);
+          await answer("취소됨");
+          await editAppend("❌ 입고 취소 — 다시 사진을 보내주세요.");
+        }
+      } catch (e) {
+        await answer("오류: " + (e instanceof Error ? e.message : String(e)).slice(0, 150));
+      }
+      return Response.json({ ok: true });
+    }
 
     await answer("알 수 없는 버튼");
     return Response.json({ ok: true, ignored: "unknown callback" });
@@ -560,6 +629,51 @@ ${line}`,
     }
   }
   const hasPhoto = !!(message.photo && message.photo.length > 0);
+
+  // 나비스트 SKU 매핑 답장 — 확인카드에 "2=195"(여러 개 "1=195, 2=196") 형식으로 답하면
+  // 제품명↔cafe24 상품을 학습(다음 입고부터 자동)하고 확인카드를 갱신해 다시 띄운다.
+  if (text && !hasPhoto && /\d+\s*=\s*\d+/.test(text)) {
+    const { getLatestPending, parseMappingPairs, applyMapping, buildNavistConfirmText } =
+      await import("@/lib/navist/receiptFlow");
+    const latest = await getLatestPending();
+    if (latest) {
+      const pairs = parseMappingPairs(text);
+      if (pairs.length) {
+        const { pending, mapped, errors } = await applyMapping(latest.id, pairs);
+        if (pending) {
+          await sendTelegramMessage(buildNavistConfirmText(pending), {
+            buttons: [
+              { text: "✅ 맞음", callback_data: `navist:accept:${pending.id}` },
+              { text: "❌ 취소", callback_data: `navist:reject:${pending.id}` },
+            ],
+          });
+          await sendTelegramReply(
+            message.chat.id,
+            `🔗 매핑 ${mapped}건 저장${errors.length ? ` · ⚠️ ${errors.join(", ")}` : ""}`,
+            message.message_id,
+          );
+          return Response.json({ ok: true, navistMapping: true });
+        }
+      }
+    }
+  }
+
+  // 나비스트 주얼리 입고 fast-path — 사진 + 나비스트/주얼리 캡션 → 명세서 판독 → 확인카드.
+  // (파쇼보다 먼저: '거래명세서'는 파쇼와 겹치므로 공급처 키워드로 우선 분기. 캡션 없으면 분류기가 이미지로 판별)
+  if (hasPhoto && message.photo && text && /나비스트|nabist|주얼리/i.test(text)) {
+    try {
+      const largest = message.photo[message.photo.length - 1];
+      const img = await downloadTelegramPhoto(largest.file_id);
+      if (!img) {
+        await sendTelegramReply(message.chat.id, "❌ 사진 다운로드 실패. 다시 보내주세요.", message.message_id);
+        return Response.json({ ok: true });
+      }
+      return await runNavistReceipt(message.chat.id, message.message_id, img);
+    } catch (e) {
+      await sendTelegramReply(message.chat.id, `⚠️ 나비스트 처리 오류: ${e instanceof Error ? e.message : String(e)}`, message.message_id);
+      return Response.json({ ok: true });
+    }
+  }
 
   // 파쇼 입고 fast-path — 사진 + 입고/거래명세/명세표/수령확인/파쇼 캡션 → 입고증 판독 → 확인카드
   // (캡션이 없거나 이 키워드가 없어도 아래 분류기가 거래명세표를 인식해 파쇼로 라우팅한다)
@@ -829,6 +943,14 @@ ${line}`,
         return Response.json({ ok: true });
       }
       return await runPashoReceipt(message.chat.id, message.message_id, imageData);
+    }
+    // 나비스트 주얼리 명세서로 분류되면 나비스트 입고 흐름으로.
+    if (tool.toolName === "navist_receipt") {
+      if (!imageData) {
+        await sendTelegramReply(message.chat.id, "⚠️ 나비스트 명세서는 사진으로 보내주세요.", message.message_id);
+        return Response.json({ ok: true });
+      }
+      return await runNavistReceipt(message.chat.id, message.message_id, imageData);
     }
 
     let reply: string;
