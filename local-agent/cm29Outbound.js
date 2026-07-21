@@ -39,6 +39,13 @@ async function dismissOnboardingLayers(page, log) {
   if (n) log(`온보딩 안내 레이어 ${n}개 닫음`);
 }
 
+// 준비처리 실패 = 당일 출고 누락 직결. 로그에만 남기면 조용히 묻힌다(2026-07-21 실사고)
+// → 실패 지점마다 텔레그램 즉시 알림.
+async function alertCm29(log, msg) {
+  log(msg);
+  try { const { relayText } = require("./telegramRelay"); await relayText(msg); } catch {}
+}
+
 // 결제완료 주문을 전부 선택 → '상품준비처리'(쓰기) → 출고관리로 전환. 반환: 전환된 건수.
 // dryRun이면 대상 건수만 로깅하고 쓰기 안 함. CM29_PREPARE_MAX(기본 50) 초과 시 안전상 중단.
 async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
@@ -50,7 +57,7 @@ async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
   log(`29CM 상품준비처리 대상(결제완료) ${n}건`);
   if (n === 0) { log("29CM 결제완료 0건 — 준비처리 스킵"); return 0; }
   const CAP = Number(process.env.CM29_PREPARE_MAX || 50);
-  if (n > CAP) { log(`⚠️ 준비처리 대상 ${n}건 > 상한 ${CAP} — 안전상 중단(수동 확인 요망)`); return 0; }
+  if (n > CAP) { await alertCm29(log, `🚨 29CM 준비처리 대상 ${n}건 > 상한 ${CAP} — 안전상 중단. 파트너센터 수동 확인 요망(미처리 시 당일 출고 누락)`); return 0; }
   if (dryRun) { log(`[dryRun] ${n}건 준비처리 대상 — 쓰기 생략`); return 0; }
 
   // 체크박스: 29CM 개편(2026-07-21)으로 input이 1×1px visibility:hidden 커스텀 컴포넌트가 됨.
@@ -65,11 +72,11 @@ async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
   await sleep(800);
   let checked = await page.locator('tbody input[type=checkbox]:checked').count().catch(()=>0);
   log(`선택됨 ${checked}/${n}`);
-  if (checked === 0) { log("⚠️ 선택 반영 안 됨 — 준비처리 중단"); return 0; }
+  if (checked === 0) { await alertCm29(log, `🚨 29CM 상품준비처리 실패: 체크박스 선택 반영 안 됨(0/${n}) — 결제완료 ${n}건이 갇혀 당일 출고 누락 위험. 29CM UI 변경 의심, 수동 확인 요망`); return 0; }
 
   // 액션 버튼명 = '선택 상품 준비 처리'
   const prepBtn = page.getByRole("button", { name: /상품\s*준비\s*처리/ }).first();
-  if (!(await prepBtn.count())) { log("⚠️ '상품준비처리' 버튼 없음 — 중단"); return 0; }
+  if (!(await prepBtn.count())) { await alertCm29(log, `🚨 29CM 상품준비처리 실패: '상품준비처리' 버튼 없음 — 결제완료 ${n}건 미전환. 29CM UI 변경 의심, 수동 확인 요망`); return 0; }
   await prepBtn.click({ timeout: 5000 }).catch(async () => {
     log("버튼 물리 클릭 실패 — JS 클릭 폴백");
     await prepBtn.evaluate((el) => el.click()).catch(()=>{});
@@ -89,6 +96,7 @@ async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
   await sleep(4000); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
   const n2 = await page.locator('tbody input[type=checkbox]').count().catch(()=>0);
   log(`준비처리 후 결제완료 잔여 ${n2}건 (0이면 전량 전환)`);
+  if (n2 > 0) await alertCm29(log, `🚨 29CM 상품준비처리 미완: 결제완료 ${n2}건 잔존(대상 ${n}건 중) — 당일 출고 누락 위험, 파트너센터 수동 확인 요망`);
   return n - n2;
 }
 
