@@ -72,6 +72,9 @@ const BASE_SCOPES = [
   "mall.write_community",
   "mall.read_application",
   "mall.write_application",
+  // 상점관리 — URL 리다이렉트(/redirects) API + 스토어 정보(/shops). 글로벌몰 이전 SEO 301용(2026-07-22).
+  "mall.read_store",
+  "mall.write_store",
 ];
 
 // 적립금(mileage)·회원(customer) 추가 스코프 — 리뷰 보상 자동지급 + 회원 매칭.
