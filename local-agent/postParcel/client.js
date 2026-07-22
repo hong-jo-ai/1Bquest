@@ -192,6 +192,40 @@ async function getStoppedZip(zipCd) {
   return fields;
 }
 
+/**
+ * 공급지 정보 등록 (발송지/회수도착지). 반품(reqType=2) 도착지를 서초 기본공급지가 아닌
+ * 특정 주소(예: 수리센터)로 보내려면, 그 주소를 officeDivCd=4(회수도착지)로 등록해 officeSer 확보 →
+ * 회수 접수 시 그 officeSer 사용. officeSer 는 우리가 부여하는 코드(중복 시 ERR-226).
+ * @param {object} office { custNo, officeSer, officeNm, officeZip, officeAddr1, officeAddr2,
+ *                          officeTelno, contactNm, chrgPrsnMob?, officeDivCd? (1동일/2발송지/4회수도착지) }
+ */
+async function insertOffice(office) {
+  const { fields, raw } = await callApi(MSG.insertOffice, {
+    key: cfg("POSTPARCEL_SHIP_KEY"),
+    regData: enc(office),
+  });
+  return {
+    chkResult: fields.chkResult,
+    officeSer: fields.officeSer,
+    officeNm: fields.officeNm,
+    regiPoNm: fields.regiPoNm || fields.regipoNm,
+    officeDivCd: fields.officeDivCd,
+    fields,
+    raw,
+  };
+}
+
+/** 공급지 정보 조회. officeDivReqCd: 1동일/2발송지/4회수도착지/7전체(선택) */
+async function getOfficeInfo(custNo = process.env.POSTPARCEL_CUST_NO, officeDivReqCd) {
+  const reg = { custNo };
+  if (officeDivReqCd) reg.officeDivReqCd = officeDivReqCd;
+  const { fields, raw } = await callApi(MSG.getOfficeInfo, {
+    key: cfg("POSTPARCEL_SHIP_KEY"),
+    regData: enc(reg),
+  });
+  return { fields, raw };
+}
+
 module.exports = {
   PostParcelError,
   buildPlain,
@@ -203,5 +237,7 @@ module.exports = {
   getResInfo,
   cancelOrder,
   getStoppedZip,
+  insertOffice,
+  getOfficeInfo,
   MSG,
 };
