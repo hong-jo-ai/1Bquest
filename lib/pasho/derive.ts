@@ -61,6 +61,12 @@ export async function pashoToPurchaseOrders(): Promise<PurchaseOrder[]> {
       const received = o.receivedQty ?? 0;
       const done = (o.remainingQty ?? o.orderedQty) === 0 && received > 0;
       const firstSku = o.cafe24Map ? Object.values(o.cafe24Map)[0] : undefined;
+      // 확정 입고예정일(eta)이 있으면 기본 리드타임 대신 그 날짜로 ETA 고정
+      let leadMin = DEFAULT_LEAD_MIN_DAYS, leadMax = DEFAULT_LEAD_MAX_DAYS;
+      if (o.eta) {
+        const days = Math.round((Date.parse(o.eta) - Date.parse(o.date)) / 86400000);
+        if (Number.isFinite(days) && days > 0) { leadMin = days; leadMax = days; }
+      }
       return {
         id: `pasho:${o.no}`,
         sku: firstSku ? String(firstSku.productNo) : "",
@@ -70,8 +76,8 @@ export async function pashoToPurchaseOrders(): Promise<PurchaseOrder[]> {
         qty: o.orderedQty,
         unitPrice: null,
         amount: null,
-        leadMinDays: DEFAULT_LEAD_MIN_DAYS,
-        leadMaxDays: DEFAULT_LEAD_MAX_DAYS,
+        leadMinDays: leadMin,
+        leadMaxDays: leadMax,
         status: (done ? "received" : "ordered") as PurchaseOrder["status"],
         receivedDate: null,
         receivedQty: received || null,
