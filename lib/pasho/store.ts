@@ -18,6 +18,8 @@ export interface PashoOrder {
   no: string; brand: "PV" | "HR" | "KW"; model: string; code: string; type: string;
   status: string; consign: boolean; consignDate?: string; deposit: number | null;
   date: string; lines: OrderLine[]; note: string; riskFlag?: string;
+  /** 확정 입고예정일(YYYY-MM-DD). 있으면 PO 파생 ETA가 기본 리드타임 대신 이 날짜를 쓴다. */
+  eta?: string | null;
   unit?: string | null; quoteTotal?: number | null; depositAmt?: number | null; quoteRef?: string | null;
   dev?: DevBrief;
   // 입고 → 카페24 재고 반영용 색상키워드 매핑. 입고 라인명(variant)이 key를 포함하면 해당 SKU에 +수량.
@@ -126,6 +128,13 @@ const SEED: PashoOrder[] = [
     unit: "$43.70", quoteTotal: 17664, depositAmt: 5299, quoteRef: "260508-견적(harriot)",
     lines: [{ variant: "역방향 문페이즈 (고정 보름달·한옥 처마 컷아웃)", qty: 300 }],
     note: "RONDA 708 / Moon 디스크 3도인쇄. 양산 300개 발주 + 선급 30% $5,299 결제 완료.",
+  },
+  {
+    no: "P26-005", brand: "PV", model: "브라운 가죽밴드", code: "PVS-band-BR", type: "신규양산",
+    status: "생산중", consign: false, deposit: null, date: "2026-07-13",
+    unit: null, quoteTotal: null, depositAmt: null, quoteRef: null,
+    lines: [{ variant: "브라운 가죽밴드 (로즈골드 버클)", qty: 300 }],
+    note: "허앤쉬 2차 공구(8/13~8/17) 증정용 — 에끌라 골드 전용 + 미니엘 색상선택. 시계 생산분에 추가 주문. 위탁가공비 견적 미수령.",
   },
 ];
 
