@@ -122,8 +122,12 @@ async function syncHarriot() {
   // 영문몰(skin5 roma) 전용 애드온 — 컨테이너가 아니라 '메인 상품 이미지'에 직접 오버레이.
   // (skin5는 .xans-product-image가 17357px 거대 래퍼라 컨테이너 방식이 화면 밖으로 나감.)
   const PDP_ADDON_EN = `;(function(){
-  var D=window.HRT_SCARCE_DATA||{};var SOLD=D.soldout||{};
+  var D=window.HRT_SCARCE_DATA||{};var SOLD=D.soldout||{};var ITEMS=D.items||{};
   var T='SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT';
+  var BADGE='LOW STOCK';
+  if(!document.getElementById('hrt-en-css')){var st=document.createElement('style');st.id='hrt-en-css';st.textContent='.hrt-en-badge{position:absolute;top:10px;left:10px;z-index:8;background:#111;color:#c9a96a;font:600 11px/1 Arial,sans-serif;letter-spacing:.14em;padding:5px 9px;pointer-events:none;white-space:nowrap;}';(document.head||document.documentElement).appendChild(st);}
+  function hrefNo(href){if(!href)return null;var m=href.match(/[?&]product_no=([0-9]+)(&|$)/);if(m)return m[1];m=href.split('?')[0].match(/\\/product\\/(?:[^/]+\\/)?([0-9]+)(?:\\/|$)/);return m?m[1]:null;}
+  function badgeBox(box){if(!box||box.querySelector('.hrt-en-badge'))return;if(getComputedStyle(box).position==='static')box.style.position='relative';var s=document.createElement('span');s.className='hrt-en-badge';s.textContent=BADGE;box.appendChild(s);}
   function tapeImg(img){
     var p=img.parentElement; if(!p||img.getAttribute('data-hrt'))return; img.setAttribute('data-hrt','1');
     if(getComputedStyle(p).position==='static')p.style.position='relative';
@@ -135,14 +139,10 @@ async function syncHarriot() {
       d.textContent=T;p.appendChild(d);
     }
   }
-  function runPdp(){
-    var no=(typeof window.iProductNo!=='undefined')?String(window.iProductNo):null;
-    if(!no||!SOLD[no])return;
-    var imgs=document.querySelectorAll('img'),best=null,bestTop=1e9;
-    for(var j=0;j<imgs.length;j++){var im=imgs[j];if(im.offsetParent===null||im.offsetWidth<250)continue;if(!/\\/product\\/|\\/upload\\//i.test(im.src))continue;var t=im.getBoundingClientRect().top+window.pageYOffset;if(t<bestTop){bestTop=t;best=im;}}
-    if(best)tapeImg(best);
-  }
-  function go(){runPdp();setTimeout(runPdp,1500);setTimeout(runPdp,3500);}
+  function mainImg(){var imgs=document.querySelectorAll('img'),best=null,bt=1e9;for(var j=0;j<imgs.length;j++){var im=imgs[j];if(im.offsetParent===null||im.offsetWidth<250)continue;if(!/\\/product\\/|\\/upload\\//i.test(im.src))continue;var t=im.getBoundingClientRect().top+window.pageYOffset;if(t<bt){bt=t;best=im;}}return best;}
+  function runPdp(){var no=(typeof window.iProductNo!=='undefined')?String(window.iProductNo):null;if(!no)return;var img=mainImg();if(!img||img.getAttribute('data-hrt'))return;if(SOLD[no])tapeImg(img);else if(ITEMS[no]){img.setAttribute('data-hrt','1');badgeBox(img.parentElement);}}
+  function runList(){var links=document.querySelectorAll('a[href*="product_no="], a[href*="/product/"]');for(var i=0;i<links.length;i++){var a=links[i];var no=hrefNo(a.getAttribute('href')||a.href);if(!no||!ITEMS[no])continue;var li=a.closest?a.closest('li,.xans-product-listitem,.item,.prdItem'):null;li=li||a.parentElement;if(!li||li.getAttribute('data-hrt-b'))continue;var img=li.querySelector('img');if(!img)continue;li.setAttribute('data-hrt-b','1');badgeBox(img.parentElement);}}
+  function go(){runPdp();runList();setTimeout(function(){runPdp();runList();},1500);setTimeout(function(){runPdp();runList();},3500);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
 })();`;
 
