@@ -25,8 +25,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const P = no => `${TB}/product/detail.html?product_no=${no}`;   // 상품
 const C = no => `${TB}/product/list.html?cate_no=${no}`;        // 카테고리
-const B = no => `${TB}/board/free/read.html?no=${no}&board_no=5`; // ⚠️ 게시판 글 URL 형식은 컷오버 때 실측 확인
+const B = no => `${TB}/article/journal/5/${no}/`;              // 게시판(journal board5) 글 — 6월 맵 확정 형식
+const JOURNAL = `${TB}/article/journal/5/`;                    // 저널 목록
 const HOME = `${TB}/`;
+const STORY = `${TB}/roma/sub/sub-01.html`;                    // OUR STORY (roma 스킨)
+const MEET = `${TB}/roma/sub/sub-04.html`;                     // Meet Harriot
 
 // [옛 path, 새 target] — 근거: 301-map-draft.md
 const MAP = [
@@ -52,11 +55,11 @@ const MAP = [
   ["/blogPost/untitled-15", B(20)], ["/blogPost/untitled-16", B(21)],
   ["/blogPost/korean-american-kiwon-watch-story", B(22)], ["/blogPost/harriot-kiwon-korean-watch-review", B(23)],
   ["/blogPost/watch-for-husbands-with-korean-wife", B(24)],
-  ["/blogPost/challenge", HOME], ["/blogPost/kari", HOME], ["/blog", HOME],
-  // ── 리뷰 13 → 홈(상품 128776 미식별) ──
-  ...Array.from({length:13},(_,i)=>[`/productReview/128776/${i+1}`, HOME]),
-  // ── 정보/유틸 ──
-  ["/about", HOME], ["/story", HOME], ["/contact", HOME], ["/termsandconditions", HOME],
+  ["/blogPost/challenge", JOURNAL], ["/blogPost/kari", JOURNAL], ["/blog", JOURNAL],
+  // ── 리뷰 13 → KI:WON(#121) 상세 (6월 맵: 128776=KI:WON 리뷰보드) ──
+  ...Array.from({length:13},(_,i)=>[`/productReview/128776/${i+1}`, P(121)]),
+  // ── 정보/유틸 (6월 맵 확정 타겟) ──
+  ["/about", STORY], ["/story", STORY], ["/contact", MEET], ["/termsandconditions", HOME],
   ["/", HOME], ["/home", HOME], ["/footer", HOME], ["/untitled-2", HOME], ["/untitled-3", HOME],
 ];
 

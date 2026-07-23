@@ -40,7 +40,16 @@ cafe24 헬프데스크 심사 승인 → `redirects` API 사용 가능(harriot �
 - 동작 시점: **도메인이 cafe24를 가리킬 때만**(=컷오버 후 활성). 등록은 미리 가능.
 - 레이트리밋: **≤2 req/초**(429 방지).
 
-**⚠️ 하이픈 제약 영향(약 9개 URL):** UUID상품 1(f9af07c0…), 블로그 6(Introducing-…-Diver-Watch, harriot-kiwon-korean-watch-review, korean-american-kiwon-watch-story, watch-for-husbands-with-korean-wife, untitled-15, untitled-16), untitled-2/3. → cafe24에 하이픈 path 지원 재문의 or 이 소수만 대체처리. 나머지 ~64개는 즉시 등록 가능.
+**⚠️ 하이픈 제약 영향(약 9개 URL):** UUID상품 1(f9af07c0…), 블로그 6(Introducing-…-Diver-Watch, harriot-kiwon-korean-watch-review, korean-american-kiwon-watch-story, watch-for-husbands-with-korean-wife, untitled-15, untitled-16), untitled-2/3. 나머지 ~64개는 API로 즉시 등록.
+
+## 🔗 6월 작업물 대조·통합 (2026-07-23)
+`downloads/harriot-global-migration/`에 6월 이전 작업(런북·홈/스토리/블로그 영문카피·**11_301_redirect_map.md**·회원CSV223·QA)이 있음. 내 신규 매핑과 **상품·블로그 번호 완전 일치**(교차검증). 6월 맵에서 더 정확한 타겟 채용:
+- **블로그 target = `/article/journal/5/{no}/`** (게시판 journal board5 확정 URL)
+- **리뷰 128776 = KI:WON(#121)** 리뷰보드 → `/product/detail.html?product_no=121`
+- **정적: /about·/story → `/roma/sub/sub-01.html`(OUR STORY), /contact → `/roma/sub/sub-04.html`(Meet Harriot)**
+→ `harriotGlobalRedirects.js`에 반영 완료.
+
+**🟢 하이픈 문제 해법 = 6월의 404 스킨 JS 폴백:** cafe24 404 스킨(`exception/404.html`)에 JS 리디렉션 삽입(11_301_redirect_map.md에 스크립트 존재). JS는 cafe24 path 검증을 안 거쳐 **하이픈 경로도 처리**. → **API 301(클린 64건) + 404스킨 JS 폴백(하이픈 9건 + 누락 캐치)** 조합이 완결 해법. cafe24 하이픈 재문의는 선택사항(진짜 301 원하면).
 
 ## 301 매핑 워크시트 (Phase 3에서 채움)
 | 식스샵 URL | cafe24 대응 URL | 상태 |
