@@ -13,13 +13,16 @@
 - 301 매핑 73개 확정 + 등록 스크립트 `local-agent/harriotGlobalRedirects.js`
 - 결제 승인(Paymentwall)·도메인 DNS 우리 관리(Route53)
 
+### ✅ 추가 완료 (2026-07-23)
+- **#135 광안블랙로즈골드** shop2 영문명+진열 (상품 패리티 완성). #131은 국내몰도 숨김 = 의도적 비공개, 유지.
+- **영문 자동알림메일 5종** cafe24 관리자에 브랜드 템플릿 적용 완료(브라우저 자동화). 신규가입(A)·주문내역(C)·무통장입금(D)·발송조치(F)·배송완료(G) ← 각 harriot-email-templates HTML. 편집기=SmartEditor iframe에 innerHTML 주입+저장, 로고·렌더 검증됨. 제목은 기존 영문 유지.
+- **결제** Paymentwall 테스트 완료(사장님)
+- **SFTP 복구**: HARRIOT_SFTP_PW=jacob1128!! (품절배지 자동화도 복구)
+
 ### ⏳ 남은 준비 (컷오버 前)
-1. **shop2 미완 2종**: #135 광안블랙로즈골드(한글·미진열), #131 Ilgu Lady Strap(미진열) → 진열 여부 결정
-2. **영문 자동알림메일 5종** cafe24 관리자 붙여넣기 (owner, [[cafe24-automail-templates]])
-3. **결제 PG 실연동 확인 + 테스트 결제 1건** (Paymentwall 승인 → shop2 연결 상태 검증)
-4. **홈 H1** 태그 반영 확인(02_home_seo_content 기준, 경미)
-5. **404 스킨 JS 폴백** 삽입 — cafe24 `exception/404.html`에 6월 스크립트(11_301_redirect_map.md). 하이픈 9건+누락 캐치용. (owner/스마트디자인)
-6. (옵션) cafe24 하이픈 path API 답변 오면 그 9건도 API 301로
+1. **홈 H1** (경미 — 콘텐츠 반영됨, skin5 layout 편집 필요)
+2. **404 스킨 JS 폴백** — skin5에 표준 exception/404 없음 → 에러페이지 구조 조사 후. 하이픈 9건+누락용. (SFTP 복구됨 = skin5 편집 가능)
+3. (옵션) cafe24 하이픈 path API 답변 오면 그 9건도 API 301로
 
 ## B. 컷오버 당일 (순서 엄수)
 1. **회원 CSV 최종 재생성** (현재 249명, 컷오버 시점까지 신규 포함) → cafe24 관리자 "회원 엑셀 일괄등록". ⚠️생성스크립트 재구성 필요(미저장). 수신동의 F·임시비번([[harriot-global-member-migration]])
