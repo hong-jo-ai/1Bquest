@@ -31,6 +31,11 @@
 4. **구글 서치콘솔**: google-site-verification 유지 확인 → **새 sitemap 제출**(harriotwatches.com/sitemap.xml) → 홈 색인 요청
 5. **E2E 테스트**: 실결제·FedEx 송장·배송추적 주문 1건
 
+## 🟢 컷오버 실행 결과 (2026-07-23)
+- ✅ NS→cafe24, apex+www 서빙, **HTTPS/SSL 정상**(www가 옛IP 23.227.38.32→cafe24로 교체하니 SSL 발급됨. www 미교체가 SSL 발급오류 원인이었음).
+- ✅ **301 리다이렉트 63건 등록**, 라이브 검증: product·category·static·`/blog` = **301 정상 작동**.
+- ⚠️ **`/blogPost/*`(12)·`/productReview/*`(13) = 404** — cafe24 인프라(nginx/openresty)가 이 두 접두어를 리다이렉트 엔진보다 먼저 자체 404(title "카페24")로 가로챔. API 등록돼도 안 뜸. 캐시 아님(캐시버스터 무효), 구조적. → **cafe24 문의 필요**(하이픈9건과 함께). 블로그=SEO중요(콘텐츠는 board5에 있음, 옛URL 리다이렉트만 불가), 리뷰=저가치.
+
 ## C. 컷오버 後
 - **"korean watch / korea watch" 순위 매일 모니터링** — 이상 시 **DNS 롤백**(백업으로 식스샵 복귀)
 - 404 리포트 확인(놓친 리다이렉트 잡기)
