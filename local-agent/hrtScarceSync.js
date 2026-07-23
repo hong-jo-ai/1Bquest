@@ -129,19 +129,20 @@ async function syncHarriot() {
   function hrefNo(href){if(!href)return null;var m=href.match(/[?&]product_no=([0-9]+)(&|$)/);if(m)return m[1];m=href.split('?')[0].match(/\\/product\\/(?:[^/]+\\/)?([0-9]+)(?:\\/|$)/);return m?m[1]:null;}
   function badgeBox(box){if(!box||box.querySelector('.hrt-en-badge'))return;if(getComputedStyle(box).position==='static')box.style.position='relative';var s=document.createElement('span');s.className='hrt-en-badge';s.textContent=BADGE;box.appendChild(s);}
   function tapeImg(img){
-    var p=img.parentElement; if(!p||img.getAttribute('data-hrt'))return; img.setAttribute('data-hrt','1');
-    if(getComputedStyle(p).position==='static')p.style.position='relative';
-    var ir=img.getBoundingClientRect(),pr=p.getBoundingClientRect();
-    var x=ir.left-pr.left,y=ir.top-pr.top,w=ir.width,h=ir.height;
+    if(!img||img.getAttribute('data-hrt')||!img.parentNode)return; img.setAttribute('data-hrt','1');
+    // 이미지에 딱 맞는 래퍼로 감싸 % 기준 테이프 → 어떤 컨테이너에서도 대각선이 정확히 풀로 덮임.
+    var wrap=document.createElement('span');wrap.className='hrt2-wrap';
+    wrap.style.cssText='position:relative;display:inline-block;overflow:hidden;line-height:0;max-width:100%;vertical-align:top;';
+    img.parentNode.insertBefore(wrap,img);wrap.appendChild(img);img.style.maxWidth='100%';img.style.display='block';
     for(var i=0;i<2;i++){
       var d=document.createElement('span');d.className='hrt2-band';
-      d.style.cssText='position:absolute;pointer-events:none;z-index:20;white-space:nowrap;overflow:hidden;text-align:center;box-sizing:border-box;background:#111;color:#fff;font:700 12px/1 Arial,sans-serif;letter-spacing:.28em;box-shadow:0 1px 6px rgba(0,0,0,.25);left:'+(x-w*0.25)+'px;width:'+(w*1.5)+'px;padding:'+Math.round(w*0.045)+'px 0;top:'+Math.round(y+h*(i?0.52:0.42))+'px;transform:rotate('+(i?'14':'-14')+'deg);'+(i?'opacity:.92;':'');
-      d.textContent=T;p.appendChild(d);
+      d.style.cssText='position:absolute;left:-25%;width:150%;padding:4.5% 0;z-index:20;pointer-events:none;white-space:nowrap;overflow:hidden;text-align:center;box-sizing:border-box;background:#111;color:#fff;font:700 12px/1 Arial,sans-serif;letter-spacing:.28em;box-shadow:0 1px 6px rgba(0,0,0,.25);top:'+(i?'52%':'42%')+';transform:rotate('+(i?'14':'-14')+'deg);'+(i?'opacity:.92;':'');
+      d.textContent=T;wrap.appendChild(d);
     }
   }
   function mainImg(){var imgs=document.querySelectorAll('img'),best=null,bt=1e9;for(var j=0;j<imgs.length;j++){var im=imgs[j];if(im.offsetParent===null||im.offsetWidth<250)continue;if(!/\\/product\\/|\\/upload\\//i.test(im.src))continue;var t=im.getBoundingClientRect().top+window.pageYOffset;if(t<bt){bt=t;best=im;}}return best;}
   function runPdp(){var no=(typeof window.iProductNo!=='undefined')?String(window.iProductNo):null;if(!no)return;var img=mainImg();if(!img||img.getAttribute('data-hrt'))return;if(SOLD[no])tapeImg(img);else if(ITEMS[no]){img.setAttribute('data-hrt','1');badgeBox(img.parentElement);}}
-  function runList(){var links=document.querySelectorAll('a[href*="product_no="], a[href*="/product/"]');for(var i=0;i<links.length;i++){var a=links[i];var no=hrefNo(a.getAttribute('href')||a.href);if(!no||!ITEMS[no])continue;var li=a.closest?a.closest('li,.xans-product-listitem,.item,.prdItem'):null;li=li||a.parentElement;if(!li||li.getAttribute('data-hrt-b'))continue;var img=li.querySelector('img');if(!img)continue;li.setAttribute('data-hrt-b','1');badgeBox(img.parentElement);}}
+  function runList(){var links=document.querySelectorAll('a[href*="product_no="], a[href*="/product/"]');for(var i=0;i<links.length;i++){var a=links[i];var no=hrefNo(a.getAttribute('href')||a.href);if(!no)continue;var sold=!!SOLD[no],low=!!ITEMS[no];if(!sold&&!low)continue;var li=a.closest?a.closest('li,.xans-product-listitem,.item,.prdItem'):null;li=li||a.parentElement;if(!li||li.getAttribute('data-hrt-b'))continue;var img=li.querySelector('img');if(!img)continue;li.setAttribute('data-hrt-b','1');if(sold)tapeImg(img);else badgeBox(img.parentElement);}}
   function go(){runPdp();runList();setTimeout(function(){runPdp();runList();},1500);setTimeout(function(){runPdp();runList();},3500);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
 })();`;
