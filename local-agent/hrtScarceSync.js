@@ -32,10 +32,11 @@ async function cachedToken(kvKey) {
   return null; // 만료 — 로컬 refresh 금지(SSOT=프로덕션)
 }
 
-async function fetchAllProducts(base, tok) {
+async function fetchAllProducts(base, tok, shopNo) {
   const out = [];
+  const sq = shopNo ? `&shop_no=${shopNo}` : "";
   for (let offset = 0; offset < 5000; offset += 100) {
-    const r = await fetch(`${base}/api/v2/admin/products?embed=variants&limit=100&offset=${offset}`, {
+    const r = await fetch(`${base}/api/v2/admin/products?embed=variants&limit=100&offset=${offset}${sq}`, {
       headers: { Authorization: `Bearer ${tok}` }, signal: AbortSignal.timeout(30000),
     });
     if (!r.ok) throw new Error(`카페24 products HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -69,18 +70,25 @@ const HRT_MALL = process.env.HARRIOT_CAFE24_MALL_ID || "harriotkorea";
 async function syncHarriot() {
   const tok = await cachedToken("cafe24_refresh_token:harriot");
   if (!tok) { log("[해리엇] access_token 만료 — 스킵", "warn"); return null; }
-  const products = await fetchAllProducts(`https://${HRT_MALL}.cafe24api.com`, tok);
-  const items = {}, soldout = {};
-  for (const p of products) {
-    if (p.display !== "T" || p.selling !== "T") continue;
-    if (isSoldOut(p)) { soldout[String(p.product_no)] = { name: p.product_name }; continue; }
-    // 해리엇은 use_inventory=F여도 quantity를 수동 관리(실측: 기원백색 6→2 감소)하므로 전체 수량 사용
-    const qty = productQty(p);
-    if (qty === null) continue;
-    if (qty > 0 && qty <= HRT_THRESHOLD) items[String(p.product_no)] = { qty, name: p.product_name };
-  }
-  const nos = Object.keys(items), soldNos = Object.keys(soldout);
-  log(`[해리엇] 상품 ${products.length} — 임박 ${nos.length} (${nos.join(",")}) / 품절 ${soldNos.length}`);
+  const base = `https://${HRT_MALL}.cafe24api.com`;
+  // 국문몰(shop1·skin4)·영문몰(shop2·skin5)은 진열/품절 플래그가 shop_no별로 다르다.
+  // → 각 몰 데이터를 따로 조회해 각 스킨에 주입(shop1 데이터를 영문몰에 쓰면 shop2 전용 품절 누락).
+  const build = (products) => {
+    const items = {}, soldout = {};
+    for (const p of products) {
+      if (p.display !== "T" || p.selling !== "T") continue;
+      if (isSoldOut(p)) { soldout[String(p.product_no)] = { name: p.product_name }; continue; }
+      // 해리엇은 use_inventory=F여도 quantity를 수동 관리(실측: 기원백색 6→2 감소)하므로 전체 수량 사용
+      const qty = productQty(p);
+      if (qty === null) continue;
+      if (qty > 0 && qty <= HRT_THRESHOLD) items[String(p.product_no)] = { qty, name: p.product_name };
+    }
+    return { items, soldout };
+  };
+  const kr = build(await fetchAllProducts(base, tok, 1));   // 국문몰 skin4
+  const en = build(await fetchAllProducts(base, tok, 2));   // 영문몰 skin5
+  const nos = Object.keys(en.items), soldNos = Object.keys(en.soldout);
+  log(`[해리엇] 국문 임박${Object.keys(kr.items).length}/품절${Object.keys(kr.soldout).length} · 영문 임박${nos.length}/품절${soldNos.length} (영문품절: ${soldNos.join(",")})`);
   if (DRY) return { scarce: nos.length, soldout: soldNos.length };
 
   // PDP SOLD OUT 테이프 애드온 — common.js 번들 캐시와 무관하게 직로드되는 이 파일에서 실행
@@ -147,10 +155,11 @@ async function syncHarriot() {
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
 })();`;
 
-  const dataStr = "window.HRT_SCARCE_DATA=" + JSON.stringify({ generatedAt: new Date().toISOString(), threshold: HRT_THRESHOLD, items, soldout }) + ";\n";
+  const mkData = (o) => "window.HRT_SCARCE_DATA=" + JSON.stringify({ generatedAt: new Date().toISOString(), threshold: HRT_THRESHOLD, items: o.items, soldout: o.soldout }) + ";\n";
+  const dataKr = mkData(kr), dataEn = mkData(en);
   const body =
     "/* 자동 생성 — local-agent/hrtScarceSync.js (수동 편집 금지) */\n" +
-    dataStr + PDP_ADDON;
+    dataKr + PDP_ADDON;
   const Client = require("ssh2-sftp-client");
   const s = new Client();
   await s.connect({
@@ -158,17 +167,28 @@ async function syncHarriot() {
     username: HRT_MALL, password: process.env.HARRIOT_SFTP_PW, readyTimeout: 20000,
   });
   await s.put(Buffer.from(body, "utf8"), "/skin4/js/hrt_scarce.js");
-  // 영문몰(skin5)엔 외부 로더 대신 layout.html에 인라인 주입(스킨JS URL이 CDN이라 로더 까다로움).
-  // 마커 사이를 매 sync마다 교체 → 품절 데이터 자동 최신화. PDP SOLD OUT 테이프 동일 적용.
+  // 영문몰(skin5)엔 외부 로더 대신 layout에 인라인 주입(스킨JS URL이 CDN이라 로더 까다로움).
+  // ⚠️skin5는 페이지그룹(상세=layout, 홈리스트=layout2, 홈=main, 정적=sub …)마다 다른 마스터
+  // 레이아웃을 쓴다. 하나만 주입하면 일부 페이지 리본 누락 → <html>+</body> 가진 마스터를
+  // 전부 자동탐색해 주입(2026-07-23: layout.html만 주입돼 리스트·홈 리본 누락 수정, 향후 레이아웃도 자동커버).
+  const block = `<!--HRT_SCARCE_EN--><script>${dataEn}${PDP_ADDON_EN}</script><!--/HRT_SCARCE_EN-->`;
+  const re = /<!--HRT_SCARCE_EN-->[\s\S]*?<!--\/HRT_SCARCE_EN-->/;
+  const injected = [];
   try {
-    const F5 = "/skin5/layout/basic/layout.html";
-    let l5 = (await s.get(F5)).toString("utf8");
-    const block = `<!--HRT_SCARCE_EN--><script>${dataStr}${PDP_ADDON_EN}</script><!--/HRT_SCARCE_EN-->`;
-    const re = /<!--HRT_SCARCE_EN-->[\s\S]*?<!--\/HRT_SCARCE_EN-->/;
-    l5 = re.test(l5) ? l5.replace(re, block) : l5.replace(/<\/body>/i, block + "\n</body>");
-    await s.put(Buffer.from(l5, "utf8"), F5);
-    log(`[해리엇] 영문몰(skin5) 품절리본 갱신`);
-  } catch (e) { log(`[해리엇] skin5 품절리본 갱신 실패(무시): ${e.message}`, "warn"); }
+    const dir = "/skin5/layout/basic";
+    const files = (await s.list(dir)).filter((f) => /\.html?$/i.test(f.name));
+    for (const f of files) {
+      const F5 = `${dir}/${f.name}`;
+      try {
+        let l5 = (await s.get(F5)).toString("utf8");
+        if (!/<html/i.test(l5) || !/<\/body>/i.test(l5)) continue; // 마스터 레이아웃만
+        l5 = re.test(l5) ? l5.replace(re, block) : l5.replace(/<\/body>/i, block + "\n</body>");
+        await s.put(Buffer.from(l5, "utf8"), F5);
+        injected.push(f.name);
+      } catch (e) { log(`[해리엇] ${f.name} 주입 실패(무시): ${e.message}`, "warn"); }
+    }
+  } catch (e) { log(`[해리엇] skin5 레이아웃 목록 실패(무시): ${e.message}`, "warn"); }
+  log(`[해리엇] 영문몰 리본 주입: ${injected.join(", ")}`);
   await s.end();
   log(`[해리엇] 업로드 완료 (${body.length}B)`);
   return { scarce: nos.length, soldout: soldNos.length };
