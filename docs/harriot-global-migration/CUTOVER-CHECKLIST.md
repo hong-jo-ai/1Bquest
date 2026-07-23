@@ -34,7 +34,7 @@
 ## 🟢 컷오버 실행 결과 (2026-07-23)
 - ✅ NS→cafe24, apex+www 서빙, **HTTPS/SSL 정상**(www가 옛IP 23.227.38.32→cafe24로 교체하니 SSL 발급됨. www 미교체가 SSL 발급오류 원인이었음).
 - ✅ **301 리다이렉트 63건 등록**, 라이브 검증: product·category·static·`/blog` = **301 정상 작동**.
-- ⚠️ **`/blogPost/*`(12)·`/productReview/*`(13) = 404** — cafe24 인프라(nginx/openresty)가 이 두 접두어를 리다이렉트 엔진보다 먼저 자체 404(title "카페24")로 가로챔. API 등록돼도 안 뜸. 캐시 아님(캐시버스터 무효), 구조적. → **cafe24 문의 필요**(하이픈9건과 함께). 블로그=SEO중요(콘텐츠는 board5에 있음, 옛URL 리다이렉트만 불가), 리뷰=저가치.
+- ⚠️ **`/blogPost/*`(12)·`/productReview/*`(13) = 404** — cafe24 인프라(nginx/openresty)가 이 두 접두어를 리다이렉트 엔진보다 먼저 자체 404(title "카페24")로 가로챔. API 등록돼도 안 뜸. 캐시 아님(캐시버스터 무효), 구조적. → **[결정 2026-07-23] cafe24 문의 안 하고 포기(accept loss).** blogPost/productReview + 하이픈9건 리다이렉트는 그대로 둠. 근거: 해당 콘텐츠는 board5에 살아있음(옛URL만 404), 핵심SEO(홈+상품)는 301 보존됨, 리뷰는 저가치. 추후 필요시 재개.
 
 ## C. 컷오버 後
 - **"korean watch / korea watch" 순위 매일 모니터링** — 이상 시 **DNS 롤백**(백업으로 식스샵 복귀)
