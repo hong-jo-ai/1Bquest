@@ -2,7 +2,6 @@ import { type NextRequest } from "next/server";
 import { parseExcelBuffer } from "@/lib/excelParser";
 import { parseGroupBuyExcel } from "@/lib/groupBuyParser";
 import { parseDutyFreeSettlement } from "@/lib/dutyFreeParser";
-import { convertUsdToKrw, USD_TO_KRW } from "@/lib/finance/forex";
 
 const ALLOWED_CHANNELS = [
   "wconcept",
@@ -12,9 +11,7 @@ const ALLOWED_CHANNELS = [
   "kakao_gift",
   "lotte_dutyfree",
   "shinsegae_dutyfree",
-  "sixshop",
   "naver_smartstore",
-  "sixshop_global",
 ] as const;
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -68,19 +65,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 식스샵 글로벌은 USD 결제 → 다른 채널과 합산되도록 KRW로 환산
-    let forex: { rate: number; from: "USD"; to: "KRW" } | undefined;
-    if (channel === "sixshop_global") {
-      result = { ...result, data: convertUsdToKrw(result.data) };
-      forex = { rate: USD_TO_KRW, from: "USD", to: "KRW" };
-    }
-
     return Response.json({
       ok: true,
       channel,
       fileName: file.name,
       ...result,
-      forex,
     });
   } catch (e) {
     const msg =

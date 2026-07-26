@@ -24,12 +24,13 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:musinsa-sync", label: "무신사 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:wconcept-sync", label: "W컨셉 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:cm29-sync", label: "29CM 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
-  { key: "heartbeat:sixshop-sync", label: "식스샵 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
+  // 식스샵 동기화 폐지(2026-07) — 해리엇 글로벌 카페24 영문몰(shop_no=2) 이전. launchd 잡도 언로드 필요.
   { key: "heartbeat:postoffice-outbound", label: "우체국 출고빌드(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:dispatch17", label: "송장입력 dispatch17(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:register-queue-worker", label: "우체국 접수큐 워커(iMac·상주)", maxHours: 2 },
   { key: "heartbeat:cs-action-worker", label: "CS 액션 워커(iMac·상주)", maxHours: 2 },
   { key: "heartbeat:channel-review-scrape", label: "채널리뷰 수집(주간)", maxHours: 8 * 24 },
+  { key: "heartbeat:hrt-scarce-sync", label: "해리엇 품절임박 배지 동기화(iMac)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
   { key: "cron_last_ok:revenue-snapshot", label: "매출 스냅샷", maxHours: 26 },
   { key: "cron_last_ok:daily-summary", label: "데일리 서머리", maxHours: 26 },

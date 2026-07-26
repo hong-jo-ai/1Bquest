@@ -49,9 +49,7 @@ const LS_KEY: Record<UploadableChannel, { data: string; meta: string; history: s
   kakao_gift:       { data: "kakao_gift_excel_data",       meta: "kakao_gift_excel_meta",       history: "kakao_gift_excel_history"       },
   lotte_dutyfree:     { data: "lotte_dutyfree_excel_data",     meta: "lotte_dutyfree_excel_meta",     history: "lotte_dutyfree_excel_history"     },
   shinsegae_dutyfree: { data: "shinsegae_dutyfree_excel_data", meta: "shinsegae_dutyfree_excel_meta", history: "shinsegae_dutyfree_excel_history" },
-  sixshop:          { data: "sixshop_excel_data",          meta: "sixshop_excel_meta",          history: "sixshop_excel_history"          },
   naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta", history: "naver_smartstore_excel_history" },
-  sixshop_global:   { data: "sixshop_global_excel_data",   meta: "sixshop_global_excel_meta",   history: "sixshop_global_excel_history"   },
 };
 
 interface UploadMeta {
@@ -67,17 +65,17 @@ type ChannelHistories = Record<UploadableChannel, UploadMeta[]>;
 const EMPTY_UPLOADS: ChannelUploads = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   lotte_dutyfree: null, shinsegae_dutyfree: null,
-  sixshop: null, naver_smartstore: null, sixshop_global: null,
+  naver_smartstore: null,
 };
 const EMPTY_METAS: ChannelMetas = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   lotte_dutyfree: null, shinsegae_dutyfree: null,
-  sixshop: null, naver_smartstore: null, sixshop_global: null,
+  naver_smartstore: null,
 };
 const EMPTY_HISTORIES: ChannelHistories = {
   wconcept: [], musinsa: [], "29cm": [], groupbuy: [], kakao_gift: [],
   lotte_dutyfree: [], shinsegae_dutyfree: [],
-  sixshop: [], naver_smartstore: [], sixshop_global: [],
+  naver_smartstore: [],
 };
 const EMPTY_PERIOD = { revenue: 0, orders: 0, avgOrder: 0 };
 const EMPTY_CHANNEL_DATA: MultiChannelData = {
@@ -117,12 +115,13 @@ interface Props {
   brand: Brand;
   cafe24Data: DashboardData | null;
   harriotCafe24Data?: DashboardData | null;
+  harriotGlobalCafe24Data?: MultiChannelData | null;
   isAuthenticated: boolean;
   apiError: string | null;
   now: string;
 }
 
-export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data = null, isAuthenticated, apiError, now }: Props) {
+export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data = null, harriotGlobalCafe24Data = null, isAuthenticated, apiError, now }: Props) {
   const router = useRouter();
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
@@ -361,7 +360,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
     inventory: cafe24Data?.inventory ?? [],
   }), [cafe24Data]);
 
-  // 해리엇 카페24(별도 몰) — 해리엇 브랜드 채널 + 전사 합산에 사용
+  // 해리엇 카페24 국내몰(shop_no=1) — 해리엇 브랜드 채널 + 전사 합산에 사용
   const harriotCafe24Channel: MultiChannelData = useMemo(() => ({
     salesSummary: harriotCafe24Data?.salesSummary ?? EMPTY_CHANNEL_DATA.salesSummary,
     topProducts: harriotCafe24Data?.topProducts ?? [],
@@ -371,6 +370,12 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
     dailyCogs:    harriotCafe24Data?.dailyCogs ?? [],
     inventory: harriotCafe24Data?.inventory ?? [],
   }), [harriotCafe24Data]);
+
+  // 해리엇 카페24 글로벌 영문몰(shop_no=2, USD→KRW) — 식스샵 글로벌 대체. 이미 MultiChannelData.
+  const harriotGlobalChannel: MultiChannelData = useMemo(
+    () => harriotGlobalCafe24Data ?? EMPTY_CHANNEL_DATA,
+    [harriotGlobalCafe24Data],
+  );
 
   // 실제 표시 데이터 (업로드 데이터가 없으면 0/빈 상태)
   const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => {
@@ -385,21 +390,21 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
       kakao_gift:       uploads.kakao_gift       ?? UPLOADABLE_DUMMIES.kakao_gift,
       lotte_dutyfree:     uploads.lotte_dutyfree     ?? UPLOADABLE_DUMMIES.lotte_dutyfree,
       shinsegae_dutyfree: uploads.shinsegae_dutyfree ?? UPLOADABLE_DUMMIES.shinsegae_dutyfree,
-      sixshop:          uploads.sixshop          ?? UPLOADABLE_DUMMIES.sixshop,
       naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
-      sixshop_global:   uploads.sixshop_global   ?? UPLOADABLE_DUMMIES.sixshop_global,
     };
   }, [uploads, cafe24Data]);
 
-  // 채널 id → 표시 데이터 (cafe24/해리엇 cafe24는 라이브, 나머지는 업로드맵)
+  // 채널 id → 표시 데이터 (cafe24/해리엇 cafe24 국내·글로벌은 라이브, 나머지는 업로드맵)
   const resolveChannel = (id: ChannelId): MultiChannelData =>
     id === "cafe24" ? cafe24Channel
     : id === "cafe24_harriot" ? harriotCafe24Channel
+    : id === "cafe24_harriot_global" ? harriotGlobalChannel
     : channelDataMap[id as UploadableChannel];
 
   const displayData: MultiChannelData = useMemo(() => {
     if (activeChannel === "cafe24") return cafe24Channel;
     if (activeChannel === "cafe24_harriot") return harriotCafe24Channel;
+    if (activeChannel === "cafe24_harriot_global") return harriotGlobalChannel;
     if (activeChannel === "all") {
       // 현재 브랜드의 채널만 합산
       const list: MultiChannelData[] = [];
@@ -412,7 +417,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
     // 업로드 가능 채널
     return channelDataMap[activeChannel as UploadableChannel];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChannel, cafe24Channel, harriotCafe24Channel, channelDataMap, brandChannelIds]);
+  }, [activeChannel, cafe24Channel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap, brandChannelIds]);
 
   const companyChannels = useMemo(() => {
     const ids = Array.from(new Set(BRANDS.flatMap((b) => BRAND_CHANNELS[b.id]).filter((id) => id !== "all")));
@@ -422,7 +427,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
       return { channelId: id, name: meta?.name ?? id, color: meta?.color ?? "#71717a", data };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cafe24Channel, harriotCafe24Channel, channelDataMap]);
+  }, [cafe24Channel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap]);
 
   const companyData = useMemo(() => {
     return mergeChannelData(companyChannels.map((ch) => ch.data));
@@ -643,9 +648,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
               groupbuy: !!uploads.groupbuy || (cafe24Data?.groupBuyLive?.salesSummary?.month?.revenue ?? 0) > 0,
               lotte_dutyfree:     !!uploads.lotte_dutyfree,
               shinsegae_dutyfree: !!uploads.shinsegae_dutyfree,
-              sixshop:  !!uploads.sixshop,
               naver_smartstore: !!uploads.naver_smartstore,
-              sixshop_global:   !!uploads.sixshop_global,
             }}
           />
         </section>

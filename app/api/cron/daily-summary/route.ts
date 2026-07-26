@@ -8,7 +8,8 @@
  */
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
-import { getDashboardData } from "@/lib/cafe24Data";
+import { getDashboardData, getMallShopData } from "@/lib/cafe24Data";
+import { USD_TO_KRW } from "@/lib/finance/forex";
 import { computeInventoryLevels } from "@/lib/inventorySync";
 import { cafe24Get } from "@/lib/cafe24Client";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
@@ -72,18 +73,20 @@ async function run() {
       const g = d.groupBuyLive?.salesSummary.today;
       if (g && (g.revenue > 0 || g.orders > 0)) lines.push({ name: "공동구매", revenue: g.revenue, orders: g.orders });
     }
-    // 카페24 해리엇 (라이브)
+    // 카페24 해리엇 (라이브) — 국내몰(shop_no=1) + 글로벌 영문몰(shop_no=2)
     try {
       const ht = await getAccessTokenFromStore("harriot");
       if (ht) {
         const h = (await getDashboardData(ht, "harriot")).salesSummary.today;
         if (h.revenue > 0 || h.orders > 0) lines.push({ name: "카페24(해리엇)", revenue: h.revenue, orders: h.orders });
+        const hg = (await getMallShopData(ht, "harriot", 2, { usdToKrw: USD_TO_KRW })).salesSummary.today;
+        if (hg.revenue > 0 || hg.orders > 0) lines.push({ name: "카페24(해리엇 글로벌)", revenue: hg.revenue, orders: hg.orders });
       }
     } catch { /* 해리엇 카페24 실패 무시 */ }
     // 마켓플레이스 등 업로드 채널 (channel_upload:*) — 마지막 동기화(17:00) 스냅샷 기준
     const UP: Array<[UploadableChannel, string]> = [
       ["musinsa", "무신사"], ["wconcept", "W컨셉"], ["29cm", "29CM"],
-      ["sixshop", "식스샵"], ["naver_smartstore", "네이버"], ["sixshop_global", "식스샵글로벌"],
+      ["naver_smartstore", "네이버"],
       ["kakao_gift", "카카오선물"], ["lotte_dutyfree", "롯데면세"], ["shinsegae_dutyfree", "신세계면세"],
     ];
     for (const [ch, nm] of UP) {

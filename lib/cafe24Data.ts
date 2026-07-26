@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cafe24Get } from "./cafe24Client";
 import { getProductCogs } from "./profitSettings";
 import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "./cafe24Historical";
+import { USD_TO_KRW } from "./finance/forex";
 import type { Brand, MultiChannelData } from "./multiChannelData";
 
 // ── 타입 정의 ──────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ export async function fetchAllOrders(
   endDate: string,
   embedItems = true,
   mall: Brand = "paulvice",
+  shopNo?: number,
 ) {
   const all: any[] = [];
   let offset = 0;
@@ -122,6 +124,8 @@ export async function fetchAllOrders(
       offset:     String(offset),
     };
     if (embedItems) params.embed = "items";
+    // shop_no 미지정 → 카페24 기본값 1(국내몰). 글로벌몰(해리엇 영문몰)은 shop_no=2.
+    if (shopNo != null) params.shop_no = String(shopNo);
 
     const qs   = new URLSearchParams(params);
     const data = await cafe24Get(`/api/v2/admin/orders?${qs}`, token, mall);
@@ -648,5 +652,117 @@ export async function getDashboardData(token: string, brand: Brand = "paulvice")
     inventory,
     groupBuyLive,
     isReal: true,
+  };
+}
+
+/**
+ * 특정 몰(shop_no)의 매출 데이터 — 해리엇 카페24 글로벌 영문몰(shop_no=2)용 경량 집계.
+ *
+ * getDashboardData 는 국내몰 전용 로직(공구 분리·히스토리 CSV 머지·재고·COGS)이 얽혀 있어
+ * 글로벌몰엔 그대로 쓰면 히스토리 CSV 오염·통화 혼선이 난다. 그래서 매출 집계만 담은 버전.
+ *
+ * 통화: 글로벌몰은 USD 정산. 주문 currency 가 (조회 범위 내) 전부 USD 일 때만 환율로 KRW 환산.
+ * KRW 를 ×환율 하는 과대계상 사고를 막기 위해 **확실히 USD 인 경우에만** 환산하고,
+ * 통화 정보가 없거나 섞여 있으면 원본 그대로 둔다(과소계상은 눈에 띄어 교정 가능, 1450배 폭주는 치명적).
+ */
+export async function getMallShopData(
+  token: string,
+  brand: Brand,
+  shopNo: number,
+  opts: { usdToKrw?: number } = {},
+): Promise<MultiChannelData> {
+  const now = kstNow();
+  const todayStr = kstStr(now);
+
+  const weekStart = new Date(now);
+  const dow = now.getUTCDay(); // 0=일
+  weekStart.setUTCDate(now.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  const weekStartStr = kstStr(weekStart);
+
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthStartStr = kstStr(monthStart);
+  const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const prevMonthEnd   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+  const prevMonthStartStr = kstStr(prevMonthStart);
+  const prevMonthEndStr   = kstStr(prevMonthEnd);
+
+  const [rawMonth, rawPrev] = await Promise.all([
+    fetchAllOrders(token, monthStartStr, todayStr, true, brand, shopNo),
+    fetchAllOrders(token, prevMonthStartStr, prevMonthEndStr, true, brand, shopNo),
+  ]);
+  const keep = (o: any) => isPaidOrder(o) && !isCanceledOrder(o);
+  const monthOrders     = rawMonth.filter(keep);
+  const prevMonthOrders = rawPrev.filter(keep);
+
+  // 통화 판정 — 조회 범위 주문이 있고 전부 USD 일 때만 환산.
+  const scope = [...monthOrders, ...prevMonthOrders];
+  const currencyOf = (o: any) => String(o.currency ?? "").toUpperCase();
+  const isUsd = scope.length > 0 && scope.every((o) => currencyOf(o) === "USD");
+  const rate = isUsd ? (opts.usdToKrw ?? USD_TO_KRW) : 1;
+  const rev = (o: any) => orderRevenue(o) * rate;
+
+  const todayOrders = monthOrders.filter(
+    (o) => kstDateStr(o.payment_date ?? o.order_date) === todayStr,
+  );
+  const weekOrders = monthOrders.filter(
+    (o) => kstDateStr(o.payment_date ?? o.order_date) >= weekStartStr,
+  );
+
+  const hourOf = (o: any) => kstHour(o.payment_date ?? o.order_date);
+  const hourlyOrders: HourlyData[] = Array.from({ length: 24 }, (_, h) => {
+    const f = todayOrders.filter((o) => hourOf(o) === h);
+    return {
+      hour: `${String(h).padStart(2, "0")}시`,
+      orders: f.filter((o) => rev(o) > 0).length,
+      revenue: Math.round(f.reduce((s, o) => s + rev(o), 0)),
+    };
+  });
+
+  const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+  const weeklyRevenue: WeeklyData[] = DAYS.map((day, i) => {
+    const d = new Date(weekStart);
+    d.setUTCDate(weekStart.getUTCDate() + i);
+    const ds = kstStr(d);
+    const dayOrders = monthOrders.filter(
+      (o) => kstDateStr(o.payment_date ?? o.order_date) === ds,
+    );
+    return {
+      day,
+      revenue: Math.round(dayOrders.reduce((s, o) => s + rev(o), 0)),
+      orders: dayOrders.filter((o) => rev(o) > 0).length,
+    };
+  });
+
+  const allForDaily = [...prevMonthOrders, ...monthOrders];
+  const dailyMap = new Map<string, { revenue: number; orders: number }>();
+  for (const o of allForDaily) {
+    const ds = kstDateStr(o.payment_date ?? o.order_date);
+    const c = dailyMap.get(ds) ?? { revenue: 0, orders: 0 };
+    const r = rev(o);
+    c.revenue += r;
+    if (r > 0) c.orders += 1;
+    dailyMap.set(ds, c);
+  }
+  const dailyRevenue: DailyData[] = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, revenue: Math.round(v.revenue), orders: v.orders }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const topProducts: ProductRank[] = buildRanking(monthOrders, 10).map((p) => ({
+    ...p,
+    revenue: Math.round(p.revenue * rate),
+  }));
+
+  return {
+    salesSummary: {
+      today:     summarizeBy(todayOrders, rev),
+      week:      summarizeBy(weekOrders, rev),
+      month:     summarizeBy(monthOrders, rev),
+      prevMonth: summarizeBy(prevMonthOrders, rev),
+    },
+    topProducts,
+    hourlyOrders,
+    weeklyRevenue,
+    dailyRevenue,
+    inventory: [],
   };
 }

@@ -2,9 +2,10 @@
  * 브랜드별 일별 매출 히스토리 — 대시보드 매출 추이 그래프용.
  *
  * 데이터 소스:
- *   - 카페24 (paulvice 만, 실 API) — `cafe24Data.dailyRevenue`
+ *   - 카페24 (paulvice/해리엇 실 API) — `cafe24Data.dailyRevenue`
+ *     · 해리엇 국내몰=cafe24_harriot(shop_no=1), 글로벌 영문몰=cafe24_harriot_global(shop_no=2, USD→KRW)
  *   - 엑셀 업로드 채널 — `channel_upload:<channel>` 의 `data.dailyRevenue`
- *     (해리엇 sixshop / naver_smartstore / sixshop_global 등)
+ *     (해리엇 naver_smartstore 등)
  *   - 카카오선물하기 — `channel_upload:kakao_gift` 머지 결과
  *
  * 스토리지: Supabase `kv_store`
