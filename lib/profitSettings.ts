@@ -29,6 +29,8 @@ export interface ProfitSettings {
 export const DEFAULT_SETTINGS: ProfitSettings = {
   channelFees: {
     cafe24: 3.85,
+    // 폴바이스 카페24 영문몰(shop_no=2, paulvice.kr) — 해외결제 PG(Eximbay) 수수료가 국내보다 높음. 정산서 확인 후 조정.
+    cafe24_global: 3.85,
     wconcept: 30,
     musinsa: 30,
     "29cm": 30,

@@ -72,6 +72,11 @@ async function run() {
       if (c.revenue > 0 || c.orders > 0) lines.push({ name: "카페24(폴바이스)", revenue: c.revenue, orders: c.orders });
       const g = d.groupBuyLive?.salesSummary.today;
       if (g && (g.revenue > 0 || g.orders > 0)) lines.push({ name: "공동구매", revenue: g.revenue, orders: g.orders });
+      // 폴바이스 영문몰(shop_no=2)
+      try {
+        const pg = (await getMallShopData(token, "paulvice", 2, { usdToKrw: USD_TO_KRW })).salesSummary.today;
+        if (pg.revenue > 0 || pg.orders > 0) lines.push({ name: "카페24(폴바이스 글로벌)", revenue: pg.revenue, orders: pg.orders });
+      } catch { /* 폴바이스 글로벌 실패 무시 */ }
     }
     // 카페24 해리엇 (라이브) — 국내몰(shop_no=1) + 글로벌 영문몰(shop_no=2)
     try {

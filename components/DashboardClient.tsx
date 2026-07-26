@@ -116,12 +116,13 @@ interface Props {
   cafe24Data: DashboardData | null;
   harriotCafe24Data?: DashboardData | null;
   harriotGlobalCafe24Data?: MultiChannelData | null;
+  paulviceGlobalCafe24Data?: MultiChannelData | null;
   isAuthenticated: boolean;
   apiError: string | null;
   now: string;
 }
 
-export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data = null, harriotGlobalCafe24Data = null, isAuthenticated, apiError, now }: Props) {
+export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data = null, harriotGlobalCafe24Data = null, paulviceGlobalCafe24Data = null, isAuthenticated, apiError, now }: Props) {
   const router = useRouter();
   const [activeChannel, setActiveChannel] = useState<ChannelId>("all");
   const [showUpload, setShowUpload]       = useState(false);
@@ -377,6 +378,12 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
     [harriotGlobalCafe24Data],
   );
 
+  // 폴바이스 카페24 영문몰(shop_no=2, paulvice.kr, USD→KRW)
+  const paulviceGlobalChannel: MultiChannelData = useMemo(
+    () => paulviceGlobalCafe24Data ?? EMPTY_CHANNEL_DATA,
+    [paulviceGlobalCafe24Data],
+  );
+
   // 실제 표시 데이터 (업로드 데이터가 없으면 0/빈 상태)
   const channelDataMap = useMemo<Record<UploadableChannel, MultiChannelData>>(() => {
     // 공동구매 = 엑셀 업로드(과거) + 카페24 라이브 공구 상품(226 등) 합산
@@ -397,12 +404,14 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
   // 채널 id → 표시 데이터 (cafe24/해리엇 cafe24 국내·글로벌은 라이브, 나머지는 업로드맵)
   const resolveChannel = (id: ChannelId): MultiChannelData =>
     id === "cafe24" ? cafe24Channel
+    : id === "cafe24_global" ? paulviceGlobalChannel
     : id === "cafe24_harriot" ? harriotCafe24Channel
     : id === "cafe24_harriot_global" ? harriotGlobalChannel
     : channelDataMap[id as UploadableChannel];
 
   const displayData: MultiChannelData = useMemo(() => {
     if (activeChannel === "cafe24") return cafe24Channel;
+    if (activeChannel === "cafe24_global") return paulviceGlobalChannel;
     if (activeChannel === "cafe24_harriot") return harriotCafe24Channel;
     if (activeChannel === "cafe24_harriot_global") return harriotGlobalChannel;
     if (activeChannel === "all") {
@@ -417,7 +426,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
     // 업로드 가능 채널
     return channelDataMap[activeChannel as UploadableChannel];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChannel, cafe24Channel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap, brandChannelIds]);
+  }, [activeChannel, cafe24Channel, paulviceGlobalChannel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap, brandChannelIds]);
 
   const companyChannels = useMemo(() => {
     const ids = Array.from(new Set(BRANDS.flatMap((b) => BRAND_CHANNELS[b.id]).filter((id) => id !== "all")));
@@ -427,7 +436,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
       return { channelId: id, name: meta?.name ?? id, color: meta?.color ?? "#71717a", data };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cafe24Channel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap]);
+  }, [cafe24Channel, paulviceGlobalChannel, harriotCafe24Channel, harriotGlobalChannel, channelDataMap]);
 
   const companyData = useMemo(() => {
     return mergeChannelData(companyChannels.map((ch) => ch.data));

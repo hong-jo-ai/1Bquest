@@ -20,6 +20,7 @@ export default async function Dashboard({ searchParams }: PageProps) {
   let data         = null; // 폴바이스 cafe24
   let harriotData  = null; // 해리엇 cafe24 국내몰(shop_no=1)
   let harriotGlobalData: MultiChannelData | null = null; // 해리엇 cafe24 글로벌 영문몰(shop_no=2)
+  let paulviceGlobalData: MultiChannelData | null = null; // 폴바이스 cafe24 영문몰(shop_no=2, paulvice.kr)
   let apiError: string | null = null;
 
   // 전사 KPI는 두 cafe24 몰(폴바이스+해리엇)을 모두 합산해야 하므로 둘 다 불러온다.
@@ -30,6 +31,12 @@ export default async function Dashboard({ searchParams }: PageProps) {
         data = await getDashboardData(token, "paulvice");
       } catch (e: unknown) {
         apiError = e instanceof Error ? e.message : "카페24 데이터를 불러오지 못했습니다.";
+      }
+      // 폴바이스 영문몰(shop_no=2, paulvice.kr) — 실패해도 국내몰/페이지에 영향 없음
+      try {
+        paulviceGlobalData = await getMallShopData(token, "paulvice", 2, { usdToKrw: USD_TO_KRW });
+      } catch (ge) {
+        console.warn("[dashboard] 폴바이스 글로벌(shop2) 로드 실패:", ge instanceof Error ? ge.message : ge);
       }
     } else {
       apiError = "카페24 토큰이 만료되었습니다. 재연결이 필요합니다.";
@@ -68,6 +75,7 @@ export default async function Dashboard({ searchParams }: PageProps) {
         cafe24Data={data}
         harriotCafe24Data={harriotData}
         harriotGlobalCafe24Data={harriotGlobalData}
+        paulviceGlobalCafe24Data={paulviceGlobalData}
         isAuthenticated={isAuthenticated}
         apiError={apiError}
         now={now}

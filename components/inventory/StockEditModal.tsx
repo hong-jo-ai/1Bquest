@@ -13,6 +13,7 @@ const CHANNEL_TEXT: Record<string, string> = {
   groupbuy: "text-amber-500",
   lotte_dutyfree: "text-red-500",
   shinsegae_dutyfree: "text-orange-700",
+  cafe24_global: "text-cyan-600",
   cafe24_harriot: "text-sky-600",
   cafe24_harriot_global: "text-teal-500",
   naver_smartstore: "text-green-500",

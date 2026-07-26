@@ -91,6 +91,16 @@ export async function runRevenueSnapshot(
     } catch (e) {
       console.error("[revenueSnapshot] cafe24 fetch 실패(paulvice):", (e as Error).message);
     }
+    // 폴바이스 카페24 영문몰(shop_no=2, paulvice.kr) — USD→KRW 환산.
+    try {
+      const gdata = await getMallShopData(cafe24Token, "paulvice", 2, { usdToKrw: USD_TO_KRW });
+      for (const d of gdata.dailyRevenue ?? [] as DailyData[]) {
+        if (!d.date || !Number.isFinite(d.revenue)) continue;
+        addEntry("paulvice", "cafe24_global", d.date, Math.round(d.revenue));
+      }
+    } catch (e) {
+      console.error("[revenueSnapshot] cafe24 글로벌 fetch 실패(paulvice shop2):", (e as Error).message);
+    }
   }
   // 해리엇 카페24 라이브 (국내몰 식스샵→카페24 이전) — harriot 브랜드 cafe24_harriot 채널로.
   if (harriotToken) {

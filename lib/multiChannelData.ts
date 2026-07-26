@@ -11,6 +11,7 @@ import type {
 export type ChannelId =
   | "all"
   | "cafe24"
+  | "cafe24_global"
   | "wconcept"
   | "musinsa"
   | "29cm"
@@ -53,7 +54,7 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
-  paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
+  paulvice: ["all", "cafe24", "cafe24_global", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
   harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore"],
 };
 
@@ -68,6 +69,7 @@ export interface ChannelMeta {
 export const CHANNELS: ChannelMeta[] = [
   { id: "all",      name: "전체",     color: "#7c3aed", bgColor: "bg-violet-600",   textColor: "text-violet-600"  },
   { id: "cafe24",   name: "카페24",   color: "#0ea5e9", bgColor: "bg-sky-500",      textColor: "text-sky-600"     },
+  { id: "cafe24_global", name: "카페24 글로벌", color: "#0891b2", bgColor: "bg-cyan-600",  textColor: "text-cyan-700"    },
   { id: "wconcept", name: "W컨셉",    color: "#e11d48", bgColor: "bg-rose-500",     textColor: "text-rose-600"    },
   { id: "musinsa",  name: "무신사",   color: "#2563eb", bgColor: "bg-blue-600",     textColor: "text-blue-600"    },
   { id: "29cm",     name: "29CM",     color: "#000000", bgColor: "bg-zinc-900",     textColor: "text-zinc-900"    },
