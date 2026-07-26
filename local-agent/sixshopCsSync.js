@@ -137,6 +137,13 @@ async function scrapeInquiries(log) {
 }
 
 (async () => {
+  // ⛔ 식스샵 CS 수집 영구 폐지(사장님 지시). 국내=카페24, 글로벌=카페24 영문몰(shop_no=2)로 일원화 —
+  //   국내·글로벌 CS 모두 카페24 인박스로 수집하므로 식스샵 스크레이핑은 재개하지 않는다.
+  //   (launchd com.paulvice.sixshop-cs 는 .disabled. 반품/문의 적재 엔드포인트는 W컨셉과 공유라 그대로 둠.)
+  if (process.env.SIXSHOP_CS_ENABLE !== "1") {
+    log("식스샵 CS 수집 폐지됨(국내+글로벌). 재개 안 함.");
+    return;
+  }
   log("=== 식스샵 CS 동기화 시작 ===");
   // 최신 export 확보 (실패 시 직전 export 사용)
   try { await refreshSixshopOutbound(); } catch (e) { log("export 갱신 실패(직전 export 사용): " + e.message); }

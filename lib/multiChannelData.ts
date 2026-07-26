@@ -18,10 +18,9 @@ export type ChannelId =
   | "kakao_gift"
   | "lotte_dutyfree"
   | "shinsegae_dutyfree"
-  | "sixshop"
   | "naver_smartstore"
-  | "sixshop_global"
-  | "cafe24_harriot";
+  | "cafe24_harriot"
+  | "cafe24_harriot_global";
 
 export type UploadableChannel =
   | "wconcept"
@@ -31,9 +30,7 @@ export type UploadableChannel =
   | "kakao_gift"
   | "lotte_dutyfree"
   | "shinsegae_dutyfree"
-  | "sixshop"
-  | "naver_smartstore"
-  | "sixshop_global";
+  | "naver_smartstore";
 
 export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "wconcept",
@@ -43,9 +40,7 @@ export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "kakao_gift",
   "lotte_dutyfree",
   "shinsegae_dutyfree",
-  "sixshop",
   "naver_smartstore",
-  "sixshop_global",
 ];
 
 // ── 브랜드 ─────────────────────────────────────────────────────────────────
@@ -59,7 +54,7 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
   paulvice: ["all", "cafe24", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
-  harriot:  ["all", "cafe24_harriot", "sixshop", "naver_smartstore", "sixshop_global"],
+  harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore"],
 };
 
 export interface ChannelMeta {
@@ -83,10 +78,9 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "shinsegae_dutyfree", name: "신세계면세점", color: "#7c2d12", bgColor: "bg-orange-900",  textColor: "text-orange-900"  },
 
   // 해리엇 채널
-  { id: "cafe24_harriot",   name: "카페24",         color: "#0284c7", bgColor: "bg-sky-600",     textColor: "text-sky-700"     },
-  { id: "sixshop",          name: "식스샵",         color: "#10b981", bgColor: "bg-emerald-500", textColor: "text-emerald-600" },
-  { id: "naver_smartstore", name: "네이버 스마트스토어", color: "#22c55e", bgColor: "bg-green-500",   textColor: "text-green-600"   },
-  { id: "sixshop_global",   name: "식스샵 글로벌",   color: "#0d9488", bgColor: "bg-teal-600",    textColor: "text-teal-600"    },
+  { id: "cafe24_harriot",        name: "카페24",             color: "#0284c7", bgColor: "bg-sky-600",     textColor: "text-sky-700"     },
+  { id: "cafe24_harriot_global", name: "카페24 글로벌",       color: "#0d9488", bgColor: "bg-teal-600",    textColor: "text-teal-600"    },
+  { id: "naver_smartstore",      name: "네이버 스마트스토어", color: "#22c55e", bgColor: "bg-green-500",   textColor: "text-green-600"   },
 ];
 
 export interface MultiChannelData {
@@ -154,15 +148,7 @@ export const kakaoGiftDummy: MultiChannelData = {
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
 };
 
-export const sixshopDummy: MultiChannelData = {
-  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
-  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
-};
 export const naverSmartstoreDummy: MultiChannelData = {
-  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
-  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
-};
-export const sixshopGlobalDummy: MultiChannelData = {
   salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
 };
@@ -193,9 +179,7 @@ export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   kakao_gift: kakaoGiftDummy,
   lotte_dutyfree: lotteDutyfreeDummy,
   shinsegae_dutyfree: shinsegaeDutyfreeDummy,
-  sixshop: sixshopDummy,
   naver_smartstore: naverSmartstoreDummy,
-  sixshop_global: sixshopGlobalDummy,
 };
 
 // ── 합산 유틸 ─────────────────────────────────────────────────────────────

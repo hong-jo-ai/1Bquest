@@ -10,7 +10,8 @@
  *   - 기존 (date, channel) 값은 새 값으로 덮어쓴다 (upload 재업로드 / kakao PO sync 결과 갱신 반영).
  */
 import { createClient } from "@supabase/supabase-js";
-import { getDashboardData, type DailyData } from "@/lib/cafe24Data";
+import { getDashboardData, getMallShopData, type DailyData } from "@/lib/cafe24Data";
+import { USD_TO_KRW } from "@/lib/finance/forex";
 import { upsertRevenueDays } from "@/lib/finance/revenueHistory";
 import { BRAND_CHANNELS, type Brand, type ChannelId } from "@/lib/multiChannelData";
 import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "@/lib/cafe24Historical";
@@ -101,6 +102,16 @@ export async function runRevenueSnapshot(
       }
     } catch (e) {
       console.error("[revenueSnapshot] cafe24 fetch 실패(harriot):", (e as Error).message);
+    }
+    // 해리엇 카페24 글로벌 영문몰(shop_no=2) — 식스샵 글로벌 대체. USD→KRW 환산.
+    try {
+      const gdata = await getMallShopData(harriotToken, "harriot", 2, { usdToKrw: USD_TO_KRW });
+      for (const d of gdata.dailyRevenue ?? [] as DailyData[]) {
+        if (!d.date || !Number.isFinite(d.revenue)) continue;
+        addEntry("harriot", "cafe24_harriot_global", d.date, Math.round(d.revenue));
+      }
+    } catch (e) {
+      console.error("[revenueSnapshot] cafe24 글로벌 fetch 실패(harriot shop2):", (e as Error).message);
     }
   }
 

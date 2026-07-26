@@ -54,6 +54,6 @@ export function parseSyncCommand(text: string): string | null {
   if (/w.?컨셉|wconcept|더블유/i.test(text)) return "wconcept";
   if (/무신사|musinsa/i.test(text)) return "musinsa";
   if (/29\s?cm|29씨엠|이십구씨엠|투에니/i.test(text)) return "29cm";
-  if (/식스샵|식스|sixshop|6shop/i.test(text)) return "sixshop"; // 국내+글로벌 둘 다 (runSixshopSync)
+  // 식스샵 주문수집 폐지(2026-07) — 해리엇 국내=카페24, 글로벌=카페24 영문몰(shop_no=2)로 이전.
   return null;
 }

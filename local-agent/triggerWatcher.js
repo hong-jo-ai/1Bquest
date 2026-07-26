@@ -62,7 +62,6 @@ function runSync(channel) {
   return new Promise((resolve) => {
     const script = channel === "wconcept" ? "runWconceptSync.js"
       : channel === "29cm" ? "runCm29Sync.js"
-      : channel === "sixshop" ? "runSixshopSync.js"
       : channel === "dutyfree" ? "dutyFreeProcess.js"
       : channel === "musinsa" ? "runMusinsaSync.js"
       : channel === "wconcept_ads" ? "wconceptAdsSync.js"

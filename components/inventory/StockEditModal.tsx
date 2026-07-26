@@ -13,9 +13,9 @@ const CHANNEL_TEXT: Record<string, string> = {
   groupbuy: "text-amber-500",
   lotte_dutyfree: "text-red-500",
   shinsegae_dutyfree: "text-orange-700",
-  sixshop: "text-emerald-500",
+  cafe24_harriot: "text-sky-600",
+  cafe24_harriot_global: "text-teal-500",
   naver_smartstore: "text-green-500",
-  sixshop_global: "text-teal-500",
 };
 
 function channelLabel(id: string): string {
