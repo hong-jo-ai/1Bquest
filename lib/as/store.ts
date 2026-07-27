@@ -1,6 +1,12 @@
 import { getCsSupabase } from "@/lib/cs/store";
 import type { CsBrandId } from "@/lib/cs/types";
-import type { AsRequest, AsDestination, AsStatus } from "./types";
+import type {
+  AsRequest,
+  AsDestination,
+  AsStatus,
+  AsRequestType,
+  AsRefundStatus,
+} from "./types";
 
 const TABLE = "as_requests";
 
@@ -18,6 +24,7 @@ function kstDateStamp(): string {
 
 export interface CreateAsInput {
   brand: CsBrandId;
+  requestType?: AsRequestType | null;
   customerName?: string | null;
   customerPhone?: string | null;
   customerAddress?: string | null;
@@ -51,6 +58,7 @@ export async function createAsRequest(input: CreateAsInput): Promise<AsRequest> 
     .insert({
       as_number,
       brand: input.brand,
+      request_type: input.requestType ?? "repair",
       customer_name: input.customerName ?? null,
       customer_phone: input.customerPhone ?? null,
       customer_address: input.customerAddress ?? null,
@@ -146,6 +154,7 @@ export async function getAsRequestsByIds(ids: string[]): Promise<AsRequest[]> {
 
 export interface UpdateAsInput {
   status?: AsStatus;
+  requestType?: AsRequestType;
   customerName?: string | null;
   customerPhone?: string | null;
   customerAddress?: string | null;
@@ -156,11 +165,16 @@ export interface UpdateAsInput {
   repairDetail?: string | null;
   repairCost?: number | null;
   returnTrackingNo?: string | null;
+  refundAmount?: number | null;
+  refundShippingDeduction?: number | null;
+  refundAccount?: string | null;
+  refundStatus?: AsRefundStatus | null;
   note?: string | null;
 }
 
 const FIELD_MAP: Record<keyof UpdateAsInput, string> = {
   status: "status",
+  requestType: "request_type",
   customerName: "customer_name",
   customerPhone: "customer_phone",
   customerAddress: "customer_address",
@@ -171,6 +185,10 @@ const FIELD_MAP: Record<keyof UpdateAsInput, string> = {
   repairDetail: "repair_detail",
   repairCost: "repair_cost",
   returnTrackingNo: "return_tracking_no",
+  refundAmount: "refund_amount",
+  refundShippingDeduction: "refund_shipping_deduction",
+  refundAccount: "refund_account",
+  refundStatus: "refund_status",
   note: "note",
 };
 
@@ -187,6 +205,12 @@ export async function updateAsRequest(
   // 발송완료로 전환되면 발송 시각 기록
   if (patch.status === "shipped") {
     fields.shipped_at = new Date().toISOString();
+  }
+  // 환불완료/대기 전환 시 환불 시각 기록·해제
+  if (patch.refundStatus === "done") {
+    fields.refunded_at = new Date().toISOString();
+  } else if (patch.refundStatus === "pending") {
+    fields.refunded_at = null;
   }
   if (Object.keys(fields).length === 0) {
     const { data } = await db.from(TABLE).select("*").eq("id", id).single();

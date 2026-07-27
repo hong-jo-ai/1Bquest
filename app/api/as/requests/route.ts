@@ -3,7 +3,7 @@ import {
   listAsRequests,
   countAsByStatus,
 } from "@/lib/as/store";
-import type { AsStatus, AsDestination } from "@/lib/as/types";
+import type { AsStatus, AsDestination, AsRequestType } from "@/lib/as/types";
 import type { CsBrandId } from "@/lib/cs/types";
 
 export const dynamic = "force-dynamic";
@@ -33,8 +33,11 @@ export async function POST(req: Request) {
     if (brand !== "paulvice" && brand !== "harriot") {
       return Response.json({ error: "brand 누락 또는 잘못됨" }, { status: 400 });
     }
+    const rt = body.requestType as AsRequestType | undefined;
     const request = await createAsRequest({
       brand,
+      requestType:
+        rt === "repair" || rt === "exchange" || rt === "refund" ? rt : "repair",
       customerName: body.customerName ?? null,
       customerPhone: body.customerPhone ?? null,
       customerAddress: body.customerAddress ?? null,

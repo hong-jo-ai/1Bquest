@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { X, Hash, Phone, User, Watch, MapPin, Home, Loader2 } from "lucide-react";
-import type { AsDestination } from "@/lib/as/types";
-import { AS_DESTINATION_LABEL } from "@/lib/as/types";
+import type { AsDestination, AsRequestType } from "@/lib/as/types";
+import { AS_DESTINATION_LABEL, AS_REQUEST_TYPE_LABEL } from "@/lib/as/types";
 import { BRAND_LABEL } from "@/lib/cs/types";
 import type { CsBrandId } from "@/lib/cs/types";
 
 export interface AsIntakeInitial {
   brand?: CsBrandId;
+  requestType?: AsRequestType;
   customerName?: string | null;
   customerPhone?: string | null;
   channel?: string | null;
@@ -32,6 +33,9 @@ export default function AsIntakeForm({
   onCreated: () => void;
 }) {
   const [brand, setBrand] = useState<CsBrandId>(initial?.brand ?? "paulvice");
+  const [requestType, setRequestType] = useState<AsRequestType>(
+    initial?.requestType ?? "repair"
+  );
   const [customerName, setCustomerName] = useState(initial?.customerName ?? "");
   const [customerPhone, setCustomerPhone] = useState(initial?.customerPhone ?? "");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -81,6 +85,7 @@ export default function AsIntakeForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brand,
+          requestType,
           customerName: customerName.trim() || null,
           customerPhone: customerPhone.trim() || null,
           customerAddress: customerAddress.trim() || null,
@@ -143,8 +148,39 @@ export default function AsIntakeForm({
             </div>
           </div>
 
+          <div>
+            <Label>처리유형 *</Label>
+            <div className="flex gap-1.5">
+              {(["repair", "exchange", "refund"] as AsRequestType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setRequestType(t)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                    requestType === t
+                      ? t === "refund"
+                        ? "bg-rose-600 text-white"
+                        : "bg-violet-600 text-white"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                  }`}
+                >
+                  {AS_REQUEST_TYPE_LABEL[t]}
+                </button>
+              ))}
+            </div>
+            {requestType === "refund" && (
+              <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                환불 건 — 접수 후 카드에서 환불액·배송비공제·환불계좌·환불완료를 처리합니다.
+              </div>
+            )}
+          </div>
+
           <Field label="모델  ★" value={model} onChange={setModel} icon={Watch} placeholder="예: 가양 실버" />
-          <Field label="증상  ★" value={symptom} onChange={setSymptom} placeholder="고객 표현 그대로 (예: 초침이 안 움직임)" />
+          <Field
+            label={requestType === "refund" ? "사유  ★" : "증상  ★"}
+            value={symptom}
+            onChange={setSymptom}
+            placeholder={requestType === "refund" ? "환불 사유 (예: 단순변심)" : "고객 표현 그대로 (예: 초침이 안 움직임)"}
+          />
           <Field label="고객명" value={customerName} onChange={setCustomerName} icon={User} />
           <Field label="연락처" value={customerPhone} onChange={setCustomerPhone} icon={Phone} inputMode="tel" />
           <Field label="반송 주소" value={customerAddress} onChange={setCustomerAddress} icon={Home} placeholder="송장 블라인드 처리 → 접수 때 받아두기 (도로명+상세주소)" />

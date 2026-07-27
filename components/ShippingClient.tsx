@@ -15,7 +15,20 @@ import {
   X,
   FileUp,
   CheckCircle2,
+  Wrench,
 } from "lucide-react";
+
+// 해리엇 AS 수리센터 (성북구) — "AS 수리센터 발송" 원클릭 접수용 고정 수취처.
+// 발송처(계약 공급지)에서 이 센터로 시계를 입고 보낼 때 사용.
+const AS_CENTER = {
+  name: "김종근",
+  mobile: "01037092386",
+  zip: "02775",
+  addr1: "서울특별시 성북구 화랑로37길 42 (장위동)",
+  addr2: "삼익상가 2층 206호",
+  prod: "해리엇 시계 AS",
+  msg: "해리엇 AS 입고",
+} as const;
 
 interface TrackScan {
   date?: string;
@@ -223,6 +236,50 @@ export default function ShippingClient() {
     }
   }
 
+  // 원클릭 — 해리엇 AS 수리센터(성북구)로 시계 입고 발송 접수
+  async function registerAsCenter() {
+    if (!confirm(`해리엇 AS 수리센터(${AS_CENTER.name} · 성북구)로 시계 발송 송장을 접수할까요?`)) return;
+    setBusy("as-center");
+    setError(null);
+    setNotice(null);
+    try {
+      // 접수마다 유니크한 참조번호(초 단위) — 같은 센터로 여러 건 보내도 중복 스킵 안 되게.
+      const order = `ASOUT-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
+      const res = await fetch("/api/postparcel/register-one", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "AS",
+          reqType: "1",
+          order,
+          name: AS_CENTER.name,
+          mobile: AS_CENTER.mobile,
+          zip: AS_CENTER.zip,
+          addr1: AS_CENTER.addr1,
+          addr2: AS_CENTER.addr2,
+          prod: AS_CENTER.prod,
+          qty: "1",
+          msg: AS_CENTER.msg,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "AS 수리센터 접수 실패");
+      setNotice("AS 수리센터 발송 접수 요청 — 처리 중…");
+      const job = await pollRegisterJob("/api/postparcel/register-one", data.jobId);
+      if (job.status === "error") throw new Error(job.error || "AS 수리센터 접수 실패");
+      const r = (job.result ?? {}) as { regiNo?: string; regipoNm?: string; price?: string | number };
+      const isTest = r.regiNo === "TESTREGINOAPI";
+      setNotice(
+        `${isTest ? "[테스트] " : ""}AS 수리센터 발송 접수 완료 — ${r.regipoNm ?? ""} ${r.price ? r.price + "원" : ""} (송장 ${r.regiNo ?? ""})`
+      );
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // 종추적조회 갱신
   async function refreshTracking() {
     setBusy("track");
@@ -364,6 +421,15 @@ export default function ShippingClient() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={registerAsCenter}
+            disabled={!!busy}
+            title={`${AS_CENTER.name} · ${AS_CENTER.addr1} ${AS_CENTER.addr2}로 해리엇 시계 AS 발송 접수`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+          >
+            {busy === "as-center" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+            AS 수리센터 발송
+          </button>
           <button
             onClick={() => setShowSingle(true)}
             disabled={!!busy}

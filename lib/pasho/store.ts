@@ -137,6 +137,13 @@ const SEED: PashoOrder[] = [
     lines: [{ variant: "브라운 가죽밴드 (로즈골드 버클)", qty: 300 }],
     note: "허앤쉬 2차 공구(8/13~8/17) 증정용 — 에끌라 골드 전용 + 미니엘 색상선택. 시계 생산분에 추가 주문. 위탁가공비 견적 미수령.",
   },
+  {
+    no: "P26-005", brand: "PV", model: "브라운 가죽밴드", code: "PVS-band-BR", type: "신규양산",
+    status: "생산중", consign: false, deposit: null, date: "2026-07-13",
+    unit: null, quoteTotal: null, depositAmt: null, quoteRef: null,
+    lines: [{ variant: "브라운 가죽밴드 (로즈골드 버클)", qty: 300 }],
+    note: "허앤쉬 2차 공구(8/13~8/17) 증정용 — 에끌라 골드 전용 + 미니엘 색상선택. 시계 생산분에 추가 주문. 위탁가공비 견적 미수령.",
+  },
 ];
 
 export async function getOrders(): Promise<PashoOrder[]> {

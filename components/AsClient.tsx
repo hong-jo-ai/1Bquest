@@ -21,11 +21,18 @@ import {
   Send,
 } from "lucide-react";
 import AsIntakeForm from "@/components/AsIntakeForm";
-import type { AsRequest, AsStatus } from "@/lib/as/types";
+import type {
+  AsRequest,
+  AsStatus,
+  AsRequestType,
+  AsRefundStatus,
+} from "@/lib/as/types";
 import {
   AS_STATUS_ORDER,
   AS_STATUS_LABEL,
   AS_DESTINATION_LABEL,
+  AS_REQUEST_TYPE_LABEL,
+  AS_REFUND_STATUS_LABEL,
 } from "@/lib/as/types";
 import { BRAND_LABEL } from "@/lib/cs/types";
 import type { CsBrandId } from "@/lib/cs/types";
@@ -40,6 +47,20 @@ const STATUS_STYLE: Record<AsStatus, string> = {
   notified: "bg-blue-600 text-white",
   shipped: "bg-emerald-500 text-white",
 };
+
+// 환불 건은 status 대신 refund_status 로 뱃지를 표시 (환불대기/환불완료)
+function badgeLabel(req: AsRequest): string {
+  if (req.request_type === "refund")
+    return req.refund_status === "done" ? "환불완료" : "환불대기";
+  return AS_STATUS_LABEL[req.status];
+}
+function badgeStyle(req: AsRequest): string {
+  if (req.request_type === "refund")
+    return req.refund_status === "done"
+      ? "bg-emerald-500 text-white"
+      : "bg-rose-500 text-white";
+  return STATUS_STYLE[req.status];
+}
 
 const BRAND_DOT: Record<CsBrandId, string> = {
   paulvice: "bg-fuchsia-500",
@@ -367,6 +388,17 @@ function AsCard({
             )}
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-zinc-500">
+            {req.request_type !== "repair" && (
+              <span
+                className={`px-1.5 rounded text-[10px] font-semibold ${
+                  req.request_type === "refund"
+                    ? "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                    : "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                }`}
+              >
+                {AS_REQUEST_TYPE_LABEL[req.request_type]}
+              </span>
+            )}
             <span className="font-mono">{req.as_number}</span>
             {req.customer_name && (
               <span className="flex items-center gap-0.5">
@@ -376,12 +408,22 @@ function AsCard({
             )}
             <span>· {fmtDate(req.created_at)} 접수</span>
           </div>
-          {req.repair_detail && (
-            <div className="mt-1 text-xs text-violet-600 dark:text-violet-400">
-              수리: {req.repair_detail}
-              {req.repair_cost != null && ` (${fmtCost(req.repair_cost)})`}
-            </div>
-          )}
+          {req.request_type === "refund"
+            ? (req.refund_amount != null || req.refund_account) && (
+                <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                  환불 {req.refund_amount != null ? fmtCost(req.refund_amount) : "(금액 미정)"}
+                  {req.refund_shipping_deduction
+                    ? ` · 배송비공제 ${fmtCost(req.refund_shipping_deduction)}`
+                    : ""}
+                  {req.refund_account ? ` · ${req.refund_account}` : ""}
+                </div>
+              )
+            : req.repair_detail && (
+                <div className="mt-1 text-xs text-violet-600 dark:text-violet-400">
+                  수리: {req.repair_detail}
+                  {req.repair_cost != null && ` (${fmtCost(req.repair_cost)})`}
+                </div>
+              )}
           {selectMode && !hasPhone && (
             <div className="mt-1 text-[11px] text-red-500">
               연락처 없음 — 문자 발송 불가 (펼쳐서 입력하세요)
@@ -390,9 +432,9 @@ function AsCard({
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span
-            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_STYLE[req.status]}`}
+            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${badgeStyle(req)}`}
           >
-            {AS_STATUS_LABEL[req.status]}
+            {badgeLabel(req)}
           </span>
           {!selectMode &&
             (expanded ? (
@@ -411,6 +453,7 @@ function AsCard({
 // ── 편집 패널 ────────────────────────────────────────────────────────
 function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
   const [status, setStatus] = useState<AsStatus>(req.status);
+  const [requestType, setRequestType] = useState<AsRequestType>(req.request_type);
   const [model, setModel] = useState(req.model ?? "");
   const [symptom, setSymptom] = useState(req.symptom ?? "");
   const [customerName, setCustomerName] = useState(req.customer_name ?? "");
@@ -421,6 +464,17 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
     req.repair_cost != null ? String(req.repair_cost) : ""
   );
   const [tracking, setTracking] = useState(req.return_tracking_no ?? "");
+  // 환불 처리
+  const [refundAmount, setRefundAmount] = useState(
+    req.refund_amount != null ? String(req.refund_amount) : ""
+  );
+  const [refundDeduction, setRefundDeduction] = useState(
+    req.refund_shipping_deduction != null ? String(req.refund_shipping_deduction) : ""
+  );
+  const [refundAccount, setRefundAccount] = useState(req.refund_account ?? "");
+  const [refundStatus, setRefundStatus] = useState<AsRefundStatus | "">(
+    req.refund_status ?? ""
+  );
   const [note, setNote] = useState(req.note ?? "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -514,23 +568,34 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
     setSaving(true);
     setErr(null);
     try {
+      const num = (s: string) => (s.trim() ? Number(s.replace(/[^0-9]/g, "")) : null);
+      const isRefund = requestType === "refund";
+      const body: Record<string, unknown> = {
+        requestType,
+        model: model.trim() || null,
+        symptom: symptom.trim() || null,
+        customerName: customerName.trim() || null,
+        customerPhone: customerPhone.trim() || null,
+        customerAddress: customerAddress.trim() || null,
+        note: note.trim() || null,
+      };
+      if (isRefund) {
+        // 환불 건: status 는 환불상태에 연동 (완료=shipped 종료버킷, 대기=intake)
+        body.status = refundStatus === "done" ? "shipped" : "intake";
+        body.refundAmount = num(refundAmount);
+        body.refundShippingDeduction = num(refundDeduction);
+        body.refundAccount = refundAccount.trim() || null;
+        body.refundStatus = refundStatus || null;
+      } else {
+        body.status = status;
+        body.repairDetail = repairDetail.trim() || null;
+        body.repairCost = num(repairCost);
+        body.returnTrackingNo = tracking.trim() || null;
+      }
       const res = await fetch(`/api/as/requests/${req.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          model: model.trim() || null,
-          symptom: symptom.trim() || null,
-          customerName: customerName.trim() || null,
-          customerPhone: customerPhone.trim() || null,
-          customerAddress: customerAddress.trim() || null,
-          repairDetail: repairDetail.trim() || null,
-          repairCost: repairCost.trim()
-            ? Number(repairCost.replace(/[^0-9]/g, ""))
-            : null,
-          returnTrackingNo: tracking.trim() || null,
-          note: note.trim() || null,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "저장 실패");
@@ -558,38 +623,66 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
     }
   }
 
+  const isRefund = requestType === "refund";
   return (
     <div className="px-4 pb-4 pt-1 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
       <div>
-        <Label>진행 상태</Label>
-        <div className="flex gap-1 flex-wrap">
-          {AS_STATUS_ORDER.map((s) => (
+        <Label>처리유형</Label>
+        <div className="flex gap-1.5">
+          {(["repair", "exchange", "refund"] as AsRequestType[]).map((t) => (
             <button
-              key={s}
-              onClick={() => setStatus(s)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                status === s
-                  ? STATUS_STYLE[s]
+              key={t}
+              onClick={() => setRequestType(t)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                requestType === t
+                  ? t === "refund"
+                    ? "bg-rose-600 text-white"
+                    : "bg-violet-600 text-white"
                   : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
               }`}
             >
-              {AS_STATUS_LABEL[s]}
+              {AS_REQUEST_TYPE_LABEL[t]}
             </button>
           ))}
         </div>
       </div>
 
+      {!isRefund && (
+        <div>
+          <Label>진행 상태</Label>
+          <div className="flex gap-1 flex-wrap">
+            {AS_STATUS_ORDER.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                  status === s
+                    ? STATUS_STYLE[s]
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                }`}
+              >
+                {AS_STATUS_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <Field label="모델" value={model} onChange={setModel} icon={Watch} />
-        <Field label="증상" value={symptom} onChange={setSymptom} />
+        <Field label={isRefund ? "사유" : "증상"} value={symptom} onChange={setSymptom} />
         <Field label="고객명" value={customerName} onChange={setCustomerName} icon={User} />
         <Field label="연락처" value={customerPhone} onChange={setCustomerPhone} icon={Phone} />
         <div className="col-span-2">
           <Field label="반송 주소" value={customerAddress} onChange={setCustomerAddress} icon={Home} />
         </div>
-        <Field label="수리내역" value={repairDetail} onChange={setRepairDetail} />
-        <Field label="비용(원)" value={repairCost} onChange={setRepairCost} inputMode="numeric" />
-        <Field label="반송 송장번호" value={tracking} onChange={setTracking} icon={Truck} />
+        {!isRefund && (
+          <>
+            <Field label="수리내역" value={repairDetail} onChange={setRepairDetail} />
+            <Field label="비용(원)" value={repairCost} onChange={setRepairCost} inputMode="numeric" />
+            <Field label="반송 송장번호" value={tracking} onChange={setTracking} icon={Truck} />
+          </>
+        )}
         <Field label="비고" value={note} onChange={setNote} />
       </div>
 
@@ -602,6 +695,49 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
         </div>
       )}
 
+      {/* 환불 처리 (환불 건 전용) */}
+      {isRefund && (
+        <div className="rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50/60 dark:bg-rose-950/30 p-2.5 space-y-2">
+          <div className="text-xs font-semibold text-rose-700 dark:text-rose-300">환불 처리</div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="환불액(원)" value={refundAmount} onChange={setRefundAmount} inputMode="numeric" />
+            <Field label="배송비 공제(원)" value={refundDeduction} onChange={setRefundDeduction} inputMode="numeric" />
+          </div>
+          <Field label="환불 계좌" value={refundAccount} onChange={setRefundAccount} />
+          <div>
+            <Label>환불 상태</Label>
+            <div className="flex gap-1.5">
+              {(["pending", "done"] as AsRefundStatus[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setRefundStatus(refundStatus === s ? "" : s)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${
+                    refundStatus === s
+                      ? s === "done"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-rose-500 text-white"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                  }`}
+                >
+                  {AS_REFUND_STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-zinc-400">
+            실제 송금은 수동입니다. ‘환불완료’로 저장하면 환불 시각이 기록되고 완료 처리됩니다.
+            {refundAmount.trim() && refundDeduction.trim()
+              ? ` · 결제금액 ${fmtCost(
+                  Number(refundAmount.replace(/[^0-9]/g, "")) +
+                    Number(refundDeduction.replace(/[^0-9]/g, ""))
+                )}`
+              : ""}
+          </p>
+        </div>
+      )}
+
+      {!isRefund && (
+        <>
       {/* 우체국 접수 (수리완료 → 고객 발송) */}
       <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/30 p-2.5 space-y-2">
         <div className="flex items-end gap-2">
@@ -680,6 +816,8 @@ function EditPanel({ req, onSaved }: { req: AsRequest; onSaved: () => void }) {
         )}
         {smsMsg && <div className="text-xs text-blue-700 dark:text-blue-300">{smsMsg}</div>}
       </div>
+        </>
+      )}
 
       {err && <div className="text-xs text-red-600">{err}</div>}
 

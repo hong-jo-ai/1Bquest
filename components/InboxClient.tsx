@@ -906,6 +906,14 @@ export default function InboxClient() {
         <AsIntakeForm
           initial={{
             brand: detail.thread.brand,
+            // 반품·취소 → 환불, 교환 → 교환, 그 외 → 수리(기본)로 처리유형 미리 선택
+            requestType:
+              detail.csReturn?.claim_type === "exchange"
+                ? "exchange"
+                : detail.csReturn?.claim_type === "return" ||
+                    detail.csReturn?.claim_type === "cancel"
+                  ? "refund"
+                  : undefined,
             // 반품/교환 카드는 고객명·상품명·주문번호가 csReturn 에 있음 → 미리 채움
             customerName: detail.csReturn?.customer_name ?? detail.thread.customer_name,
             channel: CHANNEL_LABEL[detail.thread.channel],
