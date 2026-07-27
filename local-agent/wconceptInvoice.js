@@ -42,7 +42,8 @@ async function dispatchInvoicesOnPage(page, log=console.log){
   const map=await fetchTrackMap(log);
   if(!map.size){ log("W컨셉 송장 대상 없음"); return {filled:0,saved:false}; }
   log(`W컨셉 송장입력 대상 ${map.size}건`);
-  page.on("dialog", d=>{ log("DIALOG: "+d.message().slice(0,80)); d.accept().catch(()=>{}); });
+  const dialogs=[];
+  page.on("dialog", d=>{ dialogs.push(d.message()); log("DIALOG: "+d.message().slice(0,80)); d.accept().catch(()=>{}); });
   await page.goto(READY,{waitUntil:"domcontentloaded",timeout:60000}).catch(()=>{});
   await sleep(3000);
   await page.locator('button:has-text("1개월"),a:has-text("1개월")').first().click({timeout:4000}).catch(()=>{});
@@ -54,7 +55,7 @@ async function dispatchInvoicesOnPage(page, log=console.log){
   // ⚠️ 다상품 주문 = 상품(행)별로 모두 채워야 함(한 주문이 N개 상품행). 한 주문의 첫 행만 채우면
   //    나머지 상품이 미출고로 남음(2026-07-01 버그수정, 29CM와 동일). seen 스킵 제거 — 같은 주문의
   //    모든 상품행에 같은 송장을 채운다. 배달완료 가드만 주문당 1회 체크(중복 API 방지).
-  let filled=0; const checkedDelivery=new Set(); const deliveredOrders=new Set(); const skipped=[];
+  let filled=0; const filledRows=[]; const checkedDelivery=new Set(); const deliveredOrders=new Set(); const skipped=[];
   for(let i=0;i<n;i++){
     const row=rows.nth(i);
     const orderNo=((await row.innerText().catch(()=>"")).match(/Z\d{6,}/)||[])[0]||"";
@@ -72,7 +73,7 @@ async function dispatchInvoicesOnPage(page, log=console.log){
     if(!(await inputEl.count())) inputEl=row.locator('input[type="text"]').first();
     await inputEl.fill(t).catch(async()=>{ await inputEl.click().catch(()=>{}); await inputEl.pressSequentially(t,{delay:30}).catch(()=>{}); });
     const v=await inputEl.inputValue().catch(()=>"");
-    if(v===t){ filled++; log(`  ${orderNo}: 우체국택배 + 송장 ${t} (행 ${i+1})`); }
+    if(v===t){ filled++; filledRows.push(i); log(`  ${orderNo}: 우체국택배 + 송장 ${t} (행 ${i+1})`); }
     await sleep(250);
   }
   if(skipped.length){
@@ -81,12 +82,33 @@ async function dispatchInvoicesOnPage(page, log=console.log){
     try{ await require("./telegramRelay").relayText(msg); }catch{}
   }
   if(!filled){ log("입력된 행 없음 — 저장 생략"); return {filled:0,saved:false,skipped}; }
-  // 행 체크 (Ready 체크박스 name=chkItem) — 필터 체크박스 제외하고 JS 전체 체크
-  await page.evaluate(()=>{ const cs=[...document.querySelectorAll('input[type=checkbox]')].filter(c=>!/all|chkall|res_sdate|exptcancel/i.test(c.id+c.name)); cs.forEach(c=>{ if(!c.checked){ c.checked=true; c.dispatchEvent(new Event('change',{bubbles:true})); } }); });
+  // ⚠️ 반드시 '채운 행만' 체크한다. 예전엔 페이지의 모든 체크박스를 켰는데(check-all), 매칭 안 되거나
+  //    아직 송장이 없는(=미접수) 행까지 함께 선택돼 W컨셉이 "택배사를 선택해 주십시오"로 저장을
+  //    '전체' 거부 → 채운 건까지 하나도 저장 안 됨. 그런데 코드는 saved:true를 반환해 조용히 성공으로
+  //    보고 → 매일 같은 주문이 상품준비중에 남고, 결국 배달완료 후 위 재입력차단 가드에 걸려 영구 미출고.
+  //    (plvekorea 백로그 누적 사고, 2026-07-21 수정.) 이제 입력 성공한 행의 체크박스만 켠다.
+  for(const idx of filledRows){
+    const cb=rows.nth(idx).locator('input[type=checkbox]').first();
+    if(await cb.count().catch(()=>0)){
+      await cb.check({timeout:2000}).catch(async()=>{ await cb.evaluate(el=>{ el.checked=true; el.dispatchEvent(new Event("change",{bubbles:true})); }).catch(()=>{}); });
+    }
+  }
   await sleep(400);
+  const dlgBefore=dialogs.length;
   await page.getByRole("button",{name:/송장번호 저장/}).first().click({timeout:8000}).catch(async()=>{ await page.locator('button:has-text("송장번호 저장")').first().click({timeout:6000}).catch(()=>{}); });
   await sleep(5000);
-  log(`W컨셉 송장입력 저장 시도 (${filled}건)`);
+  // 저장 결과 판정 — 성공 확인 다이얼로그("…처리되었습니다")가 떠야 실제 저장. "택배사를 선택"·"송장번호를
+  //   입력" 등 검증 다이얼로그가 뜨면 거부(=미저장)다. 조용한 성공보고 재발 방지: 미저장이면 텔레그램 알림.
+  const after=dialogs.slice(dlgBefore);
+  const ok=after.some(m=>/처리되었습니다|저장되었습니다|정상.*처리|완료되었습니다/.test(m));
+  const errMsg=after.find(m=>/택배사를?\s*선택|송장번호를?\s*입력|선택해\s*주|입력해\s*주/.test(m));
+  if(!ok){
+    const detail=errMsg?errMsg.replace(/\s+/g," ").slice(0,60):"성공 확인 다이얼로그 없음";
+    log(`❌ W컨셉 송장 저장 실패(${filled}건 미저장): ${detail}`);
+    try{ await require("./telegramRelay").relayText(`❌ W컨셉 송장 저장 실패 — ${filled}건 미저장\n사유: ${detail}\n→ 상품준비중 목록 수동 확인 필요`); }catch{}
+    return {filled, saved:false, skipped, error:detail};
+  }
+  log(`W컨셉 송장입력 저장 완료 (${filled}건)`);
   return {filled, saved:true, skipped};
 }
 

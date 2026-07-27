@@ -650,6 +650,15 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         chatReturnView = "home";
         contactBox.classList.add("saved");
         setTimeout(function () { openPanel("chat"); }, 250);
+      } else if (params.get("pv_open") === "1") {
+        // CS 문자(SMS)에 넣는 상담 링크 — 기존 대화가 없는 고객도 바로 채팅이 열리게 한다.
+        // 070(아톡)으로 오는 답장은 CS 인박스에 안 들어오므로, 회신 동선을 웹챗으로 모으는 용도.
+        // pv_n/pv_p 로 이름·연락처를 미리 채워 고객이 다시 입력하지 않게 함(대화는 첫 메시지 전송 시 생성 → 유령 스레드 없음).
+        var pn = (params.get("pv_n") || "").slice(0, 40);
+        var pp = (params.get("pv_p") || "").replace(/[^0-9-]/g, "").slice(0, 20);
+        if (pn && !nameInput.value) nameInput.value = pn;
+        if (pp && !phoneInput.value) phoneInput.value = pp;
+        setTimeout(function () { openPanel("chat"); }, 250);
       }
     } catch (_) {}
 

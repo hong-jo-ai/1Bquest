@@ -218,7 +218,19 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
       if (!ok) throw new Error(`W컨셉 ${acc.key}번 로그인/인증 실패`);
       files.push(await downloadWconcept(page, startDate, endDate, acc, log));
       // 같은 로그인 세션에서 송장입력까지(SMS 1회로 매출+송장). 실패해도 매출엔 영향 없게 guard.
-      if ((process.env.WC_DISPATCH_INVOICES ?? "1") !== "0") {
+      //
+      // ⚠️ 송장입력은 **오후 실행(15시 이후)에서만** 한다 — 매출 동기화는 12:39·17:04 두 번 돌지만,
+      // 점심에 송장을 넣어버리면 오후에 품절·출고불가를 발견해도 이미 "출고완료"라 되돌릴 수 없다.
+      // (2026-07-27 사고: 에끌라 오벌 골드 품절인데 12:39 실행이 전량 출고처리 → 대응 불가)
+      // 다른 채널 송장입력(dispatch17, 17:10)과 시점을 맞춰 오후에 문제 대응할 시간을 확보한다.
+      // 강제 실행 = WC_DISPATCH_INVOICES=1, 강제 차단 = 0.
+      const forceDispatch = process.env.WC_DISPATCH_INVOICES;
+      const hourKst = Number(
+        new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", hour: "2-digit", hour12: false }).format(new Date()),
+      );
+      const dispatchWindow = forceDispatch === "1" || (forceDispatch !== "0" && hourKst >= 15);
+      if (!dispatchWindow) log(`W컨셉 ${acc.key}번 송장입력 스킵 — 오후(15시 이후) 실행에서만 처리 (현재 ${hourKst}시)`);
+      if (dispatchWindow) {
         try {
           const { dispatchInvoicesOnPage } = require("./wconceptInvoice");
           const r = await dispatchInvoicesOnPage(page, log);
