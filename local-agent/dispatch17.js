@@ -12,6 +12,7 @@ const DASH = path.resolve(__dirname, "..");
 function loadEnv(p) { try { for (const l of fs.readFileSync(p, "utf8").split("\n")) { const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if (!m) continue; let v = m[2].trim().replace(/^["']|["']$/g, ""); if (!(m[1] in process.env)) process.env[m[1]] = v; } } catch {} }
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
+require("./shippingHold").checkOrExit("dispatch17(송장입력)");
 
 // 발송보류(held) — 최근 3일, 송장입력에서 제외된 건 요약
 async function heldSummary() {
@@ -46,14 +47,18 @@ async function main() {
   const r1 = await run("cafe24Dispatch.js", { CAFE24_DISPATCH_LIMIT: "300" }); // 옛 'submitted' 누적 + 주말백로그 대비(최신순 정렬과 함께)
   const r3 = await run("cm29Dispatch.js", {});       // 이메일 자동로그인(SMS X), 멱등
   const r5 = await run("musinsaDispatch.js", {});    // 배송출고처리 택배송장일괄입력→출고완료, 멱등(목록서 빠짐)
+  const r5g = await run("musinsaGlobalDispatch.js", {}); // 무신사 글로벌 출고요청(별도 메뉴) 송장 역입력, 후보 없으면 로그인 안 함
   const r2 = await run("kakaoGiftReplySend.js", {});
   const c24 = (r1.out.match(/성공 (\d+)/) || [,"?"])[1];
   const cm = /출고처리 시도 완료|✏️/.test(r3.out) ? (r3.out.match(/✏️/g)||[]).length+"건 처리" : (/대상 없음|행수: 0/.test(r3.out) ? "대상없음" : "확인필요");
   const mu = r5.out.match(/송장입력 완료: 성공 (\d+)/);
   const muMsg = mu ? (+mu[1] ? `성공 ${mu[1]}건` : "대상없음") : (/대상 없음|신규 송장 없음/.test(r5.out) ? "대상없음" : "확인필요");
+  const mug = r5g.out.match(/글로벌 송장입력 완료: 성공 (\d+)/);
+  const mugMsg = /글로벌 대상 없음/.test(r5g.out) ? "대상없음" : (mug ? (+mug[1] ? `성공 ${mug[1]}건` : "미처리") : "확인필요");
   const kakao = /카카오 회신 발송/.test(r2.out) ? "발송" : (/스킵|채울 건 없음|메일 없음/.test(r2.out) ? "스킵" : "확인필요");
   const held = await heldSummary();
-  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 무신사: ${muMsg}\n- 카카오선물: ${kakao}${held}`);
+  const mugLine = /글로벌 대상 없음/.test(r5g.out) ? "" : `\n- 무신사글로벌: ${mugMsg}`;
+  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 무신사: ${muMsg}${mugLine}\n- 카카오선물: ${kakao}${held}`);
   await require("./heartbeat").beat("dispatch17");
   log("=== 완료 ===");
 }

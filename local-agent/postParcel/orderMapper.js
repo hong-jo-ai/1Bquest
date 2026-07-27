@@ -53,7 +53,9 @@ function mapOutbound(row) {
     apprNo,
     payType: "1", // 선불
     reqType: "1", // 일반소포
-    officeSer,
+    // 반품(회수) 도착지를 특정 공급지로 보낼 때 order.officeSer 로 오버라이드(예: 수리센터 260722206).
+    // 미지정 시 기본 공급지(POSTPARCEL_OFFICE_SER = 서초 260133857).
+    officeSer: row.officeSer || officeSer,
     weight: DEFAULTS.weight(),
     volume: DEFAULTS.volume(),
     microYn: "N",

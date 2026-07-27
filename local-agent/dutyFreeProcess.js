@@ -34,8 +34,8 @@ const SHIPLOG_KEY = "paulwise:dutyfree-shipments:v1";
 const { registerSingle } = require("./postParcel/register");
 // 면세점 입고처(우체국 송장 받는분). zip 비우면 registerSingle 이 주소로 자동조회. 전화는 유선(032)→tel.
 const RECIPIENTS = {
-  신세계: { name: "신세계면세점", addr: "인천광역시 중구 자유무역로107번길 25(운서동) 은산물류창고내 신세계면세점(토산)", tel: "032-744-0866", zip: "" },
-  롯데: { name: "롯데면세점", addr: "인천광역시 중구 공항동로296번길 97-26(운서동) 한국면세점협회 제2통합물류창고 자유무역지역 E1부지", tel: "032-743-0444", zip: "" },
+  신세계: { name: "신세계면세점", addr: "인천광역시 중구 자유무역로107번길 25(운서동) 은산물류창고내 신세계면세점(토산)", tel: "032-744-0866", zip: "23257" },
+  롯데: { name: "롯데면세점", addr: "인천광역시 중구 공항동로296번길 97-26(운서동) 한국면세점협회 제2통합물류창고 자유무역지역 E1부지", tel: "032-743-0444", zip: "23257" },
 };
 
 function arg(name, def) { const i = process.argv.indexOf("--" + name); return i >= 0 ? (process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[i + 1] : true) : def; }

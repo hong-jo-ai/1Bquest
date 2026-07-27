@@ -73,16 +73,17 @@ async function sendToWebhook(text) {
 }
 
 // cafe24DepositConfirm.js 실행(브라우저 입금확인). 성공=stdout에 '입금확인 완료'.
-function runConfirm(orderId) {
+function runConfirm(orderId, mall) {
+  const args = [path.join(__dirname, "cafe24DepositConfirm.js"), orderId, "--confirm", "--mall", mall || "paulvice"];
   return new Promise((resolve) => {
-    execFile(process.execPath, [path.join(__dirname, "cafe24DepositConfirm.js"), orderId, "--confirm"],
+    execFile(process.execPath, args,
       { cwd: __dirname, env: process.env, timeout: 5 * 60000 },
       (err, stdout, stderr) => resolve({ ok: !err && /입금확인 완료/.test(stdout || ""), out: ((stdout || "") + (stderr || "")).slice(-500) }));
   });
 }
 
 // 입금확인 큐(bank_deposit_confirm:*) 비우기 — 서버(webhook/크론)가 HIGH 매칭 시 적재한 주문을
-// iMac에서 브라우저로 실제 '입금확인' 처리. 폴바이스만(해리엇 admin 미설정 → 수동 알림).
+// iMac에서 브라우저로 실제 '입금확인' 처리. 폴바이스+해리엇 모두(몰별 admin 크레덴셜).
 async function drainConfirmQueue(db) {
   const { data } = await db.from("kv_store").select("key,data").like("key", "bank_deposit_confirm:%");
   const jobs = (data || []).map((r) => ({ key: r.key, ...(r.data || {}) })).filter((j) => j.orderId);
@@ -90,22 +91,19 @@ async function drainConfirmQueue(db) {
   log(`입금확인 큐 ${jobs.length}건`);
   for (const j of jobs) {
     const won = Number(j.amount || 0).toLocaleString("ko-KR");
-    if (j.mall && j.mall !== "paulvice") {
-      await relayText(`💰 [${j.mall}] 입금확인 매칭 — 카페24에서 수동 확인 필요 (주문 ${j.orderId}, ${won}원 ${j.name || ""})`).catch(() => {});
-      await db.from("kv_store").delete().eq("key", j.key);
-      continue;
-    }
-    log(`입금확인 실행: ${j.orderId} (${won}원 ${j.name || ""})`);
-    const r = await runConfirm(j.orderId);
+    const mall = j.mall || "paulvice";
+    const tag = mall === "paulvice" ? "" : `[${mall}] `;
+    log(`입금확인 실행: ${tag}${j.orderId} (${won}원 ${j.name || ""})`);
+    const r = await runConfirm(j.orderId, mall);
     if (r.ok) {
       await db.from("kv_store").delete().eq("key", j.key);
-      await relayText(`✅ 입금확인 완료 — 주문 ${j.orderId} (${won}원 ${j.name || ""}) 카페24 입금완료 처리`).catch(() => {});
+      await relayText(`✅ 입금확인 완료 — ${tag}주문 ${j.orderId} (${won}원 ${j.name || ""}) 카페24 입금완료 처리`).catch(() => {});
       log("  ✅ 완료");
     } else {
       const attempts = (j.attempts || 0) + 1;
       if (attempts >= 3) {
         await db.from("kv_store").delete().eq("key", j.key);
-        await relayText(`⚠️ 입금확인 자동 실패(3회) — 주문 ${j.orderId} (${won}원) 카페24에서 수동 확인 필요`).catch(() => {});
+        await relayText(`⚠️ 입금확인 자동 실패(3회) — ${tag}주문 ${j.orderId} (${won}원) 카페24에서 수동 확인 필요`).catch(() => {});
         log(`  ⚠️ 3회 실패 — 포기. ${r.out.slice(-150)}`);
       } else {
         const { key, ...rest } = j;
@@ -148,11 +146,11 @@ async function main() {
       break;
     }
     processed++;
-    if (res.j && res.j.confirmed) confirmed += res.j.confirmed;
+    if (res.j && res.j.confirmQueued) confirmed += 1;
     if (res.j) {
       const tag = res.j.duplicate ? "중복" : res.j.skipped ? "비입금" :
-        (res.j.confirmed ? `자동확정 ${res.j.confirmed}건` :
-         res.j.confirmError ? `확정실패(${String(res.j.confirmError).slice(0, 60)})` :
+        (res.j.confirmQueued ? `자동확정 큐적재(${res.j.confirmQueued})` :
+         res.j.matchError ? `매칭오류(${String(res.j.matchError).slice(0, 60)})` :
          res.j.matched ? `매칭 ${res.j.matched}건(수동)` : "매칭없음");
       log(`  · ${(row.text || "").replace(/\n/g, " ").slice(0, 40)} → ${tag}`);
     }

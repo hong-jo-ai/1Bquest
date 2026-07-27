@@ -41,9 +41,12 @@ async function dispatchMall(sb, m, limit){
   const tk = await token(sb, m);
   const call = api(base, tk);
 
+  // ⚠️ 송장입력 후 pp status를 안 바꿔서(아래 주석) 옛 배송완료건도 계속 'submitted'로 남음.
+  //    → 최신순 정렬 필수: 안 그러면 limit이 옛 건(스킵대상)으로 차서 새 주문이 누락됨(2026-06-29 버그수정).
   const { data: ships } = await sb.from("pp_shipments").select("id,order_number,regi_no,status")
     .eq("channel",m.channel).eq("req_type","1").eq("is_test",false).eq("status","submitted")
-    .not("regi_no","is",null).neq("regi_no","TESTREGINOAPI").limit(limit);
+    .not("regi_no","is",null).neq("regi_no","TESTREGINOAPI")
+    .order("created_at",{ascending:false}).limit(limit);
   log(`[${m.channel}] 송장입력 대상 ${ships?.length||0}건 (limit ${limit})`);
 
   let ok=0, fail=0;

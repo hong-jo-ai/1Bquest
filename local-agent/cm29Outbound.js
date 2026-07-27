@@ -17,40 +17,76 @@ const SHIPMENT = `https://partner-order.29cm.co.kr/shipment?filter=TOTAL&orderSt
 // 결제완료(prepare) 큐 = 아직 배송준비 안 된 주문. 이 단계가 출고관리로 안 넘기면 수집기가 못 봄.
 const PREPARE = `https://partner-order.29cm.co.kr/prepare?filter=TOTAL&orderStartDate=${D90}&orderEndDate=${TODAY}&datePeriod=3&isGeneralItem=true&isBookingItem=true&page=1&size=200&sort=createdAt,DESC&isPrepareItem=false`;
 
+// 29CM 어드민 개편(2026-07-21) 후 온보딩 안내 레이어('모바일 리포트 받기' 토스트,
+// '인사이트 메뉴' 팝오버 등)가 액션 버튼 클릭을 가로챈다 → 작업 전에 전부 닫는다.
+// 모달(role=dialog)·테이블 내부의 '확인'은 건드리지 않음. 모달 열기 전에만 호출할 것.
+async function dismissOnboardingLayers(page, log) {
+  const n = await page.evaluate(() => {
+    let closed = 0;
+    for (const b of document.querySelectorAll("button")) {
+      if ((b.innerText || "").trim() !== "확인") continue;
+      let el = b, floating = false;
+      while (el && el !== document.body) {
+        if (el.getAttribute && (el.getAttribute("role") === "dialog" || el.tagName === "TABLE")) { floating = false; break; }
+        const pos = getComputedStyle(el).position;
+        if (pos === "fixed" || pos === "absolute") floating = true;
+        el = el.parentElement;
+      }
+      if (floating) { b.click(); closed++; }
+    }
+    return closed;
+  }).catch(() => 0);
+  if (n) log(`온보딩 안내 레이어 ${n}개 닫음`);
+}
+
+// 준비처리 실패 = 당일 출고 누락 직결. 로그에만 남기면 조용히 묻힌다(2026-07-21 실사고)
+// → 실패 지점마다 텔레그램 즉시 알림.
+async function alertCm29(log, msg) {
+  log(msg);
+  try { const { relayText } = require("./telegramRelay"); await relayText(msg); } catch {}
+}
+
 // 결제완료 주문을 전부 선택 → '상품준비처리'(쓰기) → 출고관리로 전환. 반환: 전환된 건수.
 // dryRun이면 대상 건수만 로깅하고 쓰기 안 함. CM29_PREPARE_MAX(기본 50) 초과 시 안전상 중단.
 async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
   await page.goto(PREPARE, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
   await sleep(6000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
+  await dismissOnboardingLayers(page, log);
   const rows = page.locator('tbody tr').filter({ has: page.locator('td') });
   const n = await page.locator('tbody input[type=checkbox]').count().catch(()=>0);
   log(`29CM 상품준비처리 대상(결제완료) ${n}건`);
   if (n === 0) { log("29CM 결제완료 0건 — 준비처리 스킵"); return 0; }
   const CAP = Number(process.env.CM29_PREPARE_MAX || 50);
-  if (n > CAP) { log(`⚠️ 준비처리 대상 ${n}건 > 상한 ${CAP} — 안전상 중단(수동 확인 요망)`); return 0; }
+  if (n > CAP) { await alertCm29(log, `🚨 29CM 준비처리 대상 ${n}건 > 상한 ${CAP} — 안전상 중단. 파트너센터 수동 확인 요망(미처리 시 당일 출고 누락)`); return 0; }
   if (dryRun) { log(`[dryRun] ${n}건 준비처리 대상 — 쓰기 생략`); return 0; }
 
-  // 체크박스: 행별 input[type=checkbox]를 직접 클릭해야 React 선택 상태가 켜짐(label/래퍼 클릭은 불안정 — 검증됨)
+  // 체크박스: 29CM 개편(2026-07-21)으로 input이 1×1px visibility:hidden 커스텀 컴포넌트가 됨.
+  // 물리 클릭(click/check)은 전부 실패하고 JS 네이티브 el.click()만 React 상태를 토글함(라이브 검증).
   for (let i = 0; i < n; i++) {
     const r = rows.nth(i);
     const input = r.locator('input[type=checkbox]').first();
-    await input.click({ timeout: 3000 }).catch(async () => { await r.locator('label').first().click({ timeout: 3000 }).catch(()=>{}); });
+    await input.evaluate((el) => { if (!el.checked) el.click(); }).catch(async () => {
+      await input.click({ timeout: 3000 }).catch(async () => { await r.locator('label').first().click({ timeout: 3000 }).catch(()=>{}); });
+    });
   }
   await sleep(800);
   let checked = await page.locator('tbody input[type=checkbox]:checked').count().catch(()=>0);
   log(`선택됨 ${checked}/${n}`);
-  if (checked === 0) { log("⚠️ 선택 반영 안 됨 — 준비처리 중단"); return 0; }
+  if (checked === 0) { await alertCm29(log, `🚨 29CM 상품준비처리 실패: 체크박스 선택 반영 안 됨(0/${n}) — 결제완료 ${n}건이 갇혀 당일 출고 누락 위험. 29CM UI 변경 의심, 수동 확인 요망`); return 0; }
 
   // 액션 버튼명 = '선택 상품 준비 처리'
   const prepBtn = page.getByRole("button", { name: /상품\s*준비\s*처리/ }).first();
-  if (!(await prepBtn.count())) { log("⚠️ '상품준비처리' 버튼 없음 — 중단"); return 0; }
-  await prepBtn.click({ timeout: 8000 }).catch(()=>{});
+  if (!(await prepBtn.count())) { await alertCm29(log, `🚨 29CM 상품준비처리 실패: '상품준비처리' 버튼 없음 — 결제완료 ${n}건 미전환. 29CM UI 변경 의심, 수동 확인 요망`); return 0; }
+  await prepBtn.click({ timeout: 5000 }).catch(async () => {
+    log("버튼 물리 클릭 실패 — JS 클릭 폴백");
+    await prepBtn.evaluate((el) => el.click()).catch(()=>{});
+  });
   log("상품준비처리 클릭");
   // 커스텀 확인모달(클래스 불안정 css-*) → role+텍스트 '확인'(exact)으로 클릭. 취소와 구분됨.
   const confirmBtn = page.getByRole("button", { name: "확인", exact: true }).first();
   try {
     await confirmBtn.waitFor({ state: "visible", timeout: 8000 });
-    await confirmBtn.click({ timeout: 5000 });
+    await confirmBtn.click({ timeout: 5000 }).catch(async () => { await confirmBtn.evaluate((el) => el.click()); });
     log("모달 '확인' 클릭");
   } catch { log("⚠️ 확인 모달 못 찾음 — 커밋 안 됐을 수 있음"); }
   await sleep(5000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
@@ -60,6 +96,7 @@ async function prepareCm29Orders(page, log, { dryRun = false } = {}) {
   await sleep(4000); await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(()=>{});
   const n2 = await page.locator('tbody input[type=checkbox]').count().catch(()=>0);
   log(`준비처리 후 결제완료 잔여 ${n2}건 (0이면 전량 전환)`);
+  if (n2 > 0) await alertCm29(log, `🚨 29CM 상품준비처리 미완: 결제완료 ${n2}건 잔존(대상 ${n}건 중) — 당일 출고 누락 위험, 파트너센터 수동 확인 요망`);
   return n - n2;
 }
 
@@ -155,7 +192,7 @@ async function getCm29OutboundRows(_opts, log) {
 }
 function phoneIsMobile(p){ return /^01[016789]/.test((p||"").replace(/\D/g,"")); }
 
-module.exports = { getCm29OutboundRows, getDetail, collectSerials, prepareCm29Orders };
+module.exports = { getCm29OutboundRows, getDetail, collectSerials, prepareCm29Orders, dismissOnboardingLayers };
 
 // 직접 실행 시 테스트
 if (require.main === module) {
