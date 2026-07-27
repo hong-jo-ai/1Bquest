@@ -111,9 +111,15 @@ async function syncSixshop(_opts, log) {
     if (!(await loginSixshop(page, log))) throw new Error("식스샵 로그인 실패");
 
     // 1) 국내 (harriotwatches) → sixshop  (프로필이 마지막 스토어를 기억하므로 명시적 전환)
-    await ensureStore(page, "harriotwatches", log);
-    const f1 = await exportOrders(page, "국내", log);
-    const r1 = await ingest(f1, "sixshop", log);
+    //    2026-06-29(월)부터 해리엇 국내몰 카페24 완전이전 → 식스샵 국내 수집 중단(글로벌만 유지).
+    let r1 = { rowCount: null };
+    if (new Date() < new Date("2026-06-29T00:00:00+09:00")) {
+      await ensureStore(page, "harriotwatches", log);
+      const f1 = await exportOrders(page, "국내", log);
+      r1 = await ingest(f1, "sixshop", log);
+    } else {
+      log("식스샵 국내(sixshop) 수집 중단 — 해리엇 국내몰 카페24 이전 완료(2026-06-29~). 글로벌만 수집.");
+    }
 
     // 2) 글로벌 (harriot_global, USD) → sixshop_global
     await ensureStore(page, env("SIXSHOP_GLOBAL_STORE") || "harriot_global", log);

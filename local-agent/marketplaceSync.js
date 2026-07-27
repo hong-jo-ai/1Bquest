@@ -419,16 +419,39 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
     const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads");
     fs.mkdirSync(dir, { recursive: true });
     // '엑셀 다운로드' 드롭다운 → '전체 주문 상품 다운로드'의 '받기' → 다운로드 사유 모달(사유 입력 → 확인)
+    // 투명 오버레이(빈 div.css-q4g6yb 등)가 클릭 지점을 덮어 "intercepts pointer events"로
+    //   다운로드 전체가 실패하던 사례(2026-07-21, 3건 미수집). ⚠️ force 클릭은 안 됨 — 대상(span)에
+    //   직접 디스패치돼 29CM 드롭다운이 안 열림. 대신 대상의 '클릭 지점 위에 쌓인 빈 오버레이'만
+    //   골라 pointer-events를 꺼서 '진짜' 클릭이 통과·드롭다운이 열리게 한다(elementsFromPoint).
+    const unblockAt = async (loc) => {
+      const box = await loc.boundingBox().catch(() => null);
+      if (!box) return;
+      await page.evaluate(({ x, y }) => {
+        for (const el of document.elementsFromPoint(x, y)) {
+          if (el.childElementCount === 0 && !el.textContent.trim()) { el.style.pointerEvents = "none"; continue; }
+          break; // 텍스트 있는 실제 컨트롤에 도달하면 멈춤
+        }
+      }, { x: box.x + box.width / 2, y: box.y + box.height / 2 }).catch(() => {});
+    };
+    const robustClick = async (loc) => {
+      await loc.scrollIntoViewIfNeeded().catch(() => {});
+      if (await loc.click({ timeout: 4000 }).then(() => true).catch(() => false)) return;
+      for (let i = 0; i < 3; i++) {
+        await unblockAt(loc);
+        if (await loc.click({ timeout: 4000 }).then(() => true).catch(() => false)) return;
+      }
+      await loc.click({ timeout: 6000 }); // 마지막 시도(에러를 그대로 던져 로그에 남김)
+    };
     const trigger = async () => {
-      await page.getByRole("button", { name: /엑셀 다운로드/ }).first().click({ timeout: 10000 })
-        .catch(async () => { await page.getByText("엑셀 다운로드", { exact: true }).first().click({ timeout: 10000 }); });
-      await sleep(1200);
-      await page.locator('xpath=//*[normalize-space()="전체 주문 상품 다운로드"]/following::button[normalize-space()="받기"][1]')
-        .first().click({ timeout: 8000 });
+      const excel = page.getByRole("button", { name: /엑셀 다운로드/ }).first();
+      if (await excel.count().catch(() => 0)) await robustClick(excel);
+      else await robustClick(page.getByText("엑셀 다운로드", { exact: true }).first());
+      await sleep(1500);
+      await robustClick(page.locator('xpath=//*[normalize-space()="전체 주문 상품 다운로드"]/following::button[normalize-space()="받기"][1]').first());
       await sleep(1500);
       await page.getByPlaceholder(/사유/).first().fill("월별 매출/정산 관리");
       await sleep(400);
-      await page.getByRole("button", { name: "확인" }).last().click({ timeout: 6000 });
+      await robustClick(page.getByRole("button", { name: "확인" }).last());
     };
     const [dl] = await Promise.all([
       page.waitForEvent("download", { timeout: 120000 }),
