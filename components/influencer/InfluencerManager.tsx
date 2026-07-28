@@ -44,7 +44,7 @@ function StatCard({ label, value, icon: Icon, color }: {
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 px-3 py-3 sm:px-5 sm:py-4 flex items-center gap-2.5 sm:gap-4">
       <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
         <Icon size={16} className="text-white sm:hidden" />
-        <Icon size={18} className="text-white hidden sm:block" />
+        <Icon size={18} className="text-white max-sm:hidden sm:block" />
       </div>
       <div className="min-w-0">
         <p className="text-lg sm:text-2xl font-bold text-zinc-800 dark:text-zinc-100">{value}</p>
@@ -190,8 +190,8 @@ export default function InfluencerManager() {
                 className="flex items-center gap-1.5 text-xs sm:text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-colors"
               >
                 <Download size={14} className="sm:hidden" />
-                <Download size={15} className="hidden sm:inline" />
-                <span className="hidden sm:inline">CSV 전체 다운 </span>
+                <Download size={15} className="max-sm:hidden sm:inline" />
+                <span className="max-sm:hidden sm:inline">CSV 전체 다운 </span>
                 <span className="sm:hidden">CSV </span>
                 ({confirmedCount})
               </button>
@@ -206,8 +206,8 @@ export default function InfluencerManager() {
               title="트래킹 시트 데이터 불러오기"
             >
               <FileSpreadsheet size={14} className="sm:hidden" />
-              <FileSpreadsheet size={15} className="hidden sm:inline" />
-              <span className="hidden sm:inline">시트 불러오기</span>
+              <FileSpreadsheet size={15} className="max-sm:hidden sm:inline" />
+              <span className="max-sm:hidden sm:inline">시트 불러오기</span>
               <span className="sm:hidden">시트</span>
             </button>
             {filtered.length > 0 && (
@@ -217,7 +217,7 @@ export default function InfluencerManager() {
                 title="현재 목록을 순서대로 빠르게 발송"
               >
                 <Send size={15} />
-                <span className="hidden sm:inline">순차 발송</span>
+                <span className="max-sm:hidden sm:inline">순차 발송</span>
                 <span className="sm:hidden">발송</span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white/20">
                   {filtered.length}
@@ -236,7 +236,7 @@ export default function InfluencerManager() {
               className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-700 hover:to-pink-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-all"
             >
               <Sparkles size={15} />
-              <span className="hidden sm:inline">AI 발굴</span>
+              <span className="max-sm:hidden sm:inline">AI 발굴</span>
               <span className="sm:hidden">발굴</span>
             </button>
             <button
@@ -244,7 +244,7 @@ export default function InfluencerManager() {
               className="flex items-center gap-1.5 text-xs sm:text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-colors"
             >
               <Plus size={15} />
-              <span className="hidden sm:inline">직접 추가</span>
+              <span className="max-sm:hidden sm:inline">직접 추가</span>
               <span className="sm:hidden">추가</span>
             </button>
           </div>

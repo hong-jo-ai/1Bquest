@@ -365,7 +365,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
             손익 분석 (P&amp;L)
           </h2>
-          <span className="text-xs text-zinc-500 ml-auto hidden sm:inline">
+          <span className="text-xs text-zinc-500 ml-auto max-sm:hidden sm:inline">
             {startDate} ~ {endDate} · {calc.days}일
           </span>
           <button
@@ -690,7 +690,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
         </div>
 
         {/* 데스크탑: 기존 표 (sm 이상) */}
-        <div className="hidden sm:block overflow-x-auto">
+        <div className="max-sm:hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800">

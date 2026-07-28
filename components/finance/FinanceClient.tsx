@@ -693,7 +693,7 @@ export default function FinanceClient() {
         </div>
 
         {/* 데스크탑: 표 */}
-        <div className="hidden sm:block overflow-x-auto">
+        <div className="max-sm:hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800">

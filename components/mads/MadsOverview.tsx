@@ -95,7 +95,7 @@ function AdLine({ ad, be }: { ad: AdRow; be: number }) {
         <div className="text-xs text-zinc-600 dark:text-zinc-300">₩{won(ad.spend7d)}<span className="text-zinc-400">/7일</span></div>
         <div className={`text-xs ${roasColor(ad.roas7d, be, ad.spend7d)}`}>ROAS {ad.spend7d > 0 ? ad.roas7d.toFixed(2) : "-"}</div>
       </div>
-      <div className="text-right shrink-0 tabular-nums hidden sm:block w-20">
+      <div className="text-right shrink-0 tabular-nums max-sm:hidden sm:block w-20">
         <div className="text-[11px] text-zinc-500">CTR {ad.ctrRecent !== null ? ad.ctrRecent.toFixed(2) + "%" : "-"}</div>
         <div className="text-[11px] text-zinc-500">빈도 {ad.frequency !== null ? ad.frequency.toFixed(1) : "-"}</div>
       </div>

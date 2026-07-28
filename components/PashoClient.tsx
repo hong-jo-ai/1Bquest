@@ -230,7 +230,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
 
         {/* table */}
         <div className="bg-white border border-[#E5E2DC] rounded-xl overflow-hidden">
-          <div className="hidden sm:grid grid-cols-[100px_1fr_84px_96px_92px_130px] gap-3 px-4 py-2.5 border-b border-[#E5E2DC] text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider">
+          <div className="max-sm:hidden sm:grid grid-cols-[100px_1fr_84px_96px_92px_130px] gap-3 px-4 py-2.5 border-b border-[#E5E2DC] text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider">
             <div>발주번호</div>
             <div>모델</div>
             <div>유형</div>
@@ -277,8 +277,8 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                 </div>
 
                 {/* ── 데스크탑 그리드 ── */}
-                <div className="hidden sm:block font-mono text-[13px] font-semibold tracking-tight tabular-nums">{o.no}</div>
-                <div className="hidden sm:block min-w-0">
+                <div className="max-sm:hidden sm:block font-mono text-[13px] font-semibold tracking-tight tabular-nums">{o.no}</div>
+                <div className="max-sm:hidden sm:block min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: b.accent }} />
                     <span className="font-semibold text-[14px] truncate">{o.model}</span>
@@ -291,8 +291,8 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                   </div>
                   <div className="font-mono text-[11px] text-[#9A968E] mt-0.5 ml-3.5">{o.code}</div>
                 </div>
-                <div className="hidden sm:block"><TypeBadge type={o.type} /></div>
-                <div className="hidden sm:block">
+                <div className="max-sm:hidden sm:block"><TypeBadge type={o.type} /></div>
+                <div className="max-sm:hidden sm:block">
                   <span className="tabular-nums font-semibold text-[14px]">{totQty.toLocaleString("ko-KR")}</span>
                   <span className="text-[11px] text-[#9A968E] ml-1">ea</span>
                   {rcv > 0 && (
@@ -301,7 +301,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                     </div>
                   )}
                 </div>
-                <div className="hidden sm:block min-w-0">
+                <div className="max-sm:hidden sm:block min-w-0">
                   <div className="text-[12.5px] font-semibold tabular-nums truncate" style={{ color: o.unit ? "#1C1B1A" : "#C9C5BD" }}>
                     {o.unit || "견적전"}
                   </div>
@@ -311,7 +311,7 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                     </span>
                   )}
                 </div>
-                <div className="hidden sm:block">
+                <div className="max-sm:hidden sm:block">
                   <StatusPill status={o.status} />
                   <StageTrack status={o.status} />
                 </div>

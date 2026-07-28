@@ -2261,13 +2261,13 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
                 className="flex items-center gap-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 px-3 sm:px-4 py-2 rounded-xl transition-colors"
               >
                 <Send size={13} />
-                <span className="hidden sm:inline">{brandConfig.name}</span> 연결
+                <span className="max-sm:hidden sm:inline">{brandConfig.name}</span> 연결
               </a>
             )}
             {metaConnected === true && (
               <>
                 <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded-lg">
-                  <Check size={10} /> <span className="hidden sm:inline">게시 가능</span>
+                  <Check size={10} /> <span className="max-sm:hidden sm:inline">게시 가능</span>
                 </span>
                 <a
                   href={`/api/threads/auth/login?brand=${brand}`}

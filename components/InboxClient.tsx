@@ -1102,7 +1102,7 @@ function ThreadDetailView({
               title="이 대화로 AS 수리 접수 만들기"
             >
               <Wrench size={12} />
-              <span className="hidden lg:inline">AS 접수</span>
+              <span className="max-lg:hidden lg:inline">AS 접수</span>
             </button>
             {thread.status === "archived" ? (
               <button
@@ -1111,7 +1111,7 @@ function ThreadDetailView({
                 title="보관 해제 — 미답변으로 되돌리기"
               >
                 <RotateCcw size={12} />
-                <span className="hidden lg:inline">되돌리기</span>
+                <span className="max-lg:hidden lg:inline">되돌리기</span>
               </button>
             ) : (
               <>
@@ -1121,7 +1121,7 @@ function ThreadDetailView({
                   title="이 스레드 보관 (CS 아님 학습)"
                 >
                   <Ban size={12} />
-                  <span className="hidden lg:inline">CS 아님</span>
+                  <span className="max-lg:hidden lg:inline">CS 아님</span>
                 </button>
                 <button
                   onClick={onBlockSender}
@@ -1130,7 +1130,7 @@ function ThreadDetailView({
                   aria-label="송신자 차단"
                 >
                   <Ban size={12} className="lg:hidden" />
-                  <span className="hidden lg:inline">송신자 차단</span>
+                  <span className="max-lg:hidden lg:inline">송신자 차단</span>
                 </button>
                 {thread.status === "resolved" ? (
                   <button
@@ -1139,7 +1139,7 @@ function ThreadDetailView({
                     title="해결 취소 — 미답변으로 되돌리기"
                   >
                     <RotateCcw size={12} />
-                    <span className="hidden lg:inline">해결 취소</span>
+                    <span className="max-lg:hidden lg:inline">해결 취소</span>
                   </button>
                 ) : (
                   <button
@@ -1148,7 +1148,7 @@ function ThreadDetailView({
                     title="해결됨으로 표시"
                   >
                     <Check size={12} />
-                    <span className="hidden lg:inline">해결됨</span>
+                    <span className="max-lg:hidden lg:inline">해결됨</span>
                   </button>
                 )}
               </>
