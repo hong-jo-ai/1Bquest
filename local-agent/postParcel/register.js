@@ -105,6 +105,14 @@ function groupByRecipient(rows) {
 /** 이미 수집된 행 배열을 접수 (12:30 빌더가 집계한 rows 재사용). opts: { skipExisting=true } */
 async function registerRows(rows, opts = {}) {
   const client = sb();
+  // 발송보류(품절·예약판매) 제외. collectOutboundRows 가 이미 걸러주지만, rows 를 직접 넘기는
+  // 경로(큐 batch·수동 재접수)로도 보류분이 새어나가지 않게 여기서 한 번 더 막는다.
+  if (opts.ignoreHold !== true) {
+    const held = await require("./holdOrders").holdKeys();
+    const kept = rows.filter((r) => !held.has(`${r.seller}|${r.order}`));
+    if (kept.length !== rows.length) log(`발송보류 ${rows.length - kept.length}행 제외`);
+    rows = kept;
+  }
   const grouped = groupByRecipient(rows);
   log(`접수 대상 ${rows.length}행 → ${grouped.length}건(수취인별 합배송) — test=${isTestMode()}`);
 

@@ -215,11 +215,16 @@ async function collectOutboundRows(){
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
   const all=[...cafe,...cm,...wc,...mg,...md];
   const done=await alreadyRegisteredKeys();
-  const rows=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
-  const skipped=all.length-rows.length;
+  const notDone=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
+  const skipped=all.length-notDone.length;
   if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
+  // 발송 보류(품절·예약판매) 제외 — 송장만 취소하면 다음 크론이 재접수하므로 여기서 막는다.
+  const held=await require("./postParcel/holdOrders").holdKeys();
+  const rows=notDone.filter(r=>!held.has(`${r.seller}|${r.order}`));
+  const heldCount=notDone.length-rows.length;
+  if(heldCount) log(`발송보류 ${heldCount}행 제외(품절·예약판매 대기)`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
+  return { rows, heldCount, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient };
@@ -228,14 +233,14 @@ module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipie
 async function main(){
   const today = new Date();
   const date = process.env.PO_DATE || `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}${String(today.getDate()).padStart(2,"0")}`;
-  const { rows, counts } = await collectOutboundRows();
+  const { rows, counts, heldCount } = await collectOutboundRows();
   // 합배송: 동일 수취인의 여러 주문/상품을 송장 1장(엑셀 1행)으로. 접수도 register.js 가 수취인별로 묶음.
   const ex = mergeByRecipient(rows);
   const aoa=[HEADER, ...ex.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
   const merged = rows.length - ex.length;
-  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})`;
+  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})${heldCount?`\n⏸ 발송보류 ${heldCount}행 제외 (품절·예약판매 대기)`:""}`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
   ex.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
