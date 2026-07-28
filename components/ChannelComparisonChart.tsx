@@ -67,6 +67,30 @@ function fmt(n: number) {
   return (n / 10_000).toFixed(0) + "만";
 }
 
+// 막대차트 X축 라벨 — 길고 여러 개라 가로로 두면 겹침. 짧게 줄이고 기울여 표기.
+const SHORT_LABELS: Record<string, string> = {
+  "카카오선물하기": "카카오",
+  "카페24 글로벌": "글로벌",
+  "롯데면세점": "롯데",
+  "신세계면세점": "신세계",
+};
+function shortLabel(name: string) {
+  return SHORT_LABELS[name] ?? name;
+}
+
+// 기울인 X축 눈금 라벨 (recharts 커스텀 tick)
+const AngledTick = ({ x, y, payload }: any) => (
+  <text
+    x={x}
+    y={y + 8}
+    textAnchor="end"
+    transform={`rotate(-40, ${x}, ${y + 8})`}
+    style={{ fontSize: 11, fill: "#a1a1aa" }}
+  >
+    {payload.value}
+  </text>
+);
+
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -95,7 +119,7 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
     const { revenue, orders } = sumRange(ch.data.dailyRevenue, range.since, range.until);
     return {
       name: ch.name,
-      shortName: ch.name === "카카오선물하기" ? "카카오선물" : ch.name,
+      shortName: shortLabel(ch.name),
       color: ch.color,
       revenue,
       orders,
@@ -164,10 +188,10 @@ export default function ChannelComparisonChart({ channels }: { channels: Channel
       </div>
 
       {/* 막대 차트 */}
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={chartData} margin={{ top: 16, right: 16, left: -20, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={chartData} margin={{ top: 16, right: 16, left: -20, bottom: 36 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-          <XAxis dataKey="shortName" interval={0} tick={{ fontSize: 11, fill: "#a1a1aa" }} tickLine={false} axisLine={false} />
+          <XAxis dataKey="shortName" interval={0} tick={<AngledTick />} height={44} tickLine={false} axisLine={false} />
           <YAxis
             tick={{ fontSize: 11, fill: "#a1a1aa" }}
             tickLine={false}
