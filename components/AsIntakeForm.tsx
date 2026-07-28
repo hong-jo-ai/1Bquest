@@ -189,7 +189,7 @@ export default function AsIntakeForm({
           <div>
             <Label>보낼 곳</Label>
             <div className="flex gap-1.5">
-              {(["office", "center"] as AsDestination[]).map((d) => (
+              {(["office", "center", "jewelry"] as AsDestination[]).map((d) => (
                 <button
                   key={d}
                   onClick={() => setDestination(destination === d ? "" : d)}

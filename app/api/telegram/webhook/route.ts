@@ -82,8 +82,10 @@ const CREATE_AS_REQUEST_TOOL = {
       },
       destination: {
         type: "string",
-        enum: ["office", "center"],
-        description: "간단 배터리/줄 조정 등 사무실 처리면 office, 수리센터 입고 필요하면 center. 불명확하면 생략.",
+        enum: ["office", "center", "jewelry"],
+        description:
+          "주얼리(팔찌·목걸이·반지·귀걸이)면 무조건 jewelry — 시계 수리센터는 주얼리를 못 고친다. " +
+          "시계 중 간단 배터리/줄 조정 등 사무실 처리면 office, 수리센터 입고 필요하면 center. 불명확하면 생략.",
       },
       note: {
         type: "string",
@@ -207,23 +209,33 @@ function nullableText(raw: unknown): string | null {
   return value ? value : null;
 }
 
+// 주얼리 판별 — 모델명만 봐도 시계가 아닌 게 확실한 품목.
+const JEWELRY_MODEL_RE = /팔찌|목걸이|반지|귀걸이|주얼리|테니스|참(?:\s|$)|초커|펜던트|이어링|브레이슬릿/;
+
 function normalizeAsDestination(raw: unknown): CreateAsInput["destination"] {
   const value = String(raw ?? "").toLowerCase();
+  // 주얼리 판정이 먼저 — "입고"·"센터" 같은 말이 섞여도 시계 수리센터로 새지 않게.
+  if (value === "jewelry" || /주얼리|나비스트|팔찌|목걸이|반지|귀걸이/.test(value)) return "jewelry";
   if (value === "office" || /사무실|간단|배터리|줄|스트랩/.test(value)) return "office";
   if (value === "center" || /센터|수리센터|성북|입고/.test(value)) return "center";
   return null;
 }
 
 function normalizeAsArgs(args: CreateAsInput): CreateAsInput {
+  const model = nullableText(args.model);
+  let destination = normalizeAsDestination(args.destination);
+  // 모델명이 주얼리면 회송지를 강제 교정한다. 시계 수리센터(성북구)는 주얼리를 못 고쳐서,
+  // 잘못 잡히면 고객이 엉뚱한 곳으로 물건을 보내게 된다. (AS-260728-001 사례)
+  if (model && JEWELRY_MODEL_RE.test(model)) destination = "jewelry";
   return {
     brand: normalizeBrand(args.brand),
     customerName: nullableText(args.customerName),
     customerPhone: nullableText(args.customerPhone),
     customerAddress: nullableText(args.customerAddress),
     channel: nullableText(args.channel) ?? "텔레그램",
-    model: nullableText(args.model),
+    model,
     symptom: nullableText(args.symptom),
-    destination: normalizeAsDestination(args.destination),
+    destination,
     note: nullableText(args.note),
     csThreadId: null,
   };

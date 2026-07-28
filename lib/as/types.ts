@@ -7,7 +7,8 @@ export type AsStatus =
   | "notified"   // 비용·내역 안내완료
   | "shipped";   // 발송완료
 
-export type AsDestination = "office" | "center";
+// office/center 는 시계 전용. 주얼리(팔찌·목걸이·반지·귀걸이)는 공급처 나비스트로 간다.
+export type AsDestination = "office" | "center" | "jewelry";
 
 // 처리유형: 수리/교환은 재발송(기존 흐름), 환불은 송금 흐름
 export type AsRequestType = "repair" | "exchange" | "refund";
@@ -63,6 +64,26 @@ export const AS_STATUS_LABEL: Record<AsStatus, string> = {
 export const AS_DESTINATION_LABEL: Record<AsDestination, string> = {
   office: "사무실 (배터리 등 간단)",
   center: "수리센터 (성북구)",
+  jewelry: "주얼리 (나비스트·중구)",
+};
+
+/** AS 회송지 실주소 — 고객 안내문에 그대로 쓰는 값. */
+export const AS_DESTINATION_ADDRESS: Record<AsDestination, { recipient: string; addr: string; tel: string }> = {
+  office: {
+    recipient: "[브랜드명] AS센터",
+    addr: "경기도 용인시 기흥구 중부대로 184 힉스유타워 717-2",
+    tel: "070-4571-4944",
+  },
+  center: {
+    recipient: "[브랜드명] AS",
+    addr: "서울특별시 성북구 화랑로37길 42(장위동) 삼익상가 2층 206호",
+    tel: "010-3709-2386",
+  },
+  jewelry: {
+    recipient: "나비스트",
+    addr: "서울시 중구 퇴계로4길 38 영우빌딩 #202",
+    tel: "02-773-1244",
+  },
 };
 
 export const AS_REQUEST_TYPE_LABEL: Record<AsRequestType, string> = {
