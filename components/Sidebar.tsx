@@ -346,9 +346,12 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* 데스크톱 사이드바 */}
+      {/* 데스크톱 사이드바.
+          max-md:hidden ← 원래 "hidden md:flex" 였으나, 빌드된 CSS에서 .hidden 이
+          .md\:flex 를 이겨 데스크톱에서도 사이드바가 통째로 사라졌다(2026-07-28).
+          두 규칙의 미디어 범위가 겹치지 않게 분리해 순서에 의존하지 않도록 한다. */}
       <aside
-        className={`hidden md:flex ${
+        className={`max-md:hidden md:flex ${
           collapsed ? "w-16" : "w-64"
         } flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 flex-col transition-all duration-200 h-screen sticky top-0`}
       >

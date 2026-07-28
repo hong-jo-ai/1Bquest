@@ -2271,7 +2271,7 @@ export default function ThreadsStudio({ initialBrand = "paulvice" }: { initialBr
                 </span>
                 <a
                   href={`/api/threads/auth/login?brand=${brand}`}
-                  className="hidden sm:flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  className="max-sm:hidden sm:flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
                 >
                   <RefreshCw size={10} /> 재인증
                 </a>

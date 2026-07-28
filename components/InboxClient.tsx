@@ -674,7 +674,7 @@ export default function InboxClient() {
       {/* ════════════════════════════════════════════════════════════
           데스크톱 (≥md): 기존 3컬럼 레이아웃
           ════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex h-[calc(100vh-56px)] bg-zinc-50 dark:bg-zinc-950">
+      <div className="max-md:hidden md:flex h-[calc(100vh-56px)] bg-zinc-50 dark:bg-zinc-950">
       {/* ── 좌측 사이드바: 필터 ───────────────────────────────────── */}
       <aside className="w-48 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
         <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">

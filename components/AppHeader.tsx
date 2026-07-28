@@ -19,7 +19,8 @@ export default async function AppHeader({ isAuthenticated, refreshHref }: Props)
   ];
 
   return (
-    <header className="hidden md:block sticky top-0 z-10 border-b border-zinc-200/70 bg-white/85 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+    // max-md:hidden — "hidden md:block" 은 .hidden 이 이겨 데스크톱에서 사라짐(2026-07-28)
+    <header className="max-md:hidden md:block sticky top-0 z-10 border-b border-zinc-200/70 bg-white/85 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
       <div className="relative pl-6 pr-16 py-3 flex items-center justify-end gap-2">
         {/* 카페24 — 폴바이스/해리엇 각각 연결·재연결 */}
         {malls.map((m) => (
