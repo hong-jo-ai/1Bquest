@@ -208,7 +208,9 @@ export default function InventoryManager() {
 
     const [productsRes, salesRes, uploadsRes, skuMapRes] = await Promise.allSettled([
       fetch(`/api/cafe24/products?brand=${brand}`),
-      fetch(`/api/cafe24/data?brand=${brand}`),
+      // 판매수량은 "누적"(입고일 이후 전 주문)을 써야 정확 — 과거엔 이번달 TOP10 만 써서
+      // TOP10 밖 상품이 유령재고로 뜨고 매월 리셋되는 버그가 있었음 (2026-07-29 수정).
+      fetch(`/api/cafe24/sold-cumulative?brand=${brand}`),
       fetch("/api/profit/channel-uploads"),
       fetch(`/api/inventory/sku-map?brand=${brand}`),
     ]);
@@ -225,7 +227,9 @@ export default function InventoryManager() {
     if (cafe24List.length === 0) { cafe24List = loadProductsCache(); setIsConnected(false); }
     if (salesRes.status === "fulfilled" && salesRes.value.ok) {
       const data = await salesRes.value.json();
-      cafe24Sales = (data.topProducts ?? []).map((p: any) => ({ sku: p.sku, sold: p.sold }));
+      // { ok, since, computedAt, soldBySku: { [sku]: 누적판매 } } → 전 SKU 반영(TOP10 제한 없음)
+      const soldBySku: Record<string, number> = data.soldBySku ?? {};
+      cafe24Sales = Object.entries(soldBySku).map(([sku, sold]) => ({ sku, sold: Number(sold) || 0 }));
     }
     if (uploadsRes.status === "fulfilled" && uploadsRes.value.ok) {
       const j = await uploadsRes.value.json();
