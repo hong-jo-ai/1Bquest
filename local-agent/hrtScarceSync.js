@@ -1,8 +1,9 @@
 /**
  * 품절임박 배지 + SOLD OUT 테이프 자동 동기화 — 해리엇 + 폴바이스 (iMac launchd, 매일 10:30·16:30)
  *
- * [해리엇] harriotkorea 전 상품 재고 → /skin4/js/hrt_scarce.js SFTP 업로드
- *   (스킨 common.js 가 로드해 배지·테이프 표시. 임계치: ≤10)
+ * [해리엇] harriotkorea 전 상품 재고 → Supabase review-media/hrt/hrt_scarce.js(국문)·
+ *   hrt_scarce_en.js(영문) 업로드. 스킨은 공개 URL 을 <script src> 로 로드(폴바이스와 동일,
+ *   SFTP 불필요 — 7일 비번만료 반복 해소). 로더 최초 설치=_hrtLoaderSwap.js(1회). 임계치 ≤10.
  * [폴바이스] icaruse2000 전 상품 재고 → Supabase Storage review-media/pv/pv_badge.js 업로드
  *   (스킨 layout 의 한 줄 로더가 로드. 로직+데이터 일체형 — FTP 불필요.
  *    임계치 차등: 시계 ≤10, 그 외(주얼리·스트랩 등) ≤3. 사장님 확정 2026-07-17)
@@ -157,40 +158,25 @@ async function syncHarriot() {
 
   const mkData = (o) => "window.HRT_SCARCE_DATA=" + JSON.stringify({ generatedAt: new Date().toISOString(), threshold: HRT_THRESHOLD, items: o.items, soldout: o.soldout }) + ";\n";
   const dataKr = mkData(kr), dataEn = mkData(en);
-  const body =
-    "/* 자동 생성 — local-agent/hrtScarceSync.js (수동 편집 금지) */\n" +
-    dataKr + PDP_ADDON;
-  const Client = require("ssh2-sftp-client");
-  const s = new Client();
-  await s.connect({
-    host: "ecimg-ftp-c01.cafe24img.com", port: 8006,
-    username: HRT_MALL, password: process.env.HARRIOT_SFTP_PW, readyTimeout: 20000,
-  });
-  await s.put(Buffer.from(body, "utf8"), "/skin4/js/hrt_scarce.js");
-  // 영문몰(skin5)엔 외부 로더 대신 layout에 인라인 주입(스킨JS URL이 CDN이라 로더 까다로움).
-  // ⚠️skin5는 페이지그룹(상세=layout, 홈리스트=layout2, 홈=main, 정적=sub …)마다 다른 마스터
-  // 레이아웃을 쓴다. 하나만 주입하면 일부 페이지 리본 누락 → <html>+</body> 가진 마스터를
-  // 전부 자동탐색해 주입(2026-07-23: layout.html만 주입돼 리스트·홈 리본 누락 수정, 향후 레이아웃도 자동커버).
-  const block = `<!--HRT_SCARCE_EN--><script>${dataEn}${PDP_ADDON_EN}</script><!--/HRT_SCARCE_EN-->`;
-  const re = /<!--HRT_SCARCE_EN-->[\s\S]*?<!--\/HRT_SCARCE_EN-->/;
-  const injected = [];
-  try {
-    const dir = "/skin5/layout/basic";
-    const files = (await s.list(dir)).filter((f) => /\.html?$/i.test(f.name));
-    for (const f of files) {
-      const F5 = `${dir}/${f.name}`;
-      try {
-        let l5 = (await s.get(F5)).toString("utf8");
-        if (!/<html/i.test(l5) || !/<\/body>/i.test(l5)) continue; // 마스터 레이아웃만
-        l5 = re.test(l5) ? l5.replace(re, block) : l5.replace(/<\/body>/i, block + "\n</body>");
-        await s.put(Buffer.from(l5, "utf8"), F5);
-        injected.push(f.name);
-      } catch (e) { log(`[해리엇] ${f.name} 주입 실패(무시): ${e.message}`, "warn"); }
-    }
-  } catch (e) { log(`[해리엇] skin5 레이아웃 목록 실패(무시): ${e.message}`, "warn"); }
-  log(`[해리엇] 영문몰 리본 주입: ${injected.join(", ")}`);
-  await s.end();
-  log(`[해리엇] 업로드 완료 (${body.length}B)`);
+  // 데이터+로직 일체형 번들을 Supabase Storage 에 올리고, 스킨은 공개 URL 을 <script src> 로
+  // 로드한다(폴바이스와 동일 방식). → 카페24 SFTP 불필요 = 7일 비번만료 반복문제 해소.
+  //   국문(skin4): /skin4/js/hrt_scarce.js 는 Supabase 를 부르는 로더 스텁(1회 설치, 이후 불변)
+  //   영문(skin5): 각 마스터 레이아웃에 <script src=hrt_scarce_en.js>(1회 설치)
+  //   최초 로더 설치는 _hrtLoaderSwap.js (1회, SFTP). 이후 본 크론은 Supabase 만 갱신.
+  const HDR = "/* 자동 생성 — local-agent/hrtScarceSync.js (수동 편집 금지) */\n";
+  const bodyKr = HDR + dataKr + PDP_ADDON;
+  const bodyEn = HDR + dataEn + PDP_ADDON_EN;
+  // 업로드 전 문법 검증 — 이스케이프 실수로 깨진 스크립트 발행 방지
+  for (const [nm, js] of [["hrt_scarce.js", bodyKr], ["hrt_scarce_en.js", bodyEn]]) {
+    try { new Function(js); } catch (e) { throw new Error(`${nm} 생성물 문법 오류: ` + e.message); }
+  }
+  for (const [nm, js] of [["hrt/hrt_scarce.js", bodyKr], ["hrt/hrt_scarce_en.js", bodyEn]]) {
+    const { error } = await sb.storage.from("review-media")
+      .upload(nm, Buffer.from(js, "utf8"),
+        { contentType: "application/javascript; charset=utf-8", upsert: true, cacheControl: "600" });
+    if (error) throw new Error(`해리엇 storage 업로드 실패(${nm}): ` + error.message);
+  }
+  log(`[해리엇] Supabase 업로드 완료 (국문 ${bodyKr.length}B / 영문 ${bodyEn.length}B)`);
   return { scarce: nos.length, soldout: soldNos.length };
 }
 
