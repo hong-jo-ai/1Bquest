@@ -100,7 +100,7 @@ export async function callReadTool(
       const inv = await loadInventoryFromStore(brand);
       const rows = Object.entries(inv)
         .map(([sku, e]) => {
-          const en = e as Record<string, unknown>;
+          const en = e as unknown as Record<string, unknown>;
           const qty = Number(en.current ?? en.qty ?? en.stock ?? en.available ?? NaN);
           const nm = String(en.name ?? en.productName ?? sku);
           return { sku, nm, qty };
