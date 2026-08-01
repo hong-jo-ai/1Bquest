@@ -15,7 +15,7 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
-      campaignId?: string; adsetId?: string; adId?: string; status?: string; dailyBudget?: number;
+      campaignId?: string; adsetId?: string; adId?: string; status?: string; dailyBudget?: number; endTime?: string;
     };
     const campaignId = body.campaignId;
     if (!campaignId && !body.adsetId && !body.adId) {
@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
       const budget = Number(body.dailyBudget);
       if (Number.isFinite(budget) && budget > 0) patch.daily_budget = String(Math.round(budget));
       if (body.status) patch.status = body.status.toUpperCase();
-      if (!Object.keys(patch).length) return NextResponse.json({ ok: false, error: "status 또는 dailyBudget 필요" }, { status: 400 });
+      // 종료일(end_time) 연장/재개 — 일정 종료("완료됨")된 광고세트를 되살릴 때. ISO8601, 미래시각.
+      if (body.endTime) patch.end_time = body.endTime;
+      if (!Object.keys(patch).length) return NextResponse.json({ ok: false, error: "status / dailyBudget / endTime 중 하나 필요" }, { status: 400 });
       await metaPost(`/${body.adsetId}`, token, patch);
-      const after = (await metaGet(`/${body.adsetId}`, token, { fields: "id,name,status,daily_budget" })) as Record<string, unknown>;
+      const after = (await metaGet(`/${body.adsetId}`, token, { fields: "id,name,status,daily_budget,end_time" })) as Record<string, unknown>;
       return NextResponse.json({ ok: true, adsetId: body.adsetId, adset: after });
     }
 
