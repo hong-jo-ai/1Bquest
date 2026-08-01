@@ -20,6 +20,7 @@ import {
   ADD_TODAY_TASK_TOOL,
   type AddTaskArgs,
 } from "@/lib/todayHub/addTask";
+import { READ_TOOLS, READ_TOOL_NAMES, callReadTool } from "@/lib/mcp/dashboardTools";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -40,7 +41,7 @@ function authOk(req: NextRequest): boolean {
   return false;
 }
 
-const TOOLS = [REGISTER_INFLUENCER_TOOL, ADD_TODAY_TASK_TOOL];
+const TOOLS = [REGISTER_INFLUENCER_TOOL, ADD_TODAY_TASK_TOOL, ...READ_TOOLS];
 
 interface JsonRpcRequest {
   jsonrpc?: string;
@@ -96,6 +97,17 @@ async function handleRpc(msg: JsonRpcRequest) {
             result: {
               content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
               isError: !result.ok,
+            },
+          };
+        }
+        if (toolName && READ_TOOL_NAMES.has(toolName)) {
+          const r = await callReadTool(toolName, args);
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: r.text }],
+              isError: r.isError,
             },
           };
         }
