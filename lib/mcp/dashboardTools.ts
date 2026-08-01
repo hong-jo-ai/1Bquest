@@ -7,7 +7,7 @@ import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getDashboardData } from "@/lib/cafe24Data";
 import { computeAllBrandMer } from "@/lib/profit/mer";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
-import { loadInventoryFromStore } from "@/lib/inventorySync";
+import { computeInventoryLevels } from "@/lib/inventorySync";
 
 type Brand = "paulvice" | "harriot";
 const won = (n: number) => `₩${Math.round(n || 0).toLocaleString()}`;
@@ -97,19 +97,19 @@ export async function callReadTool(
     if (name === "get_inventory") {
       const brand = (args.brand as Brand) || "paulvice";
       const thr = Number(args.lowStockThreshold) >= 0 ? Number(args.lowStockThreshold) : 10;
-      const inv = await loadInventoryFromStore(brand);
-      const rows = Object.entries(inv)
-        .map(([sku, e]) => {
-          const en = e as unknown as Record<string, unknown>;
-          const qty = Number(en.current ?? en.qty ?? en.stock ?? en.available ?? NaN);
-          const nm = String(en.name ?? en.productName ?? sku);
-          return { sku, nm, qty };
-        })
-        .filter((r) => Number.isFinite(r.qty) && r.qty <= thr)
-        .sort((a, b) => a.qty - b.qty)
-        .slice(0, 30);
-      if (!rows.length) return { text: `${brand}: ${thr}개 이하 품목 없음(또는 재고 데이터 형식 확인 필요)`, isError: false };
-      const text = `[${brand} 재고 ${thr}개 이하 · ${rows.length}종]\n` + rows.map((r) => `  ${r.nm} (${r.sku}): ${r.qty}개`).join("\n");
+      const token = await getValidC24Token(brand);
+      if (!token) return { text: `${brand}: cafe24 토큰 없음`, isError: true };
+      const levels = await computeInventoryLevels(token, brand);
+      const low = levels
+        .filter((l) => l.currentStock <= thr)
+        .sort((a, b) => a.currentStock - b.currentStock)
+        .slice(0, 40);
+      if (!low.length) return { text: `${brand}: 현재고 ${thr}개 이하 품목 없음`, isError: false };
+      const text =
+        `[${brand} 저재고 (현재고 ≤${thr}) · ${low.length}종]\n` +
+        low
+          .map((l) => `  ${l.sku}: ${l.currentStock}개 (초기 ${l.initialStock} · 판매 ${l.totalSold})${l.liveTracked ? " ·실시간추적" : ""}`)
+          .join("\n");
       return { text, isError: false };
     }
 
