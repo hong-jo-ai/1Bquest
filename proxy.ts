@@ -16,6 +16,7 @@ const ALLOW_PREFIX = [
   "/api/cron/",        // Vercel cron (CRON_SECRET 헤더로 인증)
   "/api/telegram/",    // Telegram webhook (secret_token 헤더)
   "/api/mcp",          // MCP server (PAULWISE_MCP_TOKEN)
+  "/.well-known/",     // OAuth 디스커버리 등 — /login 리다이렉트 금지(404 반환). claude.ai 커넥터가 로그인서비스로 오인해 OAuth 등록 시도하던 문제 해소
   "/api/marketplace/", // 로컬 마켓플레이스 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN)
   "/api/threads/webhook/", // Threads webhook
   "/api/cs/ingest/",   // CS 인박스 외부 ingestion
