@@ -6,7 +6,7 @@
  *
  * 기본값(사용자 확정):
  *   contCd  = 025 (의류/패션잡화 — 시계·주얼리)
- *   payType = 1   (일반/선불)
+ *   payType = 1   (출고/선불) · 반품은 12(후납) — mapReturn() 참고
  *   printYn = N   (biz.epost 운송장출력 메뉴에서 인쇄)
  *   reqType = 1   (일반소포). 반품은 mapReturn() 으로 reqType=2.
  *   testYn  = POSTPARCEL_TEST_YN (기본 'Y' — 실제 채번 전 안전 테스트)
@@ -17,6 +17,9 @@ const DEFAULTS = {
   volume: () => process.env.POSTPARCEL_DEFAULT_VOLUME || "", // 미입력 시 우체국 default 60
   testYn: () => (process.env.POSTPARCEL_TEST_YN ?? "Y").toUpperCase(),
   ordCompNm: (seller) => process.env.POSTPARCEL_ORD_COMP_NM || seller || "주문처",
+  // 반품소포 요금납부 = 2(착불). InsertOrder 가 받는 값은 1(선불)/2(착불) 둘뿐 —
+  // 계약조회(GetApprNo)의 payTypeCd=12(후납)는 별개 코드표라 넣으면 ERR-223.
+  payTypeReturn: () => process.env.POSTPARCEL_PAY_TYPE_RETURN || "2",
 };
 
 const digits = (v) => String(v || "").replace(/\D/g, "");
@@ -80,13 +83,19 @@ function mapOutbound(row) {
 /**
  * 반품소포 1건 → InsertOrder 파라미터 (reqType=2).
  * 반품은 보내는분=수취인(고객), 받는분=공급지(회수도착지). rec* 는 회수할 고객 주소.
- * @param {object} ret { name, mobile, tel, addr|addr1/addr2, zip, prod, order,
- *                       retOrigRegiNo?, retReason?, retVisitYmd? }
+ *
+ * ⚠️ payType 은 출고값(1=선불)을 그대로 쓰면 안 된다.
+ *   출고는 발송인이 우리(계약고객)라 선불로 넣어도 계약으로 정산되지만,
+ *   반품은 **발송인이 고객**이라 선불이면 집배원이 방문해서 고객에게 요금을 청구한다.
+ *   (2026-07-31 임정애 건 — 이미 AS비를 낸 고객이 집배원에게 이중청구받아 컴플레인)
+ *   → 2(착불)로 접수. 반품의 수취인은 우리 공급지(서초)라 요금이 우리 계약에 붙는다.
+ *   요금은 선불 1,700 → 착불 2,200 으로 500원 오르지만 고객 청구가 사라진다.
  */
 function mapReturn(ret) {
   const base = mapOutbound(ret);
   return {
     ...base,
+    payType: DEFAULTS.payTypeReturn(), // 12 후납 — 고객에게 요금 청구되지 않도록
     reqType: "2", // 반품소포
     retReason: ret.retReason || "",
     retVisitYmd: ret.retVisitYmd || "", // 미입력 시 우체국 default = 내일 (YYYYMMDD)
