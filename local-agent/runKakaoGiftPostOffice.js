@@ -8,6 +8,9 @@ const DASH = "/Users/mac/sungjo_ai/paulwise-dashboard";
 function loadEnv(p){ try { for(const line of fs.readFileSync(p,"utf8").split("\n")){const m=line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(!m)continue;let v=m[2].trim().replace(/^["']|["']$/g,"");if(!(m[1] in process.env))process.env[m[1]]=v;} } catch {} }
 require("dotenv").config({ override: true });
 loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local"));
+// 집하 휴무일에는 접수하지 않는다 — 송장만 나가고 집배원이 안 와 출고 누락이 된다.
+require("./parcelHolidays").checkOrExit("runKakaoGiftPostOffice(카카오선물 접수)");
+
 const XLSX = require(path.join(DASH, "node_modules/xlsx"));
 const { getKakaoGiftRows } = require("./kakaoGiftOutbound");
 const { sendTelegram, sendEmail, HEADER, mergeByRecipient } = require("./buildPostOffice");

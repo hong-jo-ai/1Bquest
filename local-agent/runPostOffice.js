@@ -15,6 +15,9 @@
 const { execFileSync } = require("child_process");
 const path = require("path");
 
+// 집하 휴무일(평일 공휴일 등)에는 접수하지 않는다 — 송장만 나가고 집배원이 안 와 출고 누락이 된다.
+require("./parcelHolidays").checkOrExit("runPostOffice(우체국 접수)");
+
 const NODE = process.execPath;
 const CWD = __dirname;
 const log = (m) => console.log(`[${new Date().toISOString()}] [po] ${m}`);
