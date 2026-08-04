@@ -22,6 +22,17 @@ const HEADER = ["수취인명","수취인 이동통신","수취인 전화번호"
 const clean = (v) => { const s = String(v??"").trim(); return s==="-" ? "" : s; };
 const isMobile = (p) => /^01[016789]/.test(String(p||"").replace(/\D/g,""));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
+/**
+ * 상품명이 예약판매/재입고대기를 표시하고 있으면 true — 집계에서 자동 제외한다.
+ * 카페24 상품명에 "[8/19 재입고 예약]", "[예약판매]" 처럼 대괄호로 붙여 파는 관행을 이용.
+ * 보류목록(pp_hold_orders)이 주문번호 단위라 신규 주문을 못 막는 구멍을 메운다.
+ * 재입고돼서 실제 발송할 땐 상품명에서 표시를 떼거나 registerSingle 로 단건 접수하면 된다.
+ */
+function isPreorderProduct(prod){
+  const s = String(prod || "");
+  return /\[[^\]]*(예약|재입고|입고예정|출고예정)[^\]]*\]/.test(s);
+}
+
 // 카페24 각인(추가 입력 옵션) 추출: additional_option_value="라벨=값" → 값. 비면 "".
 function engravingOf(it){
   let raw = clean(it.additional_option_value);
@@ -220,9 +231,15 @@ async function collectOutboundRows(){
   if(skipped) log(`이미 우체국 접수된 ${skipped}행 제외(재탕 방지)`);
   // 발송 보류(품절·예약판매) 제외 — 송장만 취소하면 다음 크론이 재접수하므로 여기서 막는다.
   const held=await require("./postParcel/holdOrders").holdKeys();
-  const rows=notDone.filter(r=>!held.has(`${r.seller}|${r.order}`));
-  const heldCount=notDone.length-rows.length;
+  const notHeld=notDone.filter(r=>!held.has(`${r.seller}|${r.order}`));
+  const heldCount=notDone.length-notHeld.length;
   if(heldCount) log(`발송보류 ${heldCount}행 제외(품절·예약판매 대기)`);
+  // 상품명 자체가 예약판매인 건 자동 제외. 보류목록(pp_hold_orders)은 주문번호 단위 수동등록이라
+  // 예약 상품에 새 주문이 들어오면 그대로 통과해버린다 (2026-08-04 이하늬·김진아 오출고 사고 —
+  // 상품명에 "[8/19 재입고 예약]" 이 박혀 있는데도 접수되고 배송중까지 전환됨).
+  const rows=notHeld.filter(r=>!isPreorderProduct(r.prod));
+  const preCount=notHeld.length-rows.length;
+  if(preCount) log(`예약판매 상품명 ${preCount}행 제외(상품명에 예약/재입고 표시)`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
   return { rows, heldCount, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
