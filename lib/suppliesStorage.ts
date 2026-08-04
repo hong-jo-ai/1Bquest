@@ -73,7 +73,7 @@ const spareBattery = (spec: string, currentStock: number): SupplyItem => ({
 /** 사장님 제공 매핑(2026-06-11). 에끌라·오드리·기원은 무교체라 미포함. */
 export const DEFAULT_SUPPLIES: SupplyItem[] = [
   // ── 택배박스 4종 ──
-  { id: "box-default", type: "box", name: "시계&주얼리 박스", boxRule: "default", currentStock: 228, reorderThreshold: 20, unit: "개", autoDeduct: true, notes: "기원·면세점 외 기본 박스" },
+  { id: "box-default", type: "box", name: "시계&주얼리 박스 (상하싸바리)", boxRule: "default", currentStock: 228, reorderThreshold: 20, unit: "개", autoDeduct: true, notes: "기원·면세점 외 기본 박스. 발주처=유현패키지(조범기)" },
   { id: "box-giwon", type: "box", name: "기원시계 박스", boxRule: "giwon", currentStock: 27, reorderThreshold: 10, unit: "개", autoDeduct: true },
   { id: "box-giwon2", type: "box", name: "기원시계 2개용 박스", boxRule: "giwon2", currentStock: 39, reorderThreshold: 10, unit: "개", autoDeduct: true, notes: "한 주문에 기원 2개" },
   { id: "box-dutyfree", type: "box", name: "면세점 납품 박스", boxRule: "dutyfree", currentStock: 0, reorderThreshold: 10, unit: "개", autoDeduct: true },
