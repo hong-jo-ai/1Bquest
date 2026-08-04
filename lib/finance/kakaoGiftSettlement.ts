@@ -78,9 +78,16 @@ function extractPeriod(rows: unknown[][], fileName: string): { year: number; mon
     throw new Error("정산 대상 월을 추출할 수 없음 (파일명에 'N월' 포함 필요)");
   }
 
-  let year = issueYear ?? new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
+  const thisYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
+  // 발행일 연도가 비상식적이면 버린다. 피오르드가 템플릿 기본값을 안 고치고 보내는 일이 있다
+  // (2026-06 정산서 = 발행일이 "2023년 · 월 · 일" 로 비어 있어 2023-06 키에 저장되는 사고).
+  // 정산서는 대상월 직후에 올라오므로 올해 ±1년을 벗어나면 발행일을 신뢰하지 않는다.
+  if (issueYear !== null && Math.abs(issueYear - thisYear) > 1) issueYear = null;
+  let year = issueYear ?? thisYear;
   // 발행월이 1월인데 정산 대상이 12월이면 year - 1
   if (issueMonth === 1 && targetMonth === 12) year -= 1;
+  // 발행일 월이 없는데 대상월이 아직 안 온 달이면 작년 정산서다 (예: 2월에 업로드한 "11월" 정산서)
+  else if (issueMonth === null && targetMonth > new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCMonth() + 1) year -= 1;
 
   if (targetMonth < 1 || targetMonth > 12) {
     throw new Error(`정산 대상 월이 비정상: ${targetMonth}월`);
