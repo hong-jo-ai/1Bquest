@@ -264,4 +264,11 @@ no detached floating beam, no needle, no blade, no horn"를 명시하고 **반�
 2. HTML 골격 빌드 — 광안 블랙로즈 템플릿(`local-agent/_gwangan_blackrose_detail.html`) 기반 `hrtDetailBuilder` 신설, 사진 자리 placeholder
 3. 촬영 (샘플 실물) → 컷 꽂기
 4. 국문 상세 업로드(shop1) → 예약 상품 생성(`[8/20 예약]` 상품명 규칙 준수)
-5. 영문 이식(shop2) — 골격 동일, 카피만 영문. 릴스 대본 v1도 이 문안 기준으로 재작성
+5. ✅ 영문 이식(shop2) — `local-agent/seolwolEnDetailConfig.js` (2026-08-05).
+   골격·이미지 동일, 카피는 번역이 아니라 **영문 헤리티지 톤으로 재작성**.
+   빌드 `node local-agent/hrtDetailBuilder.js seolwolEn` → `downloads/seolwol-detail/seolwol-detail-en.html`
+   조판도 전환됨(`lang:"en"`): 세리프 Cormorant Garamond · 산세 Inter · word-break normal ·
+   Garamond x-height 보정. 국문은 Noto Serif/Sans KR 유지.
+   영문 히어로 = 원안에서 유일하게 살아남은 문장 *"You are not watching the sky. You are standing beneath a roof, looking up."*
+   ⚠️ 영문몰은 예약 없이 **Ships from August 20** 로 통일. $420.
+6. 릴스 대본 v1도 이 문안 기준으로 재작성

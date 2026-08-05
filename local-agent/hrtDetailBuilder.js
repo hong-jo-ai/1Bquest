@@ -12,7 +12,8 @@
  * 사용:
  *   const { buildHarriotDetail } = require("./hrtDetailBuilder");
  *   const html = buildHarriotDetail(require("./seolwolDetailConfig"));
- *   node hrtDetailBuilder.js seolwol        # 설월 상세 빌드 → downloads/seolwol-detail/
+ *   node hrtDetailBuilder.js seolwol        # 국문 상세 → downloads/seolwol-detail/
+ *   node hrtDetailBuilder.js seolwolEn      # 영문몰(shop2). config.lang='en' 이면 세리프·줄바꿈 전환
  */
 
 const THEMES = {
@@ -166,7 +167,7 @@ const SECTIONS = {
   </div>
   <div class="spectable">
     ${(s.rows || []).map(([k, v]) => `
-    <div class="row"><div class="k">${esc(k)}</div><div class="v${v ? "" : " tbd"}">${v ? v : "확인 중"}</div></div>`).join("")}
+    <div class="row"><div class="k">${esc(k)}</div><div class="v${v ? "" : " tbd"}">${v ? v : (s.tbd || "확인 중")}</div></div>`).join("")}
   </div>
   ${s.note ? `<p class="specnote">${s.note}</p>` : ""}
 </section>`,
@@ -195,41 +196,49 @@ const SECTIONS = {
 
 // ───────────────────────── 스타일 ─────────────────────────
 
-function styles(t) {
-  return `@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;500;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-#hrt-detail{font-family:'Noto Sans KR',sans-serif;color:#2a2a2a;line-height:1.95;-webkit-font-smoothing:antialiased;max-width:1000px;margin:0 auto;font-size:16px;word-break:keep-all;}
+function styles(t, lang) {
+  const en = lang === "en";
+  // 영문은 한글 세리프(Noto Serif KR)로 조판하면 헤리티지 톤이 죽는다 — 개러몬드 계열로 교체.
+  const IMPORT = en
+    ? "@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap');"
+    : "@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;500;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');";
+  const SANS = en ? "'Inter',-apple-system,'Helvetica Neue',sans-serif" : "'Noto Sans KR',sans-serif";
+  const SERIF = en ? "'Cormorant Garamond',Georgia,serif" : "${SERIF}";
+  const BREAK = en ? "normal" : "keep-all";
+  return `${IMPORT}
+#hrt-detail{font-family:${SANS};color:#2a2a2a;line-height:1.95;-webkit-font-smoothing:antialiased;max-width:1000px;margin:0 auto;font-size:16px;word-break:${BREAK};}
 #hrt-detail *{box-sizing:border-box;margin:0;padding:0;}
 #hrt-detail img{display:block;width:100%;height:auto;}
-#hrt-detail .serif{font-family:'Noto Serif KR',serif;}
-#hrt-detail .eyebrow{font-family:'Noto Serif KR',serif;font-size:13px;letter-spacing:.42em;color:${t.accent};text-transform:uppercase;font-weight:500;margin-bottom:20px;}
+#hrt-detail .serif{font-family:${SERIF};}
+#hrt-detail .eyebrow{font-family:${SERIF};font-size:13px;letter-spacing:.42em;color:${t.accent};text-transform:uppercase;font-weight:500;margin-bottom:20px;}
 /* 어두운 배경 위 eyebrow는 액센트가 묻히므로 밝은 톤으로 */
 #hrt-detail .hero .eyebrow,#hrt-detail .opening .eyebrow,#hrt-detail .closing .eyebrow,
 #hrt-detail .life .eyebrow,#hrt-detail .dark .eyebrow{color:${t.accentLight};}
 #hrt-detail .sec{padding:100px 40px;}
-#hrt-detail .h2{font-family:'Noto Serif KR',serif;font-weight:500;font-size:30px;line-height:1.55;letter-spacing:-.01em;}
+#hrt-detail .h2{font-family:${SERIF};font-weight:500;font-size:30px;line-height:1.55;letter-spacing:-.01em;}
 #hrt-detail .rule{width:40px;height:1px;background:${t.accent};margin:24px 0;}
 #hrt-detail .mcap{font-size:12px;color:#9aa0aa;letter-spacing:.02em;margin-top:10px;text-align:center;}
 
 /* 촬영 대기 플레이스홀더 */
 #hrt-detail .ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px dashed ${t.accentSoft};background:repeating-linear-gradient(45deg,rgba(0,0,0,.015) 0 12px,transparent 12px 24px);color:${t.accentSoft};width:100%;}
-#hrt-detail .ph .phn{font-family:'Noto Serif KR',serif;font-size:12px;letter-spacing:.3em;opacity:.8;}
+#hrt-detail .ph .phn{font-family:${SERIF};font-size:12px;letter-spacing:.3em;opacity:.8;}
 #hrt-detail .ph .pht{font-size:13px;font-weight:300;padding:0 24px;text-align:center;line-height:1.7;}
 #hrt-detail .dark .ph{border-color:rgba(255,255,255,.28);color:rgba(255,255,255,.55);background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 12px,transparent 12px 24px);}
 
 /* ① 히어로 */
 #hrt-detail .hero{background:${t.ink};color:#fff;text-align:center;padding:82px 40px 92px;}
-#hrt-detail .hero h1{font-family:'Noto Serif KR',serif;font-weight:300;font-size:42px;letter-spacing:.02em;margin-bottom:10px;}
+#hrt-detail .hero h1{font-family:${SERIF};font-weight:300;font-size:42px;letter-spacing:.02em;margin-bottom:10px;}
 #hrt-detail .hero .en{font-size:13px;letter-spacing:.36em;color:#8c93a3;text-transform:uppercase;margin-bottom:50px;}
 #hrt-detail .hero .heroimg{max-width:760px;margin:0 auto;}
-#hrt-detail .hero .heroline{font-family:'Noto Serif KR',serif;font-weight:200;font-size:26px;line-height:1.85;color:#eef1f6;margin-top:52px;}
+#hrt-detail .hero .heroline{font-family:${SERIF};font-weight:200;font-size:26px;line-height:1.85;color:#eef1f6;margin-top:52px;}
 #hrt-detail .hero .price{margin-top:44px;font-size:15px;letter-spacing:.04em;color:#b9c0cd;}
 #hrt-detail .hero .price b{display:block;color:#fff;font-weight:500;font-size:23px;letter-spacing:0;margin-top:8px;}
 #hrt-detail .hero .badge{margin-top:30px;display:inline-block;border:1px solid rgba(255,255,255,.3);border-radius:2px;padding:11px 22px;font-size:13px;font-weight:300;color:#dfe4ee;letter-spacing:.02em;line-height:1.8;}
 
 /* ② 오프닝 */
 #hrt-detail .opening{background:#141a26;color:#eee;text-align:center;padding:96px 40px;}
-#hrt-detail .opening p{font-family:'Noto Serif KR',serif;font-weight:200;font-size:23px;line-height:2;color:#e7ebf2;}
-#hrt-detail .opening .sub{font-family:'Noto Sans KR';font-size:15px;font-weight:300;color:#8f96a4;margin-top:26px;letter-spacing:.02em;}
+#hrt-detail .opening p{font-family:${SERIF};font-weight:200;font-size:23px;line-height:2;color:#e7ebf2;}
+#hrt-detail .opening .sub{font-family:${SANS};font-size:15px;font-weight:300;color:#8f96a4;margin-top:26px;letter-spacing:.02em;}
 
 /* ③ 스토리 */
 #hrt-detail .story{background:${t.paper};text-align:center;}
@@ -264,7 +273,7 @@ function styles(t) {
 #hrt-detail .seqgrid.cols5{grid-template-columns:repeat(5,1fr);}
 #hrt-detail .seqgrid figcaption{font-size:13px;font-weight:300;color:#6b7280;margin-top:12px;line-height:1.75;text-align:center;}
 #hrt-detail .seq.dark .seqgrid figcaption{color:#9aa4b5;}
-#hrt-detail .seqgrid figcaption b{font-family:'Noto Serif KR',serif;color:${t.accent};font-weight:500;letter-spacing:.1em;margin-right:6px;}
+#hrt-detail .seqgrid figcaption b{font-family:${SERIF};color:${t.accent};font-weight:500;letter-spacing:.1em;margin-right:6px;}
 #hrt-detail .seq.dark .seqgrid figcaption b{color:#9fb0d6;}
 
 /* 영감 (origin) */
@@ -276,7 +285,7 @@ function styles(t) {
 #hrt-detail .origin.dark .h2{color:#fff;font-weight:300;}
 #hrt-detail .origin.dark p{color:#c3cad6;}
 #hrt-detail .origin .pair{max-width:820px;margin:62px auto 0;}
-#hrt-detail .origin .pn{font-family:'Noto Serif KR',serif;font-size:12px;letter-spacing:.3em;color:${t.accent};margin-bottom:16px;}
+#hrt-detail .origin .pn{font-family:${SERIF};font-size:12px;letter-spacing:.3em;color:${t.accent};margin-bottom:16px;}
 #hrt-detail .origin.dark .pn{color:${t.accentLight};}
 #hrt-detail .origin .pgrid{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center;gap:0;}
 #hrt-detail .origin .pgrid .arrow{font-size:17px;color:${t.accentSoft};font-weight:300;}
@@ -287,7 +296,7 @@ function styles(t) {
 /* 풀블리드 무드 브레이크 */
 #hrt-detail .fullbleed{position:relative;background:#0b0f18;line-height:0;}
 #hrt-detail .fullbleed .fbline{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:40px;}
-#hrt-detail .fullbleed .fbline p{font-family:'Noto Serif KR',serif;font-weight:200;font-size:27px;line-height:1.9;color:#fff;text-align:center;text-shadow:0 2px 24px rgba(0,0,0,.65);letter-spacing:.01em;}
+#hrt-detail .fullbleed .fbline p{font-family:${SERIF};font-weight:200;font-size:27px;line-height:1.9;color:#fff;text-align:center;text-shadow:0 2px 24px rgba(0,0,0,.65);letter-spacing:.01em;}
 #hrt-detail .fullbleed .fbcap{line-height:1.8;font-size:12px;color:#7b8494;text-align:center;padding:14px 20px 0;background:${t.ink};margin:0;}
 
 /* 특징 그리드 */
@@ -298,7 +307,7 @@ function styles(t) {
 #hrt-detail .features{display:flex;flex-wrap:wrap;border-top:1px solid #ececec;}
 #hrt-detail .feat{flex:1 1 50%;padding:34px 30px;border-bottom:1px solid #ececec;}
 #hrt-detail .feat:nth-child(odd){border-right:1px solid #ececec;}
-#hrt-detail .feat .n{font-family:'Noto Serif KR',serif;color:${t.accent};font-size:13px;letter-spacing:.2em;}
+#hrt-detail .feat .n{font-family:${SERIF};color:${t.accent};font-size:13px;letter-spacing:.2em;}
 #hrt-detail .feat .t{font-weight:500;font-size:18px;margin:8px 0 6px;}
 #hrt-detail .feat .d{font-size:14px;color:#777;font-weight:300;line-height:1.8;}
 
@@ -334,9 +343,17 @@ function styles(t) {
 #hrt-detail .closing{background:#141a26;color:#eee;text-align:center;padding:104px 40px;}
 #hrt-detail .closing .h2{color:#fff;font-weight:200;margin-bottom:24px;}
 #hrt-detail .closing p{font-size:16px;font-weight:300;color:#b6bdc9;max-width:600px;margin:0 auto;line-height:2.05;}
-#hrt-detail .closing .slogan{margin-top:44px;font-family:'Noto Serif KR',serif;letter-spacing:.12em;font-size:20px;color:#e7ebf2;}
-#hrt-detail .closing .slogan small{display:block;font-family:'Noto Sans KR';font-size:11px;letter-spacing:.34em;color:#7d838f;margin-top:10px;text-transform:uppercase;}
+#hrt-detail .closing .slogan{margin-top:44px;font-family:${SERIF};letter-spacing:.12em;font-size:20px;color:#e7ebf2;}
+#hrt-detail .closing .slogan small{display:block;font-family:${SANS};font-size:11px;letter-spacing:.34em;color:#7d838f;margin-top:10px;text-transform:uppercase;}
 
+${en ? `
+#hrt-detail .h2{font-size:34px;font-weight:400;letter-spacing:0;line-height:1.4;}
+#hrt-detail .hero h1{font-size:52px;font-weight:300;letter-spacing:.04em;}
+#hrt-detail .hero .heroline{font-size:29px;font-weight:300;}
+#hrt-detail .opening p{font-size:26px;}
+#hrt-detail .closing .slogan{font-size:23px;}
+#hrt-detail .eyebrow{font-size:11.5px;letter-spacing:.36em;}
+` : ""}
 @media (max-width:768px){
   #hrt-detail{font-size:15px;}
   #hrt-detail .sec,#hrt-detail .opening,#hrt-detail .closing{padding:64px 22px;}
@@ -353,6 +370,14 @@ function styles(t) {
   #hrt-detail .origin .pgrid .arrow{transform:rotate(90deg);margin:6px auto;}
   #hrt-detail .origin .pair{margin-top:48px;}
   #hrt-detail .fullbleed .fbline p{font-size:20px;}
+  ${en ? `
+  /* Garamond 는 x-height 가 낮아 같은 px 에서 한글보다 작아 보인다 — 모바일에서 한 단 올린다 */
+  #hrt-detail .h2{font-size:28px;}
+  #hrt-detail .hero h1{font-size:40px;}
+  #hrt-detail .hero .heroline{font-size:22px;}
+  #hrt-detail .opening p{font-size:21px;}
+  #hrt-detail .closing .slogan{font-size:20px;}
+  ` : ""}
 }`;
 }
 
@@ -367,7 +392,7 @@ function buildHarriotDetail(config) {
       return fn(s);
     })
     .join("\n");
-  return `<div id="hrt-detail"><style>${styles(t)}</style>\n${body}\n</div>`;
+  return `<div id="hrt-detail"><style>${styles(t, config.lang)}</style>\n${body}\n</div>`;
 }
 
 module.exports = { buildHarriotDetail, SECTIONS, THEMES };
@@ -379,16 +404,18 @@ if (require.main === module) {
   const config = require(`./${which}DetailConfig`);
   const html = buildHarriotDetail(config);
 
-  const outDir = path.join(__dirname, "..", "downloads", `${which}-detail`);
+  // 영문판은 국문과 같은 폴더로 — config 의 world/ 상대경로가 그대로 살아야 한다
+  const outDir = path.join(__dirname, "..", "downloads", config.outDir || `${which}-detail`);
   fs.mkdirSync(outDir, { recursive: true });
 
-  const inner = path.join(outDir, `${which}-detail-ko.html`);
+  const base = config.fileBase || `${which}-detail-ko`;
+  const inner = path.join(outDir, `${base}.html`);
   fs.writeFileSync(inner, html); // 카페24 상세설명에 그대로 붙여넣는 조각
 
-  const preview = path.join(outDir, `${which}-preview.html`);
+  const preview = path.join(outDir, `${base.replace(/-detail(-ko)?$/, "")}-preview.html`);
   fs.writeFileSync(
     preview,
-    `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+    `<!doctype html><html lang="${config.lang === "en" ? "en" : "ko"}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${config.previewTitle || which} 상세 미리보기</title>
 <style>body{margin:0;background:#e8eaee;}</style></head><body>${html}</body></html>`
