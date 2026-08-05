@@ -133,6 +133,7 @@ blockquote{margin:16px 0;padding:14px 18px;background:#f4f6f9;border-left:3px so
 table{border-collapse:collapse;width:100%;margin:18px 0;font-size:14px;}
 th,td{border:1px solid #e0e4ec;padding:11px 12px;text-align:left;vertical-align:top;}
 th{background:#eef1f6;font-weight:600;color:#2c3c63;white-space:nowrap;}
+thead:has(th:empty){display:none;}  /* 헤더 없는 사양표의 빈 머리줄 숨김 */
 td:first-child{white-space:nowrap;font-weight:600;}
 code{background:#eef1f6;padding:2px 6px;border-radius:3px;font-size:13px;}
 ul,ol{margin:10px 0;padding-left:22px;}
