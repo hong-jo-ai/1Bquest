@@ -230,12 +230,12 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
 
   function injectStyles() {
     var css = ""
-      + ".pv-chat-root{position:fixed;right:22px;bottom:22px;z-index:2147483000;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#161616;letter-spacing:0;-webkit-font-smoothing:antialiased}"
+      + ".pv-chat-root{position:fixed;right:22px;bottom:calc(22px + var(--pv-chat-lift,0px));z-index:2147483000;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#161616;letter-spacing:0;-webkit-font-smoothing:antialiased}"
       + ".pv-chat-root *{box-sizing:border-box}"
       + ".pv-chat-button{position:relative;width:76px;height:76px;border:0;background:transparent;padding:0;cursor:pointer;display:block;line-height:0;transition:transform .18s ease,filter .18s ease;filter:drop-shadow(0 12px 20px rgba(0,0,0,.24)) drop-shadow(0 3px 6px rgba(0,0,0,.16))}"
       + ".pv-chat-button:hover{transform:translateY(-2px);filter:drop-shadow(0 16px 26px rgba(0,0,0,.28)) drop-shadow(0 4px 8px rgba(0,0,0,.18))}"
       + ".pv-chat-btn-img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}"
-      + ".pv-chat-panel{display:none;width:420px;max-width:calc(100vw - 32px);height:680px;max-height:calc(100vh - 84px);background:#f5f4f2;border:1px solid #d8d2c8;border-radius:12px;box-shadow:0 24px 70px rgba(17,17,17,.22);overflow:hidden}"
+      + ".pv-chat-panel{display:none;width:420px;max-width:calc(100vw - 32px);height:680px;max-height:calc(100vh - 84px - var(--pv-chat-lift,0px));background:#f5f4f2;border:1px solid #d8d2c8;border-radius:12px;box-shadow:0 24px 70px rgba(17,17,17,.22);overflow:hidden}"
       + ".pv-chat-panel.open{display:flex;flex-direction:column}.pv-chat-screen{display:none;min-height:0;flex:1;flex-direction:column;background:#f5f4f2}.pv-chat-screen.active{display:flex}"
       + ".pv-chat-home{padding:0}.pv-chat-home-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:16px;padding:24px 18px 18px}.pv-chat-home-head{display:flex;align-items:center;gap:13px;padding:0 2px}.pv-chat-avatar{width:48px;height:48px;border-radius:999px;overflow:hidden;background:#111;flex:0 0 auto}.pv-chat-avatar img{width:100%;height:100%;object-fit:cover;display:block}.pv-chat-brand{min-width:0;flex:1}.pv-chat-brand-name{font-size:20px;font-weight:800;line-height:1.2;color:#171717}.pv-chat-hours-link{margin-top:6px;font-size:13px;color:#777;background:transparent;border:0;padding:0;cursor:pointer}.pv-chat-close{width:40px;height:40px;border:0;border-radius:999px;background:#858585;color:#fff;font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}"
       + ".pv-chat-card{background:#fff;border:1px solid #ebe8e3;border-radius:20px;padding:18px 16px 16px;box-shadow:0 1px 0 rgba(0,0,0,.02)}.pv-chat-card-row{display:flex;gap:12px}.pv-chat-bot{width:38px;height:38px;border-radius:999px;background:#ece8e3;color:#8c8278;display:flex;align-items:center;justify-content:center;flex:0 0 auto}.pv-chat-bot svg{width:22px;height:22px}.pv-chat-card-copy{font-size:15px;line-height:1.55;font-weight:700;color:#202020}.pv-chat-card-copy p{margin:0 0 12px}.pv-chat-primary{width:100%;height:52px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 18px rgba(122,112,100,.28);display:flex;align-items:center;justify-content:center;gap:8px}.pv-chat-card-time{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:13px;font-weight:700;color:#777}.pv-chat-methods{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #ebe8e3;border-radius:18px;padding:12px 14px 12px 16px;color:#8a8a8a;font-size:14px}.pv-chat-email-btn{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 16px;border:0;border-radius:14px;background:#b1aaa2;color:#fff;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer;flex:0 0 auto}.pv-chat-email-btn:hover{filter:brightness(.97)}.pv-chat-powered{margin-top:2px;text-align:center;color:#a0a0a0;font-size:12px;font-weight:700}"
@@ -246,7 +246,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-input{width:100%;border:1px solid #d8d0c4;border-radius:12px;background:#fffdf9;padding:12px 13px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-input:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-save{height:44px;border:0;border-radius:12px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:15px}"
       + ".pv-chat-messages{flex:1;min-height:0;overflow:auto;padding:12px 16px 16px;background:#fff;display:flex;flex-direction:column;gap:10px}.pv-chat-bubble{max-width:84%;padding:11px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.pv-chat-bubble.in{align-self:flex-start;background:#f5f4f2;border:1px solid #e5e1d9;color:#1f2933}.pv-chat-bubble.out{align-self:flex-end;background:#141414;color:#fff}.pv-chat-empty{font-size:14px;color:#625b52;background:#f8f6f2;border:1px solid #e2dbd1;border-radius:14px;padding:14px;line-height:1.55}"
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:10px 12px;background:#fff;display:flex;gap:8px;flex:0 0 auto}.pv-chat-text{flex:1;min-height:46px;max-height:110px;resize:none;border:1px solid #d8d0c4;border-radius:16px;background:#f3f4f6;padding:13px 12px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:60px;border:0;border-radius:16px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.pv-chat-fab-new{align-self:center;margin:auto auto 28px;height:48px;padding:0 22px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 10px 22px rgba(122,112,100,.26);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}"
-      + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:14px}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
+      + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:calc(14px + var(--pv-chat-lift,0px))}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
     document.head.appendChild(el("style", { text: css }));
     // 브랜드 accent 오버라이드(폴바이스=토프 기본, 해리엇=골드). 액센트 요소만 재색.
     var accentCss =
@@ -732,6 +732,49 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     }
     applyFooterTweaks();
     setTimeout(applyFooterTweaks, 600);
+
+    // 스토어프론트 하단 고정바(카페24 상품페이지 #orderFixArea = BUY IT NOW/CART 등) 위로 버튼을 띄운다.
+    // 위젯 z-index가 21억이라 그냥 두면 구매 버튼을 덮어버림(해리엇 영문몰 모바일에서 확인, 2026-08-05).
+    // 스킨별 셀렉터를 박으면 다른 몰에서 어긋나므로 화면 기하로 판별 — 폴바이스·해리엇 공용 코드.
+    var LIFT_MAX = 200;
+    function bottomBarLift() {
+      var vh = window.innerHeight || 0, vw = window.innerWidth || 0;
+      if (!vh || !vw || !document.body) return 0;
+      var nodes = document.body.querySelectorAll("*");
+      var lift = 0;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (root === node || root.contains(node)) continue;
+        var cs;
+        try { cs = getComputedStyle(node); } catch (_) { continue; }
+        if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+        if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") continue;
+        var b = node.getBoundingClientRect();
+        if (b.width < vw * 0.6) continue;                 // 화면 폭을 가로지르는 바만
+        if (b.height < 40 || b.height > LIFT_MAX) continue; // 얇은 선·전체화면 오버레이 제외
+        if (b.bottom < vh - 40 || b.top > vh - 10) continue; // 화면 하단에 붙어 있는 것만
+        var h = Math.min(vh - b.top, LIFT_MAX);
+        if (h > lift) lift = h;
+      }
+      return Math.round(lift);
+    }
+    var liftTimer = null, lastLift = -1;
+    function applyLift() {
+      var v = bottomBarLift();
+      if (v === lastLift) return;
+      lastLift = v;
+      root.style.setProperty("--pv-chat-lift", v ? (v + 12) + "px" : "0px");
+    }
+    function scheduleLift() {
+      if (liftTimer) return;
+      // 바는 스크롤에 따라 나타났다 사라지므로 재계산이 필요하나, DOM 전체를 훑기에 스로틀 필수.
+      liftTimer = setTimeout(function () { liftTimer = null; applyLift(); }, 250);
+    }
+    window.addEventListener("scroll", scheduleLift, { passive: true });
+    window.addEventListener("resize", scheduleLift);
+    applyLift();
+    setTimeout(applyLift, 600);
+    setTimeout(applyLift, 1500);
     setTimeout(applyFooterTweaks, 2000);
 
     // /about.html — 폴바이스 무드로 재디자인. 오프라인 매장 오해를 주던
