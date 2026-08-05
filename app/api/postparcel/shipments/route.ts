@@ -5,7 +5,7 @@
  */
 import { type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { trackOne } from "@/lib/postParcel/tracking";
+import { refreshShipmentTracking } from "@/lib/postParcel/refreshTracking";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 종추적 갱신이 건수만큼 순차 호출되므로 여유 확보
@@ -62,48 +62,15 @@ export async function POST(req: NextRequest) {
   if (body.action !== "track") {
     return Response.json({ error: "지원하지 않는 action" }, { status: 400 });
   }
-  const client = sb();
-
-  // 대상 후보: 송장 있고 취소 아닌 건. ids 지정 시 해당 건만.
-  const specified = Array.isArray(body.ids) && body.ids.length > 0;
-  let q = client
-    .from("pp_shipments")
-    .select("id, regi_no, tracking_state, status")
-    .not("regi_no", "is", null)
-    .neq("regi_no", "TESTREGINOAPI");
-  if (specified) {
-    q = q.in("id", body.ids);
-  } else {
-    q = q.neq("status", "cancelled").order("registered_at", { ascending: false }).limit(1000);
+  try {
+    // 크론(/api/cron/parcel-track)과 같은 로직 — lib/postParcel/refreshTracking.ts
+    // 화면 버튼은 maxDuration 60s 안에 끝나야 하므로 한 번에 100건까지만.
+    const { checked, updated, results } = await refreshShipmentTracking({
+      ids: Array.isArray(body.ids) ? body.ids : undefined,
+      limit: 100,
+    });
+    return Response.json({ checked, updated, results });
+  } catch (e) {
+    return Response.json({ error: (e as Error)?.message || "배송조회 중 오류" }, { status: 500 });
   }
-  const { data: rows, error } = await q;
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-
-  // ids 미지정이면 이미 '배달완료'인 건은 재조회 불필요 → 제외(갱신 필요한 미배달에 집중).
-  // 과호출/타임아웃 방지로 200건 상한(미배달만 남으므로 실질 충분).
-  const targets = (rows ?? [])
-    .filter((t) => specified || !(t.tracking_state && t.tracking_state.includes("배달완료")))
-    .slice(0, 200);
-
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const results = [];
-  for (const t of targets ?? []) {
-    const tr = await trackOne(t.regi_no);
-    // 실제 배송상태가 조회됐을 때만 갱신. 결과없음(ERR-001, 갓 접수해 이벤트 없음)·일시적
-    // 에러일 땐 기존 상태를 보존한다(예전 정상 상태를 "-"로 덮어쓰지 않도록). checked_at 은 항상 기록.
-    const patch: Record<string, unknown> = {
-      tracking_checked_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    if (tr.found && tr.state) {
-      patch.tracking_state = tr.state;
-      patch.tracking_detail = tr.scans?.length ? tr.scans : null;
-    }
-    await client.from("pp_shipments").update(patch).eq("id", t.id);
-    results.push({ id: t.id, rgist: t.regi_no, state: tr.state, found: tr.found, error: tr.error });
-    // 우체국 OpenAPI 연속 호출 throttle 회피 (한 번에 23건이 같은 초에 몰리면 빈 응답)
-    await sleep(400);
-  }
-  const updated = results.filter((r) => r.found && r.state).length;
-  return Response.json({ checked: results.length, updated, results });
 }

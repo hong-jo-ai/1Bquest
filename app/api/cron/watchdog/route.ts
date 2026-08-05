@@ -40,6 +40,7 @@ const JOBS: JobSpec[] = [
   { key: "cron_last_ok:bundle-stock-sync", label: "번들 재고차감", maxHours: 3 },
   { key: "cron_last_ok:mads-evaluate", label: "메타광고 평가", maxHours: 26 },
   { key: "cron_last_ok:bank-deposit-retry", label: "입금확인 재시도", maxHours: 1 },
+  { key: "cron_last_ok:parcel-track", label: "우체국 배송추적", maxHours: 14 },
   // 카페24 주문알림 비활성화(2026-07-11 사장님) — 잡을 꺼서 하트비트 미갱신 → 오탐 방지 위해 감시 제외. 재활성화 시 주석 해제.
   // { key: "cron_last_ok:cafe24-orders-notify", label: "카페24 주문알림", maxHours: 2 },
   { key: "cron_last_ok:crm-cart-nudge", label: "장바구니 넛지", maxHours: 3 },

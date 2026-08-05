@@ -33,6 +33,10 @@
       "schedule": "0 22 * * *"
     },
     {
+      "path": "/api/cron/parcel-track",
+      "schedule": "0 0,5,12 * * *"
+    },
+    {
       "path": "/api/cron/threads-autopost?brand=paulvice",
       "schedule": "15 * * * *"
     },
