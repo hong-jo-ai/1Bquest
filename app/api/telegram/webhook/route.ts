@@ -597,6 +597,26 @@ ${line}`,
       return Response.json({ ok: true });
     }
 
+    // AS 발송완료 안내 확인카드 — 미리본 문구를 그대로 보낸다(자동발송 아님).
+    const am = String(cb.data || "").match(/^asnotify:(accept|reject):(.+)$/);
+    if (am) {
+      try {
+        const { sendPreparedAsNotice, rejectPreparedAsNotice } = await import("@/lib/cs/asShippedNotify");
+        if (am[1] === "accept") {
+          const res = await sendPreparedAsNotice(am[2]);
+          await answer(res.ok ? "발송했습니다" : `실패: ${res.error ?? ""}`);
+          await editAppend(res.ok ? `✅ 발송 완료 — ${res.summary ?? ""}` : `⚠️ 실패: ${res.error ?? "알 수 없음"}`);
+        } else {
+          await rejectPreparedAsNotice(am[2]);
+          await answer("직접 보내시는 걸로 표시했습니다");
+          await editAppend("❌ 자동발송 안 함 — 직접 안내해 주세요.");
+        }
+      } catch (e) {
+        await answer("오류: " + (e instanceof Error ? e.message : String(e)).slice(0, 150));
+      }
+      return Response.json({ ok: true });
+    }
+
     await answer("알 수 없는 버튼");
     return Response.json({ ok: true, ignored: "unknown callback" });
   }
