@@ -98,6 +98,35 @@ const SECTIONS = {
   </div>
 </section>`,
 
+  /** 영감 — "이것이 시계의 이것이 되었다" 2단 대응(무드 ↔ 제품). 모바일 세로 스택 */
+  origin: (s) => `
+<section class="sec origin ${s.dark ? "dark" : ""}">
+  <div class="nwrap">
+    ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ""}
+    <p class="h2 serif">${s.head}</p>
+    <div class="rule"></div>
+    ${paras(s.body)}
+  </div>
+  ${(s.pairs || []).map((p, i) => `
+  <div class="pair">
+    <div class="pn">${String(i + 1).padStart(2, "0")}</div>
+    <div class="pgrid">
+      <figure>${media(p.from)}<figcaption>${p.fromCap}</figcaption></figure>
+      <div class="arrow">→</div>
+      <figure>${media(p.to)}<figcaption>${p.toCap}</figcaption></figure>
+    </div>
+    <p class="ptext">${p.text}</p>
+  </div>`).join("")}
+</section>`,
+
+  /** 풀블리드 무드 브레이크 — 이미지 위에 한 줄만 */
+  full: (s) => `
+<section class="fullbleed">
+  ${media(s.image)}
+  ${s.line ? `<div class="fbline"><p>${s.line}</p></div>` : ""}
+  ${s.caption ? `<p class="fbcap">${esc(s.caption)}</p>` : ""}
+</section>`,
+
   /** 특징 그리드 2×N */
   features: (s) => `
 <section class="sec design">
@@ -238,6 +267,29 @@ function styles(t) {
 #hrt-detail .seqgrid figcaption b{font-family:'Noto Serif KR',serif;color:${t.accent};font-weight:500;letter-spacing:.1em;margin-right:6px;}
 #hrt-detail .seq.dark .seqgrid figcaption b{color:#9fb0d6;}
 
+/* 영감 (origin) */
+#hrt-detail .origin{background:#fff;text-align:center;}
+#hrt-detail .origin.dark{background:${t.ink};color:#e9edf4;}
+#hrt-detail .origin .nwrap{max-width:640px;margin:0 auto;}
+#hrt-detail .origin .rule{margin:26px auto;}
+#hrt-detail .origin p{font-size:16px;font-weight:300;color:#4a4a4a;margin:0 auto 18px;line-height:2.05;}
+#hrt-detail .origin.dark .h2{color:#fff;font-weight:300;}
+#hrt-detail .origin.dark p{color:#c3cad6;}
+#hrt-detail .origin .pair{max-width:820px;margin:62px auto 0;}
+#hrt-detail .origin .pn{font-family:'Noto Serif KR',serif;font-size:12px;letter-spacing:.3em;color:${t.accent};margin-bottom:16px;}
+#hrt-detail .origin.dark .pn{color:${t.accentLight};}
+#hrt-detail .origin .pgrid{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center;gap:0;}
+#hrt-detail .origin .pgrid .arrow{font-size:17px;color:${t.accentSoft};font-weight:300;}
+#hrt-detail .origin .pgrid figcaption{font-size:12.5px;font-weight:300;color:#8a919d;margin-top:11px;letter-spacing:.02em;}
+#hrt-detail .origin .ptext{font-size:15.5px;font-weight:300;color:#4a4a4a;max-width:560px;margin:26px auto 0;line-height:2.05;}
+#hrt-detail .origin.dark .ptext{color:#c3cad6;}
+
+/* 풀블리드 무드 브레이크 */
+#hrt-detail .fullbleed{position:relative;background:#0b0f18;line-height:0;}
+#hrt-detail .fullbleed .fbline{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:40px;}
+#hrt-detail .fullbleed .fbline p{font-family:'Noto Serif KR',serif;font-weight:200;font-size:27px;line-height:1.9;color:#fff;text-align:center;text-shadow:0 2px 24px rgba(0,0,0,.65);letter-spacing:.01em;}
+#hrt-detail .fullbleed .fbcap{line-height:1.8;font-size:12px;color:#7b8494;text-align:center;padding:14px 20px 0;background:${t.ink};margin:0;}
+
 /* 특징 그리드 */
 #hrt-detail .design{background:#fff;}
 #hrt-detail .design .head{text-align:center;margin-bottom:18px;}
@@ -297,6 +349,10 @@ function styles(t) {
   #hrt-detail .spectable .row .k{width:120px;}
   #hrt-detail .seqgrid{grid-template-columns:1fr!important;gap:34px;}
   #hrt-detail .life .cap{padding:64px 22px 44px;}
+  #hrt-detail .origin .pgrid{grid-template-columns:1fr;gap:8px;}
+  #hrt-detail .origin .pgrid .arrow{transform:rotate(90deg);margin:6px auto;}
+  #hrt-detail .origin .pair{margin-top:48px;}
+  #hrt-detail .fullbleed .fbline p{font-size:20px;}
 }`;
 }
 
