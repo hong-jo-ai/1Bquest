@@ -62,6 +62,7 @@ function strings(lang: string, brandName: string, brandKo: string): Record<strin
       errContact: "Please enter a valid email so we can reply.",
       mailSubject: "[" + brandName + " Inquiry]",
       chatCta: "Chat with us",
+      sendFailed: "Couldn't send — please check your connection and try again. Your message has been kept below.",
     };
   }
   return {
@@ -95,6 +96,7 @@ function strings(lang: string, brandName: string, brandKo: string): Record<strin
     errContact: "답변 알림을 받을 수 있는 연락처를 입력해 주세요.",
     mailSubject: "[" + brandName + " 문의]",
     chatCta: "채팅 상담 문의하기",
+    sendFailed: "전송에 실패했어요. 네트워크 확인 후 다시 보내주세요. 입력하신 내용은 아래에 그대로 남겨두었습니다.",
   };
 }
 
@@ -245,6 +247,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-notice{margin:14px 16px 10px;height:46px;border:1px solid #e7e2da;border-radius:12px;background:#fff;display:flex;align-items:center;gap:9px;padding:0 12px;color:#777;font-size:14px;white-space:nowrap;overflow:hidden}.pv-chat-notice span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.pv-chat-contact{margin:0 16px 12px;padding:14px;border:1px solid #e7e2da;border-radius:16px;background:#fff;display:grid;gap:10px}.pv-chat-contact.saved{display:none}.pv-chat-help{font-size:13px;line-height:1.45;color:#756c61;background:#fff7ef;border:1px solid #ead7c4;border-radius:10px;padding:10px}.pv-chat-error{display:none;font-size:13px;line-height:1.45;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 10px}.pv-chat-error.show{display:block}"
       + ".pv-chat-input{width:100%;border:1px solid #d8d0c4;border-radius:12px;background:#fffdf9;padding:12px 13px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-input:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-save{height:44px;border:0;border-radius:12px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:15px}"
       + ".pv-chat-messages{flex:1;min-height:0;overflow:auto;padding:12px 16px 16px;background:#fff;display:flex;flex-direction:column;gap:10px}.pv-chat-bubble{max-width:84%;padding:11px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.pv-chat-bubble.in{align-self:flex-start;background:#f5f4f2;border:1px solid #e5e1d9;color:#1f2933}.pv-chat-bubble.out{align-self:flex-end;background:#141414;color:#fff}.pv-chat-empty{font-size:14px;color:#625b52;background:#f8f6f2;border:1px solid #e2dbd1;border-radius:14px;padding:14px;line-height:1.55}"
+      + ".pv-chat-sendfail{display:none;margin:0 12px 8px;font-size:13px;line-height:1.45;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 10px;flex:0 0 auto}.pv-chat-sendfail.show{display:block}"
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:10px 12px;background:#fff;display:flex;gap:8px;flex:0 0 auto}.pv-chat-text{flex:1;min-height:46px;max-height:110px;resize:none;border:1px solid #d8d0c4;border-radius:16px;background:#f3f4f6;padding:13px 12px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:60px;border:0;border-radius:16px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.pv-chat-fab-new{align-self:center;margin:auto auto 28px;height:48px;padding:0 22px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 10px 22px rgba(122,112,100,.26);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}"
       + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:calc(14px + var(--pv-chat-lift,0px))}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
     document.head.appendChild(el("style", { text: css }));
@@ -316,6 +319,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     var emailInput = el("input", { class: "pv-chat-input", placeholder: config.t.emailPh, value: contact.email || "", inputmode: "email", autocomplete: "email" });
     var saveButton = el("button", { class: "pv-chat-save", type: "button", text: config.t.startChat });
     var textarea = el("textarea", { class: "pv-chat-text", placeholder: config.t.typeMsg, rows: "1" });
+    var sendFailBox = el("div", { class: "pv-chat-sendfail", text: config.t.sendFailed });
     var send = el("button", { class: "pv-chat-send", type: "button", text: config.t.send });
 
     function avatar(className) {
@@ -421,6 +425,7 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     chatScreen.appendChild(notice);
     chatScreen.appendChild(contactBox);
     chatScreen.appendChild(messages);
+    chatScreen.appendChild(sendFailBox);
     chatScreen.appendChild(el("div", { class: "pv-chat-compose" }, [textarea, send]));
 
     var convList = el("div", { class: "pv-chat-conv-list" });
@@ -580,7 +585,9 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       saveContact(contact);
       contactBox.classList.add("saved");
       textarea.value = "";
+      sendFailBox.classList.remove("show");
       ensureSession(contact).then(function (session) {
+        if (!session || !session.conversationId) throw new Error("session_failed");
         return api("/api/cs/webchat/messages", {
           method: "POST",
           body: JSON.stringify(Object.assign({}, pageMeta(), contact, {
@@ -589,10 +596,18 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
             brand: config.brand
           }))
         });
-      }).then(function () {
+      }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || "send_failed");
         loadMessages(messages);
         pollActivityTs = Date.now();   // 전송 직후엔 빠른 폴링 재개(중단됐다면 재시작)
         if (isOpen) startPolling();
+      }).catch(function (err) {
+        // ⚠️ 실패를 조용히 삼키면 고객은 보냈다고 믿고 답을 기다린다 —
+        //    실제로 CORS 차단으로 영문몰 상담이 통째로 유실됐다(2026-08-05).
+        //    입력 내용을 되돌려주고 실패를 눈에 보이게 알린다.
+        if (!textarea.value) textarea.value = text;
+        sendFailBox.classList.add("show");
+        if (window.console && console.warn) console.warn("[pv-chat] 전송 실패", err);
       });
     }
 

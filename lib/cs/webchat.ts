@@ -3,17 +3,29 @@ import type { CsBrandId, CsMessage } from "./types";
 import { detectMessageType, estimateCost, sendMany, smsConfigured } from "../sms/solapi";
 import { logSmsSend } from "../sms/store";
 import { sendTelegramMessage } from "./telegram";
+import { sendGmailNotification } from "./emailNotify";
 
+// ⚠️ 스토어프론트 도메인이 늘면 여기에 반드시 추가할 것.
+// 위젯 스크립트는 Allow-Origin:* 이라 어디서든 뜨지만, 세션/메시지 API 는 이 목록으로 막힌다.
+// → 목록에 없으면 "버튼은 보이는데 전송이 안 되는" 무증상 장애가 된다(2026-08-05 영문몰 사고).
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://paulvice.co.kr",
   "https://www.paulvice.co.kr",
   "https://m.paulvice.co.kr",
   "https://paulvice.cafe24.com",
+  // 폴바이스 영문몰 (shop_no=2)
+  "https://paulvice.kr",
+  "https://www.paulvice.kr",
+  "https://m.paulvice.kr",
   // 해리엇 (멀티몰)
   "https://harriot.co.kr",
   "https://www.harriot.co.kr",
   "https://m.harriot.co.kr",
   "https://harriotkorea.cafe24.com",
+  // 해리엇 글로벌 영문몰 (shop_no=2)
+  "https://harriotwatches.com",
+  "https://www.harriotwatches.com",
+  "https://m.harriotwatches.com",
 ];
 
 // 웹채팅 표시 브랜드명 (SMS·텔레그램·상담 제목). 폴바이스 기존 문구 유지.
@@ -111,7 +123,7 @@ export async function flushWebchatReplyNotification(
 ): Promise<{ ok: boolean; skipped?: string; error?: string }> {
   const threadId = await resolveWebchatThreadId(conversationId);
   if (!threadId) return { ok: false, skipped: "thread_not_found" };
-  return notifyWebchatReplyBySms(threadId);
+  return notifyWebchatReply(threadId);
 }
 
 export function getWebchatCorsHeaders(req: Request): HeadersInit {
@@ -167,6 +179,21 @@ export function normalizeConversationId(value: unknown): string | null {
 export function cleanText(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+export function isValidWebchatEmail(value: string | null | undefined): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value ?? "").trim());
+}
+
+/**
+ * 상담 시작에 필요한 연락처 검증.
+ * 국내몰은 전화(답변 알림 SMS), 영문몰은 이메일 — 해외 고객은 국내 SMS 수신이 안 된다.
+ * ⚠️ 전화만 필수로 두면 영문몰(lang=en)은 위젯이 전화 입력칸 자체를 안 그려서 항상 400 이 난다.
+ */
+export function webchatContactOk(input: { name?: string; phone?: string; email?: string }): boolean {
+  if (!input.name) return false;
+  if (normalizePhone(input.phone)) return true;
+  return isValidWebchatEmail(input.email);
 }
 
 export async function ensureWebchatThread(input: {
@@ -322,21 +349,26 @@ export async function summarizeWebchatConversations(
   return out;
 }
 
-export async function notifyWebchatReplyBySms(threadId: string): Promise<{
+export async function notifyWebchatReply(threadId: string): Promise<{
   ok: boolean;
   skipped?: string;
   error?: string;
 }> {
-  const cfg = smsConfigured();
-  if (!cfg.ok) return { ok: false, skipped: `sms_not_configured:${cfg.missing.join(",")}` };
-
   const data = await getThread(threadId);
   if (!data) return { ok: false, skipped: "thread_not_found" };
   const { thread } = data;
   if (thread.channel !== "webchat") return { ok: false, skipped: "not_webchat" };
 
+  // 국내=SMS, 영문몰=이메일. 해외 고객은 국내 SMS 수신 불가라 이메일이 유일한 통로다.
   const phone = normalizePhone(thread.customer_handle);
-  if (!phone) return { ok: false, skipped: "missing_phone" };
+  const email = isValidWebchatEmail(thread.customer_handle) ? thread.customer_handle!.trim() : null;
+  const via: "sms" | "email" | null = phone ? "sms" : email ? "email" : null;
+  if (!via) return { ok: false, skipped: "missing_contact" };
+
+  if (via === "sms") {
+    const cfg = smsConfigured();
+    if (!cfg.ok) return { ok: false, skipped: `sms_not_configured:${cfg.missing.join(",")}` };
+  }
 
   const latestInbound = [...data.messages]
     .reverse()
@@ -391,49 +423,77 @@ export async function notifyWebchatReplyBySms(threadId: string): Promise<{
   }
 
   const link = buildWebchatReturnUrl(conversationId, thread.brand);
-  const name = thread.customer_name?.trim() || "고객님";
-  const text = `${name}, ${wlabel(thread.brand)} 상담 답변이 도착했습니다.\n아래 링크에서 이어서 확인해 주세요.\n${link}`;
+  const label = wlabel(thread.brand);
 
-  const outcome = await sendMany([{ to: phone, text, subject: `${wlabel(thread.brand)} 상담 답변` }]);
-  const results = outcome.results.map((r) => ({ ...r, name, text: r.text ?? text }));
+  let sendOk = false;
+  let sendError: string | null = null;
+  let groupId: string | null = null;
 
-  try {
-    await logSmsSend({
-      messageText: text,
-      messageType: detectMessageType(text),
-      sourceDesc: `웹채팅 답변 알림 · ${thread.subject ?? thread.id}`,
-      recipientCount: 1,
-      successCount: outcome.successCount,
-      failCount: outcome.failCount,
-      estCost: estimateCost(text, 1),
-      groupId: outcome.groupId,
-      results,
-      isTest: false,
-    });
-  } catch (e) {
-    console.error("[webchat-sms] 이력 기록 실패:", e instanceof Error ? e.message : String(e));
+  if (via === "email") {
+    // 영문몰 고객 — 전화가 없다(위젯이 이메일만 받는다). 답변 도착을 이메일로 알린다.
+    const name = thread.customer_name?.trim() || "there";
+    const subject = `${label} — we've replied to your inquiry`;
+    const html =
+      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;font-size:15px;line-height:1.6;color:#111">` +
+      `<p>Hi ${escapeHtml(name)},</p>` +
+      `<p>We've replied to your ${escapeHtml(label)} inquiry.</p>` +
+      `<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#111;color:#fff;padding:11px 20px;border-radius:6px;text-decoration:none;font-weight:600">View the reply</a></p>` +
+      `<p style="font-size:13px;color:#777">Or open this link: ${escapeHtml(link)}</p>` +
+      `</div>`;
+    try {
+      await sendGmailNotification(email!, subject, html);
+      sendOk = true;
+    } catch (e) {
+      sendError = e instanceof Error ? e.message : String(e);
+    }
+  } else {
+    const name = thread.customer_name?.trim() || "고객님";
+    const text = `${name}, ${label} 상담 답변이 도착했습니다.\n아래 링크에서 이어서 확인해 주세요.\n${link}`;
+    const outcome = await sendMany([{ to: phone!, text, subject: `${label} 상담 답변` }]);
+    const results = outcome.results.map((r) => ({ ...r, name, text: r.text ?? text }));
+    sendOk = outcome.ok;
+    sendError = outcome.error ?? (outcome.ok ? null : "sms_send_failed");
+    groupId = outcome.groupId ?? null;
+
+    try {
+      await logSmsSend({
+        messageText: text,
+        messageType: detectMessageType(text),
+        sourceDesc: `웹채팅 답변 알림 · ${thread.subject ?? thread.id}`,
+        recipientCount: 1,
+        successCount: outcome.successCount,
+        failCount: outcome.failCount,
+        estCost: estimateCost(text, 1),
+        groupId: outcome.groupId,
+        results,
+        isTest: false,
+      });
+    } catch (e) {
+      console.error("[webchat-notify] 이력 기록 실패:", e instanceof Error ? e.message : String(e));
+    }
   }
 
-  if (!outcome.ok) {
+  if (!sendOk) {
     // 발송 실패 시 선점(claim)을 해제해 다음 신호에서 재시도할 수 있게 한다.
     await db.from("kv_store").delete().eq("key", everSentKey);
-    return { ok: false, error: outcome.error ?? "sms_send_failed" };
+    return { ok: false, error: sendError ?? `${via}_send_failed` };
   }
 
   const notifiedAt = new Date().toISOString();
   const { error: claimUpdateError } = await db.from("kv_store").update({
     data: {
       status: "sent",
+      via,
       threadId,
       inboundMessageId: latestInbound.id,
       outMessageId: latestOutbound.id,
-      groupId: outcome.groupId ?? null,
+      groupId,
       sentAt: notifiedAt,
     },
     updated_at: notifiedAt,
   }).eq("key", everSentKey);
   if (claimUpdateError) {
-    console.error("[webchat-sms] 발송 상태 갱신 실패:", claimUpdateError.message);
+    console.error("[webchat-notify] 발송 상태 갱신 실패:", claimUpdateError.message);
   }
 
   return { ok: true };
@@ -553,7 +613,7 @@ function isInternalSystemMessage(raw: unknown): boolean {
 /**
  * 미통보 답변 스위퍼 — 10분 주기(cs/notify 크론에서 호출).
  * 고객이 탭을 강제종료하면 away 신호가 안 와서 답변 SMS가 영영 안 나가는 케이스를 회수한다.
- * (모바일 91% — iOS에서 pagehide 미발화 흔함) notifyWebchatReplyBySms 가 자체 가드
+ * (모바일 91% — iOS에서 pagehide 미발화 흔함) notifyWebchatReply 가 자체 가드
  * (이미 봄/화면 보는 중/라운드당 1회 선점)를 가지므로 여기선 후보만 순회하면 안전.
  */
 export async function sweepWebchatReplyNotifications(): Promise<{ checked: number; sent: number }> {
@@ -568,7 +628,7 @@ export async function sweepWebchatReplyNotifications(): Promise<{ checked: numbe
   let sent = 0;
   for (const t of threads || []) {
     try {
-      const res = await notifyWebchatReplyBySms(t.id);
+      const res = await notifyWebchatReply(t.id);
       if (res.ok) sent++;
     } catch { /* 개별 실패 무시 */ }
   }

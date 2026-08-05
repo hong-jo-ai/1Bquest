@@ -8,7 +8,7 @@ import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listRedditAccounts, postRedditReply } from "./reddit";
 import { listIgAccounts, sendIgMessage } from "./instagramClient";
-import { notifyWebchatReplyBySms } from "./webchat";
+import { notifyWebchatReply } from "./webchat";
 import { cafe24Post, cafe24Put, type MallId } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import { addReplyExample } from "./replyExamples";
@@ -106,12 +106,12 @@ async function sendWebchatReply(
   await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
 
   try {
-    const sms = await notifyWebchatReplyBySms(threadId);
-    if (!sms.ok) {
-      console.warn("[webchat-reply] SMS 알림 생략/실패:", sms.skipped ?? sms.error);
+    const notified = await notifyWebchatReply(threadId);
+    if (!notified.ok) {
+      console.warn("[webchat-reply] 답변 알림 생략/실패:", notified.skipped ?? notified.error);
     }
   } catch (e) {
-    console.warn("[webchat-reply] SMS 알림 오류:", e instanceof Error ? e.message : String(e));
+    console.warn("[webchat-reply] 답변 알림 오류:", e instanceof Error ? e.message : String(e));
   }
 
   return { ok: true };
