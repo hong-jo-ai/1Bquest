@@ -9,6 +9,14 @@
 
 ## 1. 영문 상세페이지 카피 초안 (harriot-en-copy)
 
+> ## ⛔ 이 섹션 카피는 폐기 (2026-08-05)
+> 실물 문페이즈는 **일반 문페이즈 + 한옥 지붕 곡선 모양의 창**입니다. 역방향/고정달이 아닙니다.
+> 따라서 아래 **"The moon does not wane" · "refuses" · "we inverted it" · "역방향 문페이즈" 주장은 사실이 아니므로 전량 폐기.**
+> 살아남는 문장: *"You are no longer watching the sky. You are standing beneath a roof, looking up."* → 히어로로 승격.
+> 서사는 '발명'이 아니라 **'프레임'**. 기능 비교 카피("Not a complication borrowed from Geneva")도 배제 — 설월은 디자인·스토리로 파는 시계.
+> **현행 기준 = `docs/harriot-seolwol-detail-plan.md`** (구조 13섹션 + 국문 문안 v1 + 사양 정정).
+> `docs/seolwol-heritage-reel-v1.md` 릴스 대본 v1도 같은 이유로 재작성 필요(후크·발명 비트).
+
 ### 영문 모델명 제안
 - **1순위: `Seolwol`** (부제 *Snow Moon*) — 국문명 로마자 유지가 해리엇 헤리티지 톤에 부합. 표기 = **Seolwol — Snow Moon**.
 - 대안: `The Snow Moon` (영문권 직관), `Seolwol 雪月` (한자 병기, 프리미엄 인장 느낌).
