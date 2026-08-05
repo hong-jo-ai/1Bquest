@@ -5,28 +5,51 @@ import { logSmsSend } from "../sms/store";
 import { sendTelegramMessage } from "./telegram";
 import { sendGmailNotification } from "./emailNotify";
 
-// ⚠️ 스토어프론트 도메인이 늘면 여기에 반드시 추가할 것.
-// 위젯 스크립트는 Allow-Origin:* 이라 어디서든 뜨지만, 세션/메시지 API 는 이 목록으로 막힌다.
-// → 목록에 없으면 "버튼은 보이는데 전송이 안 되는" 무증상 장애가 된다(2026-08-05 영문몰 사고).
-const DEFAULT_ALLOWED_ORIGINS = [
-  "https://paulvice.co.kr",
-  "https://www.paulvice.co.kr",
-  "https://m.paulvice.co.kr",
-  "https://paulvice.cafe24.com",
-  // 폴바이스 영문몰 (shop_no=2)
-  "https://paulvice.kr",
-  "https://www.paulvice.kr",
-  "https://m.paulvice.kr",
-  // 해리엇 (멀티몰)
-  "https://harriot.co.kr",
-  "https://www.harriot.co.kr",
-  "https://m.harriot.co.kr",
-  "https://harriotkorea.cafe24.com",
-  // 해리엇 글로벌 영문몰 (shop_no=2)
-  "https://harriotwatches.com",
-  "https://www.harriotwatches.com",
-  "https://m.harriotwatches.com",
+// ⚠️ 위젯 스크립트는 Allow-Origin:* 이라 어디서든 뜨지만, 세션/메시지 API 는 여기서 막힌다.
+// → 도메인이 빠지면 "버튼은 보이는데 전송만 조용히 실패하는" 무증상 장애가 된다
+//   (2026-08-05: 영문몰 2개 + 해리엇 국내 harriotwatches.co.kr 이 통째로 유실됐다).
+//
+// www·m 같은 서브도메인까지 일일이 나열하면 계속 새기 때문에,
+// **우리 소유 도메인은 자기 자신과 모든 서브도메인**을 허용한다.
+const WEBCHAT_ALLOWED_BASE_DOMAINS = [
+  // 폴바이스 — 국내(shop_no=1) · 영문(shop_no=2)
+  "paulvice.co.kr",
+  "paulvice.kr",
+  // 해리엇 — 국내(shop_no=1)
+  "harriot.co.kr",
+  "harriotwatches.co.kr",
+  // 해리엇 글로벌 영문몰(shop_no=2)
+  "harriotwatches.com",
 ];
+
+// 카페24 기본 도메인은 우리 것만 정확히 일치할 때 허용한다.
+// (*.cafe24.com 을 통째로 열면 남의 쇼핑몰 전부가 우리 API 를 부를 수 있다)
+const WEBCHAT_ALLOWED_EXACT_HOSTS = [
+  "paulvice.cafe24.com",
+  "harriotkorea.cafe24.com",
+];
+
+const DEFAULT_ALLOWED_ORIGIN = "https://paulvice.co.kr";
+
+function isAllowedWebchatOrigin(origin: string, envAllowList: string[]): boolean {
+  // 환경변수로 지정했으면 그 목록만 쓴다(정확 일치).
+  if (envAllowList.length > 0) return envAllowList.includes(origin);
+
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+
+  if (WEBCHAT_ALLOWED_EXACT_HOSTS.includes(host)) return true;
+  // endsWith 만 쓰면 evil-paulvice.co.kr 같은 도메인이 통과한다 — 점 경계까지 확인.
+  return WEBCHAT_ALLOWED_BASE_DOMAINS.some(
+    (base) => host === base || host.endsWith(`.${base}`)
+  );
+}
 
 // 웹채팅 표시 브랜드명 (SMS·텔레그램·상담 제목). 폴바이스 기존 문구 유지.
 const WEBCHAT_BRAND_LABEL: Record<string, string> = { paulvice: "PAULVICE", harriot: "HARRIOT" };
@@ -132,8 +155,9 @@ export function getWebchatCorsHeaders(req: Request): HeadersInit {
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
-  const allowedOrigins = allowed.length > 0 ? allowed : DEFAULT_ALLOWED_ORIGINS;
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  const allowOrigin = isAllowedWebchatOrigin(origin, allowed)
+    ? origin
+    : (allowed[0] ?? DEFAULT_ALLOWED_ORIGIN);
 
   return {
     "Access-Control-Allow-Origin": allowOrigin,
