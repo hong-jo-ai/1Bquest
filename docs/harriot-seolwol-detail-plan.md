@@ -227,8 +227,9 @@ no detached floating beam, no needle, no blade, no horn"를 명시하고 **반�
 ## 4. 촬영 컷 리스트 (상세 역산 · 반나절)
 
 > **촬영은 두 갈래로 나눕니다 (2026-08-05 확정)**
-> - **스튜디오 15컷**(제품 매크로) → 의뢰서 `docs/seolwol-photo-brief-studio.md`
-> - **직접 8컷**(착용 3 · 언박싱 5) → 가이드 `docs/seolwol-photo-guide-self.md`
+> - **스튜디오 7컷 + 동일세팅 2컷** → 의뢰서 `docs/seolwol-photo-brief-studio.md`
+>   (컷당 과금이라 15→7로 압축: 05←01 · 06←03 · 10←09 **크롭 파생**, 08·13 **자사 촬영**, 12 **제외**)
+> - **직접 10컷**(착용 3 · 언박싱 5 · 제품 2) → 가이드 `docs/seolwol-photo-guide-self.md`
 > - AI 레퍼런스 24장 = `downloads/seolwol-detail/refs/`(README 필독 — **상세 사용 금지, 레퍼런스 전용**)
 > - 레퍼런스를 끼운 미리보기 = `downloads/seolwol-detail/seolwol-preview-REF.html`
 
