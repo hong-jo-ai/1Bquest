@@ -19,6 +19,7 @@ interface RelayBody {
   filename?: string;
   fileBase64?: string;
   chatId?: string; // 기본 TELEGRAM_CHAT_ID 대신 보낼 대상(클로드 브리지 등)
+  parseMode?: string; // "HTML" 등. 미지정이면 평문(기존 동작 유지)
 }
 
 export async function POST(req: NextRequest) {
@@ -66,7 +67,13 @@ export async function POST(req: NextRequest) {
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+        // 리마인더처럼 HTML 로 조판된 본문이 릴레이를 타면 태그가 그대로 보였다 → 호출측이 지정하면 전달.
+        ...(body.parseMode ? { parse_mode: body.parseMode } : {}),
+      }),
     });
     if (!res.ok) {
       return Response.json(
