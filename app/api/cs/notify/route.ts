@@ -1,7 +1,8 @@
 import { notifyNewUnanswered, notifyStaleUnanswered } from "@/lib/cs/telegram";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+// 스위퍼 2개(웹챗·AS)가 붙어 발송이 겹칠 수 있어 여유를 둔다.
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -27,18 +28,30 @@ export async function POST(req: Request) {
     }
   }
 
+  // AS 발송완료 안내 스위퍼 — shipped 로 바꾸는 경로가 둘(as-ship 라우트, 아이맥 asPaymentWatch)이라
+  // 라우트 훅만으론 아이맥 경로가 샌다. 고객 대상이라 주말에도 돌린다.
+  let asSweep: { checked: number; sent: number } | null = null;
+  if (mode !== "stale") {
+    try {
+      const { sweepAsShippedNotifications } = await import("@/lib/cs/asShippedNotify");
+      asSweep = await sweepAsShippedNotifications();
+    } catch (e) {
+      console.warn("[cs-notify] AS 발송안내 스위퍼 오류:", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // 주말(한국시간 토·일)에는 CS 알림을 보내지 않음 (사장님 요청).
   // notify 함수를 호출하지 않아 last_notify 워터마크가 전진하지 않음 →
   // 월요일 첫 실행 때 주말 동안 쌓인 미답변까지 한 번에 통지됨(알림 유실 없음).
   const kstDay = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay(); // 0=일,6=토 (KST 기준)
   if (kstDay === 0 || kstDay === 6) {
-    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0, webchatSweep });
+    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0, webchatSweep, asSweep });
   }
 
   try {
     const result =
       mode === "stale" ? await notifyStaleUnanswered() : await notifyNewUnanswered();
-    return Response.json({ ok: true, mode, ...result, webchatSweep });
+    return Response.json({ ok: true, mode, ...result, webchatSweep, asSweep });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return Response.json({ ok: false, error: msg }, { status: 500 });

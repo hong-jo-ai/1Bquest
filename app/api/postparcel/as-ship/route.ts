@@ -13,6 +13,7 @@ import { type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enqueueJob, getJob } from "@/lib/postParcel/queue";
 import { addrToZip } from "@/lib/postParcel/addrToZip";
+import { notifyAsShipped } from "@/lib/cs/asShippedNotify";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,17 @@ export async function GET(req: NextRequest) {
             shipped_at: new Date().toISOString(),
           })
           .eq("id", asId);
+
+        // 발송완료 안내 + CS 스레드 종료. 실패해도 접수 결과 반환은 막지 않는다
+        // (자체 선점 가드가 있어 크론 스위퍼가 회수한다).
+        if (isReal) {
+          try {
+            const n = await notifyAsShipped(asId);
+            if (!n.ok) console.warn("[as-ship] 발송안내 생략/실패:", n.skipped ?? n.error);
+          } catch (e) {
+            console.warn("[as-ship] 발송안내 오류:", e instanceof Error ? e.message : String(e));
+          }
+        }
       }
     }
   }
