@@ -11,6 +11,9 @@ le(DASH + "/.env.supabase"); le(DASH + "/.env.local"); le(DASH + "/local-agent/.
 
 const THREAD = "19fc5d1731ef91b5";
 const MD = "sy.chu@wconcept.co.kr";
+// 우리가 마지막으로 보낸 메시지(2026-08-11 "전체 쿠폰 미적용" 확답). 이보다 뒤에 온
+// MD 메시지만 새 회신으로 본다 — 8/3 회신이 스레드에 남아 있어 기준선이 없으면 즉시 오탐.
+const BASELINE_ID = "19fef9d0fe4c40a0";
 const LABEL = "com.paulvice.wconcept-reply-watch";
 
 (async () => {
@@ -23,14 +26,16 @@ const LABEL = "com.paulvice.wconcept-reply-watch";
   const token = tj.access_token;
   const th = await (await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${THREAD}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, { headers: { Authorization: `Bearer ${token}` } })).json();
   const msgs = th.messages || [];
+  const base = msgs.find((m) => m.id === BASELINE_ID);
+  const after = Number(base?.internalDate || 0);
   const reply = msgs.find((m) => {
     const from = (m.payload?.headers || []).find((h) => h.name === "From")?.value || "";
-    return from.includes(MD);
+    return from.includes(MD) && Number(m.internalDate || 0) > after;
   });
   if (!reply) { console.log("아직 회신 없음"); process.exit(0); }
   // 회신 도착 → 텔레그램 알림
   const snippet = (reply.snippet || "").slice(0, 300);
-  const text = `📬 <b>W컨셉 추시연 MD 회신 도착</b>\n(에끌라 오벌 실버·골드 쿠폰 미부착 요청 건)\n\n${snippet}\n\n→ 최저가 정리되면 허앤쉬 조현희 팀장에게 회신하면 됩니다.`;
+  const text = `📬 <b>W컨셉 추시연 MD 회신 도착</b>\n(에끌라 오벌 307951780 — <b>전체 쿠폰 미적용</b> 요청 건, 8/13까지 반영 요청)\n\n${snippet}\n\n→ 최저가 정리되면 허앤쉬 조현희 팀장에게 회신. 공구 오픈 8/14.`;
   const t = process.env.TELEGRAM_BOT_TOKEN, c = process.env.TELEGRAM_CHAT_ID;
   const tr = await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c, text, parse_mode: "HTML" }) });
   if (!tr.ok) { console.error("telegram fail", tr.status); process.exit(1); } // 실패 시 자기삭제 안 함(다음 주기 재시도)
