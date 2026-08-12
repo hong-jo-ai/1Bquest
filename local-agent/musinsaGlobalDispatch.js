@@ -74,9 +74,10 @@ async function readExportGrid(frame) {
 async function dispatchMusinsaGlobal(opts = {}) {
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
-  const { data } = await sb.from("pp_shipments").select("order_number,recipient_name,regi_no,created_at")
+  // registered_at 기준 — 취소→재접수 행이 created_at(최초 접수일) 윈도우 밖으로 빠지는 누락 방지 (musinsaDispatch 동일 수정 2026-08-12)
+  const { data } = await sb.from("pp_shipments").select("order_number,recipient_name,regi_no,registered_at")
     .eq("channel", "무신사").eq("req_type", "1").eq("is_test", false).eq("status", "submitted")
-    .not("regi_no", "is", null).gte("created_at", since).order("created_at", { ascending: false });
+    .not("regi_no", "is", null).gte("registered_at", since).order("registered_at", { ascending: false });
   let pending = (data || []).filter(isGlobalCand);
   if (process.env.ONLY_ORDER) pending = pending.filter((t) => t.order_number === process.env.ONLY_ORDER);
   log(`무신사 글로벌 송장 후보(pp_shipments) ${pending.length}건`);
@@ -138,7 +139,7 @@ async function dispatchMusinsaGlobal(opts = {}) {
     already.forEach((x) => log(`  ${x.s.order_number}: 이미 송장(${x.inv}) — 스킵`));
     gone.forEach((s) => log(`  ${s.order_number}(${s.recipient_name || ""}): 요청/처리 어디에도 없음(이미 출고/기간외) — 스킵`));
     // 최근 3일 내 접수분이 화면에 없으면 조용히 넘기지 않는다
-    const recentGone = gone.filter((s) => s.created_at && Date.now() - Date.parse(s.created_at) < 3 * 86400000);
+    const recentGone = gone.filter((s) => s.registered_at && Date.now() - Date.parse(s.registered_at) < 3 * 86400000);
     if (recentGone.length) await alertGlobal(`⚠️ 무신사 글로벌: 최근 접수 ${recentGone.length}건(${recentGone.map((s) => s.order_number).join(", ")})이 출고요청/처리 화면에 없음 — 송장 미입력 가능성, 파트너센터 수동확인 요망`);
     if (!targets.length) { log("입력할 신규 글로벌 송장 없음"); return { ok, skip }; }
     if (opts.dryRun) { log(`[DRYRUN] dlv12 입력 대상 ${targets.length}건: ` + targets.map((t) => `${t.order_number}=${t.regi_no}`).join(", ")); return { ok: 0, skip, dryRun: targets.length }; }

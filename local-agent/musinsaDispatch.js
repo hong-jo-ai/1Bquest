@@ -44,9 +44,11 @@ async function readExportGrid(frame) {
 async function dispatchMusinsa(opts = {}) {
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
+  // 윈도우는 registered_at 기준 — 취소→재접수 행은 created_at이 최초 접수일이라(업서트)
+  // created_at 기준이면 14일 밖으로 빠져 송장입력이 누락된다 (2026-08-12 이창훈·곽태미 실사례).
   const { data } = await sb.from("pp_shipments").select("order_number,recipient_name,regi_no")
     .eq("channel", "무신사").eq("req_type", "1").eq("is_test", false).eq("status", "submitted")
-    .not("regi_no", "is", null).gte("created_at", since).order("created_at", { ascending: false });
+    .not("regi_no", "is", null).gte("registered_at", since).order("registered_at", { ascending: false });
   let pending = data || [];
   if (process.env.ONLY_ORDER) pending = pending.filter((t) => t.order_number === process.env.ONLY_ORDER);
   log(`무신사 송장 후보(pp_shipments) ${pending.length}건`);
