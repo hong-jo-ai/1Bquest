@@ -23,10 +23,11 @@ export interface CrispAutoReplyResult {
 }
 
 function autoReplyMode(): AutoReplyMode {
-  // 기본 always — 업무시간 포함 상시 자동응대(불확실 건만 텔레그램 에스컬레이션). env로 off_hours/off 전환 가능.
-  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "always").toLowerCase();
+  // 기본 off_hours — 업무시간(평일 9~18시 KST)엔 사장님이 직접 상담하므로 자동응대가 먼저
+  // 끼어들면 대화가 꼬인다(사장님 지시 2026-08-12). 업무외에만 자동 1차응대. env로 always/off 전환 가능.
+  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "off_hours").toLowerCase();
   if (raw === "always" || raw === "off" || raw === "off_hours") return raw;
-  return "always";
+  return "off_hours";
 }
 
 function enabledBrands(): Set<CsBrandId> {
@@ -57,7 +58,7 @@ function kstDateString(date: Date): string {
   }).format(date);
 }
 
-/** 업무외 시간 여부: 주말 · 공휴일(종일) · 평일 10시 이전/18시 이후. */
+/** 업무외 시간 여부: 주말 · 공휴일(종일) · 평일 9시 이전/18시 이후 (업무시간 = 월~금 09~18시 KST). */
 function isOffHoursKst(date = new Date()): boolean {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Seoul",
@@ -70,7 +71,7 @@ function isOffHoursKst(date = new Date()): boolean {
   const weekend = weekday === "Sat" || weekday === "Sun";
   if (weekend) return true;
   if (isKoreanPublicHoliday(kstDateString(date))) return true;
-  return hour < 10 || hour >= 18;
+  return hour < 9 || hour >= 18;
 }
 
 function latestMessage(messages: CsMessage[]): CsMessage | undefined {
