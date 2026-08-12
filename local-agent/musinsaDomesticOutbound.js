@@ -89,9 +89,18 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
   context.on("page", (p) => {
     if (p === page) return;
     popup = p; p.on("download", (d) => { dl = d; }); p.on("dialog", (d) => { d.accept().catch(() => {}); });
-    p.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {}).then(() => {
-      if (!/order|delivery|inv|popup|detail/i.test(p.url())) p.close().catch(() => {});
-    });
+    // 잡창 정리 — 단 window.open 직후엔 URL이 about:blank(빈값)라 실주소 커밋 전에 판정하면
+    // 필요한 팝업까지 닫아버린다(2026-08-12 엑셀 다운로드 전멸 원인). 실 URL 뜰 때까지 기다렸다 판정.
+    (async () => {
+      await p.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+      for (let i = 0; i < 16; i++) {
+        const u = p.url();
+        if (u && u !== "about:blank") break;
+        await sleep(500);
+      }
+      const u = p.url();
+      if (u && u !== "about:blank" && !/order|delivery|inv|popup|detail/i.test(u)) p.close().catch(() => {});
+    })().catch(() => {});
   });
   if (!(await ensureMusinsa(page, log))) { log("무신사 로그인 실패"); return []; }
 
@@ -121,9 +130,11 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
   if (!popup) { log("무신사 일반: 택배송장목록 팝업 안 뜸"); return []; }
   await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
   await sleep(3000);
-  await popup.evaluate(() => { try { app_dlvinv_download.download_dlv_inv(); } catch (e) {} }).catch(() => {});
+  // 버튼 클릭이 정본(실측 2026-08-12: download_dlv_inv()가 팝업을 닫고 다운로드는 메인 페이지서 발생).
+  // 팝업이 이미 닫혔으면 클릭·evaluate 모두 조용히 실패하므로 순서만 바꾸고 폴백 유지.
+  await popup.locator('button:has-text("배송목록 받기"), a:has-text("배송목록 받기")').first().click({ timeout: 6000 }).catch(() => {});
   for (let i = 0; i < 15 && !dl; i++) await sleep(1000);
-  if (!dl) { await popup.locator('button:has-text("배송목록 받기"), a:has-text("배송목록 받기")').first().click({ timeout: 6000 }).catch(() => {}); for (let i = 0; i < 20 && !dl; i++) await sleep(1000); }
+  if (!dl) { await popup.evaluate(() => { try { app_dlvinv_download.download_dlv_inv(); } catch (e) {} }).catch(() => {}); for (let i = 0; i < 20 && !dl; i++) await sleep(1000); }
   if (!dl) { log("무신사 일반: 엑셀 다운로드 실패"); return []; }
   const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads"); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${Date.now()}-musinsa-dom-${dl.suggestedFilename()}`);
