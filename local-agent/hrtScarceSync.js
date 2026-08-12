@@ -273,16 +273,10 @@ async function mirrorPvDerived(tok) {
     const p = (await r.json()).product;
     compQty[no] = (p.variants || []).reduce((s, v) => s + (Number(v.quantity) || 0), 0);
   }
-  // ⚠️ 임시 오버라이드 — 에끌라 골드(195) 예약판매 기간(≤2026-08-18) 동안:
-  //  ① 세트 248 골드 변형은 실물이 없으므로 강제 0 (예약분은 195 단품으로만 판매)
-  //  ② 195 자체 재고는 예약 허용수량(변형 3개 중복합산 방지) — 미러링 외 용도 없음
-  const PV_MIRROR_OVERRIDE =
-    new Date().toISOString().slice(0, 10) < "2026-08-19" ? { P00000JO000G: 0 } : {};
   let updated = 0;
   for (const b of PV_DERIVED_BOM) {
     for (const [vc, comp] of Object.entries(b.map)) {
       let q = compQty[comp];
-      if (vc in PV_MIRROR_OVERRIDE) q = PV_MIRROR_OVERRIDE[vc];
       if (q === undefined) continue;
       const pr = await fetch(`${base}/api/v2/admin/products/${b.no}/variants/${vc}`, {
         method: "PUT", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
@@ -423,42 +417,6 @@ function renderPvBadgeJs(data) {
   function run(){ensureCss();decorateLists();decoratePdp();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
   setTimeout(run,1200);setTimeout(run,3000);
-
-  /* ── 에끌라 골드(195) 재입고 예약판매 UI 패치 — 2026-08-19 자동 만료 (2026-07-26) ──
-     PDP 주입 JS(스킨)가 그리는 ①출고 카운트다운(#pv-ship) ②"오늘 발송" 신뢰타일(#pv-trust)
-     ③여름세트 크로스셀(#pv-xsell)이 예약판매와 모순 → 예약 안내로 교체/제거.
-     원본 tick 은 분리된 노드에 계속 쓰므로(무해) 노드 자체를 제거·대체한다. */
-  try{
-    var PRE_NO='195', PRE_UNTIL='2026-08-19';
-    var pvpn=(location.search.match(/product_no=(\\d+)/)||[])[1]
-          ||(location.pathname.match(/^\\/product\\/[^/]+\\/(\\d+)\\//)||[])[1]||'';
-    if(pvpn===PRE_NO && (new Date().toISOString().slice(0,10))<PRE_UNTIL){
-      var preN=0, preT=setInterval(function(){
-        preN++;
-        try{
-          var ship=document.getElementById('pv-ship');
-          if(ship){
-            var pd=document.createElement('div');
-            pd.id='pv-preorder-ship';
-            pd.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0 2px;padding:12px 14px;background:#faf9f7;border:1px solid #e2ded9;border-radius:6px;font-size:12.8px;line-height:1.55;color:#111;font-family:Pretendard,-apple-system,"Noto Sans KR",sans-serif;';
-            pd.innerHTML='<span style="font-size:14px;">📦</span><span><b>재입고 예약 주문</b> — 8/19 입고 후 주문 순서대로 발송 · <b>브라운 가죽밴드(25,000원) 무료 증정</b></span>';
-            ship.parentNode.insertBefore(pd,ship); ship.remove();
-          }
-          var tr=document.getElementById('pv-trust');
-          if(tr&&!tr.getAttribute('data-preorder')){
-            tr.setAttribute('data-preorder','1');
-            var tile=tr.firstElementChild;
-            if(tile&&tile.children.length>=2){
-              tile.children[0].textContent='8/19 예약 발송';
-              tile.children[1].textContent='입고 후 순차 출고';
-            }
-          }
-          var xs=document.getElementById('pv-xsell'); if(xs) xs.remove();
-        }catch(e){}
-        if(preN>40) clearInterval(preT);
-      },400);
-    }
-  }catch(e){}
 })();
 `;
 }
