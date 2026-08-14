@@ -53,8 +53,22 @@ function isAllowed(pathname: string): boolean {
   return ALLOW_PREFIX.some((p) => pathname.startsWith(p));
 }
 
+// 해리엇 '그날의 달' 전용 도메인 — 루트 접속을 /moon 으로 재작성 (고객에게 대시보드 로그인 노출 방지)
+const MOON_HOSTS = new Set([
+  "harriot-moon.vercel.app",
+  "moon.harriotwatches.com",
+  "moon.harriotwatches.co.kr",
+]);
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const host = (req.headers.get("host") ?? "").toLowerCase();
+  if (MOON_HOSTS.has(host) && pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/moon";
+    return NextResponse.rewrite(url);
+  }
 
   // ── (1) 앱 자체 로그인 검증 ────────────────────────────────────────
   const authBypass = isAllowed(pathname);
