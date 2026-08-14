@@ -30,7 +30,7 @@ const PENDING_KEY = "alba_attendance_pending";
 const RECORDS_KEY = "alba_attendance_records";
 const WDK = ["일", "월", "화", "수", "목", "금", "토"];
 
-export interface DayRecord { worked: boolean; confirmed: boolean; hours: number; at?: string; }
+export interface DayRecord { worked: boolean; confirmed: boolean; hours: number; at?: string; note?: string; }
 type Records = Record<string, DayRecord>;
 
 function db(): SupabaseClient | null {
@@ -65,6 +65,11 @@ async function writeKv(key: string, data: unknown): Promise<void> {
   const c = db(); if (!c) return;
   await c.from("kv_store").upsert({ key, data, updated_at: new Date().toISOString() }, { onConflict: "key" });
 }
+// kv_store.data 는 NOT NULL — null 업서트는 조용히 실패하므로 해제는 행 삭제로 한다
+async function deleteKv(key: string): Promise<void> {
+  const c = db(); if (!c) return;
+  await c.from("kv_store").delete().eq("key", key);
+}
 
 async function sendTelegram(text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN, chatId = process.env.TELEGRAM_CHAT_ID;
@@ -86,8 +91,9 @@ function parseYN(text: string): boolean | null {
 function summarize(records: Records, ym: string) {
   const dates = Object.keys(records).filter((d) => d.startsWith(ym) && records[d].worked).sort();
   const days = dates.length;
-  const hours = days * ALBA.hoursPerDay;
-  const pay = hours * ALBA.wage;
+  // 연장근무 등 일자별 hours가 기본과 다를 수 있으므로 기록된 hours를 합산
+  const hours = dates.reduce((s, d) => s + (records[d].hours ?? ALBA.hoursPerDay), 0);
+  const pay = Math.round(hours * ALBA.wage);
   return { dates, days, hours, pay };
 }
 
@@ -110,9 +116,11 @@ export async function resolveAlbaAttendance(text: string): Promise<{ message: st
   const yn = parseYN(text);
   if (yn === null) return null;
   const records = await readKv<Records>(RECORDS_KEY, {});
-  records[pending.date] = { worked: yn, confirmed: true, hours: yn ? ALBA.hoursPerDay : 0, at: new Date().toISOString() };
+  // 이미 별도 hours(연장근무 등)가 기록돼 있으면 y 확인이 덮어쓰지 않도록 보존
+  const prev = records[pending.date];
+  records[pending.date] = { ...prev, worked: yn, confirmed: true, hours: yn ? (prev?.hours ?? ALBA.hoursPerDay) : 0, at: new Date().toISOString() };
   await writeKv(RECORDS_KEY, records);
-  await writeKv(PENDING_KEY, null);
+  await deleteKv(PENDING_KEY);
   const { days, pay } = summarize(records, pending.date.slice(0, 7));
   const head = yn ? `✅ ${mmddKor(pending.date)} 근무 확인 (${ALBA.hoursPerDay}시간)` : `🚫 ${mmddKor(pending.date)} 미근무 처리`;
   return { message: `${head}\n이번 달 누적: ${days}일 · ₩${pay.toLocaleString()}` };
@@ -134,7 +142,11 @@ export async function buildPayslip(ym?: string): Promise<string> {
   const records = await readKv<Records>(RECORDS_KEY, {});
   const { dates, days, hours, pay } = summarize(records, ym);
   const [y, m] = ym.split("-");
-  const list = dates.map(mmddKor).join("  ") || "(근무 없음)";
+  // 기본 근무시간과 다른 날(연장근무 등)은 시간을 함께 표기
+  const list = dates.map((d) => {
+    const h = records[d].hours ?? ALBA.hoursPerDay;
+    return h === ALBA.hoursPerDay ? mmddKor(d) : `${mmddKor(d)}[${h}h]`;
+  }).join("  ") || "(근무 없음)";
   return [
     `📄 ${ALBA.name}님 급여명세서`,
     `${Number(y)}년 ${Number(m)}월`,
