@@ -54,7 +54,6 @@
 .cardSky { height:57%; position:relative; overflow:hidden; background:radial-gradient(circle at 50% 48%,#2c3c63 0,#172238 45%,#0f1626 100%); }
 .cardSky:before { content:''; position:absolute; inset:0; opacity:.28; background-image:radial-gradient(circle at 20% 25%,#fff 0 1px,transparent 1.4px),radial-gradient(circle at 77% 33%,#fff 0 1px,transparent 1.4px),radial-gradient(circle at 69% 71%,#fff 0 .7px,transparent 1.2px); }
 .moon { width:65%; position:absolute; left:17.5%; top:4%; filter:drop-shadow(0 0 24px rgba(240,243,228,.18)); }
-.moonHalo { position:absolute; width:46%; aspect-ratio:1; border-radius:50%; top:18%; left:27%; box-shadow:0 0 85px rgba(234,238,223,.12); }
 .eaves { position:absolute; height:38%; left:-3%; right:-4%; bottom:-1%; overflow:hidden; }
 .eaves:before { content:''; position:absolute; width:120%; height:150%; left:-10%; top:30%; background:#0b0f18; border-radius:50% 50% 0 0/25% 25% 0 0; transform:rotate(-4deg); }
 .eaves span:before,.eaves span:after { content:''; position:absolute; bottom:11%; width:16%; height:10%; background:repeating-linear-gradient(90deg,#0b0f18 0 12px,#172238 12px 13px); border-radius:80% 30% 0 0; z-index:2; }

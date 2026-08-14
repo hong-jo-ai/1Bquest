@@ -118,7 +118,8 @@ function MoonCanvas({ phase, label }: { phase: number; label: string }) {
       sourceCanvas.height = size;
       const sourceContext = sourceCanvas.getContext("2d");
       if (!sourceContext) return;
-      sourceContext.drawImage(packageMoon, 0, 0, size, size);
+      const pad = size * 0.09;
+      sourceContext.drawImage(packageMoon, -pad, -pad, size * 1.18, size * 1.18);
       const source = sourceContext.getImageData(0, 0, size, size).data;
       const output = context.createImageData(size, size);
       const center = size / 2;
@@ -244,8 +245,7 @@ export default function MoonExperience() {
           </div>
           <article className={styles.card}>
             <div className={styles.cardSky}>
-              <div className={styles.moonHalo}></div>
-              <MoonCanvas phase={moonData.phase} label={moonData.label} />
+                  <MoonCanvas phase={moonData.phase} label={moonData.label} />
               <div className={styles.eaves}><span></span></div>
             </div>
             <div className={styles.cardText}>
@@ -267,7 +267,7 @@ export default function MoonExperience() {
             <header className={styles.readingHeader}>
               <p className={styles.step}>Moon Reading · 달을 읽는 일</p>
               <h2>그날의 달에는,<br />이런 이야기가 있었습니다.</h2>
-              <p>천문학적으로 계산한 사실 위에 해리엇이 한 편의 이야기를 덧붙였습니다.<br />운명을 단정하는 말이 아니라, 그날을 다시 바라보는 하나의 시선입니다.</p>
+              <p>운명을 단정하는 말이 아니라, 그날을 다시 바라보는 하나의 시선입니다.</p>
             </header>
             <div className={styles.readingGrid}>
               <article className={styles.skyFact}>
