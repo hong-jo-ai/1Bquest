@@ -5,6 +5,7 @@ import styles from "./moon.module.css";
 
 const SYNODIC_MONTH = 29.530588853;
 const NEW_MOON_EPOCH = Date.UTC(2000, 0, 6, 18, 14);
+const CANONICAL_PAGE = "https://harriotwatches.co.kr/seolwol/index.html";
 
 type MoonData = {
   age: number;
@@ -99,59 +100,199 @@ function formatKoreanDate(dateString: string) {
   return `${year}년 ${month}월 ${day}일 밤`;
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function renderMoonToCanvas(canvas: HTMLCanvasElement, phase: number) {
+  const size = 520;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  let packageMoon: HTMLImageElement;
+  try {
+    packageMoon = await loadImage("/seolwol-package-moon.png");
+  } catch {
+    return;
+  }
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = size;
+  sourceCanvas.height = size;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) return;
+  const pad = size * 0.09;
+  sourceContext.drawImage(packageMoon, -pad, -pad, size * 1.18, size * 1.18);
+  const source = sourceContext.getImageData(0, 0, size, size).data;
+  const output = context.createImageData(size, size);
+  const center = size / 2;
+  const radius = size * 0.43;
+  const angle = phase * Math.PI * 2;
+  const sunX = Math.sin(angle);
+  const sunZ = -Math.cos(angle);
+
+  for (let py = 0; py < size; py += 1) {
+    for (let px = 0; px < size; px += 1) {
+      const x = (px - center) / radius;
+      const y = (py - center) / radius;
+      const rr = x * x + y * y;
+      if (rr > 1) continue;
+      const z = Math.sqrt(1 - rr);
+      const light = x * sunX + z * sunZ;
+      const edge = Math.min(1, z * 5);
+      const idx = (py * size + px) * 4;
+      const sourceGray = source[idx] * 0.3 + source[idx + 1] * 0.59 + source[idx + 2] * 0.11;
+      const engravedTexture = 178 + (sourceGray - 210) * 1.28;
+      const lit = engravedTexture + Math.max(0, light) * 38;
+      const shaded = 20 + Math.max(0, light + 0.06) * 30;
+      const value = Math.max(0, Math.min(255, (light > 0 ? lit : shaded) * edge));
+      output.data[idx] = value;
+      output.data[idx + 1] = value + 4;
+      output.data[idx + 2] = value + 8;
+      output.data[idx + 3] = Math.round(255 * Math.min(1, edge + 0.18));
+    }
+  }
+  context.clearRect(0, 0, size, size);
+  context.putImageData(output, 0, 0);
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  words.forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+    else { line = test; }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+type CardState = { date: string; occasion: Occasion; memory: string };
+
+async function buildCardImage(state: CardState, data: MoonData): Promise<HTMLCanvasElement> {
+  if (typeof document !== "undefined" && document.fonts?.ready) {
+    try { await document.fonts.ready; } catch { /* fonts optional */ }
+  }
+  const W = 1080, H = 1500, M = 96;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  ctx.fillStyle = "#f8f9fb";
+  ctx.fillRect(0, 0, W, H);
+
+  const skyH = Math.round(H * 0.57);
+  const g = ctx.createRadialGradient(W / 2, skyH * 0.48, 60, W / 2, skyH * 0.48, W * 0.8);
+  g.addColorStop(0, "#2c3c63");
+  g.addColorStop(0.45, "#172238");
+  g.addColorStop(1, "#0f1626");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, skyH);
+
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  for (let i = 0; i < 30; i += 1) {
+    const sx = rnd() * W, sy = rnd() * skyH * 0.9, sr = rnd() < 0.8 ? 1.4 : 2.4;
+    ctx.globalAlpha = 0.25 + rnd() * 0.35;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  const moonCanvas = document.createElement("canvas");
+  moonCanvas.width = 520;
+  moonCanvas.height = 520;
+  await renderMoonToCanvas(moonCanvas, data.phase);
+  const mw = W * 0.65;
+  ctx.drawImage(moonCanvas, W * 0.175, skyH * 0.05, mw, mw);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, skyH);
+  ctx.clip();
+  ctx.translate(W / 2, skyH + 340);
+  ctx.rotate(-0.055);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, W * 0.78, 440, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#0b0f18";
+  ctx.fill();
+  ctx.restore();
+
+  const occasionLabel = OCCASIONS.find((o) => o.value === state.occasion)?.label ?? "";
+
+  ctx.fillStyle = "#687385";
+  ctx.font = '500 28px "Noto Sans KR", sans-serif';
+  ctx.fillText(`${formatKoreanDate(state.date)} · ${occasionLabel}`, M, skyH + 108);
+
+  ctx.fillStyle = "#21343d";
+  ctx.font = '300 82px "Noto Serif KR", serif';
+  ctx.fillText(data.label, M, skyH + 216);
+
+  ctx.fillStyle = "#687385";
+  ctx.font = '300 36px "Noto Serif KR", serif';
+  let y = skyH + 296;
+  wrapText(ctx, data.fact, W - M * 2).forEach((l) => { ctx.fillText(l, M, y); y += 56; });
+
+  if (state.memory) {
+    ctx.fillStyle = "#21343d";
+    ctx.font = '300 44px "Noto Serif KR", serif';
+    y += 34;
+    wrapText(ctx, `“${state.memory}”`, W - M * 2).forEach((l) => { ctx.fillText(l, M, y); y += 66; });
+  }
+
+  ctx.strokeStyle = "#c5c7c0";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(M, H - 128);
+  ctx.lineTo(W - M, H - 128);
+  ctx.stroke();
+
+  ctx.fillStyle = "#687385";
+  ctx.font = '400 22px "Noto Sans KR", sans-serif';
+  ctx.fillText("THE MOON OF YOUR NIGHT", M, H - 68);
+
+  try {
+    const logo = await loadImage("/harriot-logo-horizontal-black.png");
+    const lh = 34;
+    const lw = lh * (logo.width / logo.height);
+    ctx.drawImage(logo, W - M - lw, H - 68 - lh + 8, lw, lh);
+  } catch { /* logo optional */ }
+
+  return canvas;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("blob"))), "image/png");
+  });
+}
+
+function shareUrlFor(state: CardState) {
+  let q = `d=${state.date}&o=${state.occasion}`;
+  if (state.memory) q += `&m=${encodeURIComponent(state.memory)}`;
+  return `${CANONICAL_PAGE}?${q}`;
+}
+
 function MoonCanvas({ phase, label }: { phase: number; label: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const size = 520;
-    const context = canvas.getContext("2d");
-    if (!context) return;
     let cancelled = false;
-    const packageMoon = new Image();
-    packageMoon.src = "/seolwol-package-moon.png";
-    packageMoon.onload = () => {
+    void (async () => {
       if (cancelled) return;
-      const sourceCanvas = document.createElement("canvas");
-      sourceCanvas.width = size;
-      sourceCanvas.height = size;
-      const sourceContext = sourceCanvas.getContext("2d");
-      if (!sourceContext) return;
-      const pad = size * 0.09;
-      sourceContext.drawImage(packageMoon, -pad, -pad, size * 1.18, size * 1.18);
-      const source = sourceContext.getImageData(0, 0, size, size).data;
-      const output = context.createImageData(size, size);
-      const center = size / 2;
-      const radius = size * 0.43;
-      const angle = phase * Math.PI * 2;
-      const sunX = Math.sin(angle);
-      const sunZ = -Math.cos(angle);
-
-      for (let py = 0; py < size; py += 1) {
-        for (let px = 0; px < size; px += 1) {
-          const x = (px - center) / radius;
-          const y = (py - center) / radius;
-          const rr = x * x + y * y;
-          if (rr > 1) continue;
-          const z = Math.sqrt(1 - rr);
-          const light = x * sunX + z * sunZ;
-          const edge = Math.min(1, z * 5);
-          const idx = (py * size + px) * 4;
-          const sourceGray = source[idx] * 0.3 + source[idx + 1] * 0.59 + source[idx + 2] * 0.11;
-          const engravedTexture = 178 + (sourceGray - 210) * 1.28;
-          const lit = engravedTexture + Math.max(0, light) * 38;
-          const shaded = 20 + Math.max(0, light + 0.06) * 30;
-          const value = Math.max(0, Math.min(255, (light > 0 ? lit : shaded) * edge));
-          output.data[idx] = value;
-          output.data[idx + 1] = value + 4;
-          output.data[idx + 2] = value + 8;
-          output.data[idx + 3] = Math.round(255 * Math.min(1, edge + 0.18));
-        }
-      }
-      context.clearRect(0, 0, size, size);
-      context.putImageData(output, 0, 0);
-    };
+      await renderMoonToCanvas(canvas, phase);
+    })();
     return () => { cancelled = true; };
   }, [phase]);
 
@@ -162,10 +303,26 @@ export default function MoonExperience() {
   const [date, setDate] = useState("");
   const [occasion, setOccasion] = useState<Occasion | "">("");
   const [memory, setMemory] = useState("");
-  const [result, setResult] = useState<{ date: string; occasion: Occasion; memory: string } | null>(null);
+  const [result, setResult] = useState<CardState | null>(null);
+  const [keepLabel, setKeepLabel] = useState("이미지로 간직하기");
+  const [shareLabel, setShareLabel] = useState("이 밤을 나누기");
   const resultRef = useRef<HTMLElement>(null);
   const moonData = useMemo(() => (result ? getMoonData(result.date) : null), [result]);
   const occasionLabel = useMemo(() => result ? OCCASIONS.find((item) => item.value === result.occasion)?.label : "", [result]);
+
+  useEffect(() => {
+    const qs = new URLSearchParams(window.location.search);
+    const qd = qs.get("d");
+    const qo = qs.get("o") as Occasion | null;
+    const qm = (qs.get("m") ?? "").slice(0, 44);
+    if (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd) && qo && OCCASIONS.some((o) => o.value === qo)) {
+      setDate(qd);
+      setOccasion(qo);
+      setMemory(qm);
+      setResult({ date: qd, occasion: qo, memory: qm });
+      window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+    }
+  }, []);
 
   function revealMoon(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -174,10 +331,60 @@ export default function MoonExperience() {
     window.setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 90);
   }
 
+  async function keepImage() {
+    if (!result || !moonData) return;
+    setKeepLabel("카드를 만드는 중…");
+    try {
+      const canvas = await buildCardImage(result, moonData);
+      const blob = await canvasToBlob(canvas);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `harriot-moon-${result.date}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setKeepLabel("간직되었습니다");
+    } catch {
+      setKeepLabel("이미지로 간직하기");
+    }
+    window.setTimeout(() => setKeepLabel("이미지로 간직하기"), 2600);
+  }
+
+  async function shareNight() {
+    if (!result || !moonData) return;
+    const url = shareUrlFor(result);
+    const text = `${formatKoreanDate(result.date)}, ${moonData.label}.\n${moonData.fact}\n당신의 밤은 언제인가요?`;
+    try {
+      const canvas = await buildCardImage(result, moonData);
+      const blob = await canvasToBlob(canvas);
+      const file = new File([blob], `harriot-moon-${result.date}.png`, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "그날의 달 — HARRIOT", text: `${text}\n${url}` });
+        return;
+      }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "그날의 달 — HARRIOT", text, url });
+        return;
+      }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareLabel("이 밤의 링크가 복사되었습니다");
+      window.setTimeout(() => setShareLabel("이 밤을 나누기"), 2600);
+    } catch { /* clipboard unavailable */ }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <a href="#begin" className={styles.brand} aria-label="HARRIOT 홈">
+        <a href="https://harriotwatches.co.kr/" className={styles.brand} aria-label="해리엇 홈으로 돌아가기">
           <OfficialLogo className={styles.headerLogo} tone="white" />
         </a>
         <span className={styles.issue}>A record of the night</span>
@@ -245,7 +452,7 @@ export default function MoonExperience() {
           </div>
           <article className={styles.card}>
             <div className={styles.cardSky}>
-                  <MoonCanvas phase={moonData.phase} label={moonData.label} />
+              <MoonCanvas phase={moonData.phase} label={moonData.label} />
               <div className={styles.eaves}><span></span></div>
             </div>
             <div className={styles.cardText}>
@@ -292,21 +499,24 @@ export default function MoonExperience() {
           </section>
           <div className={styles.actions}>
             <p>이 카드는 당신의 것입니다.</p>
-            <button type="button">이미지로 간직하기</button>
-            <button type="button">이 밤을 나누기</button>
+            <button type="button" onClick={keepImage}>{keepLabel}</button>
+            <button type="button" onClick={shareNight}>{shareLabel}</button>
           </div>
           <div className={styles.bridge}>
             <p className={styles.step}>그리고, 오래 두는 방법</p>
             <h2>그날의 달을<br />손목에 둘 수 있습니다.</h2>
             <p>설월의 뒷면에는 이름도, 날짜도 새길 수 있습니다.<br />각인은 언제나 무료입니다.</p>
-            <a href="#seolwol">설월에 담긴 달 이야기 <span>↗</span></a>
+            <p className={styles.launchNote}>이 달을 담은 문페이즈 시계, 설월 雪月 — <b>2026년 9월</b>, 이곳 해리엇에서 공개됩니다.</p>
+            <a className={styles.backHome} href="https://harriotwatches.co.kr/">해리엇 둘러보기 <span>↗</span></a>
             <small>SEOLWOL · {result.date.replaceAll("-", ". ")}.</small>
           </div>
         </section>
       )}
 
       <footer className={styles.footer}>
-        <OfficialLogo className={styles.footerLogo} tone="white" />
+        <a href="https://harriotwatches.co.kr/" aria-label="해리엇 홈으로 돌아가기">
+          <OfficialLogo className={styles.footerLogo} tone="white" />
+        </a>
         <p>시간이 지워서는 안 되는 것을 기억합니다.</p>
         <small>Moon phases are calculated for 9 PM KST.</small>
       </footer>

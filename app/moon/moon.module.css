@@ -87,6 +87,8 @@
 .moonMessage h3 { color:#5a6a8c; font-size:16px; }
 .moonMessage blockquote { margin:35px 0 0; color:#2c3c63; font-family:'Noto Serif KR'; font-size:clamp(21px,2.4vw,30px); line-height:1.75; font-weight:300; word-break:keep-all; }
 .actions { margin:56px auto 130px; width:min(100%,560px); display:grid; grid-template-columns:1fr 1fr; gap:10px; }.actions p { grid-column:1/-1; font-family:'Noto Serif KR'; text-align:center; margin-bottom:20px; }.actions button { background:transparent; border:1px solid #9aa4b5; padding:15px 10px; color:var(--ink); cursor:pointer; }
+.launchNote { margin-top:38px; font-family:'Noto Serif KR'; font-size:16px; color:#2c3c63 !important; line-height:1.9; }
+.launchNote b { font-weight:500; }
 .bridge { width:min(100%,1120px); margin:auto; border-top:1px solid #c7d1e2; padding:120px 0 140px; position:relative; }.bridge h2 { max-width:700px; }.bridge a { margin-top:35px; display:inline-flex; gap:36px; color:var(--ink); text-decoration:none; border-bottom:1px solid var(--ink); padding-bottom:10px; font-size:13px; }.bridge>small { position:absolute; right:0; top:154px; font-family:'Noto Serif KR'; font-size:14px; letter-spacing:.08em; color:#6d7685; }
 .footer { min-height:280px; background:#141a26; color:#e9edf4; padding:70px clamp(28px,7vw,100px); display:grid; grid-template-columns:1fr 1fr; align-items:end; }.footerLogo { width:160px; height:auto; }.footer p { text-align:right; font-family:'Noto Serif KR'; font-size:17px; }.footer small { grid-column:1/-1; text-align:right; margin-top:28px; opacity:.4; font-size:8px; letter-spacing:.14em; }
 
