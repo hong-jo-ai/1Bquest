@@ -1,10 +1,18 @@
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
+import { readFile } from "fs/promises";
+import path from "path";
 import { getMoonData, formatKoreanDate, isOccasion, occasionLabelOf, type Occasion } from "../moonShared";
 
 export const runtime = "nodejs";
 
-const fontData = fetch(new URL("./NotoSerifKR-sub.otf", import.meta.url)).then((r) => r.arrayBuffer());
+let fontCache: Buffer | null = null;
+async function getFontData(): Promise<Buffer> {
+  if (!fontCache) {
+    fontCache = await readFile(path.join(process.cwd(), "app", "moon", "og", "NotoSerifKR-sub.otf"));
+  }
+  return fontCache;
+}
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -90,7 +98,7 @@ export async function GET(req: NextRequest) {
     {
       width: 1200,
       height: 630,
-      fonts: [{ name: "NotoSerifKR", data: await fontData, weight: 300, style: "normal" }],
+      fonts: [{ name: "NotoSerifKR", data: await getFontData(), weight: 300, style: "normal" }],
       headers: { "cache-control": "public, max-age=86400, s-maxage=86400" },
     }
   );
