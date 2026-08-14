@@ -3,7 +3,7 @@ export const NEW_MOON_EPOCH = Date.UTC(2000, 0, 6, 18, 14);
 export const CANONICAL_PAGE = "https://harriotwatches.co.kr/seolwol/index.html";
 
 export type PhaseKey = "new" | "crescent" | "half" | "waxing" | "full" | "waning" | "lastHalf" | "balsamic";
-export type Occasion = "birth" | "love" | "promise" | "departure" | "farewell" | "unsaid";
+export type Occasion = "birth" | "love" | "promise" | "departure" | "travel" | "longing" | "flutter" | "waiting" | "alone" | "restart" | "farewell" | "unsaid";
 
 export type MoonData = {
   age: number;
@@ -19,6 +19,12 @@ export const OCCASIONS: Array<{ value: Occasion; label: string }> = [
   { value: "love", label: "사랑을 시작한 밤" },
   { value: "promise", label: "약속을 나눈 밤" },
   { value: "departure", label: "새로운 길을 떠난 밤" },
+  { value: "travel", label: "여행의 마지막 밤" },
+  { value: "longing", label: "누군가 보고 싶은 밤" },
+  { value: "flutter", label: "설레던 밤" },
+  { value: "waiting", label: "오래 기다리던 밤" },
+  { value: "alone", label: "혼자였던 밤" },
+  { value: "restart", label: "다시 시작하기로 한 밤" },
   { value: "farewell", label: "누군가와 헤어진 밤" },
   { value: "unsaid", label: "말로 정하기 어려운 밤" },
 ];
