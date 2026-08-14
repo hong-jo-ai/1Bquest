@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
 
   const data = getMoonData(date);
   const origin = req.nextUrl.origin;
-  const texture = `${origin}/seolwol-package-moon.png`;
   const logo = `${origin}/harriot-logo-horizontal-white.png`;
 
   const R = 190;
@@ -31,15 +30,10 @@ export async function GET(req: NextRequest) {
   const waxing = p < 0.5;
   const a = Math.abs(Math.cos(2 * Math.PI * p)) * R;
   const gibbous = waxing ? p >= 0.25 : p <= 0.75;
-  const texSize = R * 2 * 1.18;
-  const texOffset = -(texSize - R * 2) / 2;
 
   const moonLayers = (
     <div style={{ display: "flex", position: "relative", width: R * 2, height: R * 2 }}>
-      <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: R * 2, height: R * 2, borderRadius: R, overflow: "hidden", backgroundColor: "#151A26" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={texture} alt="" width={texSize} height={texSize} style={{ position: "absolute", left: texOffset, top: texOffset, opacity: 0.9 }} />
-      </div>
+      <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: R * 2, height: R * 2, borderRadius: R, backgroundColor: "#EDE8DA" }} />
       <div
         style={{
           display: "flex",
@@ -48,23 +42,28 @@ export async function GET(req: NextRequest) {
           left: waxing ? 0 : R,
           width: R,
           height: R * 2,
-          backgroundColor: "#10151F",
+          backgroundColor: "#141A28",
           borderTopLeftRadius: waxing ? R : 0,
           borderBottomLeftRadius: waxing ? R : 0,
           borderTopRightRadius: waxing ? 0 : R,
           borderBottomRightRadius: waxing ? 0 : R,
         }}
       />
-      {a > 3 && !gibbous && (
-        <div style={{ display: "flex", position: "absolute", top: 0, left: R - a, width: a * 2, height: R * 2, borderRadius: "50%", backgroundColor: "#10151F" }} />
+      {a > 3 && (
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            top: 0,
+            left: R - a,
+            width: a * 2,
+            height: R * 2,
+            borderRadius: "50%",
+            backgroundColor: gibbous ? "#EDE8DA" : "#141A28",
+          }}
+        />
       )}
-      {a > 3 && gibbous && (
-        <div style={{ display: "flex", position: "absolute", top: 0, left: R - a, width: a * 2, height: R * 2, borderRadius: "50%", overflow: "hidden" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={texture} alt="" width={texSize} height={texSize} style={{ position: "absolute", left: texOffset - (R - a), top: texOffset, opacity: 0.9 }} />
-        </div>
-      )}
-      <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: R * 2, height: R * 2, borderRadius: R, border: "1px solid rgba(255,255,255,0.08)" }} />
+      <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: R * 2, height: R * 2, borderRadius: R, border: "1px solid rgba(237,232,218,0.16)" }} />
     </div>
   );
 
