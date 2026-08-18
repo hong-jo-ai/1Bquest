@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import { parseKbBankExcel } from "@/lib/finance/kbParser";
+import { parseWooriBankExcel } from "@/lib/finance/wooriBankParser";
 import { categorizeTx } from "@/lib/finance/categorize";
 import { enrichBankTxsWithCardMatches } from "@/lib/finance/cardMatcher";
 import { enrichBankTxsWithInvoiceMatches } from "@/lib/finance/invoiceMatcher";
@@ -32,10 +33,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Supabase 미설정" }, { status: 500 });
   }
 
-  const bank = req.nextUrl.searchParams.get("bank") ?? "KB";
-  if (bank !== "KB") {
+  // 은행별 파서 분기. 파일 형식이 은행마다 달라 파서를 나눠 둔다.
+  const bankParam = req.nextUrl.searchParams.get("bank") ?? "KB";
+  const bank = /^(woori|우리)$/i.test(bankParam) ? "Woori" : bankParam;
+  if (bank !== "KB" && bank !== "Woori") {
     return Response.json(
-      { error: `지원하지 않는 은행: ${bank} (현재 KB만 지원)` },
+      { error: `지원하지 않는 은행: ${bankParam} (현재 KB · Woori 지원)` },
       { status: 400 }
     );
   }
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
   let parsed;
   try {
     const buffer = await file.arrayBuffer();
-    parsed = parseKbBankExcel(buffer);
+    parsed = bank === "Woori" ? parseWooriBankExcel(buffer) : parseKbBankExcel(buffer);
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : String(e) },
