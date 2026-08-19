@@ -547,6 +547,10 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     }
 
     function showContactError(message) {
+      // ⚠️ 연락처 박스가 숨겨진(.saved) 상태면 에러 문구도 입력칸도 안 보인다 —
+      //    고객은 전송 버튼을 눌러도 아무 반응이 없는 것으로 느끼고 상담이 유실된다(2026-08-19 장한비 건).
+      //    검증 실패 시에는 무조건 박스를 다시 펼쳐서 무엇을 채워야 하는지 보이게 한다.
+      contactBox.classList.remove("saved");
       errorText.textContent = message;
       errorText.classList.add("show");
     }
@@ -663,7 +667,15 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       if (linkedConversation && /^pv_[a-z0-9_]{12,80}$/i.test(linkedConversation)) {
         setConversationId(linkedConversation);
         chatReturnView = "home";
-        contactBox.classList.add("saved");
+        // 답변 알림 SMS 링크는 대개 **처음 상담한 기기가 아닌 폰**에서 열린다.
+        // 그 기기엔 localStorage 연락처가 없는데 예전엔 여기서 무조건 숨겨버려서,
+        // 답변은 읽히지만 답장은 검증 실패로 조용히 막혔다(2026-08-19 장한비 건).
+        // 연락처가 실제로 준비된 경우에만 숨긴다. pv_n/pv_p 가 오면 채워준다.
+        var ln = (params.get("pv_n") || "").slice(0, 40);
+        var lp = (params.get("pv_p") || "").replace(/[^0-9-]/g, "").slice(0, 20);
+        if (ln && !nameInput.value) nameInput.value = ln;
+        if (lp && !phoneInput.value) phoneInput.value = lp;
+        if (contactReady(currentContact())) contactBox.classList.add("saved");
         setTimeout(function () { openPanel("chat"); }, 250);
       } else if (params.get("pv_open") === "1") {
         // CS 문자(SMS)에 넣는 상담 링크 — 기존 대화가 없는 고객도 바로 채팅이 열리게 한다.

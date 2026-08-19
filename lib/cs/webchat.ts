@@ -446,7 +446,10 @@ export async function notifyWebchatReply(threadId: string): Promise<{
     return { ok: false, error: `sms_claim_failed:${claimError.message}` };
   }
 
-  const link = buildWebchatReturnUrl(conversationId, thread.brand);
+  const link = buildWebchatReturnUrl(conversationId, thread.brand, {
+    name: thread.customer_name,
+    phone: thread.customer_handle,
+  });
   const label = wlabel(thread.brand);
 
   let sendOk = false;
@@ -593,7 +596,11 @@ export async function notifyNewWebchatThreadByTelegram(threadId: string): Promis
   return { ok: true };
 }
 
-function buildWebchatReturnUrl(conversationId: string, brand?: string | null): string {
+function buildWebchatReturnUrl(
+  conversationId: string,
+  brand?: string | null,
+  contact?: { name?: string | null; phone?: string | null }
+): string {
   const isHarriot = brand === "harriot";
   const base = (
     (isHarriot ? process.env.HARRIOT_WEBCHAT_RETURN_URL : process.env.PAULVICE_WEBCHAT_RETURN_URL) ||
@@ -601,6 +608,17 @@ function buildWebchatReturnUrl(conversationId: string, brand?: string | null): s
   ).trim();
   const url = new URL(base);
   url.searchParams.set("pv_chat", conversationId);
+  // 이 링크는 대개 처음 상담한 기기가 아닌 폰에서 열린다 → 그 기기엔 저장된 연락처가 없다.
+  // 이름·연락처를 실어 보내 위젯이 입력칸을 채우게 한다(재입력 없이 바로 답장 가능).
+  const name = contact?.name?.trim();
+  if (name) url.searchParams.set("pv_n", name.slice(0, 40));
+  // customer_handle 은 국내=전화, 영문몰=이메일이다. 전화 모양일 때만 싣는다
+  // (이메일에서 숫자만 뽑아 전화칸에 넣으면 엉뚱한 값이 채워진다).
+  const handle = contact?.phone?.trim() ?? "";
+  const digits = handle.replace(/\D/g, "");
+  if (!handle.includes("@") && digits.length >= 10 && digits.length <= 11) {
+    url.searchParams.set("pv_p", digits);
+  }
   return url.toString();
 }
 
