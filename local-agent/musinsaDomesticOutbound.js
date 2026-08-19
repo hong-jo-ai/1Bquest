@@ -82,6 +82,12 @@ function rowsFromExcel(file, log) {
 }
 
 async function getMusinsaDomesticRows(_opts, log = console.log) {
+  // 수동 복구용 우회: MUSINSA_DOM_ROWS_FILE=<json> 이면 브라우저 없이 해당 rows 반환 (2026-08-19 백로그 복구에 사용)
+  if (process.env.MUSINSA_DOM_ROWS_FILE) {
+    const rows = JSON.parse(fs.readFileSync(process.env.MUSINSA_DOM_ROWS_FILE, "utf-8"));
+    log(`무신사 일반: 파일 주입 ${rows.length}행 (${process.env.MUSINSA_DOM_ROWS_FILE})`);
+    return rows;
+  }
   const { page, context } = await getMarketplacePage("musinsa", log);
   page.on("dialog", (d) => { log(`  무신사 dialog: ${d.message().replace(/\s+/g, " ").slice(0, 70)}`); d.accept().catch(() => {}); });
   let popup = null, dl = null;
@@ -89,18 +95,9 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
   context.on("page", (p) => {
     if (p === page) return;
     popup = p; p.on("download", (d) => { dl = d; }); p.on("dialog", (d) => { d.accept().catch(() => {}); });
-    // 잡창 정리 — 단 window.open 직후엔 URL이 about:blank(빈값)라 실주소 커밋 전에 판정하면
-    // 필요한 팝업까지 닫아버린다(2026-08-12 엑셀 다운로드 전멸 원인). 실 URL 뜰 때까지 기다렸다 판정.
-    (async () => {
-      await p.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
-      for (let i = 0; i < 16; i++) {
-        const u = p.url();
-        if (u && u !== "about:blank") break;
-        await sleep(500);
-      }
-      const u = p.url();
-      if (u && u !== "about:blank" && !/order|delivery|inv|popup|detail/i.test(u)) p.close().catch(() => {});
-    })().catch(() => {});
+    // ⚠️ 잡창 자동 닫기 로직 제거(2026-08-19): 무신사가 8/7경 팝업 URL을 바꾼 뒤 이 로직이
+    // 필요한 invoice 팝업까지 잡창으로 오판해 닫아 엑셀 다운로드가 전멸했다(8/7~8/18).
+    // 잡창이 남아 있어도 다운로드에 지장이 없으므로 아무것도 닫지 않는다.
   });
   if (!(await ensureMusinsa(page, log))) { log("무신사 로그인 실패"); return []; }
 
@@ -123,23 +120,41 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
   if (!exp) { log("배송출고처리 iframe 못 찾음"); return []; }
   const expRows = await exp.evaluate(() => document.querySelectorAll(".ag-center-cols-container .ag-row, .ag-row").length).catch(() => 0);
   if (expRows <= 0) { log("무신사 일반: 배송출고처리 0건"); return []; }
-  await selectAll(exp);
-  popup = null; dl = null;
-  await exp.evaluate(() => { try { popDeliveryInvDnView(); } catch (e) {} }).catch(() => {});
-  for (let i = 0; i < 15 && !popup; i++) await sleep(1000);
-  if (!popup) { log("무신사 일반: 택배송장목록 팝업 안 뜸"); return []; }
-  await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
-  await sleep(3000);
-  // 버튼 클릭이 정본(실측 2026-08-12: download_dlv_inv()가 팝업을 닫고 다운로드는 메인 페이지서 발생).
-  // 팝업이 이미 닫혔으면 클릭·evaluate 모두 조용히 실패하므로 순서만 바꾸고 폴백 유지.
-  await popup.locator('button:has-text("배송목록 받기"), a:has-text("배송목록 받기")').first().click({ timeout: 6000 }).catch(() => {});
-  for (let i = 0; i < 15 && !dl; i++) await sleep(1000);
-  if (!dl) { await popup.evaluate(() => { try { app_dlvinv_download.download_dlv_inv(); } catch (e) {} }).catch(() => {}); for (let i = 0; i < 20 && !dl; i++) await sleep(1000); }
-  if (!dl) { log("무신사 일반: 엑셀 다운로드 실패"); return []; }
-  const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads"); fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now()}-musinsa-dom-${dl.suggestedFilename()}`);
-  await dl.saveAs(file);
-  await popup.close().catch(() => {});
+
+  // 팝업(배송목록 받기)이 정본 — invoice_list 엑셀만 비마스킹 수취인 정보를 담는다.
+  // (AG-Grid 우클릭 내보내기는 이름·연락처가 마스킹되어 우체국 접수에 사용 불가 — 2026-08-19 확인)
+  // 8/7~8/18 간헐 전멸 이력이 있어 selectAll부터 3회 재시도.
+  let file = null;
+  for (let attempt = 1; attempt <= 3 && !file; attempt++) {
+    if (attempt > 1) { log(`무신사 일반: 팝업 다운로드 재시도 ${attempt}/3`); await sleep(3000); }
+    const sel = await selectAll(exp);
+    if (sel <= 0) { log("무신사 일반: 전체선택 0행 — 재시도"); continue; }
+    popup = null; dl = null;
+    await exp.evaluate(() => { try { popDeliveryInvDnView(); } catch (e) {} }).catch(() => {});
+    for (let i = 0; i < 15 && !popup; i++) await sleep(1000);
+    if (!popup) { log("무신사 일반: 택배송장목록 팝업 안 뜸"); continue; }
+    await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+    await sleep(3000);
+    log(`  [dbg] 팝업 url=${popup.url() || "(빈값)"} closed=${popup.isClosed()}`);
+    const btns = await popup.evaluate(() => Array.from(document.querySelectorAll("button, a, input[type=button]")).map((b) => (b.textContent || b.value || "").trim()).filter(Boolean).slice(0, 10)).catch((e) => "evalErr:" + e.message.split("\n")[0]);
+    log(`  [dbg] 팝업 버튼: ${JSON.stringify(btns)}`);
+    await popup.locator('button:has-text("배송목록 받기"), a:has-text("배송목록 받기")').first().click({ timeout: 6000 }).catch((e) => log("  [dbg] 클릭 실패: " + e.message.split("\n")[0]));
+    for (let i = 0; i < 15 && !dl; i++) await sleep(1000);
+    if (!dl) {
+      const t = await popup.evaluate(() => { try { app_dlvinv_download.download_dlv_inv(); return "called"; } catch (e) { return "err:" + e.message; } }).catch((e) => "evalErr:" + e.message.split("\n")[0]);
+      log(`  [dbg] 폴백 download_dlv_inv: ${t}`);
+      for (let i = 0; i < 20 && !dl; i++) await sleep(1000);
+    }
+    if (!dl) { log(`무신사 일반: 엑셀 다운로드 실패 (시도 ${attempt}/3)`); await popup.close().catch(() => {}); continue; }
+    const dir = path.join(os.tmpdir(), "paulvice-marketplace-downloads"); fs.mkdirSync(dir, { recursive: true });
+    file = path.join(dir, `${Date.now()}-musinsa-dom-${dl.suggestedFilename()}`);
+    await dl.saveAs(file);
+    await popup.close().catch(() => {});
+  }
+  if (!file) {
+    log(`⚠️ 무신사 일반: 배송출고처리 ${expRows}행이 있는데 엑셀 다운로드 3회 모두 실패 — 접수 누락 위험, 수동 확인 필요`);
+    return [];
+  }
 
   const rows = rowsFromExcel(file, log);
   log(`무신사 일반 우체국 행 ${rows.length}건`);
