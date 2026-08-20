@@ -121,6 +121,10 @@
       "schedule": "0 1 * * *"
     },
     {
+      "path": "/api/cron/as-ship-audit",
+      "schedule": "20 1 * * *"
+    },
+    {
       "path": "/api/cron/daily-summary",
       "schedule": "59 14 * * *"
     },
