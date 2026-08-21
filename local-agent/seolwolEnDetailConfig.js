@@ -11,10 +11,11 @@
  *    스위스 무브 브랜드와 같은 링에 서는 순간 진다 — 설월은 디자인·스토리로 판다.
  * ⚠️ 무브먼트는 스펙표에만. "Swiss Made"는 인증 확인 전까지 사용 금지(RONDA 표기까지만).
  *
- * 글로벌 $420. 예약(선판매)은 국내만 — 영문몰은 8/20 출고 안내로 통일.
+ * 글로벌 $420. 출시 예정일은 9/7이며 아직 미확정. 초도 보증서 넘버링 없음.
  */
 
 const ENGRAVE_FREE = true;
+const { indexProfileSvg } = require("./seolwolIndexArt");
 
 module.exports = {
   theme: "seolwol",
@@ -34,7 +35,7 @@ module.exports = {
       line: "You are not watching the sky.<br>You are standing beneath a roof, looking up.",
       priceNote: "Moon Phase · 38mm",
       price: "$420",
-      badge: "Ships from August 20 · First 50 pieces numbered on the warranty card<br>Engraving is free and adds no time to your shipping date",
+      badge: "Expected September 7 · Date subject to change<br>Complimentary engraving · No added lead time",
     },
 
     // ── ② OPENING ───────────────────────────────────────────
@@ -78,7 +79,7 @@ module.exports = {
           fromCap: "The eaves of a hanok",
           to: { cut: "05", alt: "The moon phase aperture, cut along a roofline", ratio: "16/9" },
           toCap: "The window at twelve",
-          text: "Stand in the courtyard and the roofline divides the sky first. The moon always rested at the end of that curve. We cut the window along the same line.",
+          text: "Stand in the courtyard and the roofline divides the sky first. The moon always rested at the end of that curve. We cut the window along the same line — and then cut it twelve more times, into the indices.",
         },
         {
           from: { src: "world/m32_snowtiles.png", alt: "Fresh snow on hanok roof tiles" },
@@ -162,9 +163,31 @@ module.exports = {
       items: [
         { title: "Pale sky blue", desc: "The colour of snow on a Korean roof. Not white." },
         { title: "Fine snow texture", desc: "No coarse grain, no pearl. Snow does not shine; it holds the light." },
-        { title: "Applied baton indices", desc: "Set proud of the dial. Polished on top, brushed on the sides. The line changes as the angle does." },
+        { title: "Matte finish", desc: "Taken down as far as it would go. A dial that glitters is a dial where the snow cannot be seen." },
         { title: "Dauphine hands", desc: "A central ridge splits the light in two. The tips are softened, not sharpened." },
       ],
+    },
+
+    // ── ⑦-b The Index ★ — 처마 곡선을 4mm로 줄여 열두 번 ──────
+    // 근거: 파쇼 다이얼 도면 260820-Dial.pdf 실측. 도해 SVG = seolwolIndexArt.js (국문과 동일 그림)
+    {
+      type: "diagram",
+      eyebrow: "The Index",
+      head: "The eave is not<br>only at twelve.",
+      body: [
+        "The indices are not plain batons. They were drawn again from the beginning.",
+        "Four millimetres long. Both ends are cut away at fifteen degrees, and between them the top is hollowed on a seven-millimetre radius, so the centre sits lower than the shoulders.",
+        "That hollow is <b>the eave line</b> — the curve of a roof seen from a courtyard, reduced to four millimetres and repeated twelve times around the dial.",
+      ],
+      svg: indexProfileSvg(),
+      figcap: "Above · the eave of a hanok. Below · the Seolwol index in profile. The same curve. (mm)",
+      after: [
+        "A flat index flashes once, at one angle, and goes dead. A hollowed one does not. Tilt the wrist and the light runs along the curve — it <b>travels</b> instead of going out.",
+        "The dial is finished as matte as it could be. The only thing that throws light back is the indices.",
+        "It is how sunlight behaves on snow — the ground stays quiet, and only the glint moves.",
+      ],
+      image: { cut: "10", alt: "Index macro in raking light — the highlight running along the hollow", ratio: "16/9" },
+      imageCap: "The light travels along the curve",
     },
 
     // ── ⑧ Case & Strap ──────────────────────────────────────
@@ -257,19 +280,19 @@ module.exports = {
         ["Lug to lug", "43.8mm · Strap width 20mm"],
         ["Crystal", "Flat sapphire · anti-reflective inside, anti-fingerprint outside"],
         ["Dial", "Pale sky blue · fine snow texture"],
-        ["Indices", "Applied batons, polished silver"],
+        ["Indices", "Applied · 4.0mm · ends cut at 15° · centre hollowed on R7 (eave curve) · polished silver"],
         ["Hands", "Dauphine · seconds hand with symbol counterweight"],
         ["Moon phase", "At 12 o'clock · <b>disc made for this watch</b> (deep navy, luminous moon)"],
-        ["Luminous", ""], // 확인 필요 (종류)
+        ["Luminous", "Super-LumiNova · moon only"],
         ["Movement", "RONDA 708 quartz moon phase"],
         ["Water resistance", "5 ATM"],
         ["Strap", "Navy crocodile-pattern calf · 20 → 16mm"],
         ["Buckle", "Pin buckle · HARRIOT engraved"],
         ["Caseback", "Solid · hanok roofline · space for custom engraving"],
-        ["Warranty", ""], // 확인 필요 (기간)
+        ["Warranty", "2 years"],
       ],
       note:
-        "Ships from <b>August 20</b>. The first 50 pieces carry a serial number (No. 001–050) on the warranty card.",
+        "Expected <b>September 7</b>. The launch date is subject to change and will be confirmed separately.",
     },
 
     // ── ⑬-a 무드 브레이크 ───────────────────────────────────

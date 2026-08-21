@@ -120,6 +120,27 @@ const SECTIONS = {
   </div>`).join("")}
 </section>`,
 
+  /**
+   * 도해 — 인라인 SVG 선화 + (선택) 실물컷.
+   * 설계 도면에서 옮긴 그림이라 이미지 호스팅 없이 카페24에 그대로 붙는다.
+   * body = 도해 앞 문단 / after = 도해 뒤 문단(빛·질감 이야기)
+   */
+  diagram: (s) => `
+<section class="sec dgm ${s.dark ? "dark" : ""}">
+  <div class="nwrap">
+    ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ""}
+    <p class="h2 serif">${s.head}</p>
+    <div class="rule"></div>
+    ${paras(s.body)}
+  </div>
+  <figure class="dfig">
+    ${s.svg || ""}
+    ${s.figcap ? `<figcaption>${esc(s.figcap)}</figcaption>` : ""}
+  </figure>
+  ${s.after ? `<div class="nwrap after">${paras(s.after)}</div>` : ""}
+  ${s.image ? `<div class="nimg">${media(s.image)}${cap(s.imageCap)}</div>` : ""}
+</section>`,
+
   /** 풀블리드 무드 브레이크 — 이미지 위에 한 줄만 */
   full: (s) => `
 <section class="fullbleed">
@@ -203,7 +224,7 @@ function styles(t, lang) {
     ? "@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap');"
     : "@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;500;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');";
   const SANS = en ? "'Inter',-apple-system,'Helvetica Neue',sans-serif" : "'Noto Sans KR',sans-serif";
-  const SERIF = en ? "'Cormorant Garamond',Georgia,serif" : "${SERIF}";
+  const SERIF = en ? "'Cormorant Garamond',Georgia,serif" : "'Noto Serif KR',serif";
   const BREAK = en ? "normal" : "keep-all";
   return `${IMPORT}
 #hrt-detail{font-family:${SANS};color:#2a2a2a;line-height:1.95;-webkit-font-smoothing:antialiased;max-width:1000px;margin:0 auto;font-size:16px;word-break:${BREAK};}
@@ -275,6 +296,21 @@ function styles(t, lang) {
 #hrt-detail .seq.dark .seqgrid figcaption{color:#9aa4b5;}
 #hrt-detail .seqgrid figcaption b{font-family:${SERIF};color:${t.accent};font-weight:500;letter-spacing:.1em;margin-right:6px;}
 #hrt-detail .seq.dark .seqgrid figcaption b{color:#9fb0d6;}
+
+/* 도해 (diagram) — 선화는 배경 없이 지면 위에 그대로 올린다 */
+#hrt-detail .dgm{background:#fff;text-align:center;}
+#hrt-detail .dgm.dark{background:${t.ink};color:#e9edf4;}
+#hrt-detail .dgm .nwrap{max-width:640px;margin:0 auto;}
+#hrt-detail .dgm .rule{margin:26px auto;}
+#hrt-detail .dgm p{font-size:16px;font-weight:300;color:#4a4a4a;margin:0 auto 18px;line-height:2.05;}
+#hrt-detail .dgm.dark .h2{color:#fff;font-weight:300;}
+#hrt-detail .dgm.dark p{color:#c3cad6;}
+#hrt-detail .dgm .dfig{max-width:720px;margin:46px auto 0;}
+#hrt-detail .dgm .dfig svg{display:block;width:100%;height:auto;}
+#hrt-detail .dgm .dfig figcaption{font-size:12.5px;font-weight:300;color:#9aa0aa;letter-spacing:.02em;margin-top:14px;line-height:1.8;}
+#hrt-detail .dgm.dark .dfig figcaption{color:#7f8899;}
+#hrt-detail .dgm .after{margin-top:52px;}
+#hrt-detail .dgm .nimg{max-width:820px;margin:54px auto 0;}
 
 /* 영감 (origin) */
 #hrt-detail .origin{background:#fff;text-align:center;}
