@@ -5,8 +5,9 @@
  * 허용목록은 lib/storefrontOrigin.ts 단일 소스 — 새 몰 도메인은 거기에만 추가한다.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { addWaitlistEntry, WaitlistMall } from "@/lib/harriot/waitlist";
+import { addWaitlistEntry, WaitlistMall, waitlistSummary } from "@/lib/harriot/waitlist";
 import { storefrontCorsHeaders } from "@/lib/storefrontOrigin";
+import { sendTelegramMessage } from "@/lib/cs/telegram";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,26 @@ export async function POST(req: NextRequest) {
       // 실패 사유는 프런트에서 문구를 갈라 쓴다(동의 누락 vs 형식 오류).
       return NextResponse.json({ ok: false, reason: result.reason }, { status: 400, headers: cors });
     }
+    // 신규 등록만 알린다(중복 재등록은 알림 가치가 없다).
+    // 알림 실패가 등록 성공을 뒤집으면 안 되므로 await 하되 예외는 삼킨다.
+    if (!result.duplicate) {
+      try {
+        const s = await waitlistSummary();
+        const masked =
+          mall === "kr"
+            ? String(body?.contact ?? "").replace(/\D/g, "").replace(/^(\d{3})\d+(\d{4})$/, "$1****$2")
+            : String(body?.contact ?? "").trim().toLowerCase().replace(/^(.).*(@.*)$/, "$1***$2");
+        const src = body?.utmSource ? ` · ${body.utmSource}` : "";
+        await sendTelegramMessage(
+          `🌙 <b>설월 대기명단 +1</b>\n` +
+            `${mall === "kr" ? "국내" : "해외"} ${masked}${src}\n` +
+            `누적 <b>${s.total}</b>명 (국내 ${s.kr} · 해외 ${s.en})`,
+        );
+      } catch (e) {
+        console.warn("[harriot/waitlist] 텔레그램 알림 실패(등록은 성공)", e);
+      }
+    }
+
     return NextResponse.json({ ok: true, duplicate: result.duplicate }, { headers: cors });
   } catch (e) {
     console.error("[harriot/waitlist] 저장 실패", e);
