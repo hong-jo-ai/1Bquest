@@ -17,7 +17,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
-import { withCron } from "@/lib/cron/withCron";
+import { withCron, manualRun } from "@/lib/cron/withCron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -182,10 +182,7 @@ async function run(force = false): Promise<Response> {
 
 export const GET = withCron("as-ship-audit", () => run());
 
+// 수동 실행도 manualRun 으로 감싼다 — 하트비트를 남겨야 워치독 오탐이 자동 회복된다.
 export async function POST() {
-  try {
-    return await run(true);
-  } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-  }
+  return manualRun("as-ship-audit", () => run(true));
 }

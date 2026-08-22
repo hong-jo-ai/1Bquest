@@ -122,7 +122,7 @@
     },
     {
       "path": "/api/cron/as-ship-audit",
-      "schedule": "20 1 * * *"
+      "schedule": "5 2 * * *"
     },
     {
       "path": "/api/cron/daily-summary",
