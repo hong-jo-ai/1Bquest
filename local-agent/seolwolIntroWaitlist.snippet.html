@@ -1,0 +1,119 @@
+<!--
+  설월 인트로 대기명단 — /seolwol/intro.html 삽입 스니펫
+  ------------------------------------------------------
+  국내: https://harriotwatches.co.kr/seolwol/intro.html   → data-mall="kr" (전화번호)
+  영문: https://harriotwatches.com/seolwol/intro.html     → data-mall="en" (이메일)
+
+  ① [CSS]  기존 <style> 블록 맨 끝에 붙인다.
+  ② [HTML] .copy 안, <a class="cta2"> 바로 뒤에 붙인다.
+  ③ [JS]   기존 (function(){...})(); 스크립트 뒤에 통째로 붙인다.
+
+  눈을 42% 지우면 기존 코드가 .stage 에 'lit' 을 단다(intro.html 674행).
+  폼은 그 클래스에만 반응하므로 **기존 스크립트를 건드릴 필요가 없다.**
+  다 지우기 전에 폼이 보이면 눈을 쓸 이유가 사라진다 — 순서가 핵심이다.
+-->
+
+<!-- ①  C S S  ─────────────────────────────────────────── -->
+<style>
+.wait{margin-top:26px;max-width:420px;opacity:0;transform:translateY(10px);pointer-events:none;
+  transition:opacity .9s ease .5s, transform .9s ease .5s;}
+.stage.lit .wait{opacity:1;transform:none;pointer-events:auto;}
+.wait .wlab{font-size:12px;letter-spacing:.1em;color:#c9d2e2;text-transform:uppercase;margin:0 0 10px;}
+.wait .wrow{display:flex;gap:8px;}
+.wait input[type=tel],.wait input[type=email]{flex:1;min-width:0;background:rgba(255,255,255,.07);
+  border:1px solid rgba(201,210,226,.34);color:#f4f6f9;font-size:14px;padding:13px 14px;border-radius:2px;
+  outline:none;-webkit-appearance:none;}
+.wait input::placeholder{color:rgba(201,210,226,.5);}
+.wait input:focus{border-color:rgba(244,246,249,.75);}
+.wait button{background:#f4f6f9;color:#141a26;border:0;font-size:13px;letter-spacing:.06em;
+  padding:13px 20px;font-weight:500;cursor:pointer;border-radius:2px;white-space:nowrap;}
+.wait button[disabled]{opacity:.5;cursor:default;}
+.wait .wchk{margin-top:12px;display:block;font-size:11.5px;line-height:1.75;color:#a9b4c7;cursor:pointer;}
+.wait .wchk input{margin-right:7px;vertical-align:-1px;accent-color:#f4f6f9;}
+.wait .wchk a{color:#c9d2e2;}
+.wait .wmsg{margin-top:11px;font-size:12.5px;line-height:1.7;color:#c9d2e2;min-height:1.2em;}
+.wait .wmsg.err{color:#f0b8b0;}
+.wait.done .wrow,.wait.done .wchk{display:none;}
+@media (max-width:520px){ .wait .wrow{flex-direction:column;} .wait button{width:100%;} }
+</style>
+
+<!-- ②  H T M L  ─ .copy 안, a.cta2 바로 뒤 ─────────────── -->
+
+<!-- 국내(kr) -->
+<form class="wait" id="wait" data-mall="kr" novalidate>
+  <p class="wlab">9월 10일 출시 — 가장 먼저 알려드립니다</p>
+  <div class="wrow">
+    <input type="tel" id="wct" inputmode="numeric" autocomplete="tel"
+           placeholder="휴대폰 번호" aria-label="휴대폰 번호">
+    <button type="submit" id="wbtn">알림 신청</button>
+  </div>
+  <label class="wchk"><input type="checkbox" id="wp1">
+    <span>[필수] 출시 알림을 위한 휴대폰 번호 수집·이용에 동의합니다. (보유기간: 출시 안내 후 3개월)</span></label>
+  <label class="wchk"><input type="checkbox" id="wp2">
+    <span>[선택] 신제품·혜택 소식 수신에 동의합니다.</span></label>
+  <p class="wmsg" id="wmsg" role="status" aria-live="polite"></p>
+</form>
+
+<!-- 영문(en) — 위 form 을 이걸로 통째 교체
+<form class="wait" id="wait" data-mall="en" novalidate>
+  <p class="wlab">Arriving September 10 — be the first to know</p>
+  <div class="wrow">
+    <input type="email" id="wct" autocomplete="email" placeholder="Email address" aria-label="Email address">
+    <button type="submit" id="wbtn">Notify me</button>
+  </div>
+  <label class="wchk"><input type="checkbox" id="wp1">
+    <span>I agree to Harriot storing my email to notify me of this release. (Kept for 3 months after launch.)</span></label>
+  <label class="wchk"><input type="checkbox" id="wp2">
+    <span>Optional — I'd also like news about new releases.</span></label>
+  <p class="wmsg" id="wmsg" role="status" aria-live="polite"></p>
+</form>
+-->
+
+<!-- ③  J S  ─────────────────────────────────────────────── -->
+<script>
+(function(){
+  var f=document.getElementById('wait'); if(!f) return;
+  var mall=f.getAttribute('data-mall')||'kr', en=mall==='en';
+  var ct=document.getElementById('wct'), btn=document.getElementById('wbtn'),
+      p1=document.getElementById('wp1'), p2=document.getElementById('wp2'),
+      msg=document.getElementById('wmsg');
+  var API='https://paulvice-dashboard.vercel.app/api/harriot/waitlist';
+  var q=new URLSearchParams(location.search);
+
+  function say(t,isErr){ msg.textContent=t; msg.className='wmsg'+(isErr?' err':''); }
+
+  f.addEventListener('submit', function(e){
+    e.preventDefault();
+    var v=(ct.value||'').trim();
+    if(!v){ say(en?'Please enter your email.':'연락처를 입력해 주세요.',true); ct.focus(); return; }
+    if(!p1.checked){ say(en?'Please agree so we can contact you.':'[필수] 수집·이용 동의가 필요합니다.',true); return; }
+
+    btn.disabled=true; say(en?'Saving…':'등록하는 중…');
+    fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      mall:mall, contact:v, consentPrivacy:true, consentMarketing:!!p2.checked,
+      utmSource:q.get('utm_source'), utmMedium:q.get('utm_medium'), utmCampaign:q.get('utm_campaign'),
+      referrer:document.referrer||null
+    })})
+    .then(function(r){ return r.json().catch(function(){ return {ok:false,reason:'bad_json'}; }); })
+    .then(function(d){
+      if(d && d.ok){
+        f.classList.add('done');
+        say(d.duplicate
+          ? (en?'You are already on the list. We will be in touch on September 10.':'이미 신청되어 있습니다. 9월 10일에 알려드리겠습니다.')
+          : (en?'Thank you. We will write to you on September 10.':'신청되었습니다. 9월 10일에 가장 먼저 알려드리겠습니다.'));
+        return;
+      }
+      btn.disabled=false;
+      var r=d&&d.reason;
+      if(r==='invalid_contact') say(en?'That email does not look right.':'연락처 형식을 확인해 주세요.',true);
+      else if(r==='consent_required') say(en?'Please agree so we can contact you.':'[필수] 수집·이용 동의가 필요합니다.',true);
+      else say(en?'Something went wrong. Please try again.':'잠시 후 다시 시도해 주세요.',true);
+    })
+    .catch(function(){
+      // ⚠️ 실패를 성공으로 위장하지 않는다. 조용히 삼키면 명단이 비어도 아무도 모른다.
+      btn.disabled=false;
+      say(en?'Network error. Please try again.':'전송에 실패했습니다. 다시 시도해 주세요.',true);
+    });
+  });
+})();
+</script>
