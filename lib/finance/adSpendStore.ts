@@ -10,7 +10,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-export type AdSource = "wconcept" | "google" | "naver" | "kakao";
+export type AdSource = "wconcept" | "musinsa" | "google" | "naver" | "kakao";
 
 function getDb() {
   const url = process.env.SUPABASE_URL;

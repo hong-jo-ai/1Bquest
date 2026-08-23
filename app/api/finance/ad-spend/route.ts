@@ -18,7 +18,7 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const SUPPORTED: AdSource[] = ["wconcept", "google", "naver", "kakao"];
+const SUPPORTED: AdSource[] = ["wconcept", "musinsa", "google", "naver", "kakao"];
 
 function kstDateStr(offsetDays: number = 0): string {
   const d = new Date(Date.now() + 9 * 60 * 60 * 1000);

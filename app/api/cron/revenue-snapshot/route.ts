@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { runRevenueSnapshot } from "@/lib/finance/revenueSnapshot";
 import { withCron } from "@/lib/cron/withCron";
+import { syncMusinsaAdSpend } from "@/lib/finance/musinsaAdSpend";
 
 /**
  * 매일 KST 03:30 실행.
@@ -23,6 +24,15 @@ async function cronMain() {
     }
 
     const result = await runRevenueSnapshot(token ?? null, harriotToken ?? null);
+
+    // 무신사 파트너 광고비(카드/체크 출금) → ad_spend:musinsa. 크론 한도(40개) 때문에 여기에 얹는다.
+    // 실패해도 매출 스냅샷은 성공 처리 — 광고비는 부가 정보.
+    try {
+      const ad = await syncMusinsaAdSpend(90);
+      console.log(`[Cron:revenue-snapshot] 무신사 광고비 ${ad.days}일/${(ad.total ?? 0).toLocaleString()}원`);
+    } catch (e) {
+      console.warn("[Cron:revenue-snapshot] 무신사 광고비 집계 실패:", e instanceof Error ? e.message : String(e));
+    }
     console.log(
       `[Cron:revenue-snapshot] paulvice=${result.paulvice.days}일/` +
         `${result.paulvice.channels.join(",")} · ` +
