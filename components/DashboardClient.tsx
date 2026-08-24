@@ -660,6 +660,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
               lotte_dutyfree:     !!uploads.lotte_dutyfree,
               shinsegae_dutyfree: !!uploads.shinsegae_dutyfree,
               naver_smartstore: !!uploads.naver_smartstore,
+              b2b_harriot: !!uploads.b2b_harriot,
             }}
           />
         </section>

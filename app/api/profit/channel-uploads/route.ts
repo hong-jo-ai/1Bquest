@@ -22,6 +22,7 @@ import {
   type UploadableChannel,
   type PerUpload,
   type MergedChannelUpload,
+  UPLOADABLE_CHANNELS,
 } from "@/lib/multiChannelData";
 
 export const dynamic = "force-dynamic";
@@ -39,16 +40,9 @@ interface StoredRecord {
 
 const KEY_PREFIX = "channel_upload:";
 
-const ALLOWED: UploadableChannel[] = [
-  "wconcept",
-  "musinsa",
-  "29cm",
-  "groupbuy",
-  "kakao_gift",
-  "lotte_dutyfree",
-  "shinsegae_dutyfree",
-  "naver_smartstore",
-];
+// ⚠️ 하드코딩하면 새 채널을 추가할 때 여기 빠뜨려 "미업로드"로만 보인다(2026-08-24 b2b_harriot).
+//    단일 소스인 UPLOADABLE_CHANNELS 를 그대로 쓴다.
+const ALLOWED: UploadableChannel[] = UPLOADABLE_CHANNELS;
 
 function getDb() {
   const url = process.env.SUPABASE_URL;
