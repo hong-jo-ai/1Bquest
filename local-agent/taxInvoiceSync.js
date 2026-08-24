@@ -129,6 +129,121 @@ async function findBusinessId(db, buyerReg) {
   return { id: def ? def.id : null, matched: false };
 }
 
+
+// ── 발행대행사(바로빌·빌36524) 수집 ─────────────────────────────────
+// 국세청 홈택스 직접발행 메일만 보던 구조라 대행사 발행분이 통째로 누락되던 문제(2026-08-24).
+const AGENCIES = [
+  { key: "barobill", from: "baro@barobill.co.kr", needsBrowser: true },
+  { key: "wehago",   from: "webmaster@bill36524.com", needsBrowser: false },
+];
+// 상호 → 사업자번호 (대행사 메일에 등록번호가 없을 때 폴백)
+const NAME_TO_REG = { "해리엇와치스": "2092770599", "제이에이치": "6632301279" };
+
+/** Gmail payload에서 본문 텍스트 추출 (text/plain 우선, 없으면 html 태그 제거) */
+function bodyText(payload) {
+  let plain = "", html = "";
+  (function walk(part) {
+    if (!part) return;
+    const d = part.body && part.body.data;
+    if (d && part.mimeType === "text/plain") plain += b64u(d).toString("utf8");
+    if (d && part.mimeType === "text/html") html += b64u(d).toString("utf8");
+    (part.parts || []).forEach(walk);
+  })(payload);
+  if (plain.trim()) return plain;
+  return html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ")
+             .replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+}
+
+/** 태그 제거 전 원본(plain+html). href 안에 든 조회링크를 뽑을 때 필요 — 바로빌 메일은 HTML 전용이다. */
+function rawBody(payload) {
+  let out = "";
+  (function walk(part) {
+    if (!part) return;
+    const d = part.body && part.body.data;
+    if (d && /^text\//.test(part.mimeType || "")) out += b64u(d).toString("utf8");
+    (part.parts || []).forEach(walk);
+  })(payload);
+  return out;
+}
+
+/** 바로빌 조회 페이지를 사업자번호로 열어 본문 텍스트 반환 */
+async function openBarobill(ctx, url) {
+  const page = await ctx.newPage();
+  try {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 }).catch(() => {});
+    for (const pw of PASSWORDS) {
+      const inp = await page.$("#CCorpNum");
+      if (!inp) break;
+      await inp.fill(pw).catch(() => {});
+      await page.click("a:has-text('입력')").catch(async () => { await page.press("#CCorpNum", "Enter").catch(() => {}); });
+      await page.waitForTimeout(3000);
+      const txt = await page.evaluate(() => document.body.innerText).catch(() => "");
+      if (/국세청승인번호/.test(txt)) return txt;
+      await page.goto(url, { waitUntil: "networkidle", timeout: 45000 }).catch(() => {});
+      await page.waitForTimeout(600);
+    }
+    return "";
+  } finally { await page.close().catch(() => {}); }
+}
+
+/** 바로빌 조회 페이지 텍스트 → 구조화 (NTS와 레이아웃이 달라 별도 파서) */
+function parseBarobill(text) {
+  const t = text.replace(/\u00a0/g, " ");
+  const approval = (t.match(/국세청승인번호\s*:?\s*([0-9a-zA-Z]{16,})/) || [])[1] || "";
+  const regs = [...t.matchAll(/(\d{3}-\d{2}-\d{5})/g)].map((m) => m[1]);
+  const supplierReg = regs[0] || "", buyerReg = regs[1] || "";
+  // "상호\t(주)더블유컨셉코리아\t성\n명\t이지은" 형태 — 상호 뒤 첫 토큰
+  const nameMatches = [...t.matchAll(/상호\s+([^\t\n]+?)\s*(?:성\s*\n?\s*명)\s+([^\t\n]+)/g)];
+  const supplierName = nameMatches[0] ? nameMatches[0][1].trim() : "";
+  const supplierRep = nameMatches[0] ? nameMatches[0][2].trim() : "";
+  const dm = t.match(/작성일자\s+공급가액\s+세액\s*\n\s*(\d{4})-(\d{2})-(\d{2})\s+([\d,]+)\s+([\d,]+)/);
+  const writeDate = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : null;
+  const supply = dm ? num(dm[4]) : 0;
+  const tax = dm ? num(dm[5]) : 0;
+  const total = num((t.match(/합계금액[\s\S]{0,120}?\n\s*([\d,]{4,})/) || [])[1]) || supply + tax;
+  const items = [];
+  const block = (t.split(/월\s+일\s+품목[^\n]*\n/)[1] || "").split(/합계금액/)[0] || "";
+  for (const line of block.split("\n")) {
+    const m = line.match(/^\s*(\d{1,2})\s+(\d{1,2})\s+(\S[^\t]*?)\s+([\d,]+)\s+([\d,]+)\s*$/);
+    if (m) items.push({ name: m[3].trim(), supply: num(m[4]), tax: num(m[5]) });
+  }
+  return { approval, supplierReg, supplierName, supplierRep, buyerReg, writeDate, supply, tax, total, items };
+}
+
+/** 빌36524(WEHAGO) 도착알림 메일 본문 → 구조화. 금액이 본문에 있어 브라우저 불필요. */
+function parseWehago(text) {
+  const t = text.replace(/\u00a0/g, " ").replace(/\|/g, " ").replace(/[ \t]+/g, " ");
+  const pick = (re) => { const m = t.match(re); return m ? m[1].trim() : ""; };
+  const mgmtNo = pick(/관리번호\s+(\S+)/);
+  const writeDate = pick(/작성일자\s+(\d{4}-\d{2}-\d{2})/) || null;
+  const supply = num(pick(/공급가액\s+([\d,]+)\s*원/));
+  const tax = num(pick(/부가세액\s+([\d,]+)\s*원/));
+  const itemName = pick(/품목\s+(.+?)\s+공급가액/) || pick(/품목\s+(.+)/);
+  const supplierName = pick(/발신자 정보[\s\S]{0,80}?상호\s+(.+?)\s+담당자/);
+  const buyerName = pick(/수신자 정보[\s\S]{0,80}?상호\s+(.+?)\s+담당자/);
+  // 조회링크 base64 = "관리번호&공급받는자사업자번호"
+  let buyerReg = "";
+  const link = (text.match(/eTaxMail\/([A-Za-z0-9+/=]+)/) || [])[1];
+  if (link) { try { buyerReg = (Buffer.from(link, "base64").toString("utf8").split("&")[1] || "").trim(); } catch {} }
+  if (!buyerReg) buyerReg = NAME_TO_REG[buyerName] || "";
+  return {
+    approval: mgmtNo ? `WEHAGO-${mgmtNo}` : "", supplierReg: "", supplierName, supplierRep: "",
+    buyerReg, writeDate, supply, tax, total: supply + tax,
+    items: itemName ? [{ name: itemName, supply, tax }] : [],
+  };
+}
+
+/** 승인번호가 서로 다른 경로로 들어와 같은 계산서가 두 번 쌓이는 것 방지 */
+async function isDuplicate(db, businessId, inv) {
+  if (!businessId || !inv.writeDate || !inv.total) return false;
+  const { data } = await db.from("finance_tax_invoices")
+    .select("id,approval_no,partner_name")
+    .eq("business_id", businessId).eq("write_date", inv.writeDate).eq("total_amount", inv.total);
+  if (!data || !data.length) return false;
+  const key = (s) => String(s || "").replace(/[\s()（）주식회사㈜]/g, "");
+  return data.some((r) => r.approval_no !== inv.approval && (!inv.supplierName || key(r.partner_name) === key(inv.supplierName)));
+}
+
 async function main() {
   const db = sb();
   const { data: seenRow } = await db.from("kv_store").select("data").eq("key", SEEN_KEY).maybeSingle();
@@ -185,6 +300,65 @@ async function main() {
           }
         }
         seen.add(m.id);
+      }
+    }
+
+    // ── 2차: 발행대행사(바로빌·빌36524) 발행분 ──────────────────────
+    for (const mb of MAILBOXES) {
+      let tok;
+      try { tok = await accessToken(mb.kvKey); } catch (e) { log(`${mb.label} 토큰 실패(대행사): ${e.message}`); continue; }
+      for (const ag of AGENCIES) {
+        const q = `from:${ag.from} newer_than:${DAYS}d`;
+        const list = await gJson(tok, `/messages?q=${encodeURIComponent(q)}&maxResults=60`).catch(() => ({}));
+        const msgs = list.messages || [];
+        log(`${mb.label}/${ag.key}: ${msgs.length}건`);
+        for (const m of msgs) {
+          if (seen.has(m.id) && !DRY) continue;
+          const full = await gJson(tok, `/messages/${m.id}?format=full`);
+          const body = bodyText(full.payload);
+          let inv;
+          if (ag.key === "barobill") {
+            const url = (rawBody(full.payload).match(/https:\/\/www\.barobill\.co\.kr\/_email\/\?MD=[A-Za-z0-9%_-]+/) || [])[0];
+            if (!url) { log(`  ${ag.key}: 조회링크 없음 msg ${m.id.slice(-6)}`); seen.add(m.id); continue; }
+            const txt = await openBarobill(ctx, url);
+            if (!txt) { log(`  ${ag.key}: 조회 실패(사업자번호 불일치/링크만료) msg ${m.id.slice(-6)}`); continue; }
+            inv = parseBarobill(txt);
+          } else {
+            inv = parseWehago(body);
+          }
+          if (!inv.approval || !inv.writeDate || !inv.total) { log(`  ${ag.key}: 파싱 실패 msg ${m.id.slice(-6)}`); continue; }
+          const norm = (x) => String(x || "").replace(/\D/g, "");
+          if (!OUR_REGS.has(norm(inv.buyerReg))) {
+            log(`  ${ag.key} 매출/무관 스킵: ${inv.supplierName} → ${inv.buyerReg} (₩${inv.total.toLocaleString()})`);
+            seen.add(m.id); continue;
+          }
+          parsed++;
+          const biz = await findBusinessId(db, inv.buyerReg);
+          if (!biz.matched) warned.push(inv.buyerReg);
+          if (await isDuplicate(db, biz.id, inv)) {
+            log(`  ${ag.key} 중복 스킵(다른 경로로 이미 적재): ${inv.supplierName} ${inv.writeDate} ₩${inv.total.toLocaleString()}`);
+            seen.add(m.id); continue;
+          }
+          summary.push(`${inv.writeDate} ${inv.supplierName} ₩${inv.total.toLocaleString()} (${inv.items.map((i) => i.name).join(",").slice(0, 30)}) [${ag.key}]`);
+          if (DRY) { log(`  [dry/${ag.key}] ${JSON.stringify(inv)}`); seen.add(m.id); continue; }
+          if (!biz.id) { log("  기본 사업자 없음 — 적재 스킵"); continue; }
+          const { data: up, error } = await db.from("finance_tax_invoices").upsert({
+            business_id: biz.id, invoice_type: "purchase", approval_no: inv.approval,
+            write_date: inv.writeDate, partner_reg_no: inv.supplierReg || null, partner_name: inv.supplierName, partner_rep: inv.supplierRep || null,
+            supply_amount: inv.supply, tax_amount: inv.tax, total_amount: inv.total,
+            category: catInvoice(inv.supplierName, (inv.items || []).map((i) => i.name)), category_source: "email",
+            raw: { source: `email_${ag.key}`, mailbox: mb.label, buyerReg: inv.buyerReg, items: inv.items, businessMatched: biz.matched },
+          }, { onConflict: "business_id,approval_no", ignoreDuplicates: true }).select("id");
+          if (error) { log(`  ${ag.key} 적재 오류: ${error.message}`); continue; }
+          if (up && up.length) {
+            stored++;
+            for (let k = 0; k < inv.items.length; k++) {
+              const it = inv.items[k];
+              try { await db.from("finance_tax_invoice_items").insert({ invoice_id: up[0].id, item_seq: k + 1, item_name: it.name, supply_amount: it.supply, tax_amount: it.tax }); } catch {}
+            }
+          }
+          seen.add(m.id);
+        }
       }
     }
   } finally { await ctx.close().catch(() => {}); }
