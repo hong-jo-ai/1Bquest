@@ -21,7 +21,8 @@ export type ChannelId =
   | "shinsegae_dutyfree"
   | "naver_smartstore"
   | "cafe24_harriot"
-  | "cafe24_harriot_global";
+  | "cafe24_harriot_global"
+  | "b2b_harriot";
 
 export type UploadableChannel =
   | "wconcept"
@@ -31,7 +32,8 @@ export type UploadableChannel =
   | "kakao_gift"
   | "lotte_dutyfree"
   | "shinsegae_dutyfree"
-  | "naver_smartstore";
+  | "naver_smartstore"
+  | "b2b_harriot";
 
 export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "wconcept",
@@ -42,6 +44,7 @@ export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "lotte_dutyfree",
   "shinsegae_dutyfree",
   "naver_smartstore",
+  "b2b_harriot",
 ];
 
 // ── 브랜드 ─────────────────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
   paulvice: ["all", "cafe24", "cafe24_global", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
-  harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore"],
+  harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore", "b2b_harriot"],
 };
 
 export interface ChannelMeta {
@@ -83,6 +86,8 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "cafe24_harriot",        name: "카페24",             color: "#0284c7", bgColor: "bg-sky-600",     textColor: "text-sky-700"     },
   { id: "cafe24_harriot_global", name: "카페24 글로벌",       color: "#0d9488", bgColor: "bg-teal-600",    textColor: "text-teal-600"    },
   { id: "naver_smartstore",      name: "네이버 스마트스토어", color: "#22c55e", bgColor: "bg-green-500",   textColor: "text-green-600"   },
+  // 단체·법인 대량주문(현금결제+세금계산서 발행) — 카페24를 안 타는 오프라인 매출
+  { id: "b2b_harriot",           name: "단체·법인",          color: "#57534e", bgColor: "bg-stone-600",   textColor: "text-stone-700"   },
 ];
 
 export interface MultiChannelData {
@@ -173,6 +178,11 @@ export const shinsegaeDutyfreeDummy: MultiChannelData = {
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
 };
 
+export const b2bHarriotDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+
 export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   wconcept: wconceptDummy,
   musinsa: musinsaDummy,
@@ -182,6 +192,7 @@ export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   lotte_dutyfree: lotteDutyfreeDummy,
   shinsegae_dutyfree: shinsegaeDutyfreeDummy,
   naver_smartstore: naverSmartstoreDummy,
+  b2b_harriot: b2bHarriotDummy,
 };
 
 // ── 합산 유틸 ─────────────────────────────────────────────────────────────

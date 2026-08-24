@@ -319,6 +319,10 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     const isKakao = row.key === "channel_upload:kakao_gift";
     // 카카오선물은 폴바이스 전용 채널 — 해리엇 몰 동기화 때는 건너뜀(코드 충돌 방지).
     if (isKakao && mall !== "paulvice") continue;
+    // 단체·법인(b2b_harriot)은 해리엇 전용. ⚠️두 몰이 카페24 SKU 코드를 공유하지 않는데
+    // 값은 겹친다(해리엇 P00000DW=서해 선레이 / 폴바이스 P00000DW=[증정] 가죽 스트랩 블랙).
+    // 가드 없이 두면 폴바이스 동기화에서 엉뚱한 상품이 차감된다.
+    if (row.key === "channel_upload:b2b_harriot" && mall !== "harriot") continue;
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
     const omap = channelOptMaps.get(channelId);
