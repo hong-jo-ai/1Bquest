@@ -11,6 +11,7 @@
  */
 require("dotenv").config({ override: true });
 const Client = require("ssh2-sftp-client");
+const { beat } = require("./heartbeat");
 
 const TARGETS = [
   { name: "폴바이스", host: "ecimg-ftp-c01.cafe24img.com", port: 8007, user: "icaruse2000",
@@ -54,5 +55,6 @@ async function notify(text) {
       `\n\n웹사이트 자동 배포가 막힙니다. 인증 실패면 ①몇 분 뒤 재시도(IP 차단) ②그래도 실패면 FTP 사용기간 만료 — 카페24 관리자에서 재활성화 필요.`);
     process.exit(1);
   }
+  await beat("sftp-health", { ok: true });   // 정상일 때만 하트비트 — 실패는 위에서 알림+exit 1
   if (verbose) console.log("전부 정상");
 })().catch((e) => { console.error("ERR", e.message); process.exit(1); });

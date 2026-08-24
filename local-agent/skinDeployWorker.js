@@ -11,6 +11,7 @@
 require("dotenv").config({ override: true });
 const path = require("path"), fs = require("fs");
 const D = require("./skinDeploy");
+const { beat } = require("./heartbeat");
 const { createClient } = require(path.resolve(__dirname, "..", "node_modules/@supabase/supabase-js"));
 
 function loadEnv(p){ try{ for(const l of fs.readFileSync(p,"utf8").split("\n")){const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(m&&!(m[1] in process.env))process.env[m[1]]=m[2].trim().replace(/^["']|["']$/g,"");} }catch{} }
@@ -107,9 +108,10 @@ async function tick() {
 (async () => {
   if (process.argv.includes("--watch")) {
     console.log("워커 상주 시작 (60초 간격)");
-    for (;;) { try { await tick(); } catch (e) { console.error("tick ERR", e.message); } await new Promise((r) => setTimeout(r, 60000)); }
+    for (;;) { try { const n = await tick(); await beat("skin-deploy-worker", { processed: n }); } catch (e) { console.error("tick ERR", e.message); } await new Promise((r) => setTimeout(r, 60000)); }
   } else {
     const n = await tick();
+    await beat("skin-deploy-worker", { processed: n });   // 워치독 감시용
     console.log(n ? `${n}건 처리` : "승인 대기 건 없음");
   }
 })().catch((e) => { console.error("ERR", e.message); process.exit(1); });
