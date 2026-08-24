@@ -1,7 +1,7 @@
 # 해리엇 설월(雪月) 상세페이지 기획 · 국문 문안 v1
 
 > 2026-08-05 작성 · **런칭 9/10(목) 확정 — 2026-08-21 사장님** · 국내몰(harriotkorea, shop1) 먼저 → 영문몰(shop2) 이식
-> 가격 국내 ₩349,000 / 글로벌 $420 · **예약판매 안 함(9/10 판매 시작)** · 초도 보증서 넘버링 없음
+> 가격 국내 ₩349,000 / 글로벌 $400 · **예약판매 안 함(9/10 판매 시작)** · 초도 보증서 넘버링 없음
 > 관련: `harriot-seolwol-launch-prep.md`(카피 원안, 일부 폐기) · `seolwol-package-spec-v1.md`(패키지) · `seolwol-heritage-reel-v1.md`(릴스, 재작성 필요)
 
 ---
@@ -351,5 +351,5 @@ no detached floating beam, no needle, no blade, no horn"를 명시하고 **반�
    조판도 전환됨(`lang:"en"`): 세리프 Cormorant Garamond · 산세 Inter · word-break normal ·
    Garamond x-height 보정. 국문은 Noto Serif/Sans KR 유지.
    영문 히어로 = 원안에서 유일하게 살아남은 문장 *"You are not watching the sky. You are standing beneath a roof, looking up."*
-   ⚠️ 영문몰은 예약 없이 **Expected September 7 · Date subject to change** 로 표기. $420.
+   ⚠️ 영문몰은 예약 없이 **Expected September 7 · Date subject to change** 로 표기. $400.
 6. 릴스 대본 v1도 이 문안 기준으로 재작성

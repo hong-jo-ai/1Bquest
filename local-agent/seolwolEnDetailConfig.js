@@ -11,7 +11,7 @@
  *    스위스 무브 브랜드와 같은 링에 서는 순간 진다 — 설월은 디자인·스토리로 판다.
  * ⚠️ 무브먼트는 스펙표에만. "Swiss Made"는 인증 확인 전까지 사용 금지(RONDA 표기까지만).
  *
- * 글로벌 $420. **출시 9/10 확정**(2026-08-21 사장님). 초도 보증서 넘버링 없음.
+ * 글로벌 $400 (2026-08-25 개정, 구 $420). **출시 9/10 확정**(2026-08-21 사장님). 초도 보증서 넘버링 없음.
  */
 
 const ENGRAVE_FREE = true;
@@ -34,7 +34,7 @@ module.exports = {
       image: { cut: "01", alt: "Dial macro — the moon half held behind the eave", ratio: "4/3" },
       line: "You are not watching the sky.<br>You are standing beneath a roof, looking up.",
       priceNote: "Moon Phase · Date · 38mm",
-      price: "$420",
+      price: "$400",
       badge: "Available September 10<br>Complimentary engraving · No added lead time",
     },
 
