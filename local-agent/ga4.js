@@ -83,5 +83,28 @@ async function items(days, grep) {
     const j = await runReport({ dateRanges: [{ startDate: "7daysAgo", endDate: "today" }], metrics: [{ name: "sessions" }] });
     console.log("✅ GA4 연결 OK — 최근 7일 세션:", j.rows?.[0]?.metricValues?.[0]?.value ?? 0);
   } else if (cmd === "items") { await items(days, grep); }
-  else console.log("사용: node ga4.js check | items [--days 90] [--grep 미니엘]");
+  else if (cmd === "pages") { await pages(days, grep); }
+  else console.log("사용: node ga4.js check | items | pages [--days 90] [--grep 미니엘]");
 })().catch((e) => { console.error("ERR", e.message); process.exit(1); });
+
+/** 페이지별 체류·이탈 — 상세페이지가 실제로 붙잡는지 보는 지표 */
+async function pages(days, grep) {
+  const j = await runReport({
+    dateRanges: [{ startDate: `${days}daysAgo`, endDate: "today" }],
+    dimensions: [{ name: "pagePath" }],
+    metrics: [{ name: "screenPageViews" }, { name: "userEngagementDuration" }, { name: "bounceRate" }],
+    limit: 300,
+  });
+  const rows = (j.rows || []).map((r) => ({
+    path: decodeURIComponent(r.dimensionValues[0].value),
+    views: Number(r.metricValues[0].value || 0),
+    engSec: Number(r.metricValues[1].value || 0),
+    bounce: Number(r.metricValues[2].value || 0),
+  })).filter((r) => !grep || r.path.includes(grep));
+  rows.sort((a, b) => b.views - a.views);
+  console.log(`${"경로".padEnd(46)}${"조회".padStart(6)}${"평균체류".padStart(9)}${"이탈률".padStart(8)}`);
+  rows.slice(0, 25).forEach((r) => {
+    const per = r.views ? (r.engSec / r.views).toFixed(1) + "초" : "-";
+    console.log(`${r.path.slice(0, 45).padEnd(46)}${String(r.views).padStart(6)}${per.padStart(9)}${(r.bounce * 100).toFixed(0) + "%"}`.padEnd(0));
+  });
+}
