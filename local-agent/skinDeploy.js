@@ -45,7 +45,12 @@ async function connectWithRetry(tries = 3) {
   }
   throw new Error(`SFTP 접속 실패(${tries}회): ${last && last.message}`);
 }
-/** 여러 작업을 한 연결로 묶는다. 배포 스크립트는 이걸로 감쌀 것. */
+/**
+ * 여러 작업을 한 연결로 묶는다. 배포 스크립트는 이걸로 감쌀 것.
+ * ⚠️ **검증(verifyLiveRetry)은 session() 안에서 돌리지 말 것** — 캐시 대기로 수 분이 흐르면
+ *    SFTP 가 유휴로 끊겨(ERR_NOT_CONNECTED) 롤백조차 못 한다(2026-08-25 실증).
+ *    순서: session(업로드·index교체) → 세션 닫힘 → 검증 → 실패 시 restore()(새 연결로 붙는다).
+ */
 async function session(fn) {
   if (shared) return fn(shared);
   shared = await connectWithRetry();
