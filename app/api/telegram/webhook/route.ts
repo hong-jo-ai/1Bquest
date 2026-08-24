@@ -617,6 +617,22 @@ ${line}`,
       return Response.json({ ok: true });
     }
 
+    // 웹사이트 변경 승인카드 — 승인만 기록하고 실제 배포는 아이맥 워커(skinDeployWorker.js)가 한다.
+    const sm = String(cb.data || "").match(/^skin:(accept|reject):(.+)$/);
+    if (sm) {
+      try {
+        const { decideChange } = await import("@/lib/skin/deployQueue");
+        const res = await decideChange(sm[2], sm[1] as "accept" | "reject");
+        await answer(res.ok ? "처리 완료" : `실패: ${res.error ?? ""}`);
+        await editAppend(res.ok
+          ? (sm[1] === "accept" ? `✅ 승인 — ${res.summary ?? ""}` : `❌ ${res.summary ?? "반영 안 함"}`)
+          : `⚠️ 실패: ${res.error ?? "알 수 없음"}`);
+      } catch (e) {
+        await answer("오류: " + (e instanceof Error ? e.message : String(e)).slice(0, 150));
+      }
+      return Response.json({ ok: true });
+    }
+
     await answer("알 수 없는 버튼");
     return Response.json({ ok: true, ignored: "unknown callback" });
   }
