@@ -33,18 +33,31 @@ async function sendCard(c) {
   const text = `🖥 <b>웹사이트 변경 제안</b>\n\n<b>${c.title}</b>\n${c.summary}` +
     (c.previewUrl ? `\n\n미리보기: ${c.previewUrl}` : "") +
     `\n\n적용하면 백업·검증까지 자동으로 돌고, 문제가 있으면 원상복구합니다.`;
-  const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chat, text, parse_mode: "HTML",
-      reply_markup: { inline_keyboard: [[
-        { text: "✅ 적용", callback_data: `skin:accept:${c.id}` },
-        { text: "❌ 안 함", callback_data: `skin:reject:${c.id}` },
-      ]] },
-    }),
+  const markup = { inline_keyboard: [[
+    { text: "✅ 적용", callback_data: `skin:accept:${c.id}` },
+    { text: "❌ 안 함", callback_data: `skin:reject:${c.id}` },
+  ]] };
+  // 직결 시도 → 실패 시 Vercel 릴레이(아이맥→텔레그램 ETIMEDOUT 이 잦다. buildPostOffice 와 같은 폴백)
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML", reply_markup: markup }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const j = await r.json();
+    if (j.ok) return console.log("(직결 발송)");
+    console.log("직결 실패:", JSON.stringify(j).slice(0, 120));
+  } catch (e) { console.log("직결 예외:", (e.cause && e.cause.code) || e.message); }
+
+  const base = (process.env.DASHBOARD_URL || "https://paulvice-dashboard.vercel.app").replace(/\/$/, "");
+  const rr = await fetch(`${base}/api/marketplace/telegram-relay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-agent-token": process.env.PAULWISE_MCP_TOKEN || "" },
+    body: JSON.stringify({ text, parseMode: "HTML", replyMarkup: markup }),
+    signal: AbortSignal.timeout(45000),
   });
-  const j = await r.json();
-  if (!j.ok) throw new Error("텔레그램 발송 실패: " + JSON.stringify(j).slice(0, 200));
+  if (!rr.ok) throw new Error("릴레이 발송 실패: " + (await rr.text()).slice(0, 200));
+  console.log("(릴레이 발송)");
 }
 
 (async () => {

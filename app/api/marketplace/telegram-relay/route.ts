@@ -20,6 +20,7 @@ interface RelayBody {
   fileBase64?: string;
   chatId?: string; // 기본 TELEGRAM_CHAT_ID 대신 보낼 대상(클로드 브리지 등)
   parseMode?: string; // "HTML" 등. 미지정이면 평문(기존 동작 유지)
+  replyMarkup?: unknown; // 승인 카드 인라인 버튼 — 직결이 막힐 때 릴레이로 보내기 위함
 }
 
 export async function POST(req: NextRequest) {
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
         disable_web_page_preview: true,
         // 리마인더처럼 HTML 로 조판된 본문이 릴레이를 타면 태그가 그대로 보였다 → 호출측이 지정하면 전달.
         ...(body.parseMode ? { parse_mode: body.parseMode } : {}),
+        // 승인 카드(인라인 버튼)도 릴레이를 타야 한다 — 아이맥→텔레그램 직결이 ETIMEDOUT 로 자주 막힘.
+        ...(body.replyMarkup ? { reply_markup: body.replyMarkup } : {}),
       }),
     });
     if (!res.ok) {
