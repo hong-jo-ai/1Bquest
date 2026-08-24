@@ -15,7 +15,8 @@ loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local")
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
 const { getCm29OutboundRows } = require("./cm29Outbound");
 const { getMusinsaGlobalRows } = require("./musinsaGlobalOutbound");
-const { getMusinsaDomesticRows } = require("./musinsaDomesticOutbound");
+const os = require("os");
+const { spawn } = require("child_process");
 const { closeMarketplaceBrowsers } = require("./marketplaceSync");
 
 const HEADER = ["수취인명","수취인 이동통신","수취인 전화번호","수취인 주소","수취인 우편번호","상품명","색상","수량","배송메세지","주문번호","판매처"];
@@ -208,6 +209,37 @@ async function alreadyRegisteredKeys(){
   } catch(e){ log("pp_shipments 조회 실패 — 재탕 필터 생략: "+e.message); return new Set(); }
 }
 
+/**
+ * 무신사 일반(국내) 행 수집 — **별도 프로세스**로 실행한다.
+ *
+ * 왜 자식 프로세스인가(2026-08-24): 무신사 글로벌·일반이 같은 Chrome 프로필 컨텍스트를 공유하는데,
+ * 글로벌 단계와 재로그인이 겹치면 일반 단계의 `context.on("page")` 가 이미 닫힌 빈 팝업을 잡아
+ * `Target page, context or browser has been closed` 로 엑셀 다운로드가 3회 전부 실패했다
+ * (8/18~8/24 연속 실패 → 접수 누락 7건). 같은 스크립트를 단독 실행하면 정상이었다.
+ * 프로필 잠금 때문에 Chrome 두 개가 같은 프로필을 못 쓰므로 **호출 전에 브라우저를 모두 닫는다.**
+ */
+function getMusinsaDomesticRowsIsolated(log){
+  return new Promise((resolve)=>{
+    const out = path.join(os.tmpdir(), `musinsa-dom-rows-${Date.now()}.json`);
+    const child = spawn(process.execPath, [path.join(__dirname,"musinsaDomesticOutbound.js"), "--json", out],
+      { cwd: __dirname, env: process.env, stdio: ["ignore","pipe","pipe"] });
+    const relay = (buf, tag) => String(buf).split("\n").map(l=>l.trim()).filter(Boolean)
+      .forEach(l => log(`  [무신사일반${tag}] ${l.replace(/^\[[^\]]+\]\s*/,"").slice(0,200)}`));
+    child.stdout.on("data", (b)=>relay(b,""));
+    child.stderr.on("data", (b)=>relay(b,":err"));
+    const timer = setTimeout(()=>{ log("무신사일반: 5분 초과 — 자식 프로세스 강제 종료"); child.kill("SIGKILL"); }, 5*60*1000);
+    child.on("close", (code)=>{
+      clearTimeout(timer);
+      let rows = [];
+      try { rows = JSON.parse(fs.readFileSync(out,"utf8")); }
+      catch { log(`무신사일반: 결과 파일 없음 (exit=${code}) — 접수 누락 위험, 수동 확인 필요`); }
+      try { fs.unlinkSync(out); } catch {}
+      resolve(rows);
+    });
+    child.on("error", (e)=>{ clearTimeout(timer); log("무신사일반: 프로세스 실행 실패 — "+e.message); resolve([]); });
+  });
+}
+
 async function collectOutboundRows(){
   let cafe=[], cm=[], wc=[], mg=[], md=[];
   // 카페24 멀티몰: 폴바이스 + 해리엇(미설정 몰은 건너뜀). 각 몰 실패해도 나머지 진행.
@@ -220,8 +252,9 @@ async function collectOutboundRows(){
   try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
   // 무신사: 글로벌·일반 모두 국내 우체국 발송. 일반은 상품준비중 변경 후 배송출고처리 엑셀에서 주소 수집.
   try { mg=await getMusinsaGlobalRows({}, log); log(`무신사글로벌 ${mg.length}행`); } catch(e){ log("무신사글로벌 실패: "+e.message); }
-  try { md=await getMusinsaDomesticRows({}, log); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); }
+  // 무신사 일반은 별도 프로세스 — 같은 프로필을 Chrome 두 개가 못 쓰므로 여기서 먼저 전부 닫는다.
   await closeMarketplaceBrowsers().catch(()=>{});
+  try { md=await getMusinsaDomesticRowsIsolated(log); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); }
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
   const all=[...cafe,...cm,...wc,...mg,...md];

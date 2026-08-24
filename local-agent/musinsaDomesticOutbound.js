@@ -164,12 +164,26 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
 
 module.exports = { getMusinsaDomesticRows, rowsFromExcel };
 
+// CLI. `--json <path>` 를 주면 rows 를 그 파일에 JSON 으로 남긴다 —
+// buildPostOffice 가 이 스크립트를 자식 프로세스로 띄워 결과를 받는 경로(2026-08-24).
 if (require.main === module) {
   const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
-  getMusinsaDomesticRows({}, log).then((rows) => {
-    console.log("\n=== 무신사 일반 우체국 행 ===");
-    rows.forEach((r) => console.log(JSON.stringify([r.name, r.mobile, r.tel, r.addr, r.zip, r.prod, r.color, r.qty, r.order, r.seller])));
+  const jsonIdx = process.argv.indexOf("--json");
+  const jsonOut = jsonIdx >= 0 ? process.argv[jsonIdx + 1] : null;
+  getMusinsaDomesticRows({}, log).then(async (rows) => {
+    if (jsonOut) {
+      fs.writeFileSync(jsonOut, JSON.stringify(rows));
+      log(`rows ${rows.length}건 → ${jsonOut}`);
+    } else {
+      console.log("\n=== 무신사 일반 우체국 행 ===");
+      rows.forEach((r) => console.log(JSON.stringify([r.name, r.mobile, r.tel, r.addr, r.zip, r.prod, r.color, r.qty, r.order, r.seller])));
+    }
     const { closeMarketplaceBrowsers } = require("./marketplaceSync");
-    return closeMarketplaceBrowsers();
-  }).catch((e) => { console.error("ERR", e.message); process.exit(1); });
+    await closeMarketplaceBrowsers().catch(() => {});
+    process.exit(0);
+  }).catch(async (e) => {
+    console.error("ERR", e.message);
+    try { const { closeMarketplaceBrowsers } = require("./marketplaceSync"); await closeMarketplaceBrowsers(); } catch (_) {}
+    process.exit(1);
+  });
 }
