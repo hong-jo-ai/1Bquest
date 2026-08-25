@@ -97,6 +97,29 @@ function summarize(records: Records, ym: string) {
   return { dates, days, hours, pay };
 }
 
+// ── 답변 대기열 ──────────────────────────────────────────
+// 단일 {date} 였다가 대기열로 바꿨다. 리마인드(아침)와 당일 질문(13시)이 겹칠 때
+// 뒤엣것이 앞엣것을 덮어써서 **답이 엉뚱한 날짜에 기록되던** 위험을 없앤다.
+// 답변은 항상 **가장 오래된 것부터** 처리하고, 어느 날짜에 기록했는지 회신에 명시한다.
+interface PendingItem { date: string; askedAt: string }
+
+async function readPendingQueue(): Promise<PendingItem[]> {
+  const raw = await readKv<unknown>(PENDING_KEY, null);
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as PendingItem[];
+  // 구 형식 {date, askedAt} 후방호환
+  const one = raw as { date?: string; askedAt?: string };
+  return one?.date ? [{ date: one.date, askedAt: one.askedAt ?? new Date().toISOString() }] : [];
+}
+
+async function enqueuePending(date: string): Promise<PendingItem[]> {
+  const q = await readPendingQueue();
+  if (!q.some((p) => p.date === date)) q.push({ date, askedAt: new Date().toISOString() });
+  q.sort((a, b) => a.date.localeCompare(b.date));
+  await writeKv(PENDING_KEY, q);
+  return q;
+}
+
 // ── 질문(크론) ───────────────────────────────────────────
 export async function askAttendance(): Promise<{ asked: boolean; reason?: string; date?: string }> {
   const date = kstDateStr();
@@ -104,26 +127,57 @@ export async function askAttendance(): Promise<{ asked: boolean; reason?: string
   // 기본 근무로 선기록(미확정) — 답이 없으면 근무로 간주, n이면 정정
   const records = await readKv<Records>(RECORDS_KEY, {});
   if (!records[date]) { records[date] = { worked: true, confirmed: false, hours: ALBA.hoursPerDay }; await writeKv(RECORDS_KEY, records); }
-  await writeKv(PENDING_KEY, { date, askedAt: new Date().toISOString() });
-  await sendTelegram(`📋 ${ALBA.name}님 오늘(${mmddKor(date)}) 출근했나요?\n\ny = 출근 / n = 결근\n(${ALBA.time}, ${ALBA.hoursPerDay}시간 근무)`);
+  const q = await enqueuePending(date);
+  const backlog = q.length > 1 ? `\n\n⏳ 아직 확인 안 된 날: ${q.filter((p) => p.date !== date).map((p) => mmddKor(p.date)).join(", ")}\n(오래된 날부터 하나씩 처리됩니다)` : "";
+  await sendTelegram(`📋 ${ALBA.name}님 오늘(${mmddKor(date)}) 출근했나요?\n\ny = 출근 / n = 결근\n(${ALBA.time}, ${ALBA.hoursPerDay}시간 근무)${backlog}`);
   return { asked: true, date };
+}
+
+// ── 무응답 리마인드(크론) ────────────────────────────────
+// 답을 안 하면 근무로 기록되는 구조라, 미확인이 쌓이면 급여가 과다 계상된다.
+// (실제로 2026-07~08 에 5일이 무응답으로 근무 처리돼 있었다.)
+// 지난 근무일 중 미확인이 있으면 **가장 오래된 것 하나**를 다시 묻는다.
+export async function remindUnconfirmed(): Promise<{ sent: boolean; date?: string; remaining?: number }> {
+  const today = kstDateStr();
+  const records = await readKv<Records>(RECORDS_KEY, {});
+  const stale = Object.keys(records)
+    .filter((d) => d < today && records[d]?.confirmed === false)
+    .sort();
+  if (stale.length === 0) return { sent: false };
+
+  const date = stale[0];
+  await enqueuePending(date);
+  const more = stale.length > 1 ? `\n(미확인 ${stale.length}일 중 가장 오래된 날입니다. 답하시면 다음 날짜를 이어서 여쭙겠습니다.)` : "";
+  await sendTelegram(
+    `⏳ ${ALBA.name}님 ${mmddKor(date)} 출근 여부가 아직 확인되지 않았습니다.\n\n` +
+    `y = 출근 / n = 결근\n` +
+    `⚠️ 답이 없으면 <b>근무</b>로 기록됩니다 (일 ₩${(ALBA.hoursPerDay * ALBA.wage).toLocaleString()}).${more}`.replace(/<\/?b>/g, ""),
+  );
+  return { sent: true, date, remaining: stale.length };
 }
 
 // ── 응답 처리(webhook) ───────────────────────────────────
 export async function resolveAlbaAttendance(text: string): Promise<{ message: string } | null> {
-  const pending = await readKv<{ date?: string } | null>(PENDING_KEY, null);
-  if (!pending?.date) return null;
+  const queue = await readPendingQueue();
+  if (queue.length === 0) return null;
   const yn = parseYN(text);
   if (yn === null) return null;
+
+  const target = queue[0].date;            // 항상 가장 오래된 것부터
+  const rest = queue.slice(1);
   const records = await readKv<Records>(RECORDS_KEY, {});
   // 이미 별도 hours(연장근무 등)가 기록돼 있으면 y 확인이 덮어쓰지 않도록 보존
-  const prev = records[pending.date];
-  records[pending.date] = { ...prev, worked: yn, confirmed: true, hours: yn ? (prev?.hours ?? ALBA.hoursPerDay) : 0, at: new Date().toISOString() };
+  const prev = records[target];
+  records[target] = { ...prev, worked: yn, confirmed: true, hours: yn ? (prev?.hours ?? ALBA.hoursPerDay) : 0, at: new Date().toISOString() };
   await writeKv(RECORDS_KEY, records);
-  await deleteKv(PENDING_KEY);
-  const { days, pay } = summarize(records, pending.date.slice(0, 7));
-  const head = yn ? `✅ ${mmddKor(pending.date)} 근무 확인 (${ALBA.hoursPerDay}시간)` : `🚫 ${mmddKor(pending.date)} 미근무 처리`;
-  return { message: `${head}\n이번 달 누적: ${days}일 · ₩${pay.toLocaleString()}` };
+  if (rest.length) await writeKv(PENDING_KEY, rest); else await deleteKv(PENDING_KEY);
+
+  const hours = records[target].hours;
+  const { days, pay } = summarize(records, target.slice(0, 7));
+  const head = yn ? `✅ ${mmddKor(target)} 근무 확인 (${hours}시간)` : `🚫 ${mmddKor(target)} 미근무 처리`;
+  // 어느 날짜에 기록했는지 반드시 밝힌다 — 밀린 답변이 엉뚱한 날에 붙는 것을 사람이 알아챌 수 있게
+  const next = rest.length ? `\n\n➡️ 다음으로 ${mmddKor(rest[0].date)} 출근하셨나요? (y/n)` : "";
+  return { message: `${head}\n이번 달 누적: ${days}일 · ₩${pay.toLocaleString()}${next}` };
 }
 
 // ── 오늘 근무 여부(주차 자동등록용) ──────────────────────
