@@ -26,6 +26,7 @@ const ALLOW_PREFIX = [
   "/api/cs/notify",    // CS 알림 cron (텔레그램/이메일/stale) — CRON_SECRET 헤더로 인증
   "/api/alba/",        // 알바 출퇴근 질문/급여명세서 cron — CRON_SECRET 헤더로 인증
   "/api/parking/",     // 주차할인 등록 요청 폴링 (x-agent-token = PAULWISE_MCP_TOKEN)
+  "/api/mads/targeting", // 광고세트 타겟팅 조회 — 읽기 전용 (x-agent-token = PAULWISE_MCP_TOKEN)
   "/api/cs/webhook/",  // CS 실시간 webhook (Crisp / Instagram DM)
   "/api/instagram/webhook", // Meta Instagram webhook (검증 + 이벤트)
   "/api/cafe24/",      // Cafe24 webhook
