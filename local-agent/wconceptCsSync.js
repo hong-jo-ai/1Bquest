@@ -88,7 +88,14 @@ async function scrapeClaims(page, claimType, log) {
     }
   } finally { await ctx.close().catch(() => {}); }
 
-  if (!claims.length) { log("클레임 없음"); return; }
+  // ⚠️ 하트비트는 클레임 유무와 무관하게 찍는다.
+  // 예전엔 여기서 바로 return 해서 "클레임 0건인 날 = 하트비트 없음"이 됐고,
+  // 워치독이 정상 작동 중인 잡을 죽은 걸로 봤다(8/10~8/25 오탐).
+  if (!claims.length) {
+    log("클레임 없음");
+    await require("./heartbeat").beat("wconcept-cs-sync", { claims: 0 });
+    return;
+  }
   const res = await fetch(`${base()}/api/cs/ingest/sixshop-returns`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-agent-token": env("PAULWISE_MCP_TOKEN") },
