@@ -43,7 +43,7 @@ function sign(ts, method, urlPath, secret) {
   return crypto.createHmac("sha256", secret).update(`${ts}.${method}.${urlPath}`).digest("base64");
 }
 
-async function call(method, urlPath, query) {
+async function call(method, urlPath, query, body) {
   const { customerId, apiKey, secret } = creds();
   const ts = Date.now().toString();
   const qs = query ? "?" + new URLSearchParams(query).toString() : "";
@@ -56,6 +56,7 @@ async function call(method, urlPath, query) {
       "X-Signature": sign(ts, method, urlPath, secret),
       "Content-Type": "application/json; charset=UTF-8",
     },
+    body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000),
   });
   const text = await res.text();

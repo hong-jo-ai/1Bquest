@@ -52,7 +52,7 @@ async function telegram(text) {
     for (const w of windows) {
       const r = await call("GET", "/stats", {
         id: c.nccCampaignId,
-        fields: JSON.stringify(["salesAmt", "clkCnt", "impCnt"]),
+        fields: JSON.stringify(["salesAmt", "clkCnt", "impCnt", "ccnt", "convAmt"]),
         timeRange: JSON.stringify(w),
       });
       for (const d of r.data || []) {
@@ -61,6 +61,24 @@ async function telegram(text) {
       }
     }
     log(`${c.name}: ${Math.round(sum).toLocaleString()}원`);
+  }
+
+  // 전환추적 점검 — 2026-08-25 캠페인 trackingMode 를 AUTO_TRACKING_MODE 로 켰다.
+  // 그전까지 클릭은 있는데 전환이 계속 0이었다. 켠 뒤로도 0이 이어지면 사이트 스크립트
+  // 계정 불일치(site wa=s_67fe2d9aabc vs 검색광고 naAccountId=s_58606972ecd2)가 원인이다.
+  let clk14 = 0, conv14 = 0;
+  for (const c of campaigns) {
+    const r = await call("GET", "/stats", {
+      id: c.nccCampaignId,
+      fields: JSON.stringify(["clkCnt", "ccnt"]),
+      timeRange: JSON.stringify({ since: daysAgo(14), until: daysAgo(1) }),
+    });
+    for (const d of r.data || []) { clk14 += d.clkCnt || 0; conv14 += d.ccnt || 0; }
+  }
+  log(`최근14일 클릭 ${clk14} · 전환 ${conv14}`);
+  if (clk14 >= 50 && conv14 === 0) {
+    await telegram(`⚠️ <b>네이버 광고 전환추적 여전히 0</b>\n최근 14일 클릭 ${clk14}건인데 전환 0건입니다.\n프리미엄 로그분석 계정 불일치가 의심됩니다 (사이트 s_67fe2d9aabc ≠ 검색광고 s_58606972ecd2).`);
+    log("→ 전환추적 이상 알림 발송");
   }
 
   const rows = Object.entries(daily)
@@ -88,7 +106,7 @@ async function telegram(text) {
     log("→ 잔액 부족 알림 발송");
   }
 
-  await require("./heartbeat").beat("naver-ads-sync", { days: rows.length, total });
+  await require("./heartbeat").beat("naver-ads-sync", { days: rows.length, total, clk14, conv14 });
   log("=== 완료 ===");
 })().catch(async (e) => {
   console.error("ERR", e);
