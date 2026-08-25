@@ -76,7 +76,13 @@ async function telegram(text) {
     for (const d of r.data || []) { clk14 += d.clkCnt || 0; conv14 += d.ccnt || 0; }
   }
   log(`최근14일 클릭 ${clk14} · 전환 ${conv14}`);
-  if (clk14 >= 50 && conv14 === 0) {
+  // 원인을 이미 아는 동안엔 매일 울리지 않게 잠재운다 — 쇼핑파트너센터 사업자 이전
+  // (제이에이치 → 해리엇와치스)이 끝나야 계정 정렬이 가능하다. 그 전엔 알림이 소음일 뿐.
+  const SNOOZE_UNTIL = "2026-09-08";
+  const snoozed = new Date().toISOString().slice(0, 10) < SNOOZE_UNTIL;
+  if (clk14 >= 50 && conv14 === 0 && snoozed) {
+    log(`→ 전환 0이지만 ${SNOOZE_UNTIL} 까지 알림 보류(사업자 이전 대기 중)`);
+  } else if (clk14 >= 50 && conv14 === 0) {
     await telegram(`⚠️ <b>네이버 광고 전환추적 여전히 0</b>\n최근 14일 클릭 ${clk14}건인데 전환 0건입니다.\n프리미엄 로그분석 계정 불일치가 의심됩니다 (사이트 s_67fe2d9aabc ≠ 검색광고 s_58606972ecd2).`);
     log("→ 전환추적 이상 알림 발송");
   }
