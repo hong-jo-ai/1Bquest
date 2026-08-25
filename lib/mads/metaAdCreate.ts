@@ -154,8 +154,13 @@ function defaultTargeting(): Record<string, unknown> {
   return {
     geo_locations: { countries: ["KR"] },
     genders: [2],          // 1=남, 2=여
+    // 2026-08-25 실측 기반. 메타 최근 90일 여성 구매 ROAS:
+    //   45-54 → 3.14 (매출 53.9%, 핵심)  |  25-34 → 2.66  |  55-64 → 2.37  |  35-44 → 2.07  |  65+ → 1.22
+    // 상한을 55 → 64 로 넓힌다: 55-64 는 ROAS 2.37 로 이미 많이 쓰는 35-44 보다 낫다.
+    // 65+ 는 ROAS 1.22 라 제외. 하한 25 유지 — 25-34 도 ROAS 2.66 으로 버틴다.
+    // ⚠️ 40~50 으로 좁히지 말 것. 25~44 가 매출의 35%다.
     age_min: 25,
-    age_max: 55,
+    age_max: 64,
     // Advantage+ 오디언스는 age_max<65 와 충돌 → 명시 타깃 사용(끔).
     targeting_automation: { advantage_audience: 0 },
   };
