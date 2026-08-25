@@ -36,6 +36,7 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:sftp-health", label: "카페24 SFTP 점검(iMac·매일)", maxHours: 28 },
   // W컨셉 CS(반품·교환 클레임) 수집 — 10시·16시. 2026-08-25 등록: 그전까진 관제 사각지대였다.
   { key: "heartbeat:wconcept-cs-sync", label: "W컨셉 CS 동기화(iMac·10/16시)", maxHours: 28 },
+  { key: "heartbeat:naver-ads-sync", label: "네이버 검색광고 광고비 동기화(iMac·09:20)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
   { key: "cron_last_ok:revenue-snapshot", label: "매출 스냅샷", maxHours: 26 },
   { key: "cron_last_ok:daily-summary", label: "데일리 서머리", maxHours: 26 },
