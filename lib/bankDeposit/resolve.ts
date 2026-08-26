@@ -30,9 +30,13 @@ export interface ResolveResult {
   matchError:    string | null;
 }
 
-/** 입금 멱등키 — 은행+시각+금액+입금자. 같은 SMS 재전송/재시도 식별. */
+/**
+ * 입금 멱등키 — 계좌+은행+시각+금액+입금자. 같은 SMS 재전송/재시도 식별.
+ * 계좌를 넣는 이유: 두 계좌에 같은 금액이 동시에 들어오면(정산금 분할 입금 등)
+ * 계좌가 없을 때 서로 중복으로 판정돼 한쪽이 조용히 버려진다.
+ */
 export function depositHash(p: ParsedDeposit): string {
-  const key = `${p.bank}|${p.occurredAt ?? ""}|${p.amount}|${p.depositorName ?? ""}`;
+  const key = `${p.account ?? ""}|${p.bank}|${p.occurredAt ?? ""}|${p.amount}|${p.depositorName ?? ""}`;
   return createHash("sha256").update(key).digest("hex").slice(0, 32);
 }
 
@@ -79,6 +83,10 @@ export interface FormatOpts {
   pendingRetry?: boolean;
   /** head 뒤에 덧붙일 메모 (예: "재시도 매칭", "30분 경과"). */
   note?: string;
+  /** 자동처리 대상 계좌가 아님 — 주문 매칭 없이 기록만 했다는 알림. */
+  noticeOnly?: boolean;
+  /** noticeOnly 일 때 계좌 이름 (예: "사업자 정산계좌"). */
+  accountLabel?: string;
 }
 
 /** 매칭 결과 → 텔레그램 메시지. 웹훅·크론 공용. */
@@ -90,22 +98,37 @@ export function formatNotification(
   const head = [
     `💰 <b>${p.bank} 입금 ${escapeHtml(fmtKRW(p.amount))}</b>`,
     p.depositorName ? `· ${escapeHtml(p.depositorName)}` : "",
+    p.account ? `<code>*${escapeHtml(p.account.slice(-6))}</code>` : "",
     opts.note ? `<i>(${escapeHtml(opts.note)})</i>` : "",
   ].filter(Boolean).join(" ");
+
+  const balanceLine = p.balance != null ? `잔액 ${escapeHtml(fmtKRW(p.balance))}` : "";
+
+  // 정산계좌 등 자동처리 대상이 아닌 계좌 — 주문 매칭 자체를 안 돌린다.
+  if (opts.noticeOnly) {
+    return [
+      head,
+      `📗 <b>${escapeHtml(opts.accountLabel ?? "기타 계좌")}</b> — 기록만 (주문·AS 자동처리 안 함)`,
+      balanceLine,
+      `<i>SMS: ${escapeHtml(p.raw.slice(0, 120))}</i>`,
+    ].filter(Boolean).join("\n");
+  }
 
   if (candidates.length === 0) {
     if (opts.pendingRetry) {
       return [
         head,
         `⏳ <b>주문 매칭 대기중</b> — 주문 등록 확인되면 자동 입금확인 (최대 30분 재시도)`,
+        balanceLine,
         `<i>SMS: ${escapeHtml(p.raw.slice(0, 120))}</i>`,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
     }
     return [
       head,
       `❓ <b>매칭 주문 없음</b> — 카페24에서 수동 확인 필요`,
+      balanceLine,
       `<i>SMS: ${escapeHtml(p.raw.slice(0, 120))}</i>`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   }
 
   if (candidates.length === 1) {

@@ -54,6 +54,21 @@ function readNew(afterNs) {
   finally { try { cdb.close(); } catch {} }
 }
 
+// 계좌 게이트 — 주문 결제 계좌(BANK_ACCOUNT_ORDERS)로 들어온 입금만 서버로 보낸다.
+// 849(개인 계좌)에 입출금 알림을 켜면서 필요해졌다. 서버(Vercel)에도 같은 게이트가
+// 있지만 거긴 env 주입·배포가 선행돼야 켜지므로, 여기서 먼저 끊어 개인 입금이
+// 미결제 주문과 금액이 맞아 자동 입금확인되는 걸 막는다.
+// 미설정이면 후방호환으로 전부 통과(기존 동작 유지).
+const ORDER_ACCOUNTS = String(process.env.BANK_ACCOUNT_ORDERS || "")
+  .split(",").map((s) => s.replace(/\D/g, "")).filter((s) => s.length >= 4);
+function orderAccountAllowed(text) {
+  if (!ORDER_ACCOUNTS.length) return true;        // 미설정 = 후방호환
+  const m = String(text).match(/\*+\s*(\d{4,})/); // 우리은행 마스킹 "*097664"
+  if (!m) return false;                           // 계좌 못 읽으면 자동처리 안 함
+  const a = m[1];
+  return ORDER_ACCOUNTS.some((c) => (a.length <= c.length ? c.endsWith(a) : a.endsWith(c)));
+}
+
 // 입금알림 형태만 1차 필터(발신 안내문/카드승인 등 노이즈 줄이기). 최종 파싱은 서버.
 function looksLikeDeposit(text) {
   if (!/입금/.test(text)) return false;
@@ -133,6 +148,12 @@ async function main() {
   for (const row of rows) {
     if (!looksLikeDeposit(row.text)) {
       // 입금알림 아님(노이즈) — 처리 없이 커서만 전진.
+      if (BigInt(row.ns) > BigInt(advanced)) advanced = row.ns;
+      continue;
+    }
+    if (!orderAccountAllowed(row.text)) {
+      // 개인 계좌 등 주문 결제 계좌 아님 — 주문 매칭 안 돌리고 커서만 전진.
+      log(`주문 결제 계좌 아님 — 스킵: ${String(row.text).replace(/\n/g, " ").slice(0, 60)}`);
       if (BigInt(row.ns) > BigInt(advanced)) advanced = row.ns;
       continue;
     }

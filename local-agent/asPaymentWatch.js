@@ -31,7 +31,20 @@ async function tg(msg) {
   await require("./telegramRelay").relayText(msg);
 }
 
-// 우리은행 입금알림 SMS 파싱 → { amount, depositor } | null
+// 계좌 게이트 — .env BANK_ACCOUNT_AS 에 적힌 계좌로 들어온 입금만 자동 송장발급.
+// 849(사업자 정산계좌)에 입출금 알림을 켜면서 필요해졌다. 정산금·도매 입금이
+// 우연히 repair_cost 와 같으면 고객에게 실제 우체국 송장이 나가버린다.
+// 미설정이면 후방호환으로 전 계좌 허용(기존 동작 유지).
+const AS_ACCOUNTS = String(process.env.BANK_ACCOUNT_AS || "")
+  .split(",").map((s) => s.replace(/\D/g, "")).filter((s) => s.length >= 4);
+function accountAllowed(acct) {
+  if (!AS_ACCOUNTS.length) return true;           // 미설정 = 후방호환
+  const a = String(acct || "").replace(/\D/g, "");
+  if (a.length < 4) return false;                 // 계좌 못 읽으면 자동처리 안 함
+  return AS_ACCOUNTS.some((c) => (a.length <= c.length ? c.endsWith(a) : a.endsWith(c)));
+}
+
+// 우리은행 입금알림 SMS 파싱 → { amount, depositor, account } | null
 function parseDeposit(text) {
   if (!/우리/.test(text) || !/입금/.test(text)) return null;
   const am = text.match(/입금\s*([\d,]+)\s*원/);
@@ -45,7 +58,9 @@ function parseDeposit(text) {
     if (/잔액|출금|^\*\d|^우리\s|^\[|^\d{2}\/\d{2}/.test(lines[i])) continue;
     depositor = lines[i]; break;
   }
-  return { amount, depositor };
+  // 계좌 — 우리은행은 "*097664" 로 마스킹해서 뒷자리만 준다.
+  const ac = text.match(/\*+\s*(\d{4,})/);
+  return { amount, depositor, account: ac ? ac[1] : null };
 }
 
 function readNew(afterNs) {
@@ -54,8 +69,11 @@ function readNew(afterNs) {
   catch (e) { log(`chat.db 열기 실패(전체 디스크 접근 권한): ${e && e.message}`); return null; }
   try {
     return cdb.prepare(
+      // is_from_me=0 — 사장님이 고객에게 보낸 "…입금 부탁드립니다" AS 청구문자가
+      // 파서에 걸리면 미입금 상태로 송장이 나간다. cafe24DepositWatch 와 동일 필터.
       "SELECT CAST(date AS TEXT) AS ns, text FROM message " +
-      "WHERE text IS NOT NULL AND date > ? AND text LIKE '%우리%' AND text LIKE '%입금%' AND text LIKE '%원%' " +
+      "WHERE text IS NOT NULL AND date > ? AND is_from_me = 0 " +
+      "AND text LIKE '%우리%' AND text LIKE '%입금%' AND text LIKE '%원%' " +
       "ORDER BY date ASC LIMIT 100"
     ).all(BigInt(afterNs));
   } catch (e) { log(`chat.db 쿼리 오류: ${e && e.message}`); return null; }
@@ -123,7 +141,11 @@ async function main() {
     if (BigInt(row.ns) > BigInt(maxNs)) maxNs = row.ns;
     const dep = parseDeposit(row.text);
     if (!dep) continue;
-    log(`입금문자: ₩${dep.amount.toLocaleString()} / ${dep.depositor}`);
+    if (!accountAllowed(dep.account)) {
+      log(`입금문자 ₩${dep.amount.toLocaleString()} (계좌 *${dep.account || "?"}) — AS 계좌 아님, 스킵`);
+      continue;
+    }
+    log(`입금문자: ₩${dep.amount.toLocaleString()} / ${dep.depositor} / *${dep.account || "?"}`);
     await handleDeposit(db, dep);
   }
   if (!DRY) await setCursor(db, maxNs);

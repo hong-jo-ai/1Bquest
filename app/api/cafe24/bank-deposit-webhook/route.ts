@@ -26,6 +26,7 @@ import { parseBankSms } from "@/lib/bankDeposit/parser";
 import { resolveDeposit, depositHash, formatNotification } from "@/lib/bankDeposit/resolve";
 import { enqueueConfirm } from "@/lib/bankDeposit/confirmQueue";
 import { enqueuePending } from "@/lib/bankDeposit/pending";
+import { resolveAccountRoles } from "@/lib/bankDeposit/accounts";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { getCsSupabase } from "@/lib/cs/store";
 
@@ -99,6 +100,18 @@ export async function POST(req: NextRequest) {
   const hash = depositHash(parsed);
   if (await isAlreadyProcessed(hash)) {
     return Response.json({ ok: true, duplicate: true });
+  }
+
+  // 계좌 게이트 — 주문 결제 계좌가 아니면 매칭을 아예 안 돌린다.
+  // 849(개인 계좌)에 알림을 켠 뒤로 개인 입금이 이 웹훅으로 들어온다.
+  // 금액이 미결제 주문과 맞아떨어지면 엉뚱한 주문이 자동 입금확인된다.
+  const roles = resolveAccountRoles(parsed.account);
+  if (roles.configured && !roles.orders) {
+    await sendTelegramMessage(
+      formatNotification(parsed, [], { noticeOnly: true, accountLabel: roles.label }),
+    );
+    await markProcessed(hash, { parsed, noticeOnly: true, ts: new Date().toISOString() });
+    return Response.json({ ok: true, noticeOnly: true, account: parsed.account, matched: 0 });
   }
 
   // 카페24 미결제 주문 매칭 (두 몰) — HIGH면 confirmTarget.

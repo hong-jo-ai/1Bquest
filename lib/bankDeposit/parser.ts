@@ -8,6 +8,9 @@
  *   [KB은행] 05/05 14:23 234567-12-***123 50,000원 입금 홍**
  *   [KB] 5/5 14:23 1234567 50,000 입금 홍길**
  *   [우리] 5/5 14:23 ***-456789 입금 50,000원 홍길동
+ *
+ * 우리은행 실물(2026-08 확인) — 줄바꿈으로 구분된 6줄:
+ *   [Web발신] / 우리 08/24 15:12 / *097664 / 입금 13,000원 / 박형중 / 잔액 1,749,122원
  */
 
 export interface ParsedDeposit {
@@ -15,6 +18,10 @@ export interface ParsedDeposit {
   depositorName:  string | null;     // 마스킹 포함될 수 있음 ("홍**" 등)
   bank:           "KB" | "WOORI" | "OTHER";
   occurredAt:     string | null;     // ISO. SMS 에 시각 명시 안 되면 null
+  /** 입금된 계좌 — 숫자만. SMS 는 보통 마스킹돼 뒷자리만 온다("*097664" → "097664"). */
+  account:        string | null;
+  /** 입금 후 잔액. 우리은행은 찍어주고, 안 주는 은행·요금제도 있어 null 가능. */
+  balance:        number | null;
   raw:            string;            // 디버깅용 원문 (200자)
 }
 
@@ -58,6 +65,36 @@ function extractAmount(body: string): number {
   return 0;
 }
 
+/**
+ * 계좌 추출. 마스킹 형태가 은행마다 다르다("*097664", "***-456789", "234567-12-***123").
+ * 날짜(2026-08-24)를 계좌로 오인하지 않게 숫자 9자리 이상만 계좌로 인정한다.
+ */
+function extractAccount(body: string): string | null {
+  // 1순위: 우리은행식 마스킹 — '*' 뒤 숫자 뭉치.
+  const masked = body.match(/\*+\s*(\d{4,})/);
+  if (masked) return masked[1];
+
+  // 2순위: 하이픈·마스킹 섞인 계좌 토큰. 숫자 9자리 이상이어야 계좌로 본다.
+  for (const m of body.matchAll(/[\d*]{2,6}(?:-[\d*]{2,6}){1,3}/g)) {
+    const digits = m[0].replace(/\D/g, "");
+    if (digits.length >= 9) return digits;
+  }
+  return null;
+}
+
+/** "잔액 1,749,122원" → 1749122. 없으면 null. */
+function extractBalance(body: string): number | null {
+  const m = body.match(/잔액\s*[₩￦]?\s*([\d,]+)\s*원?/);
+  if (!m) return null;
+  const n = parseInt(m[1].replace(/,/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** 입금자명 자리에 잡히기 쉬운 SMS 자체 단어 — 이름으로 채택하면 안 된다. */
+const NAME_STOPWORDS = new Set([
+  "잔액", "출금", "입금", "거래", "수수료", "계좌", "이체", "누적", "한도", "결제", "승인",
+]);
+
 function extractDepositorName(body: string): string | null {
   // 한국 은행 SMS 입금자명 위치는 다양함:
   //   "입금 홍**"          ← 직후
@@ -79,7 +116,10 @@ function extractDepositorName(body: string): string | null {
   ];
   for (const re of patterns) {
     const m = body.match(re);
-    if (m && m[1]) return m[1].trim();
+    const name = m?.[1]?.trim();
+    // "입금 13,000원 잔액 1,749,122원" 처럼 입금자명이 없으면 뒤 단어("잔액")가
+    // 이름 자리에 잡힌다. 그대로 두면 매칭이 엉뚱한 주문을 물 수 있다.
+    if (name && !NAME_STOPWORDS.has(name)) return name;
   }
   return null;
 }
@@ -113,6 +153,8 @@ export function parseBankSms(rawBody: string, sender?: string): ParsedDeposit | 
     depositorName: extractDepositorName(body),
     bank:          detectBank(body, sender),
     occurredAt:    extractOccurredAt(body),
+    account:       extractAccount(body),
+    balance:       extractBalance(body),
     raw:           body.slice(0, 500),
   };
 }
