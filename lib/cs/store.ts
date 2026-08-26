@@ -263,6 +263,41 @@ export async function refreshThreadCustomer(
 }
 
 /**
+ * 이미 적재된 메시지의 raw 에 필드를 덧붙인다.
+ *
+ * ingestMessage 는 external_message_id 가 같으면 곧바로 return 해서 raw 를 갱신하지
+ * 않는다. 그래서 "예전에 적재했는데 그때는 안 뽑던 정보"(첨부 사진 등)를 뒤늦게
+ * 추가하면 기존 메시지엔 영영 안 붙는다. 재동기화 시 백필용.
+ *
+ * 이미 같은 값이면 쓰지 않는다 — 동기화가 돌 때마다 UPDATE 가 나가는 걸 막는다.
+ */
+export async function patchMessageRaw(
+  externalMessageId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const db = getCsSupabase();
+  const { data: msg } = await db
+    .from("cs_messages")
+    .select("id, raw")
+    .eq("external_message_id", externalMessageId)
+    .maybeSingle();
+  if (!msg) return false;
+
+  const current = (msg.raw ?? {}) as Record<string, unknown>;
+  const changed = Object.entries(patch).some(
+    ([k, v]) => JSON.stringify(current[k]) !== JSON.stringify(v),
+  );
+  if (!changed) return false;
+
+  const { error } = await db
+    .from("cs_messages")
+    .update({ raw: { ...current, ...patch } })
+    .eq("id", msg.id);
+  if (error) throw new Error(`cs_messages raw 갱신 실패: ${error.message}`);
+  return true;
+}
+
+/**
  * 채널 + external_thread_id 목록에 대해 마지막 메시지 시각(epoch ms) 맵을 반환.
  * 증분 동기화용 — 외부 API에서 받은 대화가 우리가 가진 마지막 메시지보다
  * 새것인지 비교해, 변경 없으면 메시지 재조회(외부 API 호출)를 생략한다.

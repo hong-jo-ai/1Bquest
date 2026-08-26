@@ -1320,6 +1320,70 @@ function extractCafe24Product(raw: unknown): {
   };
 }
 
+/** 메시지 raw 에서 첨부(고객이 올린 사진 등) 추출 — cafe24 게시판 attach_file_urls 유래. */
+function extractAttachments(raw: unknown): Array<{ url: string; name?: string; isImage: boolean }> {
+  if (!raw || typeof raw !== "object") return [];
+  const list = (raw as { attachments?: unknown }).attachments;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((a) => {
+    if (!a || typeof a !== "object") return [];
+    const { url, name, isImage } = a as { url?: unknown; name?: unknown; isImage?: unknown };
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return [];
+    return [{
+      url,
+      name: typeof name === "string" ? name : undefined,
+      isImage: isImage === true,
+    }];
+  });
+}
+
+/**
+ * 첨부 렌더 — 사진은 썸네일, 그 외는 파일 링크. 클릭하면 원본을 새 탭에서 연다.
+ * 이게 없으면 사장님이 인박스를 보고도 사진 때문에 카페24 관리자를 또 열어야 한다.
+ */
+function AttachmentStrip({ items }: { items: Array<{ url: string; name?: string; isImage: boolean }> }) {
+  if (!items.length) return null;
+  const images = items.filter((a) => a.isImage);
+  const files = items.filter((a) => !a.isImage);
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {images.map((a) => (
+            <a
+              key={a.url}
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={a.name ?? "첨부 사진"}
+              className="block rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 hover:opacity-90 transition-opacity"
+            >
+              <img
+                src={a.url}
+                alt={a.name ?? "첨부 사진"}
+                loading="lazy"
+                className="w-28 h-28 object-cover bg-zinc-100 dark:bg-zinc-800"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+      {files.map((a) => (
+        <a
+          key={a.url}
+          href={a.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          📎 {a.name ?? "첨부파일"}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   customerName,
@@ -1332,6 +1396,8 @@ function MessageBubble({
   const isOut = message.direction === "out";
   const senderName = isOut ? BRAND_LABEL[brand] : customerName;
   const product = !isOut ? extractCafe24Product(message.raw) : null;
+  // 첨부는 방향 무관 — 고객 원글·댓글 양쪽에 붙을 수 있다.
+  const attachments = extractAttachments(message.raw);
 
   return (
     <div className={`flex gap-3 min-w-0 ${isOut ? "flex-row-reverse" : ""}`}>
@@ -1389,6 +1455,9 @@ function MessageBubble({
         >
           {message.body_text || "(빈 메시지)"}
         </div>
+
+        {/* 고객이 올린 사진 — 게시판 문의의 상당수가 사진으로 증상을 보낸다 */}
+        <AttachmentStrip items={attachments} />
       </div>
     </div>
   );

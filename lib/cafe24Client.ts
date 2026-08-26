@@ -231,6 +231,16 @@ export interface Cafe24Board {
   use_display?: "T" | "F";
 }
 
+/**
+ * 게시판 글·댓글 첨부파일. 고객이 올린 사진이 여기로 온다(본문 <img> 아님).
+ * url 은 프로토콜 상대경로("//ecimg.cafe24img.com/...")로 오므로 https: 를 붙여야 한다.
+ */
+export interface Cafe24AttachFile {
+  no?:   number;
+  name?: string;
+  url?:  string;
+}
+
 export interface Cafe24Article {
   article_no: number;
   parent_article_no?: number | null;
@@ -251,6 +261,8 @@ export interface Cafe24Article {
   deleted?: "T" | "F";
   /** 상품 게시판인 경우 — 어떤 상품에 대한 문의/리뷰인지 */
   product_no?: number | null;
+  /** 고객이 첨부한 사진 등. CS 문의의 상당수가 사진을 여기 붙여온다. */
+  attach_file_urls?: Cafe24AttachFile[] | null;
 }
 
 /** 게시판 글의 댓글 — CS 게시판에서 운영자↔고객 대화가 댓글로 이뤄짐. */
@@ -265,7 +277,9 @@ export interface Cafe24Comment {
   parent_comment_no?: number | null;
   input_channel?: string | null;
   secret?: "T" | "F";
-  attach_file_urls?: string[] | null;
+  // 실제 응답은 {no,name,url} 객체 배열이다. 예전엔 string[] 로 선언돼 있었는데
+  // 아무도 안 읽어서 안 드러났을 뿐, 잘못된 타입이었다.
+  attach_file_urls?: Cafe24AttachFile[] | null;
 }
 
 /** 몰의 운영자(관리자) 계정 id — 게시판 댓글이 운영자 작성인지 판별에 사용(예: icaruse2000). */
