@@ -55,6 +55,11 @@ function isAllowed(pathname: string): boolean {
   return ALLOW_PREFIX.some((p) => pathname.startsWith(p));
 }
 
+// 아침 업무 보드 전용 도메인 — 루트 접속을 /today 로 재작성 (폰 홈화면에서 한 번에 열려고)
+const TODAY_HOSTS = new Set([
+  "today.harriotwatches.com",
+]);
+
 // 해리엇 '그날의 달' 전용 도메인 — 루트 접속을 /moon 으로 재작성 (고객에게 대시보드 로그인 노출 방지)
 const MOON_HOSTS = new Set([
   "harriot-moon.vercel.app",
@@ -69,6 +74,12 @@ export async function proxy(req: NextRequest) {
   if (MOON_HOSTS.has(host) && pathname === "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/moon";
+    return NextResponse.rewrite(url);
+  }
+  // moon 과 달리 로그인은 그대로 태운다 — 업무 화면이라 인증을 우회하면 안 된다.
+  if (TODAY_HOSTS.has(host) && pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/today";
     return NextResponse.rewrite(url);
   }
 
