@@ -25,10 +25,15 @@ async function ensureMusinsa(page, log) {
 }
 
 async function loadFrameSearch(page, url, log) {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-  await sleep(6000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
-  let f = getFrame(page);
-  for (let i = 0; i < 10 && !f; i++) { await sleep(1000); f = getFrame(page); }
+  // iframe 로딩이 들쭉날쭉 — 한 번 실패로 0행 처리되면 출고가 통째로 누락된다(2026-08-27 12:30 크론).
+  // 대기를 늘리고, 없으면 새로고침해 한 번 더 시도.
+  let f = null;
+  for (let attempt = 1; attempt <= 2 && !f; attempt++) {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    await sleep(6000); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
+    for (let i = 0; i < 25 && !f; i++) { await sleep(1000); f = getFrame(page); }
+    if (!f) log(`iframe 못 찾음 (시도 ${attempt}/2) — ${url}`);
+  }
   if (!f) return null;
   await f.locator('button:has-text("검색")').filter({ hasNotText: "초기화" }).first().click({ timeout: 6000 }).catch(() => {});
   await sleep(6000);

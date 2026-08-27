@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execSync, spawn } = require("child_process");
 const { chromium } = require("playwright");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,6 +32,8 @@ const CHANNELS = {
     authMethod: "email",   // 2차 인증: 이메일 인증번호 (shong@ Gmail에서 자동 수신)
     loginUrl: env("MUSINSA_LOGIN_URL"),
     ordersUrl: env("MUSINSA_ORDERS_URL"),
+    // 상시 창에서 "이미 로그인돼 있나" 판정용 — 여기로 갔는데 sso/login 으로 안 튕기면 세션 유효
+    sessionCheckUrl: "https://partner.musinsa.com/order/history",
     username: env("MUSINSA_LOGIN_ID"),
     password: env("MUSINSA_LOGIN_PASSWORD"),
     usernameSelector: env("MUSINSA_ID_SELECTOR"),
@@ -56,6 +58,8 @@ const CHANNELS = {
     authMethod: "email",   // 무신사와 동일 SSO → 이메일 인증 (plvekorea@gmail.com, 대시보드 자동읽기)
     loginUrl: env("CM29_LOGIN_URL"),
     ordersUrl: env("CM29_ORDERS_URL"),
+    // 상시 창 세션 판정용 — 세션이 죽으면 partner-sso.one.musinsa.com/oauth/login 으로 튕긴다
+    sessionCheckUrl: env("CM29_ORDERS_URL") || "https://partner-order.29cm.co.kr/list",
     username: env("CM29_LOGIN_ID"),
     password: env("CM29_LOGIN_PASSWORD"),
     // partner-sso.one.musinsa.com 공통 → 로그인/이메일 인증 셀렉터는 무신사와 동일
@@ -169,9 +173,74 @@ function generateTotp(secret, now = Date.now()) {
   return String(code).padStart(6, "0");
 }
 
+/**
+ * 상시 창(keep-alive) 채널 — 스크립트가 끝나도 Chrome 창을 남겨 로그인 세션을 유지한다.
+ *
+ * 왜: Playwright 가 띄운 Chrome 은 스크립트 종료와 함께 죽는다. 그래서 실행할 때마다 창이 새로
+ * 뜨고 무신사가 매번 2차 인증(이메일)을 걸었다 — 크론 1회에 로그인 2번(글로벌+국내 자식 프로세스).
+ * 사장님 지시(2026-08-27): "한번 로그인하고 창만 안 끄면 유지되는데 굳이 껐다 켰다 할 필요 있나".
+ *
+ * 방식: Chrome 을 **Playwright 밖에서 detached 로** 직접 띄우고(--remote-debugging-port),
+ * 이후 모든 실행은 connectOverCDP 로 그 창에 붙는다. 프로세스가 끝나도 창은 그대로 남는다.
+ */
+const KEEP_ALIVE = new Set(
+  String(env("MARKETPLACE_KEEP_ALIVE_CHANNELS") || "").split(",").map((s) => s.trim()).filter(Boolean),
+);
+const CDP_PORTS = { musinsa: 9333, "29cm": 9334, wconcept: 9335 };
+const cdpPort = (channel) => Number(env(`${channel.toUpperCase()}_CDP_PORT`) || CDP_PORTS[channel] || 9333);
+const isKeepAlive = (channel) => KEEP_ALIVE.has(channel);
+
+function chromeExecutable() {
+  const explicit = env("MARKETPLACE_CHROME_PATH");
+  if (explicit) return explicit;
+  const mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  if (fs.existsSync(mac)) return mac;
+  try { return chromium.executablePath(); } catch { return "google-chrome"; }
+}
+
+async function cdpConnect(port) {
+  return chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
+}
+
+/** 상시 창에 붙거나(이미 떠 있으면) 새로 띄운 뒤 붙는다. */
+async function attachKeepAlive(channel, log) {
+  const port = cdpPort(channel);
+  const label = CHANNELS[channel]?.label || channel;
+  let browser = await cdpConnect(port);
+  if (browser) {
+    log(`${label} 상시 Chrome 창에 연결 (CDP ${port}) — 재로그인 없음`);
+  } else {
+    const profileDir = marketplaceProfileDir(channel);
+    fs.mkdirSync(profileDir, { recursive: true });
+    cleanupProfileLock(profileDir, log); // 디버그포트 없이 떠 있던 잔여 창만 정리
+    const child = spawn(chromeExecutable(), [
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${profileDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-blink-features=AutomationControlled",
+      "--lang=ko-KR",
+      "--start-maximized",
+      "about:blank",
+    ], { detached: true, stdio: "ignore" });
+    child.unref();
+    log(`${label} 상시 Chrome 창 기동 (CDP ${port}) — 이 창은 스크립트가 끝나도 닫지 않습니다`);
+    for (let i = 0; i < 60 && !browser; i++) { await sleep(500); browser = await cdpConnect(port); }
+    if (!browser) throw new Error(`${label} Chrome CDP(${port}) 연결 실패 — 창을 닫지 않았으니 직접 확인해주세요`);
+  }
+  const context = browser.contexts()[0] || (await browser.newContext());
+  const page = context.pages().find((p) => !p.isClosed()) || (await context.newPage());
+  await page.setExtraHTTPHeaders({ "Accept-Language": "ko-KR,ko;q=0.9" }).catch(() => {});
+  const opened = { context, page, browser, keepAlive: true };
+  contexts.set(channel, opened);
+  return opened;
+}
+
 async function getMarketplacePage(channel, log) {
   const existing = contexts.get(channel);
   if (existing?.context && existing?.page) return existing;
+
+  if (isKeepAlive(channel)) return attachKeepAlive(channel, log);
 
   const profileDir = marketplaceProfileDir(channel);
   fs.mkdirSync(profileDir, { recursive: true });
@@ -329,6 +398,23 @@ async function handleMusinsaNotices(page, log) {
 
 async function ensureLoggedIn(channel, page, log) {
   const cfg = CHANNELS[channel];
+
+  // 상시 창(keep-alive)은 이전 실행의 로그인 세션이 그대로 살아 있다.
+  // 확인 없이 로그인 폼을 다시 채우면 매번 2차 인증 메일이 날아간다 — 사장님 지적(2026-08-27).
+  // 인증이 필요한 페이지로 한 번 가 보고 안 튕기면 로그인 단계를 통째로 건너뛴다.
+  if (isKeepAlive(channel) && cfg.sessionCheckUrl) {
+    await page.goto(cfg.sessionCheckUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    await sleep(3000);
+    if (!/sso|oauth\/login|\/login/i.test(page.url())) {
+      log(`${cfg.label} 기존 로그인 세션 유효 — 로그인·2차 인증 건너뜀`);
+      if (channel === "musinsa") {
+        await handleMusinsaNotices(page, log).catch((e) => log("무신사 공지 처리 예외: " + (e && e.message)));
+      }
+      return true;
+    }
+    log(`${cfg.label} 세션 만료 — 로그인 진행`);
+  }
+
   await page.goto(cfg.loginUrl, { waitUntil: "domcontentloaded" });
   await sleep(1200);
 
@@ -575,16 +661,40 @@ async function syncMarketplaceSales({ channel, startDate, endDate, ingest = fals
 }
 
 async function closeMarketplaceBrowsers() {
-  for (const { context } of contexts.values()) {
-    await context.close().catch(() => {});
+  for (const [channel, entry] of contexts.entries()) {
+    // 상시 창 채널은 **닫지 않는다** — 창이 살아 있어야 다음 실행이 재로그인 없이 붙는다.
+    // CDP 연결만 끊어 이 프로세스의 이벤트 핸들러가 다음 실행(자식 프로세스)에 끼어들지 않게 한다.
+    if (entry.keepAlive) {
+      // 상시 창은 닫지 않는다. connectOverCDP 의 browser.close() 는 **연결 해제**일 뿐이고
+      // Chrome 창은 그대로 남는다(2026-08-27 실측). 끊어줘야 CDP 소켓이 이벤트 루프를 붙잡아
+      // 스크립트가 안 끝나는 문제도 사라진다.
+      entry.context.removeAllListeners?.("page");
+      await entry.browser?.close().catch(() => {});
+      continue;
+    }
+    await entry.context.close().catch(() => {});
   }
   contexts.clear();
+}
+
+/** 상시 창을 정말로 종료해야 할 때만 사용(수동 정리용). */
+async function shutdownKeepAliveBrowser(channel, log) {
+  const port = cdpPort(channel);
+  const browser = await cdpConnect(port);
+  if (!browser) { log && log(`${channel} 상시 창 없음`); return false; }
+  for (const c of browser.contexts()) await c.close().catch(() => {});
+  await browser.close().catch(() => {});
+  cleanupProfileLock(marketplaceProfileDir(channel), log);
+  log && log(`${channel} 상시 창 종료`);
+  return true;
 }
 
 module.exports = {
   CHANNELS,
   cleanupProfileLock,
   closeMarketplaceBrowsers,
+  shutdownKeepAliveBrowser,
+  isKeepAlive,
   ensureLoggedIn,
   generateTotp,
   getMarketplacePage,
