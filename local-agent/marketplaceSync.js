@@ -403,9 +403,17 @@ async function ensureLoggedIn(channel, page, log) {
   // 확인 없이 로그인 폼을 다시 채우면 매번 2차 인증 메일이 날아간다 — 사장님 지적(2026-08-27).
   // 인증이 필요한 페이지로 한 번 가 보고 안 튕기면 로그인 단계를 통째로 건너뛴다.
   if (isKeepAlive(channel) && cfg.sessionCheckUrl) {
-    await page.goto(cfg.sessionCheckUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-    await sleep(3000);
-    if (!/sso|oauth\/login|\/login/i.test(page.url())) {
+    // 2회 시도한다. 앞 단계가 CDP 연결을 끊는 순간과 겹치면 첫 이동이 로그인 화면으로 튕겨
+    // 멀쩡한 세션을 '만료'로 오판하고 2차 인증을 다시 걸었다(2026-08-27 14:30 크론 무신사 국내 단계).
+    let alive = false;
+    for (let i = 0; i < 2 && !alive; i++) {
+      if (i) await sleep(2500);
+      await page.goto(cfg.sessionCheckUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+      await sleep(3000);
+      alive = !/sso|oauth\/login|\/login/i.test(page.url());
+      if (!alive && i === 0) log(`${cfg.label} 세션 확인 1차 실패 — 재확인`);
+    }
+    if (alive) {
       log(`${cfg.label} 기존 로그인 세션 유효 — 로그인·2차 인증 건너뜀`);
       if (channel === "musinsa") {
         await handleMusinsaNotices(page, log).catch((e) => log("무신사 공지 처리 예외: " + (e && e.message)));
