@@ -60,12 +60,20 @@ export async function resolveDeposit(parsed: ParsedDeposit): Promise<ResolveResu
   }
   const matchError = matchErrors.length ? matchErrors.join(" / ") : null;
 
-  // HIGH(후보 1건 + 입금자명 일치) → 브라우저 입금확인 대상. 실제 확정은 iMac 워처가 수행.
+  // HIGH → 브라우저 입금확인 대상. 실제 확정은 iMac 워처가 수행.
+  //
+  // 판정 기준은 **금액 + 입금자명**이다. 금액이 겹치는 주문이 여러 건이어도
+  // 그중 입금자명이 일치하는 게 **정확히 하나면** 그 건으로 특정된다.
+  // (2026-08-27 사장님 지적: 같은 금액 5건이라고 손 놓으면 안 됨 —
+  //  실제로 은혜경·임지영·차미나 75,592원 3건이 이름으로 유일하게 갈렸는데
+  //  "매칭 N건(수동)"으로 빠져 이틀간 입금확인이 밀렸다.)
   let confirmTarget: ConfirmTarget | null = null;
-  if (candidates.length === 1 && candidates[0].nameMatch && candidates[0].order.order_id) {
-    const c = candidates[0];
+  const named = candidates.filter((c) => c.nameMatch && c.order.order_id);
+  if (named.length === 1) {
+    const c = named[0];
     confirmTarget = { orderId: c.order.order_id as string, mall: c.mall, amount: c.amount, name: c.payerName ?? c.buyerName ?? null };
   }
+  // ⚠️ named.length >= 2 (동명이인·같은 사람 복수주문)는 자동확정하지 않는다 — 어느 주문인지 못 고른다.
 
   return { candidates, confirmTarget, matchError };
 }
@@ -151,11 +159,18 @@ export function formatNotification(
     ].join("\n");
   }
 
-  // 다수 후보
-  const lines = [
-    head,
-    `⚠ <b>같은 금액 ${candidates.length}건</b> — 입금자명 확인 후 수동 매칭`,
-  ];
+  // 다수 후보 — 금액만 겹칠 뿐 입금자명으로 하나만 걸리면 자동확정 대상이다(resolveDeposit 과 같은 기준).
+  const namedHits = candidates.filter((c) => c.nameMatch);
+  const lines = namedHits.length === 1
+    ? [
+        head,
+        `🔄 <b>같은 금액 ${candidates.length}건 중 입금자명으로 1건 특정 — 자동 입금확인 예약됨</b> (곧 처리)`,
+        `• [${BRAND_KO[namedHits[0].mall]}] <code>${escapeHtml(namedHits[0].order.order_id ?? "?")}</code> · ${escapeHtml(namedHits[0].buyerName || "?")} ⭐`,
+      ]
+    : [
+        head,
+        `⚠ <b>같은 금액 ${candidates.length}건</b>${namedHits.length > 1 ? ` · 이름 일치도 ${namedHits.length}건` : ""} — 입금자명 확인 후 수동 매칭`,
+      ];
   for (const c of candidates.slice(0, 5)) {
     const tag = c.nameMatch ? " ⭐" : "";
     lines.push(
