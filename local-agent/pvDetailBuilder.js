@@ -153,7 +153,7 @@ function buildWatchDetail(c) {
 <div style="text-align:center;padding:64px 20px 80px;">
   ${eyebrow("SIZE", SUB)}
   ${head("내 손목엔 어떨까?")}
-  ${body(`케이스 ${esc(spec["케이스"] || c.caseSize || "")} — 부담 없는 데일리 사이즈.<br>바로 아래 <b style="color:${INK};">TRY IT ON</b>에서 내 손목 위 모습을 확인해 보세요.`)}
+  ${body(c.sizeCopy || `케이스 ${esc(spec["케이스"] || c.caseSize || "")} — 부담 없는 데일리 사이즈.<br>바로 아래 <b style="color:${INK};">TRY IT ON</b>에서 내 손목 위 모습을 확인해 보세요.`)}
 </div>`);
 
   parts.push(`</div>`);
