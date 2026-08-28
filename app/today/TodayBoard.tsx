@@ -100,6 +100,8 @@ export default function TodayBoard({ today, label, events, calendarError, thread
   const [mails, setMails]   = useState<InboxMail[] | null>(null);
   // 서버는 다음 요청에서야 반영되므로, 누르는 즉시 화면에서 빼려고 로컬로도 들고 있는다.
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
+  /** null = 정상. 문자열 = 마지막 저장이 실패한 이유. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const lastSaved = useRef("");
 
   useEffect(() => {
@@ -124,17 +126,34 @@ export default function TodayBoard({ today, label, events, calendarError, thread
   }, []);
 
   // 변경분만 저장. 첫 로드 직후의 되쓰기를 막으려고 loaded 이후에만 돈다.
+  //
+  // 응답을 반드시 확인한다. 세션이 끊기면 PUT 이 /login 으로 307 리다이렉트되고
+  // fetch 는 그걸 따라가 HTTP 200(HTML)을 돌려준다. 예전엔 catch 만 걸어둬서 이걸
+  // 성공으로 착각하고 변경을 영영 버렸다 — 화면엔 남아 있어 넣은 사람은 모른다.
   useEffect(() => {
     if (!loaded) return;
     const json = JSON.stringify(tasks);
     if (json === lastSaved.current) return;
-    const id = setTimeout(() => {
-      lastSaved.current = json;
-      fetch("/api/today/tasks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks }),
-      }).catch(() => { lastSaved.current = ""; });
+
+    const id = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/today/tasks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tasks }),
+        });
+        if (r.redirected || new URL(r.url, location.href).pathname !== "/api/today/tasks") {
+          throw new Error("로그인이 풀렸습니다 — 새로고침 후 다시 로그인하세요");
+        }
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j?.ok) throw new Error(j?.error || `저장 실패 (HTTP ${r.status})`);
+        lastSaved.current = json;
+        setSaveError(null);
+      } catch (e) {
+        // 저장 못 했으면 기억해두지 않는다. 다음 변경 때 다시 시도한다.
+        lastSaved.current = "";
+        setSaveError(e instanceof Error ? e.message : "저장 실패");
+      }
     }, 600);
     return () => clearTimeout(id);
   }, [tasks, loaded]);
@@ -157,16 +176,26 @@ export default function TodayBoard({ today, label, events, calendarError, thread
   }, []);
 
   /** 줄기를 끝난 것으로 닫는다. 나중에 같은 일감으로 세션이 또 생기면 알아서 되살아난다. */
-  const closeThread = useCallback((t: ActivityThread) => {
+  const closeThread = useCallback(async (t: ActivityThread) => {
     setClosedIds((prev) => new Set(prev).add(t.id));
-    fetch("/api/today/threads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ threadId: t.id, lastTouchedAt: t.lastTouchedAt, closed: true }),
-    }).catch(() => {
-      // 저장 실패면 되돌린다 — 끝났다고 표시해놓고 사라지지 않는 게 낫다.
+    try {
+      const r = await fetch("/api/today/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId: t.id, lastTouchedAt: t.lastTouchedAt, closed: true }),
+      });
+      // 할일 저장과 같은 함정 — 세션이 끊기면 /login 으로 리다이렉트돼 200 이 돌아온다.
+      if (r.redirected || new URL(r.url, location.href).pathname !== "/api/today/threads") {
+        throw new Error("로그인이 풀렸습니다 — 새로고침 후 다시 로그인하세요");
+      }
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) throw new Error(j?.error || `저장 실패 (HTTP ${r.status})`);
+      setSaveError(null);
+    } catch (e) {
+      // 저장 못 했으면 되돌린다 — 끝냈다고 표시해놓고 안 사라지는 게 낫다.
       setClosedIds((prev) => { const next = new Set(prev); next.delete(t.id); return next; });
-    });
+      setSaveError(e instanceof Error ? e.message : "저장 실패");
+    }
   }, []);
 
   const openThreads = useMemo(() => threads.filter((t) => !closedIds.has(t.id)), [threads, closedIds]);
@@ -197,6 +226,21 @@ export default function TodayBoard({ today, label, events, calendarError, thread
 
   return (
     <main className="mx-auto max-w-[1600px] px-3 pb-24 pt-3 sm:px-6 sm:pt-4">
+      {saveError && (
+        <div
+          role="alert"
+          className="mb-3 flex items-center gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
+        >
+          <span className="font-semibold">저장 안 됨</span>
+          <span className="min-w-0 flex-1">{saveError}</span>
+          <button
+            onClick={() => location.reload()}
+            className="shrink-0 rounded border border-red-400 px-2 py-1 text-xs font-medium hover:bg-red-100 dark:border-red-800 dark:hover:bg-red-900/50"
+          >
+            새로고침
+          </button>
+        </div>
+      )}
       {/* ── 1층 · 오늘의 지형 ─────────────────────────────────────────── */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3">
