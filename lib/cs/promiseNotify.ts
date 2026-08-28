@@ -8,7 +8,7 @@
 import { dueForReminder, markNotified, todayKst, type CsPromise } from "./promises";
 import { sendTelegramMessage } from "./telegram";
 
-export async function notifyDuePromises(): Promise<{ sent: number }> {
+export async function notifyDuePromises(): Promise<{ sent: number; failed?: number }> {
   const today = todayKst();
   const due = await dueForReminder(today);
   if (!due.length) return { sent: 0 };
@@ -21,7 +21,11 @@ export async function notifyDuePromises(): Promise<{ sent: number }> {
     `<i>완료하면 CS 인박스에서 해당 대화의 약속 배너에 '완료'를 누르세요.</i>`,
   ];
 
-  await sendTelegramMessage(lines.join("\n"));
+  // ⚠️ 발송 성공을 확인한 뒤에만 "오늘 보냄"으로 표시한다.
+  //    실패했는데 표시해버리면 그날 재시도가 막혀 약속이 조용히 유실된다
+  //    (2026-08-28 검증 중 실제로 재현 — 네트워크 실패인데 sent 로 기록됐다).
+  const ok = await sendTelegramMessage(lines.join("\n"));
+  if (!ok) return { sent: 0, failed: due.length };
   await markNotified(due.map((p) => p.id), today);
   return { sent: due.length };
 }

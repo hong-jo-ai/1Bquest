@@ -10,15 +10,21 @@ export interface TelegramButton {
   callback_data?: string;  // 콜백 버튼(웹훅 callback_query로 수신) — 둘 중 하나 필수
 }
 
+/**
+ * 텔레그램 메시지 발송. **던지지 않는다** — 여러 건을 도는 호출자가 한 건 실패로 멈추면 안 되니까.
+ * 대신 성공 여부를 돌려준다: 발송 성공을 전제로 상태를 기록하는 호출자
+ * (예: "오늘 알림 보냄" 표시)는 이 값을 반드시 확인해야 한다.
+ * 안 그러면 발송이 실패해도 보낸 것으로 남아 그날 재시도가 막힌다.
+ */
 export async function sendTelegramMessage(
   text: string,
   options: { buttons?: TelegramButton[] } = {}
-): Promise<void> {
+): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) {
     console.warn("[telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID 미설정 — 알림 발송 생략");
-    return;
+    return false;
   }
 
   try {
@@ -51,13 +57,16 @@ export async function sendTelegramMessage(
       console.error(
         `[telegram] sendMessage 실패 status=${res.status} body=${body.slice(0, 300)}`
       );
+      return false;
     }
+    return true;
   } catch (e) {
     // 네트워크 자체 실패 — for-loop 호출자가 다음 메시지 진행할 수 있도록 throw 안 함
     console.error(
       "[telegram] sendMessage 네트워크 에러:",
       e instanceof Error ? e.message : String(e)
     );
+    return false;
   }
 }
 
