@@ -41,6 +41,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:alba-payroll-reminder", label: "알바 급여 리마인더(iMac·매일 18시)", maxHours: 28 },
   // /today 보드의 "진행 중인 일" 원천. 안 돌면 보드가 옛날 세션을 계속 보여줘 조용히 틀려진다.
   { key: "heartbeat:claude-activity-scan", label: "클로드 세션 스캔(iMac·매시)", maxHours: 3 },
+  // 카톡 요약. 멈추면 보드가 며칠 전 대화를 오늘 것처럼 보여준다.
+  { key: "heartbeat:kakao-digest", label: "카톡 대화 요약(iMac·매일)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
   { key: "cron_last_ok:revenue-snapshot", label: "매출 스냅샷", maxHours: 26 },
   { key: "cron_last_ok:daily-summary", label: "데일리 서머리", maxHours: 26 },

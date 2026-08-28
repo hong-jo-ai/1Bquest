@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalendarEvent } from "@/lib/today-hub/calendar";
 import type { ActivityThread, Domain, Task } from "@/lib/today/types";
+import type { KakaoItem } from "@/lib/today/kakao";
+import { KIND_LABEL } from "@/lib/today/kakao";
 import { DOMAINS, DOMAIN_LABEL, REVENUE_DOMAINS } from "@/lib/today/types";
 import { daysUntil } from "@/lib/today/date";
 
@@ -74,9 +76,12 @@ interface Props {
   scannedAt: string | null;
   closedCount: number;
   activityError: string | null;
+  /** 카톡 요약에서 추려진 항목. 원문은 아이맥 로컬에만 있고 여기로 오지 않는다. */
+  kakaoItems: KakaoItem[];
+  kakaoAt: string | null;
 }
 
-export default function TodayBoard({ today, label, events, calendarError, threads, scannedAt, closedCount, activityError }: Props) {
+export default function TodayBoard({ today, label, events, calendarError, threads, scannedAt, closedCount, activityError, kakaoItems, kakaoAt }: Props) {
   const [tasks, setTasks]   = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [inbox, setInbox]   = useState<{ total: number; overdue: number } | null>(null);
@@ -262,6 +267,7 @@ export default function TodayBoard({ today, label, events, calendarError, thread
             domain={d}
             tasks={tasks.filter((t) => t.domain === d)}
             threads={openThreads.filter((t) => t.domain === d)}
+            kakao={kakaoItems.filter((k) => k.domain === d)}
             onToggle={toggle}
             onRemove={removeTask}
             onAdd={addTask}
@@ -278,7 +284,12 @@ export default function TodayBoard({ today, label, events, calendarError, thread
         <Stat n={openThreads.filter((t) => t.staleDays === 0).length} label="오늘 이미 만진 일" tone="calm" />
       </section>
 
-      <p className="mt-4 text-center font-mono text-[11px] text-zinc-400 dark:text-zinc-600">
+      {kakaoAt && (
+        <p className="mt-4 text-center font-mono text-[11px] text-zinc-400 dark:text-zinc-600">
+          카톡 요약 {kakaoItems.length}건 · {new Date(kakaoAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · 원문은 아이맥에만 보관
+        </p>
+      )}
+      <p className="mt-1 text-center font-mono text-[11px] text-zinc-400 dark:text-zinc-600">
         {activityError
           ? `세션 스캔 없음 — ${activityError}`
           : scannedAt
@@ -344,11 +355,12 @@ function Stat({ n, label, tone, href }: { n: number | null; label: string; tone:
 }
 
 function DomainColumn({
-  domain, tasks, threads, onToggle, onRemove, onAdd, onClose,
+  domain, tasks, threads, kakao, onToggle, onRemove, onAdd, onClose,
 }: {
   domain: Domain;
   tasks: Task[];
   threads: ActivityThread[];
+  kakao: KakaoItem[];
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onAdd: (title: string, domain: Domain, side?: boolean, fromActivity?: boolean) => void;
@@ -356,6 +368,8 @@ function DomainColumn({
 }) {
   const [draft, setDraft] = useState("");
   const done = tasks.filter((t) => t.done).length;
+  const taskTitleSet = new Set(tasks.map((t) => t.title));
+  const freshKakao = kakao.filter((k) => !taskTitleSet.has(k.title));
   // 이미 할일로 올린 줄기는 목록에서 뺀다.
   const taskTitles = new Set(tasks.map((t) => t.title));
   const fresh = threads.filter((t) => !taskTitles.has(t.title)).slice(0, 6);
@@ -397,6 +411,36 @@ function DomainColumn({
           );
         })}
       </ul>
+
+      {freshKakao.length > 0 && (
+        <>
+          <p className="border-t border-zinc-100 px-4 pt-2.5 font-mono text-[9.5px] uppercase tracking-[0.11em] text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
+            카톡에서
+          </p>
+          <ul className="px-4 pb-1 pt-1">
+            {freshKakao.map((k) => (
+              <li key={k.id} className="grid grid-cols-[0.875rem_1fr_auto] items-start gap-2 py-1.5">
+                <button
+                  onClick={() => onAdd(k.title, k.domain)}
+                  title="오늘 할일로 올리기"
+                  className="mt-[3px] h-3.5 w-3.5 shrink-0 rounded-[3px] border-[1.5px] border-dashed border-zinc-300 hover:border-teal-600 dark:border-zinc-600 dark:hover:border-teal-400"
+                />
+                <span className="break-words text-[12.5px] leading-snug text-zinc-500 dark:text-zinc-400">
+                  {k.title}
+                  <span className="ml-1.5 text-[10px] text-zinc-400 dark:text-zinc-600">
+                    {k.room}{k.who ? ` · ${k.who}` : ""}
+                  </span>
+                </span>
+                <span className={`mt-[2px] whitespace-nowrap rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                  k.kind === "todo" ? TONE.soon : k.kind === "waiting" ? TONE.none : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
+                }`}>
+                  {KIND_LABEL[k.kind]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {fresh.length > 0 && (
         <>

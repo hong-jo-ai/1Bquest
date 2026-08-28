@@ -7,6 +7,7 @@
 import AppHeader from "@/components/AppHeader";
 import { listCalendarEvents } from "@/lib/today-hub/calendar";
 import { getActivity } from "@/lib/today/activity";
+import { getKakaoItems } from "@/lib/today/kakao";
 import { kstDateStr, todayLabel } from "@/lib/today/date";
 import type { CalendarEvent } from "@/lib/today-hub/calendar";
 import TodayBoard from "./TodayBoard";
@@ -25,7 +26,7 @@ export default async function TodayPage() {
     calendarError = e instanceof Error ? e.message : String(e);
   }
 
-  const activity = await getActivity();
+  const [activity, kakao] = await Promise.all([getActivity(), getKakaoItems()]);
 
   return (
     <>
@@ -39,6 +40,8 @@ export default async function TodayPage() {
         scannedAt={activity.scannedAt}
         closedCount={activity.closedCount}
         activityError={activity.error ?? null}
+        kakaoItems={kakao.items}
+        kakaoAt={kakao.generatedAt}
       />
     </>
   );

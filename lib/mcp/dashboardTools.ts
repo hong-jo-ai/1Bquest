@@ -10,6 +10,7 @@ import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { computeInventoryLevels } from "@/lib/inventorySync";
 import { getTasks } from "@/lib/today/tasks";
 import { getActivity } from "@/lib/today/activity";
+import { getKakaoItems, KIND_LABEL } from "@/lib/today/kakao";
 import { DOMAIN_LABEL } from "@/lib/today/types";
 import { daysUntil, kstDateStr } from "@/lib/today/date";
 
@@ -54,7 +55,7 @@ export const READ_TOOLS = [
   {
     name: "get_today_board",
     description:
-      "오늘의 업무 보드(/today) 조회 — 오늘 할일과 완료 여부, 그리고 클로드 코드 세션에서 감지된 진행 중인 일을 폴바이스·해리엇·아르스·개인 4개 영역으로 나눠 반환. '오늘 뭐 해야 돼?', '내가 뭐 하고 있었지?', '이거 끝냈나?' 같은 질문에 사용. 사장님이 보드에서 체크한 완료 표시가 여기 반영된다 — 할일을 말하기 전에 먼저 이걸 확인해서 이미 끝낸 걸 다시 시키지 말 것.",
+      "오늘의 업무 보드(/today) 조회 — 오늘 할일과 완료 여부, 클로드 코드 세션에서 감지된 진행 중인 일, 카카오톡 대화에서 추려낸 내 할일을 폴바이스·해리엇·아르스·개인 4개 영역으로 나눠 반환. '오늘 뭐 해야 돼?', '내가 뭐 하고 있었지?', '이거 끝냈나?' 같은 질문에 사용. 사장님이 보드에서 체크한 완료 표시가 여기 반영된다 — 할일을 말하기 전에 먼저 이걸 확인해서 이미 끝낸 걸 다시 시키지 말 것.",
     inputSchema: {
       type: "object",
       properties: {
@@ -89,7 +90,7 @@ async function salesForBrand(brand: Brand): Promise<string> {
 type DomainKey = "paulvice" | "harriot" | "ars" | "personal";
 
 async function todayBoardText(only?: DomainKey): Promise<string> {
-  const [{ tasks, error: taskError }, activity] = await Promise.all([getTasks(), getActivity()]);
+  const [{ tasks, error: taskError }, activity, kakao] = await Promise.all([getTasks(), getActivity(), getKakaoItems()]);
 
   const pick = <T extends { domain: DomainKey }>(xs: T[]) => (only ? xs.filter((x) => x.domain === only) : xs);
   const myTasks   = pick(tasks as Array<{ domain: DomainKey } & (typeof tasks)[number]>);
@@ -105,6 +106,14 @@ async function todayBoardText(only?: DomainKey): Promise<string> {
     for (const t of myTasks) {
       const due = t.due ? (daysUntil(t.due) < 0 ? ` · ${-daysUntil(t.due)}일 지연` : daysUntil(t.due) === 0 ? " · 오늘 마감" : ` · D-${daysUntil(t.due)}`) : "";
       lines.push(`  ${t.done ? "[완료]" : "[    ]"} ${DOMAIN_LABEL[t.domain]}${t.side ? "(사이드)" : ""} · ${t.title}${due}`);
+    }
+  }
+
+  const myKakao = only ? kakao.items.filter((k) => k.domain === only) : kakao.items;
+  if (myKakao.length) {
+    lines.push("", "■ 카톡에서 추려낸 것 (원문은 아이맥 로컬에만 있고 여기 안 올라온다)");
+    for (const k of myKakao) {
+      lines.push(`  [${KIND_LABEL[k.kind]}] ${DOMAIN_LABEL[k.domain]} · ${k.title} — ${k.room}${k.who ? ` / ${k.who}` : ""}${k.due ? ` / ${k.due}` : ""}`);
     }
   }
 
