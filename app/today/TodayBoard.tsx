@@ -372,7 +372,9 @@ function DomainColumn({
   const freshKakao = kakao.filter((k) => !taskTitleSet.has(k.title));
   // 이미 할일로 올린 줄기는 목록에서 뺀다.
   const taskTitles = new Set(tasks.map((t) => t.title));
-  const fresh = threads.filter((t) => !taskTitles.has(t.title)).slice(0, 6);
+  // 잘라내지 않는다 — 폴바이스·해리엇은 하루에도 여러 건이라 위에서부터 지워야 아래가
+  // 보이는 형태였다. 대신 목록 영역에 스크롤을 준다.
+  const fresh = threads.filter((t) => !taskTitles.has(t.title));
 
   return (
     <div className={`overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 ${COL_SPAN[domain]}`}>
@@ -444,10 +446,11 @@ function DomainColumn({
 
       {fresh.length > 0 && (
         <>
-          <p className="border-t border-zinc-100 px-4 pt-2.5 font-mono text-[9.5px] uppercase tracking-[0.11em] text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
-            최근 작업 · 클로드 코드
+          <p className="flex items-baseline justify-between border-t border-zinc-100 px-4 pt-2.5 font-mono text-[9.5px] uppercase tracking-[0.11em] text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
+            <span>최근 작업 · 클로드 코드</span>
+            <span className="normal-case tracking-normal">{fresh.length}</span>
           </p>
-          <ul className="px-4 pb-1 pt-1">
+          <ul className="max-h-72 overflow-y-auto px-4 pb-1 pt-1">
             {fresh.map((t) => (
               <li key={t.id} className="grid grid-cols-[0.875rem_1fr_auto_auto] items-start gap-2 py-1.5">
                 <button

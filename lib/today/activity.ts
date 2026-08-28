@@ -12,6 +12,12 @@ import type { ActivityScan, ActivityThread, Domain, RawSession } from "./types";
 
 /** 호스트별 키 접두사 — today:cc_activity:<host>. 구 단일 키(today:cc_activity)도 같이 잡힌다. */
 export const ACTIVITY_PREFIX = "today:cc_activity";
+
+/**
+ * 보드에 띄울 기간(일). 스캐너는 더 길게(기본 21일) 적재하지만 화면에는 최근 것만 보인다 —
+ * 몇 주 전에 끝난 일까지 "진행 중"으로 늘어놓으면 목록이 쓸모없어진다.
+ */
+export const WINDOW_DAYS = 7;
 export const OVERRIDES_KEY   = "today:domain_overrides";
 export const CLOSED_KEY    = "today:closed_threads";
 
@@ -143,7 +149,9 @@ export async function getActivity(): Promise<ActivityResult> {
 
   const all  = buildThreads([...bySession.values()], overrides);
   // 닫은 뒤로 새 세션이 붙은 줄기는 다시 살린다 — 일이 재개된 것이므로.
-  const open = all.filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
+  const open = all
+    .filter((t) => t.staleDays <= WINDOW_DAYS)
+    .filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
 
   return {
     scannedAt,
