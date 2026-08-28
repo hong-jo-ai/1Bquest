@@ -34,6 +34,7 @@ export default async function TodayPage() {
         calendarError={calendarError}
         threads={activity.threads}
         scannedAt={activity.scannedAt}
+        closedCount={activity.closedCount}
         activityError={activity.error ?? null}
       />
     </>

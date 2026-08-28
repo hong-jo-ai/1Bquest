@@ -71,14 +71,17 @@ interface Props {
   calendarError: string | null;
   threads: ActivityThread[];
   scannedAt: string | null;
+  closedCount: number;
   activityError: string | null;
 }
 
-export default function TodayBoard({ events, calendarError, threads, scannedAt, activityError }: Props) {
+export default function TodayBoard({ events, calendarError, threads, scannedAt, closedCount, activityError }: Props) {
   const [tasks, setTasks]   = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [label, setLabel]   = useState<{ date: string; weekday: string } | null>(null);
   const [inbox, setInbox]   = useState<{ total: number; overdue: number } | null>(null);
+  // 서버는 다음 요청에서야 반영되므로, 누르는 즉시 화면에서 빼려고 로컬로도 들고 있는다.
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const lastSaved = useRef("");
 
   // 날짜 라벨은 클라이언트에서 — 서버/클라 시각 차로 인한 hydration 불일치를 피한다.
@@ -143,6 +146,21 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
     setTasks((ts) => ts.filter((t) => t.id !== id));
   }, []);
 
+  /** 줄기를 끝난 것으로 닫는다. 나중에 같은 일감으로 세션이 또 생기면 알아서 되살아난다. */
+  const closeThread = useCallback((t: ActivityThread) => {
+    setClosedIds((prev) => new Set(prev).add(t.id));
+    fetch("/api/today/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadId: t.id, lastTouchedAt: t.lastTouchedAt, closed: true }),
+    }).catch(() => {
+      // 저장 실패면 되돌린다 — 끝났다고 표시해놓고 사라지지 않는 게 낫다.
+      setClosedIds((prev) => { const next = new Set(prev); next.delete(t.id); return next; });
+    });
+  }, []);
+
+  const openThreads = useMemo(() => threads.filter((t) => !closedIds.has(t.id)), [threads, closedIds]);
+
   /* ── 파생값 ───────────────────────────────────────────────────────────── */
 
   const today = kstDateStr();
@@ -157,9 +175,9 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
     const ranked = [...undone].filter((t) => !t.side).sort((a, b) => score(b) - score(a));
     const sideTask = undone.find((t) => t.side);
     // 사이드 할일이 없으면 가장 오래 멈춘 사이드 프로젝트를 제안으로 띄운다.
-    const sideThread = threads.filter((t) => t.side).sort((a, b) => b.staleDays - a.staleDays)[0];
+    const sideThread = openThreads.filter((t) => t.side).sort((a, b) => b.staleDays - a.staleDays)[0];
     return { top4: ranked.slice(0, 4), sideSlot: sideTask ?? sideThread ?? null };
-  }, [tasks, threads]);
+  }, [tasks, openThreads]);
 
   const doneCount = tasks.filter((t) => t.done).length;
 
@@ -282,10 +300,11 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
             key={d}
             domain={d}
             tasks={tasks.filter((t) => t.domain === d)}
-            threads={threads.filter((t) => t.domain === d)}
+            threads={openThreads.filter((t) => t.domain === d)}
             onToggle={toggle}
             onRemove={removeTask}
             onAdd={addTask}
+            onClose={closeThread}
           />
         ))}
       </section>
@@ -294,15 +313,15 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
       <section className="mt-3 grid grid-cols-2 divide-x divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white sm:grid-cols-4 sm:divide-y-0 dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
         <Stat n={inbox?.overdue ?? null} label="24시간 넘긴 미답장" tone={inbox && inbox.overdue > 0 ? "alert" : "calm"} href="/inbox" />
         <Stat n={inbox?.total ?? null} label="미답장 전체" tone="calm" href="/inbox" />
-        <Stat n={threads.filter((t) => t.staleDays >= 7).length} label="7일 넘게 멈춘 일" tone={threads.some((t) => t.staleDays >= 14) ? "warn" : "calm"} />
-        <Stat n={threads.filter((t) => t.staleDays === 0).length} label="오늘 이미 만진 일" tone="calm" />
+        <Stat n={openThreads.filter((t) => t.staleDays >= 7).length} label="7일 넘게 멈춘 일" tone={openThreads.some((t) => t.staleDays >= 14) ? "warn" : "calm"} />
+        <Stat n={openThreads.filter((t) => t.staleDays === 0).length} label="오늘 이미 만진 일" tone="calm" />
       </section>
 
       <p className="mt-4 text-center font-mono text-[11px] text-zinc-400 dark:text-zinc-600">
         {activityError
           ? `세션 스캔 없음 — ${activityError}`
           : scannedAt
-            ? `클로드 코드 세션 ${threads.length}줄기 · 마지막 스캔 ${new Date(scannedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+            ? `클로드 코드 세션 ${openThreads.length}줄기 진행 중 · 끝냄 ${closedCount + closedIds.size} · 마지막 스캔 ${new Date(scannedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
             : ""}
       </p>
     </main>
@@ -364,7 +383,7 @@ function Stat({ n, label, tone, href }: { n: number | null; label: string; tone:
 }
 
 function DomainColumn({
-  domain, tasks, threads, onToggle, onRemove, onAdd,
+  domain, tasks, threads, onToggle, onRemove, onAdd, onClose,
 }: {
   domain: Domain;
   tasks: Task[];
@@ -372,6 +391,7 @@ function DomainColumn({
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onAdd: (title: string, domain: Domain, side?: boolean) => void;
+  onClose: (t: ActivityThread) => void;
 }) {
   const [draft, setDraft] = useState("");
   const done = tasks.filter((t) => t.done).length;
@@ -424,7 +444,7 @@ function DomainColumn({
           </p>
           <ul className="px-4 pb-1 pt-1">
             {fresh.map((t) => (
-              <li key={t.id} className="grid grid-cols-[0.875rem_1fr_auto] items-center gap-2.5 py-1">
+              <li key={t.id} className="grid grid-cols-[0.875rem_1fr_auto_auto] items-center gap-2 py-1">
                 <button
                   onClick={() => onAdd(t.title, t.domain, t.side)}
                   title="오늘 할일로 올리기"
@@ -436,6 +456,13 @@ function DomainColumn({
                 <span className="whitespace-nowrap font-mono text-[10px] text-zinc-400 dark:text-zinc-600">
                   {t.staleDays === 0 ? "오늘" : `${t.staleDays}일`}
                 </span>
+                <button
+                  onClick={() => onClose(t)}
+                  title="이미 끝난 일 — 목록에서 내리기"
+                  className="rounded px-1 font-mono text-[10px] text-zinc-300 hover:bg-teal-50 hover:text-teal-700 dark:text-zinc-600 dark:hover:bg-teal-900/30 dark:hover:text-teal-300"
+                >
+                  끝남
+                </button>
               </li>
             ))}
           </ul>

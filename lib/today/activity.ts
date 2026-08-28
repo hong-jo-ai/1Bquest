@@ -12,6 +12,17 @@ import type { ActivityScan, ActivityThread, Domain, RawSession } from "./types";
 
 export const ACTIVITY_KEY  = "today:cc_activity";
 export const OVERRIDES_KEY = "today:domain_overrides";
+export const CLOSED_KEY    = "today:closed_threads";
+
+/**
+ * 닫은 줄기 기록. { 줄기id: 닫을 당시의 lastTouchedAt }
+ *
+ * 삭제가 아니라 "그 시점까지는 끝난 것으로 본다"는 기록이다. 그래서 나중에 같은
+ * 일감으로 세션이 또 생기면(lastTouchedAt 이 기록보다 새로우면) 알아서 되살아난다.
+ * 안 건드린 이유가 '끝나서'인지 '미뤄서'인지 파일 mtime 만으로는 못 가르기 때문에,
+ * 그 구분은 사람이 한 번 눌러서 알려주는 수밖에 없다.
+ */
+export type ClosedMap = Record<string, string>;
 
 function getDb() {
   const url = process.env.SUPABASE_URL;
@@ -69,27 +80,61 @@ export function buildThreads(
 export interface ActivityResult {
   scannedAt: string | null;
   threads: ActivityThread[];
+  /** 끝난 것으로 닫혀서 화면에서 빠진 줄기 수 */
+  closedCount: number;
   /** 스캐너가 한 번도 안 돌았거나 Supabase 미설정 */
   error?: string;
 }
 
+/** 줄기 하나를 끝난 것으로 닫거나(닫을 당시 시각 기록) 다시 연다. */
+export async function setThreadClosed(
+  threadId: string,
+  lastTouchedAt: string,
+  closed: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Supabase 미설정" };
+
+  const { data, error } = await db.from("kv_store").select("data").eq("key", CLOSED_KEY).maybeSingle();
+  if (error) return { ok: false, error: error.message };
+
+  const map: ClosedMap = (data?.data as ClosedMap) ?? {};
+  if (closed) map[threadId] = lastTouchedAt;
+  else delete map[threadId];
+
+  const { error: putError } = await db
+    .from("kv_store")
+    .upsert({ key: CLOSED_KEY, data: map, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  return putError ? { ok: false, error: putError.message } : { ok: true };
+}
+
 export async function getActivity(): Promise<ActivityResult> {
   const db = getDb();
-  if (!db) return { scannedAt: null, threads: [], error: "Supabase 미설정" };
+  if (!db) return { scannedAt: null, threads: [], closedCount: 0, error: "Supabase 미설정" };
 
   const { data, error } = await db
     .from("kv_store")
     .select("key, data")
-    .in("key", [ACTIVITY_KEY, OVERRIDES_KEY]);
+    .in("key", [ACTIVITY_KEY, OVERRIDES_KEY, CLOSED_KEY]);
 
-  if (error) return { scannedAt: null, threads: [], error: error.message };
+  if (error) return { scannedAt: null, threads: [], closedCount: 0, error: error.message };
 
   const map = new Map((data ?? []).map((r) => [r.key as string, r.data]));
   const scan = map.get(ACTIVITY_KEY) as ActivityScan | undefined;
   if (!scan?.sessions?.length) {
-    return { scannedAt: null, threads: [], error: "스캔 기록이 아직 없습니다" };
+    return { scannedAt: null, threads: [], closedCount: 0, error: "스캔 기록이 아직 없습니다" };
   }
 
   const overrides = (map.get(OVERRIDES_KEY) ?? {}) as Record<string, Domain>;
-  return { scannedAt: scan.scannedAt, threads: buildThreads(scan.sessions, overrides) };
+  const closed    = (map.get(CLOSED_KEY) ?? {}) as ClosedMap;
+
+  const all  = buildThreads(scan.sessions, overrides);
+  // 닫은 뒤로 새 세션이 붙은 줄기는 다시 살린다 — 일이 재개된 것이므로.
+  const open = all.filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
+
+  return {
+    scannedAt:   scan.scannedAt,
+    threads:     open,
+    closedCount: all.length - open.length,
+  };
 }

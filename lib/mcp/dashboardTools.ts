@@ -8,6 +8,10 @@ import { getDashboardData } from "@/lib/cafe24Data";
 import { computeAllBrandMer } from "@/lib/profit/mer";
 import { getMetaTokenServer } from "@/lib/metaTokenStore";
 import { computeInventoryLevels } from "@/lib/inventorySync";
+import { getTasks } from "@/lib/today/tasks";
+import { getActivity } from "@/lib/today/activity";
+import { DOMAIN_LABEL } from "@/lib/today/types";
+import { daysUntil, kstDateStr } from "@/lib/today/date";
 
 type Brand = "paulvice" | "harriot";
 const won = (n: number) => `₩${Math.round(n || 0).toLocaleString()}`;
@@ -47,6 +51,21 @@ export const READ_TOOLS = [
       },
     },
   },
+  {
+    name: "get_today_board",
+    description:
+      "오늘의 업무 보드(/today) 조회 — 오늘 할일과 완료 여부, 그리고 클로드 코드 세션에서 감지된 진행 중인 일을 폴바이스·해리엇·아르스·개인 4개 영역으로 나눠 반환. '오늘 뭐 해야 돼?', '내가 뭐 하고 있었지?', '이거 끝냈나?' 같은 질문에 사용. 사장님이 보드에서 체크한 완료 표시가 여기 반영된다 — 할일을 말하기 전에 먼저 이걸 확인해서 이미 끝낸 걸 다시 시키지 말 것.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          enum: ["paulvice", "harriot", "ars", "personal"],
+          description: "이 영역만. 생략 시 전체.",
+        },
+      },
+    },
+  },
 ];
 
 export const READ_TOOL_NAMES = new Set(READ_TOOLS.map((t) => t.name));
@@ -67,11 +86,58 @@ async function salesForBrand(brand: Brand): Promise<string> {
   ].join("\n");
 }
 
+type DomainKey = "paulvice" | "harriot" | "ars" | "personal";
+
+async function todayBoardText(only?: DomainKey): Promise<string> {
+  const [{ tasks, error: taskError }, activity] = await Promise.all([getTasks(), getActivity()]);
+
+  const pick = <T extends { domain: DomainKey }>(xs: T[]) => (only ? xs.filter((x) => x.domain === only) : xs);
+  const myTasks   = pick(tasks as Array<{ domain: DomainKey } & (typeof tasks)[number]>);
+  const myThreads = pick(activity.threads as Array<{ domain: DomainKey } & (typeof activity.threads)[number]>);
+
+  const lines: string[] = [`[오늘의 보드] ${kstDateStr()}${only ? ` · ${DOMAIN_LABEL[only]}만` : ""}`, ""];
+
+  const done = myTasks.filter((t) => t.done).length;
+  lines.push(`■ 오늘 할일 (${done}/${myTasks.length})`);
+  if (taskError) lines.push(`  (불러오기 실패: ${taskError})`);
+  else if (myTasks.length === 0) lines.push("  (없음)");
+  else {
+    for (const t of myTasks) {
+      const due = t.due ? (daysUntil(t.due) < 0 ? ` · ${-daysUntil(t.due)}일 지연` : daysUntil(t.due) === 0 ? " · 오늘 마감" : ` · D-${daysUntil(t.due)}`) : "";
+      lines.push(`  ${t.done ? "[완료]" : "[    ]"} ${DOMAIN_LABEL[t.domain]}${t.side ? "(사이드)" : ""} · ${t.title}${due}`);
+    }
+  }
+
+  lines.push("", `■ 진행 중 — 클로드 코드 세션에서 감지 (끝냄 처리된 ${activity.closedCount}개 제외)`);
+  if (activity.error) lines.push(`  (스캔 없음: ${activity.error})`);
+  else if (myThreads.length === 0) lines.push("  (없음)");
+  else {
+    for (const t of myThreads.slice(0, 25)) {
+      const age = t.staleDays === 0 ? "오늘" : `${t.staleDays}일 전`;
+      lines.push(`  ${DOMAIN_LABEL[t.domain]}${t.side ? "(사이드)" : ""} · ${age} · ${t.title}`);
+    }
+    if (myThreads.length > 25) lines.push(`  … 외 ${myThreads.length - 25}건`);
+  }
+
+  lines.push(
+    "",
+    "※ '진행 중' 목록은 세션 파일을 마지막으로 만진 시각으로 추린 것이라, 여기 있다고 해서",
+    "  미완료라는 뜻은 아니다. 끝났는데 보드에서 '끝남'을 안 누른 것일 수 있으니,",
+    "  오래된 항목을 할 일로 제시하기 전에 끝난 건 아닌지 먼저 물어볼 것.",
+  );
+  return lines.join("\n");
+}
+
 export async function callReadTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<{ text: string; isError: boolean }> {
   try {
+    if (name === "get_today_board") {
+      const only = args.domain as DomainKey | undefined;
+      return { text: await todayBoardText(only), isError: false };
+    }
+
     if (name === "get_sales_summary") {
       const brand = args.brand as Brand | undefined;
       const brands: Brand[] = brand ? [brand] : ["paulvice", "harriot"];
