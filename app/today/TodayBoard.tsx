@@ -142,7 +142,9 @@ export default function TodayBoard({ today, label, events, calendarError, thread
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tasks }),
         });
-        if (r.redirected || new URL(r.url, location.href).pathname !== "/api/today/tasks") {
+        // 응답이 JSON 이 아니면 로그인 페이지로 튕긴 것이다. r.url 로 판별하면
+        // 일부 브라우저에서 빈 문자열이 와 멀쩡한 저장을 실패로 오판한다.
+        if (!(r.headers.get("content-type") || "").includes("application/json")) {
           throw new Error("로그인이 풀렸습니다 — 새로고침 후 다시 로그인하세요");
         }
         const j = await r.json().catch(() => null);
@@ -184,8 +186,8 @@ export default function TodayBoard({ today, label, events, calendarError, thread
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId: t.id, lastTouchedAt: t.lastTouchedAt, closed: true }),
       });
-      // 할일 저장과 같은 함정 — 세션이 끊기면 /login 으로 리다이렉트돼 200 이 돌아온다.
-      if (r.redirected || new URL(r.url, location.href).pathname !== "/api/today/threads") {
+      // 할일 저장과 같은 함정 — 세션이 끊기면 /login 으로 리다이렉트돼 HTML 이 돌아온다.
+      if (!(r.headers.get("content-type") || "").includes("application/json")) {
         throw new Error("로그인이 풀렸습니다 — 새로고침 후 다시 로그인하세요");
       }
       const j = await r.json().catch(() => null);
