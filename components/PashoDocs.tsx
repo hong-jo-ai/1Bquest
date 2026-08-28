@@ -145,7 +145,8 @@ export default function PashoDocs({
                 {d.source === "telegram" && <span className="text-[#3F7A57]">텔레그램 자동보관</span>}
                 {money(d) && <span className="tabular-nums font-semibold text-[#1C1B1A]">{money(d)}</span>}
                 {d.vat != null && <span className="tabular-nums">세액 {d.vat.toLocaleString("ko-KR")}</span>}
-                {(d.kind === "거래명세표" || d.kind === "세금계산서") && (
+                {/* 금액이 있는 증빙이면 종류와 무관하게 지급 상태를 단다 (견적서로 바로 송금하는 건도 있어서) */}
+                {(money(d) || d.kind === "거래명세표" || d.kind === "세금계산서") && (
                   <button
                     onClick={() => patch(d.id, { paid: !d.paid })}
                     disabled={busy === d.id}
