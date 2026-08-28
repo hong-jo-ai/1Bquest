@@ -10,8 +10,9 @@ import { classifySession } from "./classify";
 import { staleDaysSince } from "./date";
 import type { ActivityScan, ActivityThread, Domain, RawSession } from "./types";
 
-export const ACTIVITY_KEY  = "today:cc_activity";
-export const OVERRIDES_KEY = "today:domain_overrides";
+/** 호스트별 키 접두사 — today:cc_activity:<host>. 구 단일 키(today:cc_activity)도 같이 잡힌다. */
+export const ACTIVITY_PREFIX = "today:cc_activity";
+export const OVERRIDES_KEY   = "today:domain_overrides";
 export const CLOSED_KEY    = "today:closed_threads";
 
 /**
@@ -112,28 +113,40 @@ export async function getActivity(): Promise<ActivityResult> {
   const db = getDb();
   if (!db) return { scannedAt: null, threads: [], closedCount: 0, error: "Supabase 미설정" };
 
-  const { data, error } = await db
-    .from("kv_store")
-    .select("key, data")
-    .in("key", [ACTIVITY_KEY, OVERRIDES_KEY, CLOSED_KEY]);
+  const [scansRes, etcRes] = await Promise.all([
+    db.from("kv_store").select("key, data").like("key", `${ACTIVITY_PREFIX}%`),
+    db.from("kv_store").select("key, data").in("key", [OVERRIDES_KEY, CLOSED_KEY]),
+  ]);
+  if (scansRes.error) return { scannedAt: null, threads: [], closedCount: 0, error: scansRes.error.message };
+  if (etcRes.error)   return { scannedAt: null, threads: [], closedCount: 0, error: etcRes.error.message };
 
-  if (error) return { scannedAt: null, threads: [], closedCount: 0, error: error.message };
-
-  const map = new Map((data ?? []).map((r) => [r.key as string, r.data]));
-  const scan = map.get(ACTIVITY_KEY) as ActivityScan | undefined;
-  if (!scan?.sessions?.length) {
+  // 맥북·아이맥 스캔을 병합. 같은 세션이 양쪽에 있을 일은 없지만(세션 파일은 머신별),
+  // 혹시 겹치면 sessionId 기준으로 더 최근에 만진 쪽을 남긴다.
+  const bySession = new Map<string, RawSession>();
+  let scannedAt: string | null = null;
+  for (const row of scansRes.data ?? []) {
+    const scan = row.data as ActivityScan | undefined;
+    if (!scan?.sessions?.length) continue;
+    if (!scannedAt || scan.scannedAt > scannedAt) scannedAt = scan.scannedAt;
+    for (const s of scan.sessions) {
+      const prev = bySession.get(s.sessionId);
+      if (!prev || s.touchedAt > prev.touchedAt) bySession.set(s.sessionId, s);
+    }
+  }
+  if (bySession.size === 0) {
     return { scannedAt: null, threads: [], closedCount: 0, error: "스캔 기록이 아직 없습니다" };
   }
 
+  const map = new Map((etcRes.data ?? []).map((r) => [r.key as string, r.data]));
   const overrides = (map.get(OVERRIDES_KEY) ?? {}) as Record<string, Domain>;
   const closed    = (map.get(CLOSED_KEY) ?? {}) as ClosedMap;
 
-  const all  = buildThreads(scan.sessions, overrides);
+  const all  = buildThreads([...bySession.values()], overrides);
   // 닫은 뒤로 새 세션이 붙은 줄기는 다시 살린다 — 일이 재개된 것이므로.
   const open = all.filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
 
   return {
-    scannedAt:   scan.scannedAt,
+    scannedAt,
     threads:     open,
     closedCount: all.length - open.length,
   };

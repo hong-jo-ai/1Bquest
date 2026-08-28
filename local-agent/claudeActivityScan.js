@@ -16,7 +16,11 @@ const DASH = "/Users/mac/sungjo_ai/paulwise-dashboard";
 function loadEnv(p){ try { for (const l of fs.readFileSync(p,"utf8").split("\n")){ const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if(!m)continue; let v=m[2].trim().replace(/^["']|["']$/g,""); if(!(m[1] in process.env)) process.env[m[1]]=v; } } catch {} }
 loadEnv(path.join(DASH,".env.local")); loadEnv(path.join(DASH,".env.supabase")); loadEnv(path.join(DASH,"local-agent/.env"));
 
-const KEY  = "today:cc_activity";
+// 맥북·아이맥 양쪽에서 도니까 호스트별 키로 적재한다. 같은 키를 쓰면 서로 덮어써서
+// 한쪽 머신의 세션이 보드에서 사라진다. 병합은 서버(lib/today/activity.ts)가 한다.
+const HOST = (os.hostname().split(".")[0] || "unknown").toLowerCase().replace(/[^a-z0-9-]/g, "") || "unknown";
+const KEY        = `today:cc_activity:${HOST}`;
+const LEGACY_KEY = "today:cc_activity"; // 호스트 분리 전 키 — 남아 있으면 중복이라 지운다
 const ROOT = path.join(os.homedir(), ".claude", "projects");
 
 const args = process.argv.slice(2);
@@ -103,7 +107,7 @@ function scan() {
 (async () => {
   const started = Date.now();
   const sessions = scan();
-  const payload = { scannedAt: new Date().toISOString(), sessions };
+  const payload = { scannedAt: new Date().toISOString(), host: HOST, sessions };
 
   console.log(`세션 ${sessions.length}건 (최근 ${DAYS}일) · ${Date.now() - started}ms`);
   for (const s of sessions.slice(0, 10)) {
@@ -122,6 +126,7 @@ function scan() {
     .from("kv_store")
     .upsert({ key: KEY, data: payload, updated_at: new Date().toISOString() }, { onConflict: "key" });
   if (error) throw new Error(`kv_store 적재 실패: ${error.message}`);
+  await db.from("kv_store").delete().eq("key", LEGACY_KEY); // 구 키 정리(있을 때만)
   console.log(`적재 완료 → ${KEY}`);
-  await beat("claude-activity-scan", { sessions: sessions.length, days: DAYS });
+  await beat("claude-activity-scan", { sessions: sessions.length, days: DAYS, host: HOST });
 })().catch((e) => { console.error("[claudeActivityScan]", e.message); process.exit(1); });

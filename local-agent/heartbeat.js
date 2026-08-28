@@ -29,7 +29,7 @@ async function beat(job, extra) {
         apikey: key, Authorization: `Bearer ${key}`,
         "Content-Type": "application/json", Prefer: "resolution=merge-duplicates",
       },
-      body: JSON.stringify({ key: `heartbeat:${job}`, data: { at: now, host: "imac", ...(extra || {}) }, updated_at: now }),
+      body: JSON.stringify({ key: `heartbeat:${job}`, data: { at: now, host: require("os").hostname().split(".")[0], ...(extra || {}) }, updated_at: now }),
       signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) console.log(`[heartbeat] ${job} 기록 실패 HTTP ${r.status}`);
