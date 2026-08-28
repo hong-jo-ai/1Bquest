@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CalendarEvent } from "@/lib/today-hub/calendar";
 import type { ActivityThread, Domain, Task } from "@/lib/today/types";
 import { DOMAINS, DOMAIN_LABEL, REVENUE_DOMAINS } from "@/lib/today/types";
-import { daysUntil, kstDateStr, todayLabel } from "@/lib/today/date";
+import { daysUntil } from "@/lib/today/date";
 
 /* ── 도메인 표기 ──────────────────────────────────────────────────────────── */
 
@@ -28,13 +28,11 @@ const COL_SPAN: Record<Domain, string> = {
   personal: "lg:col-span-3",
 };
 
-const SIDE_CHIP = "bg-slate-200 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300";
-
 /* ── 우선순위 ────────────────────────────────────────────────────────────── */
 
 /**
  * 마감이 가까울수록·지연될수록 높다. 매출 영역은 가산점.
- * 마감 없는 일은 여기서 절대 못 이긴다 — 그래서 5번 칸을 따로 뺐다(고정석).
+ * 마감이 없으면 0점이라 마감 있는 일에 밀린다. 그건 의도대로다 — 급한 건 마감이 정한다.
  */
 function score(t: Task): number {
   let s = 0;
@@ -67,6 +65,9 @@ const TONE: Record<"late" | "soon" | "none", string> = {
 /* ── 컴포넌트 ────────────────────────────────────────────────────────────── */
 
 interface Props {
+  /** 오늘 날짜(KST)와 라벨은 서버에서 계산해 내려준다 — 클라이언트 시계로 다시 재면 하이드레이션이 어긋난다. */
+  today: string;
+  label: { date: string; weekday: string };
   events: CalendarEvent[];
   calendarError: string | null;
   threads: ActivityThread[];
@@ -75,17 +76,13 @@ interface Props {
   activityError: string | null;
 }
 
-export default function TodayBoard({ events, calendarError, threads, scannedAt, closedCount, activityError }: Props) {
+export default function TodayBoard({ today, label, events, calendarError, threads, scannedAt, closedCount, activityError }: Props) {
   const [tasks, setTasks]   = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [label, setLabel]   = useState<{ date: string; weekday: string } | null>(null);
   const [inbox, setInbox]   = useState<{ total: number; overdue: number } | null>(null);
   // 서버는 다음 요청에서야 반영되므로, 누르는 즉시 화면에서 빼려고 로컬로도 들고 있는다.
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const lastSaved = useRef("");
-
-  // 날짜 라벨은 클라이언트에서 — 서버/클라 시각 차로 인한 hydration 불일치를 피한다.
-  useEffect(() => { setLabel(todayLabel()); }, []);
 
   useEffect(() => {
     (async () => {
@@ -138,9 +135,9 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
     if (!t) return;
     setTasks((ts) => [
       ...ts,
-      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: t, domain, side, done: false, date: kstDateStr(), fromActivity },
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: t, domain, side, done: false, date: today, fromActivity },
     ]);
-  }, []);
+  }, [today]);
 
   const removeTask = useCallback((id: string) => {
     setTasks((ts) => ts.filter((t) => t.id !== id));
@@ -163,21 +160,17 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
 
   /* ── 파생값 ───────────────────────────────────────────────────────────── */
 
-  const today = kstDateStr();
   const todayEvents = useMemo(() => events.filter((e) => e.date === today), [events, today]);
   const upcoming = useMemo(
     () => events.filter((e) => e.date > today).slice(0, 4),
     [events, today],
   );
 
-  const { top4, sideSlot } = useMemo(() => {
-    const undone = tasks.filter((t) => !t.done);
-    const ranked = [...undone].filter((t) => !t.side).sort((a, b) => score(b) - score(a));
-    const sideTask = undone.find((t) => t.side);
-    // 사이드 할일이 없으면 가장 오래 멈춘 사이드 프로젝트를 제안으로 띄운다.
-    const sideThread = openThreads.filter((t) => t.side).sort((a, b) => b.staleDays - a.staleDays)[0];
-    return { top4: ranked.slice(0, 4), sideSlot: sideTask ?? sideThread ?? null };
-  }, [tasks, openThreads]);
+  // 사이드 프로젝트도 그냥 개인 영역의 할일로 같이 줄 세운다.
+  const top5 = useMemo(
+    () => tasks.filter((t) => !t.done).sort((a, b) => score(b) - score(a)).slice(0, 5),
+    [tasks],
+  );
 
   const doneCount = tasks.filter((t) => t.done).length;
 
@@ -187,9 +180,9 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3">
           <h1 className="whitespace-nowrap text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            {label ? label.date : " "}
+            {label.date}
             <span className="ml-2 text-sm font-normal text-zinc-500 dark:text-zinc-400">
-              {label?.weekday}
+              {label.weekday}
             </span>
           </h1>
 
@@ -228,17 +221,17 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
             오늘 반드시
           </h2>
           <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-            네 영역 전체에서 자동 선정 · 5번은 사이드 프로젝트 고정석
+            네 영역 전체에서 마감·지연 순으로 자동 선정
           </span>
         </div>
 
-        {top4.length === 0 && !sideSlot ? (
+        {top5.length === 0 ? (
           <p className="py-3 text-sm text-zinc-400 dark:text-zinc-500">
             아직 할일이 없다. 아래 컬럼에서 추가하거나, 최근 작업을 눌러 올려라.
           </p>
         ) : (
           <ol className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {top4.map((t, i) => {
+            {top5.map((t, i) => {
               const d = dueLabel(t);
               return (
                 <li key={t.id} className="grid grid-cols-[1.25rem_1rem_3.25rem_1fr_auto] items-center gap-2 py-2.5 sm:grid-cols-[1.25rem_1rem_5rem_1fr_auto] sm:gap-3">
@@ -257,38 +250,6 @@ export default function TodayBoard({ events, calendarError, threads, scannedAt, 
               );
             })}
 
-            {/* 5번 — 자동 선정에서 빼고 사이드 프로젝트에 예약한 칸 */}
-            <li className="mt-1 grid grid-cols-[1.25rem_1rem_3.25rem_1fr_auto] items-center gap-2 border-t border-dashed border-zinc-300 py-2.5 pt-3 sm:grid-cols-[1.25rem_1rem_5rem_1fr_auto] sm:gap-3 dark:border-zinc-700">
-              <span className="font-mono text-sm text-slate-500 dark:text-slate-400">5</span>
-              {sideSlot && "done" in sideSlot ? (
-                <>
-                  <Check on={sideSlot.done} onClick={() => toggle(sideSlot.id)} />
-                  <span className={`rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-semibold ${SIDE_CHIP}`}>사이드</span>
-                  <span className="truncate text-sm text-zinc-800 dark:text-zinc-100">{sideSlot.title}</span>
-                  <span />
-                </>
-              ) : sideSlot ? (
-                <>
-                  <button
-                    onClick={() => addTask(sideSlot.title, sideSlot.domain, true, true)}
-                    title="오늘 할일로 올리기"
-                    className="h-4 w-4 rounded-[3px] border-[1.5px] border-dashed border-slate-400 hover:border-slate-600 dark:border-slate-500 dark:hover:border-slate-300"
-                  />
-                  <span className={`rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-semibold ${SIDE_CHIP}`}>사이드</span>
-                  <span className="truncate text-sm text-zinc-500 dark:text-zinc-400">{sideSlot.title}</span>
-                  <span className="whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 font-mono text-[10.5px] font-medium text-slate-700 dark:bg-slate-700/50 dark:text-slate-300">
-                    {sideSlot.staleDays === 0 ? "오늘 진행" : `${sideSlot.staleDays}일째 멈춤`}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span />
-                  <span className={`rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-semibold ${SIDE_CHIP}`}>사이드</span>
-                  <span className="text-sm text-zinc-400 dark:text-zinc-500">진행 중인 사이드 프로젝트 없음</span>
-                  <span />
-                </>
-              )}
-            </li>
           </ol>
         )}
       </section>
@@ -390,7 +351,7 @@ function DomainColumn({
   threads: ActivityThread[];
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
-  onAdd: (title: string, domain: Domain, side?: boolean) => void;
+  onAdd: (title: string, domain: Domain, side?: boolean, fromActivity?: boolean) => void;
   onClose: (t: ActivityThread) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -417,7 +378,7 @@ function DomainColumn({
           return (
             <li key={t.id} className="group grid grid-cols-[0.875rem_1fr_auto] items-center gap-2.5 py-1.5">
               <Check on={t.done} onClick={() => onToggle(t.id)} />
-              <span className={`text-[13px] leading-snug ${t.done ? "text-zinc-400 line-through dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-200"}`}>
+              <span className={`break-words text-[13px] leading-snug ${t.done ? "text-zinc-400 line-through dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-200"}`}>
                 {t.title}
               </span>
               <span className="flex items-center gap-1">
@@ -444,22 +405,23 @@ function DomainColumn({
           </p>
           <ul className="px-4 pb-1 pt-1">
             {fresh.map((t) => (
-              <li key={t.id} className="grid grid-cols-[0.875rem_1fr_auto_auto] items-center gap-2 py-1">
+              <li key={t.id} className="grid grid-cols-[0.875rem_1fr_auto_auto] items-start gap-2 py-1.5">
                 <button
-                  onClick={() => onAdd(t.title, t.domain, t.side)}
+                  onClick={() => onAdd(t.title, t.domain, t.side, true)}
                   title="오늘 할일로 올리기"
-                  className="h-3.5 w-3.5 rounded-[3px] border-[1.5px] border-dashed border-zinc-300 hover:border-teal-600 dark:border-zinc-600 dark:hover:border-teal-400"
+                  className="mt-[3px] h-3.5 w-3.5 shrink-0 rounded-[3px] border-[1.5px] border-dashed border-zinc-300 hover:border-teal-600 dark:border-zinc-600 dark:hover:border-teal-400"
                 />
-                <span className="truncate text-[12.5px] leading-snug text-zinc-500 dark:text-zinc-400" title={t.title}>
+                {/* 잘라내지 않는다 — 무슨 일이었는지 읽을 수 없으면 끝났는지 판단할 수가 없다. */}
+                <span className="break-words text-[12.5px] leading-snug text-zinc-500 dark:text-zinc-400">
                   {t.title}
                 </span>
-                <span className="whitespace-nowrap font-mono text-[10px] text-zinc-400 dark:text-zinc-600">
+                <span className="mt-[2px] whitespace-nowrap font-mono text-[10px] text-zinc-400 dark:text-zinc-600">
                   {t.staleDays === 0 ? "오늘" : `${t.staleDays}일`}
                 </span>
                 <button
                   onClick={() => onClose(t)}
                   title="이미 끝난 일 — 목록에서 내리기"
-                  className="rounded px-1 font-mono text-[10px] text-zinc-300 hover:bg-teal-50 hover:text-teal-700 dark:text-zinc-600 dark:hover:bg-teal-900/30 dark:hover:text-teal-300"
+                  className="mt-[1px] rounded px-1 font-mono text-[10px] text-zinc-300 hover:bg-teal-50 hover:text-teal-700 dark:text-zinc-600 dark:hover:bg-teal-900/30 dark:hover:text-teal-300"
                 >
                   끝남
                 </button>
@@ -474,6 +436,9 @@ function DomainColumn({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
+            // 한글 조합 중에는 Enter 가 조합 확정용으로 한 번 더 들어온다. 이걸 안 걸러내면
+            // "필기하기" 를 넣을 때 마지막 글자 "기" 가 별도 할일로 하나 더 등록된다.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === "Enter") { onAdd(draft, domain); setDraft(""); }
           }}
           placeholder="할일 추가"

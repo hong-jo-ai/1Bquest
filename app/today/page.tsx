@@ -7,6 +7,7 @@
 import AppHeader from "@/components/AppHeader";
 import { listCalendarEvents } from "@/lib/today-hub/calendar";
 import { getActivity } from "@/lib/today/activity";
+import { kstDateStr, todayLabel } from "@/lib/today/date";
 import type { CalendarEvent } from "@/lib/today-hub/calendar";
 import TodayBoard from "./TodayBoard";
 
@@ -30,6 +31,8 @@ export default async function TodayPage() {
     <>
       <AppHeader refreshHref="/today" />
       <TodayBoard
+        today={kstDateStr()}
+        label={todayLabel()}
         events={events}
         calendarError={calendarError}
         threads={activity.threads}

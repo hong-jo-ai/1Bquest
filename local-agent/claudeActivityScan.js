@@ -49,7 +49,7 @@ function firstUserText(file, maxLines = 400) {
     if (typeof c !== "string") continue;
     const t = c.trim();
     if (!t || t.startsWith("<") || t.startsWith("Caveat:") || t.slice(0, 200).includes("system-reminder")) continue;
-    return t.replace(/\s+/g, " ").slice(0, 90);
+    return t.replace(/\s+/g, " ").slice(0, 140);
   }
   return null;
 }
