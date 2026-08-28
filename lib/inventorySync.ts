@@ -212,6 +212,94 @@ export async function buildCafe24NameMap(token: string, mall: MallId = "paulvice
   return map;
 }
 
+/** channel_upload 채널ID → pp_shipments.channel 라벨 (출고 기록에서 색상 분포를 찾을 때 사용) */
+const CHANNEL_SHIPMENT_LABEL: Record<string, string> = {
+  musinsa: "무신사",
+  wconcept: "W컨셉",
+  "29cm": "29CM",
+  naver_smartstore: "스마트스토어",
+  sixshop: "식스샵",
+  kakao_gift: "카카오선물하기",
+};
+
+/**
+ * 출고 기록(pp_shipments)에서 채널·상품별 **색상 분포**를 만든다.
+ *
+ * 왜 필요한가: 무신사처럼 한 리스팅에서 여러 색을 파는 채널은 판매 리포트에 **옵션이 안 담긴다**
+ * (`{sku:"5846276", name:"에끌라 오벌 워치 - 골드&실버", sold:14}`). 그대로 두면 채널코드 폴백이
+ * 걸려 **실버 판매까지 골드 재고에서 차감**된다(2026-08-28 확인).
+ * 출고 엑셀에는 옵션이 있으므로, 출고 기록의 색상 비율로 판매수량을 색상별로 쪼갠다.
+ * 총량은 채널 리포트(정본)를 그대로 쓰고 **분배만** 출고 기록을 따른다.
+ */
+async function fetchShipmentColorRatios(): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>();
+  const supabase = getSupabase();
+  if (!supabase) return out;
+  const { data } = await supabase
+    .from("pp_shipments")
+    .select("channel, product_name, color, qty")
+    .eq("req_type", "1")
+    .eq("is_test", false)
+    .not("color", "is", null)
+    .neq("color", "");
+  for (const r of (data ?? []) as Array<{ channel: string; product_name: string; color: string; qty: number | null }>) {
+    if (!r.product_name || !r.color) continue;
+    const key = `${r.channel}|${normProductName(r.product_name)}`;
+    const m = out.get(key) ?? new Map<string, number>();
+    m.set(r.color, (m.get(r.color) ?? 0) + (r.qty || 1));
+    out.set(key, m);
+  }
+  return out;
+}
+
+/**
+ * 옵션맵에서 색상값에 해당하는 SKU — 정확일치 → 정규화 일치 → **접두 일치**.
+ * ⚠️ 단순 부분포함(includes)을 쓰면 "로즈골드"가 "골드"에 걸린다(로즈골드는 실제 취급 색상이다).
+ *    "골드 FREE" 처럼 뒤에 수식어가 붙는 경우만 허용하려고 startsWith 로 제한한다.
+ */
+function skuForColor(om: Record<string, string>, color: string): string | null {
+  if (om[color]) return om[color];
+  const n = normProductName(color);
+  if (!n) return null;
+  for (const [k, v] of Object.entries(om)) {
+    if (normProductName(k) === n) return v;
+  }
+  for (const [k, v] of Object.entries(om)) {
+    const nk = normProductName(k);
+    if (nk && n.startsWith(nk)) return v;
+  }
+  return null;
+}
+
+/**
+ * 총 판매수량을 색상 분포에 따라 정수로 배분(최대잔여법 — 합계는 항상 sold 와 같다).
+ * 반환: [{ sku, qty }]. 매핑 안 되는 색이 하나라도 있으면 null(오차감 방지 — 호출측이 폴백).
+ */
+export function splitSoldByColor(
+  sold: number,
+  colors: Map<string, number>,
+  om: Record<string, string>,
+): Array<{ sku: string; qty: number }> | null {
+  const total = [...colors.values()].reduce((a, b) => a + b, 0);
+  if (!total) return null;
+  const parts: Array<{ sku: string; exact: number; floor: number }> = [];
+  for (const [color, cnt] of colors) {
+    const sku = skuForColor(om, color);
+    if (!sku) return null; // 모르는 색이 섞여 있으면 통째로 폴백
+    const exact = (sold * cnt) / total;
+    parts.push({ sku, exact, floor: Math.floor(exact) });
+  }
+  let rest = sold - parts.reduce((a, p) => a + p.floor, 0);
+  parts.sort((a, b) => (b.exact - b.floor) - (a.exact - a.floor));
+  const merged = new Map<string, number>();
+  for (const p of parts) {
+    const add = rest > 0 ? 1 : 0;
+    if (rest > 0) rest--;
+    merged.set(p.sku, (merged.get(p.sku) ?? 0) + p.floor + add);
+  }
+  return [...merged].map(([sku, qty]) => ({ sku, qty })).filter((x) => x.qty > 0);
+}
+
 /**
  * 채널 판매항목(상품명/옵션/채널코드)을 재고 SKU(카페24 product_code)로 매칭.
  *   ① 옵션(색상) 기반 이름매칭 — "골드&실버" 합본을 옵션 색상으로 치환해 색상별 SKU 분리
@@ -294,6 +382,8 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     if (r.data && typeof r.data === "object") channelOptMaps.set(ch, r.data as Record<string, Record<string, string>>);
   }
   const cafe24NameToCode = await buildCafe24NameMap(token, mall).catch(() => new Map<string, string>());
+  // 출고 기록 기반 색상 분포 — 옵션이 없는 채널 리포트를 색상별로 쪼갤 때만 쓴다.
+  const colorRatios = await fetchShipmentColorRatios().catch(() => new Map<string, Map<string, number>>());
 
   const { data } = await supabase
     .from("kv_store")
@@ -326,6 +416,7 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
     const omap = channelOptMaps.get(channelId);
+    const shipLabel = CHANNEL_SHIPMENT_LABEL[channelId];
     for (const it of items) {
       if (!it.sold) continue;
       let targetSku: string | null = null;
@@ -333,6 +424,16 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
         // 카카오는 부모 SKU 1:1 + 아래 PO 옵션매칭으로 별도 처리.
         if (it.sku) targetSku = kakaoSkuToCafe24.get(it.sku) ?? null;
       } else {
+        // 옵션이 안 담기는 채널(무신사 등)의 엄브렐러 리스팅 — 출고 기록의 색상 분포로 쪼갠다.
+        const om = it.sku ? omap?.[it.sku] : undefined;
+        if (om && !(it.option || "").trim() && shipLabel && it.name) {
+          const colors = colorRatios.get(`${shipLabel}|${normProductName(it.name)}`);
+          const split = colors ? splitSoldByColor(it.sold, colors, om) : null;
+          if (split) {
+            for (const s of split) out[s.sku] = (out[s.sku] ?? 0) + s.qty;
+            continue;
+          }
+        }
         targetSku = matchChannelItemToSku(it, cafe24NameToCode, smap, omap);
       }
       if (!targetSku) continue; // 매칭 실패 시 차감 안 함(오차감 방지)

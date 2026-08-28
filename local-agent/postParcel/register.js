@@ -51,6 +51,9 @@ function shipmentRecord(row, params, result, extra = {}) {
     recipient_mobile: params.recMob || null,
     recipient_tel: params.recTel || null,
     product_name: row.prod || null,
+    // 옵션(색상) 보존 — 마켓 판매 데이터엔 옵션이 없는 채널이 있어(무신사 "골드&실버" 통합 리스팅)
+    // 색상별 재고 차감의 유일한 근거가 이 출고 기록이다. 2026-08-28 추가.
+    color: row.color || null,
     qty: row.qty ? Number(row.qty) || null : null,
     regi_no: result?.regiNo || null,
     req_no: result?.reqNo || null,
