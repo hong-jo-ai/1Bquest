@@ -16,6 +16,16 @@ type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export interface PendingReceipt {
   id: string; orderNo: string; model: string;
   items: ReceiptItem[]; note?: string; at: string;
+  /** 명세표 판독 금액 (원장 증빙에 같이 적재) */
+  docDate?: string | null;
+  currency?: "KRW" | "USD" | null;
+  supplyAmount?: number | null;
+  vat?: number | null;
+  totalAmount?: number | null;
+  /** 확인 전 미리 올려둔 원본 사진 — 승인 시 증빙으로 등록, 취소 시 삭제 */
+  imagePath?: string | null;
+  imageMime?: string | null;
+  imageSize?: number | null;
 }
 
 function kv(): SupabaseClient | null {
@@ -62,6 +72,11 @@ const RECEIPT_TOOL = {
         },
       },
       note: { type: "string", description: "폼의 특이사항(부분입고·잔여 예정 등). 없으면 생략." },
+      docDate: { type: "string", description: "명세표에 적힌 날짜 YYYY-MM-DD. 없으면 생략." },
+      currency: { type: "string", enum: ["KRW", "USD"], description: "금액 통화. 원화 표기면 KRW." },
+      supplyAmount: { type: "number", description: "공급가액(세액 제외). 숫자만. 없으면 생략." },
+      vat: { type: "number", description: "세액(부가세). 숫자만. 없으면 생략." },
+      totalAmount: { type: "number", description: "합계 금액(공급가+세액). 숫자만. 없으면 생략." },
       confidence: { type: "string", enum: ["high", "low"], description: "판독 확신도" },
     },
     required: ["orderNo", "items"],
@@ -70,6 +85,8 @@ const RECEIPT_TOOL = {
 
 export interface ExtractedReceipt {
   orderNo: string; items: ReceiptItem[]; note?: string; confidence?: string;
+  docDate?: string; currency?: "KRW" | "USD";
+  supplyAmount?: number; vat?: number; totalAmount?: number;
 }
 
 /** 입고증 사진 판독 → 발주·색상별 수량 */
@@ -91,8 +108,10 @@ export async function extractReceiptFromImage(
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system:
-      "너는 시계 제조 협력사(파쇼) 입고증을 판독하는 도우미다. 사진 속 표/수기 숫자를 정확히 읽어 " +
-      "발주번호와 색상별 입고수량을 record_pasho_receipt 도구로 정확히 한 번 호출한다. 숫자를 추측하지 말고 보이는 대로 읽어라.",
+      "너는 시계 제조 협력사(파쇼) 입고증·거래명세표를 판독하는 도우미다. 사진 속 표/수기 숫자를 정확히 읽어 " +
+      "발주번호와 색상별 입고수량, 그리고 명세표에 금액란이 있으면 날짜·공급가액·세액·합계까지 " +
+      "record_pasho_receipt 도구로 정확히 한 번 호출한다. 숫자를 추측하지 말고 보이는 대로 읽어라. " +
+      "금액란이 비어있거나 안 보이면 그 필드는 생략한다(0으로 채우지 말 것).",
     tools: [{ name: RECEIPT_TOOL.name, description: RECEIPT_TOOL.description, input_schema: RECEIPT_TOOL.input_schema as unknown as Anthropic.Tool["input_schema"] }],
     tool_choice: { type: "any" },
     messages: [{
@@ -110,8 +129,30 @@ export async function extractReceiptFromImage(
   return { receipt: inp, order };
 }
 
+const won = (n: number) => n.toLocaleString("ko-KR");
+
+/** 명세표 금액 요약 줄 (금액란이 읽힌 경우에만) */
+function amountLines(r: { currency?: "KRW" | "USD" | null; supplyAmount?: number | null; vat?: number | null; totalAmount?: number | null; docDate?: string | null }): string[] {
+  const cur = r.currency === "USD" ? "$" : "₩";
+  const out: string[] = [];
+  if (r.docDate) out.push(`명세표 일자: ${r.docDate}`);
+  if (r.supplyAmount != null || r.totalAmount != null) {
+    const parts: string[] = [];
+    if (r.supplyAmount != null) parts.push(`공급가 ${cur}${won(r.supplyAmount)}`);
+    if (r.vat != null) parts.push(`세액 ${cur}${won(r.vat)}`);
+    if (r.totalAmount != null) parts.push(`<b>합계 ${cur}${won(r.totalAmount)}</b>`);
+    out.push(parts.join(" · "));
+  }
+  return out;
+}
+
 /** 확인카드용 미리보기 텍스트 (잔량 계산) */
-export function buildConfirmText(order: OrderWithBalance, items: ReceiptItem[], note?: string): string {
+export function buildConfirmText(
+  order: OrderWithBalance,
+  items: ReceiptItem[],
+  note?: string,
+  amounts?: Parameters<typeof amountLines>[0],
+): string {
   const lines = items.map((it) => {
     const line = order.lines.find((l) => l.variant === it.variant);
     const already = line?.received ?? 0;
@@ -121,20 +162,45 @@ export function buildConfirmText(order: OrderWithBalance, items: ReceiptItem[], 
     return `· ${it.variant}: 입고 ${it.qty}` + (line ? ` → 누적 ${after}/${ordered} · 잔량 ${rem}` : " (신규 옵션?)");
   });
   const totalIn = items.reduce((a, it) => a + it.qty, 0);
+  const amt = amounts ? amountLines(amounts) : [];
   return [
     `📦 <b>입고 확인</b> — ${order.no} ${order.model}`,
     ...lines,
     `합계 입고 ${totalIn}`,
+    ...amt,
     note ? `메모: ${note}` : null,
     "",
     "맞으면 [✅ 맞음], 틀리면 [❌ 취소] 후 다시 보내주세요.",
+    "승인하면 명세표 원본이 /pasho 증빙에 자동 보관됩니다.",
   ].filter(Boolean).join("\n");
 }
 
-/** pending 저장 + id 반환 */
-export async function stagePendingReceipt(r: ExtractedReceipt, model: string): Promise<PendingReceipt> {
+/**
+ * pending 저장 + id 반환.
+ * 명세표 사진을 같이 주면 승인 전에 버킷에 미리 올려두고(경로만 pending에 보관),
+ * 승인 시 증빙으로 등록 · 취소 시 삭제한다. 업로드가 실패해도 입고 접수 자체는 계속 진행한다.
+ */
+export async function stagePendingReceipt(
+  r: ExtractedReceipt,
+  model: string,
+  image?: { data: string; mediaType: ImageMediaType },
+): Promise<PendingReceipt> {
   const id = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
-  const p: PendingReceipt = { id, orderNo: r.orderNo, model, items: r.items, note: r.note, at: new Date().toISOString() };
+  const p: PendingReceipt = {
+    id, orderNo: r.orderNo, model, items: r.items, note: r.note, at: new Date().toISOString(),
+    docDate: r.docDate ?? null, currency: r.currency ?? null,
+    supplyAmount: r.supplyAmount ?? null, vat: r.vat ?? null, totalAmount: r.totalAmount ?? null,
+  };
+  if (image) {
+    try {
+      const { putObject } = await import("@/lib/pasho/docs");
+      const buffer = Buffer.from(image.data, "base64");
+      const { path, size } = await putObject({ buffer, mime: image.mediaType }, r.orderNo);
+      p.imagePath = path; p.imageMime = image.mediaType; p.imageSize = size;
+    } catch (e) {
+      console.error("[pasho] 명세표 원본 보관 실패:", e instanceof Error ? e.message : e);
+    }
+  }
   await savePending(p);
   return p;
 }
@@ -185,16 +251,57 @@ async function applyCafe24(orderNo: string, items: ReceiptItem[]): Promise<strin
 export async function confirmPendingReceipt(id: string): Promise<{ ok: boolean; summary?: string; error?: string }> {
   const p = await loadPending(id);
   if (!p) return { ok: false, error: "만료/없는 입고건" };
-  await addReceipt({ orderNo: p.orderNo, at: p.at, items: p.items, note: p.note, id: `rcpt_${id}` });
+  const receiptId = `rcpt_${id}`;
+
+  // 명세표 원본을 증빙으로 등록 (사진이 같이 온 경우)
+  let docNote = "";
+  if (p.imagePath) {
+    try {
+      const { registerDoc } = await import("@/lib/pasho/docs");
+      await registerDoc({
+        orderNo: p.orderNo,
+        kind: "거래명세표",
+        title: `거래명세표 ${p.docDate || p.at.slice(0, 10)} — ${p.model}`,
+        path: p.imagePath,
+        mime: p.imageMime || "image/jpeg",
+        size: p.imageSize || 0,
+        source: "telegram",
+        docDate: p.docDate ?? null,
+        currency: p.currency ?? null,
+        supplyAmount: p.supplyAmount ?? null,
+        vat: p.vat ?? null,
+        totalAmount: p.totalAmount ?? null,
+        items: p.items.map((it) => ({ name: it.variant, qty: it.qty })),
+        receiptId,
+        note: p.note ?? null,
+      });
+      docNote = " · 명세표 보관됨";
+    } catch (e) {
+      console.error("[pasho] 증빙 등록 실패:", e instanceof Error ? e.message : e);
+      docNote = " · ⚠️명세표 보관 실패";
+    }
+  }
+
+  await addReceipt({ orderNo: p.orderNo, at: p.at, items: p.items, note: p.note, id: receiptId });
   const cafe24 = await applyCafe24(p.orderNo, p.items);
   await deletePending(id);
   const order = await getOrderWithBalance(p.orderNo);
   const totalIn = p.items.reduce((a, it) => a + it.qty, 0);
   const rem = order?.remainingQty ?? 0;
-  const summary = `입고 ${totalIn} 기록 · 잔량 ${rem}${rem > 0 ? "" : " (완료)"} · ${cafe24}`;
+  const amt = p.totalAmount != null
+    ? ` · 명세표 ${p.currency === "USD" ? "$" : "₩"}${p.totalAmount.toLocaleString("ko-KR")}`
+    : "";
+  const summary = `입고 ${totalIn} 기록 · 잔량 ${rem}${rem > 0 ? "" : " (완료)"}${amt} · ${cafe24}${docNote}`;
   return { ok: true, summary };
 }
 
 export async function rejectPendingReceipt(id: string): Promise<void> {
+  const p = await loadPending(id);
+  if (p?.imagePath) {
+    try {
+      const { removeObject } = await import("@/lib/pasho/docs");
+      await removeObject(p.imagePath);
+    } catch { /* 파일만 남는 건 무해 */ }
+  }
   await deletePending(id);
 }

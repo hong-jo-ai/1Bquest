@@ -450,8 +450,9 @@ async function runPashoReceipt(
     );
     return Response.json({ ok: true });
   }
-  const pending = await stagePendingReceipt(receipt, order.model);
-  await sendTelegramMessage(buildConfirmText(order, receipt.items, receipt.note), {
+  // 사진 원본은 승인 시 /pasho 증빙(거래명세표)으로 자동 보관된다.
+  const pending = await stagePendingReceipt(receipt, order.model, img);
+  await sendTelegramMessage(buildConfirmText(order, receipt.items, receipt.note, pending), {
     buttons: [
       { text: "✅ 맞음", callback_data: `pasho:accept:${pending.id}` },
       { text: "❌ 취소", callback_data: `pasho:reject:${pending.id}` },

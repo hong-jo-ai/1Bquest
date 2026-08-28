@@ -3,9 +3,10 @@
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Package, FileText, AlertTriangle, ArrowUpRight, X, Circle,
+  Package, AlertTriangle, ArrowUpRight, X, Circle,
   CheckCircle2, Clock, Truck, Paperclip, Printer, Wallet
 } from "lucide-react";
+import PashoDocs, { type PashoDoc } from "@/components/PashoDocs";
 
 // ─────────────────────────────────────────────────────────────
 // 파쇼 생산 원장 (대시보드 버전)
@@ -98,7 +99,7 @@ function StageTrack({ status }: { status: string }) {
   );
 }
 
-export default function PashoClient({ orders }: { orders: Order[] }) {
+export default function PashoClient({ orders, docs = [] }: { orders: Order[]; docs?: PashoDoc[] }) {
   const ORDERS = orders;
   const router = useRouter();
   const [brandF, setBrandF] = useState("ALL");
@@ -145,6 +146,13 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
   }, []);
 
   const selOrder = ORDERS.find((o) => o.no === sel);
+
+  /** 발주별 보관 증빙 수 — 행에 클립 배지로 표시 */
+  const docCount = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const d of docs) m[d.orderNo] = (m[d.orderNo] ?? 0) + 1;
+    return m;
+  }, [docs]);
 
   const openForm = (o: Order) => {
     const doc = o.type === "개발" ? "dev" : o.consign ? "csg" : "po";
@@ -288,6 +296,11 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
                       </span>
                     )}
                     {o.riskFlag && <AlertTriangle size={13} style={{ color: "#B4472E" }} />}
+                    {docCount[o.no] > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#9A968E]" title={`증빙 ${docCount[o.no]}건`}>
+                        <Paperclip size={10} />{docCount[o.no]}
+                      </span>
+                    )}
                   </div>
                   <div className="font-mono text-[11px] text-[#9A968E] mt-0.5 ml-3.5">{o.code}</div>
                 </div>
@@ -493,17 +506,11 @@ export default function PashoClient({ orders }: { orders: Order[] }) {
               </div>
 
               {/* evidence */}
-              <div className="mt-5">
-                <div className="text-[11px] font-semibold text-[#9A968E] uppercase tracking-wider mb-2">증빙</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {["발주서/작업의뢰서", selOrder.consign ? "사급출고증" : "거래명세서", "검수확인서", "세금계산서"].map((d) => (
-                    <div key={d} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-[#D8D4CC] text-[12px] text-[#9A968E]">
-                      <Paperclip size={13} /> {d}
-                      <span className="ml-auto text-[10px] text-[#C9C5BD]">비어있음</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <PashoDocs
+                orderNo={selOrder.no}
+                docs={docs.filter((d) => d.orderNo === selOrder.no)}
+                onChanged={() => router.refresh()}
+              />
 
               {/* actions */}
               <div className="mt-6 flex gap-2">
