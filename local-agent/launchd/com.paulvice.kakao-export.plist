@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.paulvice.kakao-export</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/mac/.nvm/versions/node/v24.16.0/bin/node</string>
+        <string>kakaoExport.js</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/mac/sungjo_ai/paulwise-dashboard/local-agent</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key><string>/Users/mac</string>
+        <key>PATH</key><string>/Users/mac/.local/bin:/Users/mac/.nvm/versions/node/v24.16.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>6</integer>
+        <key>Minute</key><integer>40</integer>
+    </dict>
+    <key>StandardOutPath</key><string>/Users/mac/sungjo_ai/paulwise-dashboard/local-agent/logs/kakao-export.out.log</string>
+    <key>StandardErrorPath</key><string>/Users/mac/sungjo_ai/paulwise-dashboard/local-agent/logs/kakao-export.err.log</string>
+</dict>
+</plist>

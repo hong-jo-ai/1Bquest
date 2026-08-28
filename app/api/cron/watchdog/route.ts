@@ -43,6 +43,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:claude-activity-scan", label: "클로드 세션 스캔(iMac·매시)", maxHours: 3 },
   // 카톡 요약. 멈추면 보드가 며칠 전 대화를 오늘 것처럼 보여준다.
   { key: "heartbeat:kakao-digest", label: "카톡 대화 요약(iMac·매일)", maxHours: 28 },
+  // 카톡 내보내기 UI 자동화. 화면 잠김·카톡 UI 변경에 취약해 감시가 특히 중요하다.
+  { key: "heartbeat:kakao-export", label: "카톡 대화 내보내기(iMac·06:40)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
   { key: "cron_last_ok:revenue-snapshot", label: "매출 스냅샷", maxHours: 26 },
   { key: "cron_last_ok:daily-summary", label: "데일리 서머리", maxHours: 26 },

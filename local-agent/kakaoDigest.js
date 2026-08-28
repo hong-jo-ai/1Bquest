@@ -56,10 +56,15 @@ function parseCsv(text) {
   return rows;
 }
 
-/** 파일명에서 방 이름 뽑기: KakaoTalk_Chat_<방이름>_<2026-08-05-14-21-52>.csv */
+/**
+ * 파일명에서 방 이름 뽑기: KakaoTalk_Chat_<방이름>_<2026-08-05-14-21-52>.csv
+ *
+ * NFC 정규화 필수 — macOS 는 카톡이 저장한 파일명을 NFD(자모 분해)로 돌려주고
+ * 손으로 옮긴 파일은 NFC 라, 정규화하지 않으면 같은 방이 둘로 갈려 두 번 요약된다.
+ */
 function roomOf(filename) {
   const m = filename.match(/^KakaoTalk_Chat_(.+)_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.csv$/);
-  return m ? m[1] : filename.replace(/\.csv$/, "");
+  return (m ? m[1] : filename.replace(/\.csv$/, "")).normalize("NFC");
 }
 
 function readRoomFiles(dir) {
