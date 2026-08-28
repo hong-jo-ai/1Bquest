@@ -63,6 +63,9 @@ function strings(lang: string, brandName: string, brandKo: string): Record<strin
       mailSubject: "[" + brandName + " Inquiry]",
       chatCta: "Chat with us",
       sendFailed: "Couldn't send — please check your connection and try again. Your message has been kept below.",
+      attachAria: "Attach photo",
+      uploadFailed: "Couldn't upload the photo — please try again.",
+      photoTooBig: "Photos must be under 12MB.",
     };
   }
   return {
@@ -97,6 +100,9 @@ function strings(lang: string, brandName: string, brandKo: string): Record<strin
     mailSubject: "[" + brandName + " 문의]",
     chatCta: "채팅 상담 문의하기",
     sendFailed: "전송에 실패했어요. 네트워크 확인 후 다시 보내주세요. 입력하신 내용은 아래에 그대로 남겨두었습니다.",
+    attachAria: "사진 첨부",
+    uploadFailed: "사진 전송에 실패했어요. 잠시 후 다시 시도해 주세요.",
+    photoTooBig: "사진은 12MB 이하로 올려주세요.",
   };
 }
 
@@ -248,6 +254,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       + ".pv-chat-input{width:100%;border:1px solid #d8d0c4;border-radius:12px;background:#fffdf9;padding:12px 13px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-input:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-save{height:44px;border:0;border-radius:12px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:15px}"
       + ".pv-chat-messages{flex:1;min-height:0;overflow:auto;padding:12px 16px 16px;background:#fff;display:flex;flex-direction:column;gap:10px}.pv-chat-bubble{max-width:84%;padding:11px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.pv-chat-bubble.in{align-self:flex-start;background:#f5f4f2;border:1px solid #e5e1d9;color:#1f2933}.pv-chat-bubble.out{align-self:flex-end;background:#141414;color:#fff}.pv-chat-empty{font-size:14px;color:#625b52;background:#f8f6f2;border:1px solid #e2dbd1;border-radius:14px;padding:14px;line-height:1.55}"
       + ".pv-chat-sendfail{display:none;margin:0 12px 8px;font-size:13px;line-height:1.45;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 10px;flex:0 0 auto}.pv-chat-sendfail.show{display:block}"
+      + ".pv-chat-attach{width:46px;min-height:46px;border:1px solid #d8d0c4;border-radius:16px;background:#fff;color:#6b635a;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto}.pv-chat-attach:hover{background:#faf8f5}.pv-chat-attach:disabled{opacity:.45;cursor:default}"
+      + ".pv-chat-bubble.has-img{padding:6px}.pv-chat-bubble .pv-chat-img{display:block;max-width:220px;max-height:220px;border-radius:10px;cursor:pointer;background:#eee}.pv-chat-bubble.has-img .pv-chat-img-cap{padding:6px 7px 3px;font-size:14px;line-height:1.5}"
       + ".pv-chat-compose{border-top:1px solid #e1dbd1;padding:10px 12px;background:#fff;display:flex;gap:8px;flex:0 0 auto}.pv-chat-text{flex:1;min-height:46px;max-height:110px;resize:none;border:1px solid #d8d0c4;border-radius:16px;background:#f3f4f6;padding:13px 12px;font-size:16px;line-height:1.25;outline:none;color:#171717}.pv-chat-text:focus{border-color:#141414;box-shadow:0 0 0 2px rgba(20,20,20,.06)}.pv-chat-send{width:60px;border:0;border-radius:16px;background:#141414;color:#fff;font-weight:800;cursor:pointer;font-size:14px}.pv-chat-fab-new{align-self:center;margin:auto auto 28px;height:48px;padding:0 22px;border:0;border-radius:16px;background:#b1aaa2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 10px 22px rgba(122,112,100,.26);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}"
       + "@media(max-width:640px){html.pv-chat-lock,html.pv-chat-lock body{overflow:hidden!important}.pv-chat-root{right:14px;bottom:calc(14px + var(--pv-chat-lift,0px))}.pv-chat-button{width:68px;height:68px}.pv-chat-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:#f5f4f2}.pv-chat-home-body{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 18px}.pv-chat-topbar{height:calc(env(safe-area-inset-top,0px) + 74px);padding-top:env(safe-area-inset-top,0px)}.pv-chat-nav{height:calc(env(safe-area-inset-bottom,0px) + 76px);padding-bottom:env(safe-area-inset-bottom,0px)}.pv-chat-compose{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.pv-chat-home-head{margin-top:2px}.pv-chat-brand-name{font-size:22px}.pv-chat-card{border-radius:22px;padding:20px 16px 16px}.pv-chat-card-copy{font-size:16px}.pv-chat-primary{height:54px}.pv-chat-messages{padding-bottom:18px}}";
     document.head.appendChild(el("style", { text: css }));
@@ -265,10 +273,25 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
       return;
     }
     messages.forEach(function (msg) {
-      box.appendChild(el("div", {
-        class: "pv-chat-bubble " + (msg.direction === "out" ? "in" : "out"),
-        text: msg.body_text || ""
-      }));
+      var bubble = el("div", { class: "pv-chat-bubble " + (msg.direction === "out" ? "in" : "out") });
+      var imgs = (msg.attachments || []).filter(function (a) { return a && a.isImage && a.url; });
+      if (imgs.length) {
+        bubble.className += " has-img";
+        imgs.forEach(function (a) {
+          var im = el("img", { class: "pv-chat-img", src: a.url, alt: a.name || "photo", loading: "lazy" });
+          im.addEventListener("load", function () { box.scrollTop = box.scrollHeight; });
+          im.addEventListener("click", function () { try { window.open(a.url, "_blank"); } catch (_) {} });
+          bubble.appendChild(im);
+        });
+        // 서버가 넣는 자리표시자([사진]/[Photo])만 있으면 텍스트 줄은 생략
+        var cap = (msg.body_text || "").trim();
+        if (cap && cap !== "[사진]" && cap !== "[Photo]") {
+          bubble.appendChild(el("div", { class: "pv-chat-img-cap", text: cap }));
+        }
+      } else {
+        bubble.textContent = msg.body_text || "";
+      }
+      box.appendChild(bubble);
     });
     box.scrollTop = box.scrollHeight;
   }
@@ -321,6 +344,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     var textarea = el("textarea", { class: "pv-chat-text", placeholder: config.t.typeMsg, rows: "1" });
     var sendFailBox = el("div", { class: "pv-chat-sendfail", text: config.t.sendFailed });
     var send = el("button", { class: "pv-chat-send", type: "button", text: config.t.send });
+    var fileInput = el("input", { type: "file", accept: "image/*", style: "display:none" });
+    var attachBtn = el("button", { class: "pv-chat-attach", type: "button", "aria-label": config.t.attachAria, title: config.t.attachAria });
 
     function avatar(className) {
       var node = el("span", { class: className, "aria-hidden": "true" });
@@ -336,7 +361,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         send: '<path d="M4 12 21 4l-8 17-2-7z" fill="currentColor"/>',
         clock: '<path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>',
         megaphone: '<path d="M4 12h4l9-5v10l-9-5H4Z" fill="currentColor"/><path d="M8 12v5" fill="none" stroke="currentColor" stroke-width="2"/>',
-        mail: '<path d="M3 6.5h18v11H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m3.5 7.5 8.5 6 8.5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
+        mail: '<path d="M3 6.5h18v11H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m3.5 7.5 8.5 6 8.5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+        photo: '<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10.5" r="1.7" fill="currentColor"/><path d="m5.5 16.5 4-4 3 3 2.5-2.5 3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
       };
       // width/height 를 1em 으로 고정 — CSS 로 크기를 지정한 곳(nav·bot 등)은 그대로 두고,
       // 지정이 없는 곳(시계·확성기·전송 아이콘)이 기본 300px 로 거대하게 렌더되는 것을 막는다.
@@ -426,7 +452,8 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     chatScreen.appendChild(contactBox);
     chatScreen.appendChild(messages);
     chatScreen.appendChild(sendFailBox);
-    chatScreen.appendChild(el("div", { class: "pv-chat-compose" }, [textarea, send]));
+    attachBtn.innerHTML = icon("photo");
+    chatScreen.appendChild(el("div", { class: "pv-chat-compose" }, [fileInput, attachBtn, textarea, send]));
 
     var convList = el("div", { class: "pv-chat-conv-list" });
     var newButton = el("button", { class: "pv-chat-fab-new", type: "button" });
@@ -610,8 +637,53 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
         //    실제로 CORS 차단으로 영문몰 상담이 통째로 유실됐다(2026-08-05).
         //    입력 내용을 되돌려주고 실패를 눈에 보이게 알린다.
         if (!textarea.value) textarea.value = text;
+        sendFailBox.textContent = config.t.sendFailed;
         sendFailBox.classList.add("show");
         if (window.console && console.warn) console.warn("[pv-chat] 전송 실패", err);
+      });
+    }
+
+    function sendImage(file) {
+      if (!file) return;
+      if (file.size > 12 * 1024 * 1024) {
+        sendFailBox.textContent = config.t.photoTooBig;
+        sendFailBox.classList.add("show");
+        fileInput.value = "";
+        return;
+      }
+      var contact = currentContact();
+      if (!validateContact(contact)) { fileInput.value = ""; return; }
+      saveContact(contact);
+      contactBox.classList.add("saved");
+      sendFailBox.classList.remove("show");
+      attachBtn.disabled = true;
+      ensureSession(contact).then(function (session) {
+        if (!session || !session.conversationId) throw new Error("session_failed");
+        var fd = new FormData();
+        fd.append("file", file);
+        fd.append("conversationId", session.conversationId);
+        fd.append("name", contact.name);
+        fd.append("phone", contact.phone || "");
+        fd.append("email", contact.email || "");
+        fd.append("brand", config.brand);
+        fd.append("label", config.lang);
+        fd.append("pageUrl", location.href);
+        // FormData 는 Content-Type 을 직접 지정하면 boundary 가 빠져 깨진다 — api() 헬퍼 대신 직접 fetch.
+        return fetch(config.baseUrl + "/api/cs/webchat/upload", { method: "POST", mode: "cors", body: fd })
+          .then(function (res) { return res.json(); });
+      }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || "upload_failed");
+        attachBtn.disabled = false;
+        fileInput.value = "";
+        loadMessages(messages);
+        pollActivityTs = Date.now();
+        if (isOpen) startPolling();
+      }).catch(function (err) {
+        attachBtn.disabled = false;
+        fileInput.value = "";
+        sendFailBox.textContent = config.t.uploadFailed;
+        sendFailBox.classList.add("show");
+        if (window.console && console.warn) console.warn("[pv-chat] 사진 전송 실패", err);
       });
     }
 
@@ -636,6 +708,10 @@ function buildWidgetScript(input: { baseUrl: string; brandName: string; accent: 
     nameInput.addEventListener("input", clearContactError);
     phoneInput.addEventListener("input", clearContactError);
     send.addEventListener("click", sendMessage);
+    attachBtn.addEventListener("click", function () { fileInput.click(); });
+    fileInput.addEventListener("change", function () {
+      sendImage(fileInput.files && fileInput.files[0]);
+    });
     textarea.addEventListener("keydown", function (event) {
       // 한글(IME) 조합 중 Enter는 글자 확정용이므로 무시한다.
       // 무시하지 않으면 조합 확정 Enter + 실제 Enter 두 번이 발생해

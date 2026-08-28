@@ -236,6 +236,9 @@ export async function ensureWebchatThread(input: {
   return { conversationId, threadId, isNew: true };
 }
 
+// 인박스 AttachmentStrip 이 읽는 형식(raw.attachments)과 동일 — isImage:true 면 썸네일 렌더.
+export type WebchatAttachment = { url: string; name?: string; isImage: boolean };
+
 export async function appendWebchatVisitorMessage(input: {
   conversationId: string;
   body: string;
@@ -245,6 +248,7 @@ export async function appendWebchatVisitorMessage(input: {
   pageUrl?: string;
   userAgent?: string;
   brand?: CsBrandId;
+  attachments?: WebchatAttachment[];
 }): Promise<{ threadId: string; inserted: boolean }> {
   const brand: CsBrandId = input.brand ?? "paulvice";
   const externalThreadId = makeWebchatExternalThreadId(input.conversationId);
@@ -264,6 +268,7 @@ export async function appendWebchatVisitorMessage(input: {
       conversation_id: input.conversationId,
       page_url: input.pageUrl,
       user_agent: input.userAgent,
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     },
   });
   return result;
@@ -271,7 +276,7 @@ export async function appendWebchatVisitorMessage(input: {
 
 export async function listWebchatMessages(
   conversationId: string
-): Promise<Array<Pick<CsMessage, "id" | "direction" | "body_text" | "sent_at">>> {
+): Promise<Array<Pick<CsMessage, "id" | "direction" | "body_text" | "sent_at"> & { attachments?: WebchatAttachment[] }>> {
   const db = getCsSupabase();
   const externalThreadId = makeWebchatExternalThreadId(conversationId);
   const { data: thread, error } = await db
@@ -285,13 +290,30 @@ export async function listWebchatMessages(
 
   const detail = await getThread(thread.id as string);
   return (detail?.messages ?? [])
-    .filter((m) => m.body_text && !isInternalSystemMessage(m.raw))
-    .map((m) => ({
-      id: m.id,
-      direction: m.direction,
-      body_text: m.body_text,
-      sent_at: m.sent_at,
-    }));
+    .filter((m) => (m.body_text || messageAttachments(m.raw).length) && !isInternalSystemMessage(m.raw))
+    .map((m) => {
+      const attachments = messageAttachments(m.raw);
+      return {
+        id: m.id,
+        direction: m.direction,
+        body_text: m.body_text,
+        sent_at: m.sent_at,
+        ...(attachments.length ? { attachments } : {}),
+      };
+    });
+}
+
+/** raw.attachments 에서 위젯에 내보낼 안전한 첨부 목록만 추린다(http URL 만). */
+function messageAttachments(raw: unknown): WebchatAttachment[] {
+  if (!raw || typeof raw !== "object") return [];
+  const list = (raw as { attachments?: unknown }).attachments;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((a) => {
+    if (!a || typeof a !== "object") return [];
+    const { url, name, isImage } = a as { url?: unknown; name?: unknown; isImage?: unknown };
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return [];
+    return [{ url, name: typeof name === "string" ? name : undefined, isImage: isImage === true }];
+  });
 }
 
 export type WebchatConversationSummary = {
