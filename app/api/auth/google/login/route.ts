@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID ?? "";
-const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI ?? "";
+import { redirectUriFor } from "@/lib/authRedirect";
 
 export async function GET(req: NextRequest) {
   // ?hint=email — Google 동의화면에서 그 계정 우선 선택 (없으면 평소대로 계정 선택 화면)
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   const params = new URLSearchParams({
     client_id:     CLIENT_ID,
-    redirect_uri:  REDIRECT_URI,
+    redirect_uri:  redirectUriFor(req),
     response_type: "code",
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",

@@ -12,7 +12,7 @@ import {
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
-const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI ?? "";
+import { redirectUriFor } from "@/lib/authRedirect";
 
 export async function GET(req: NextRequest) {
   const code  = req.nextUrl.searchParams.get("code");
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
           code,
           client_id: CLIENT_ID,
           client_secret: CLIENT_SECRET,
-          redirect_uri: REDIRECT_URI,
+          redirect_uri: redirectUriFor(req),
           grant_type: "authorization_code",
         }),
       });
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
         code,
         client_id:     CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        redirect_uri:  REDIRECT_URI,
+        redirect_uri:  redirectUriFor(req),
         grant_type:    "authorization_code",
       }),
     });
