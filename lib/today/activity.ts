@@ -149,13 +149,14 @@ export async function getActivity(): Promise<ActivityResult> {
 
   const all  = buildThreads([...bySession.values()], overrides);
   // 닫은 뒤로 새 세션이 붙은 줄기는 다시 살린다 — 일이 재개된 것이므로.
-  const open = all
-    .filter((t) => t.staleDays <= WINDOW_DAYS)
-    .filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
+  // 기간 밖으로 밀려난 것과 사람이 끝냄 처리한 것은 다르다. 섞어 세면
+  // 화면의 "끝냄" 숫자가 실제 누른 횟수와 무관해진다.
+  const recent = all.filter((t) => t.staleDays <= WINDOW_DAYS);
+  const open   = recent.filter((t) => !(closed[t.id] && closed[t.id] >= t.lastTouchedAt));
 
   return {
     scannedAt,
     threads:     open,
-    closedCount: all.length - open.length,
+    closedCount: recent.length - open.length,
   };
 }
