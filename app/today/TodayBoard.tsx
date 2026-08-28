@@ -7,6 +7,19 @@ import type { KakaoItem } from "@/lib/today/kakao";
 import { KIND_LABEL } from "@/lib/today/kakao";
 import { DOMAINS, DOMAIN_LABEL, REVENUE_DOMAINS } from "@/lib/today/types";
 import { daysUntil } from "@/lib/today/date";
+import { classifySession } from "@/lib/today/classify";
+
+/** /api/today-hub/inbox 가 주는 "답장이 필요하다"고 분류된 메일 */
+interface InboxMail {
+  id: string;
+  sender: string;
+  subject: string;
+  /** AI 가 답장 필요로 본 이유 */
+  reason?: string;
+  receivedLabel: string;
+  overdue: boolean;
+  gmailWebUrl: string;
+}
 
 /* ── 도메인 표기 ──────────────────────────────────────────────────────────── */
 
@@ -84,7 +97,7 @@ interface Props {
 export default function TodayBoard({ today, label, events, calendarError, threads, scannedAt, closedCount, activityError, kakaoItems, kakaoAt }: Props) {
   const [tasks, setTasks]   = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [inbox, setInbox]   = useState<{ total: number; overdue: number } | null>(null);
+  const [mails, setMails]   = useState<InboxMail[] | null>(null);
   // 서버는 다음 요청에서야 반영되므로, 누르는 즉시 화면에서 빼려고 로컬로도 들고 있는다.
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const lastSaved = useRef("");
@@ -105,13 +118,8 @@ export default function TodayBoard({ today, label, events, calendarError, thread
       try {
         const r = await fetch("/api/today-hub/inbox", { cache: "no-store" });
         const j = await r.json();
-        if (j.ok && Array.isArray(j.items)) {
-          setInbox({
-            total:   j.items.length,
-            overdue: j.items.filter((i: { overdue?: boolean }) => i.overdue).length,
-          });
-        }
-      } catch { /* 인박스는 없어도 그만 */ }
+        if (j.ok && Array.isArray(j.items)) setMails(j.items as InboxMail[]);
+      } catch { /* 인박스가 막혀도 보드는 뜬다 */ }
     })();
   }, []);
 
@@ -162,6 +170,14 @@ export default function TodayBoard({ today, label, events, calendarError, thread
   }, []);
 
   const openThreads = useMemo(() => threads.filter((t) => !closedIds.has(t.id)), [threads, closedIds]);
+
+  /** 메일에는 영역 정보가 없어서 제목·발신자로 추정한다. 틀리면 컬럼에서 지우고 다시 넣으면 된다. */
+  const onAddMail = useCallback((m: InboxMail) => {
+    const { domain } = classifySession(
+      { projectDir: "", title: `${m.subject} ${m.sender}`, titled: true },
+    );
+    addTask(`메일 회신: ${m.subject}`, domain);
+  }, [addTask]);
 
   /* ── 파생값 ───────────────────────────────────────────────────────────── */
 
@@ -259,6 +275,49 @@ export default function TodayBoard({ today, label, events, calendarError, thread
         )}
       </section>
 
+      {/* ── 답장이 필요한 메일 ─────────────────────────────────────────
+          영역이 갈리지 않고 시간에 쫓기는 일이라 컬럼에 넣지 않고 따로 둔다. */}
+      {mails && mails.length > 0 && (
+        <section className="mt-3 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mb-2 flex items-baseline gap-3">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
+              답장이 필요한 메일
+            </h2>
+            <span className="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
+              {mails.length}{mails.some((m) => m.overdue) && ` · 24시간 넘김 ${mails.filter((m) => m.overdue).length}`}
+            </span>
+          </div>
+          <ul className="max-h-64 divide-y divide-zinc-100 overflow-y-auto dark:divide-zinc-800">
+            {mails.map((m) => (
+              <li key={m.id} className="grid grid-cols-[0.875rem_1fr_auto] items-start gap-3 py-2">
+                <button
+                  onClick={() => onAddMail(m)}
+                  title="오늘 할일로 올리기"
+                  className="mt-1 h-3.5 w-3.5 shrink-0 rounded-[3px] border-[1.5px] border-dashed border-zinc-300 hover:border-teal-600 dark:border-zinc-600 dark:hover:border-teal-400"
+                />
+                <div className="min-w-0">
+                  <a
+                    href={m.gmailWebUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[13px] leading-snug text-zinc-800 hover:underline dark:text-zinc-100"
+                  >
+                    <span className="text-zinc-500 dark:text-zinc-400">{m.sender}</span>
+                    {" · "}{m.subject}
+                  </a>
+                  {m.reason && (
+                    <p className="mt-0.5 text-[11.5px] leading-snug text-zinc-400 dark:text-zinc-500">{m.reason}</p>
+                  )}
+                </div>
+                <span className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[10.5px] ${m.overdue ? TONE.late : TONE.none}`}>
+                  {m.receivedLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ── 3층 · 영역 보드 ───────────────────────────────────────────── */}
       <section className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-14">
         {DOMAINS.map((d) => (
@@ -278,8 +337,8 @@ export default function TodayBoard({ today, label, events, calendarError, thread
 
       {/* ── 4층 · 확인 스트립 ─────────────────────────────────────────── */}
       <section className="mt-3 grid grid-cols-2 divide-x divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white sm:grid-cols-4 sm:divide-y-0 dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-        <Stat n={inbox?.overdue ?? null} label="24시간 넘긴 미답장" tone={inbox && inbox.overdue > 0 ? "alert" : "calm"} href="/inbox" />
-        <Stat n={inbox?.total ?? null} label="미답장 전체" tone="calm" href="/inbox" />
+        <Stat n={mails?.filter((m) => m.overdue).length ?? null} label="24시간 넘긴 미답장" tone={mails?.some((m) => m.overdue) ? "alert" : "calm"} href="/inbox" />
+        <Stat n={mails?.length ?? null} label="답장 필요 메일" tone="calm" href="/inbox" />
         <Stat n={openThreads.filter((t) => t.staleDays >= 7).length} label="7일 넘게 멈춘 일" tone={openThreads.some((t) => t.staleDays >= 14) ? "warn" : "calm"} />
         <Stat n={openThreads.filter((t) => t.staleDays === 0).length} label="오늘 이미 만진 일" tone="calm" />
       </section>
