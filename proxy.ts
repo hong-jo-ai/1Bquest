@@ -76,15 +76,13 @@ export async function proxy(req: NextRequest) {
     url.pathname = "/moon";
     return NextResponse.rewrite(url);
   }
-  // moon 과 달리 로그인은 그대로 태운다 — 업무 화면이라 인증을 우회하면 안 된다.
-  if (TODAY_HOSTS.has(host) && pathname === "/") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/today";
-    return NextResponse.rewrite(url);
-  }
+  // 업무 화면이라 인증을 반드시 태운다. moon 처럼 여기서 바로 rewrite 를 반환하면
+  // 아래 로그인 검사를 통째로 건너뛰어 보드가 무인증으로 공개된다(실측 사고 2026-08-28).
+  // 그래서 목적지만 기억해두고, 인증을 통과한 뒤 맨 아래에서 rewrite 한다.
+  const rewriteToToday = TODAY_HOSTS.has(host) && pathname === "/";
 
   // ── (1) 앱 자체 로그인 검증 ────────────────────────────────────────
-  const authBypass = isAllowed(pathname);
+  const authBypass = isAllowed(rewriteToToday ? "/today" : pathname);
   const secret = process.env.APP_AUTH_SECRET;
 
   if (!authBypass && secret) {
@@ -98,13 +96,19 @@ export async function proxy(req: NextRequest) {
     if (!sessionOk) {
       const loginUrl = req.nextUrl.clone();
       loginUrl.pathname = "/login";
-      loginUrl.search = `?next=${encodeURIComponent(pathname + req.nextUrl.search)}`;
+      loginUrl.search = `?next=${encodeURIComponent((rewriteToToday ? "/today" : pathname) + req.nextUrl.search)}`;
       return NextResponse.redirect(loginUrl);
     }
   }
 
   // (구) Cafe24 쿠키 기반 토큰 자동갱신 블록 제거 — refresh_token 회전과 SSOT(cafe24TokenStore)가
   // 경쟁해 토큰 소실 사고를 낸 원인 코드 (2026-07-02 감사 조치). 토큰 갱신은 cafe24TokenStore 단일 경로.
+
+  if (rewriteToToday) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/today";
+    return NextResponse.rewrite(url);
+  }
 
   return NextResponse.next();
 }
