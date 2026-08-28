@@ -64,6 +64,8 @@ interface Shipment {
   error_code: string | null;
   error_message: string | null;
   registered_at: string | null;
+  /** 이 주문에 걸린 고객 약속(쇼핑백 동봉 등). API가 kv에서 주문번호로 붙여준다. */
+  promises?: string[];
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -407,6 +409,9 @@ export default function ShippingClient() {
       .some((v) => String(v || "").toLowerCase().includes(q));
   });
 
+  // 지금 보고 있는 목록 중 약속이 걸린 건 — 상단 배너용.
+  const promiseRows = filtered.filter((s) => s.promises?.length);
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* 헤더 */}
@@ -506,6 +511,22 @@ export default function ShippingClient() {
       {error && (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
           <AlertCircle className="h-4 w-4" /> {error}
+        </div>
+      )}
+
+      {/* 약속 있는 주문 — 포장 전에 보라고 목록 위에 크게 띄운다 */}
+      {promiseRows.length > 0 && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+          <div className="font-semibold">⚠️ 약속이 걸린 주문 {promiseRows.length}건 — 포장할 때 확인하세요</div>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {promiseRows.map((s) => (
+              <li key={s.id}>
+                <span className="font-medium">{s.recipient_name}</span>
+                <span className="text-amber-700/80"> · {s.order_number}</span>
+                <span> — {s.promises?.join(" / ")}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -615,7 +636,17 @@ export default function ShippingClient() {
                   <td className="px-3 py-2 whitespace-nowrap text-slate-600">{s.channel}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-700">{s.order_number}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{fmtRegAt(s.registered_at)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-slate-700">{s.recipient_name}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-700">
+                    {s.recipient_name}
+                    {s.promises?.length ? (
+                      <span
+                        className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                        title={s.promises.join("\n")}
+                      >
+                        ⚠️ 약속
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 max-w-[200px] truncate text-slate-600" title={s.product_name || ""}>
                     {s.product_name}
                   </td>
@@ -688,6 +719,11 @@ export default function ShippingClient() {
                       {STATUS_LABEL[s.status] || s.status}
                     </span>
                   )}
+                  {s.promises?.length ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      ⚠️ 약속
+                    </span>
+                  ) : null}
                 </div>
                 <TrackingBadge state={s.tracking_state} />
               </div>
@@ -714,6 +750,13 @@ export default function ShippingClient() {
                   </button>
                 )}
               </div>
+              {s.promises?.length ? (
+                <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                  {s.promises.map((t, i) => (
+                    <div key={i}>⚠️ {t}</div>
+                  ))}
+                </div>
+              ) : null}
               {s.error_message && (
                 <div className="mt-1 text-xs text-rose-500">
                   {s.error_code}: {s.error_message}

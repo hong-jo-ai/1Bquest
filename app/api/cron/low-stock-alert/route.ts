@@ -16,6 +16,7 @@ import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 import { createClient } from "@supabase/supabase-js";
 import { withCron } from "@/lib/cron/withCron";
+import { notifyDuePromises } from "@/lib/cs/promiseNotify";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -150,7 +151,16 @@ async function run() {
   return Response.json({ ok: true, reorder: reorder.length, imminent: imminent.length, dead: dead.length, dup: dupCount, weeklyDue });
 }
 
-export const GET = withCron("low-stock-alert", () => run());
+export const GET = withCron("low-stock-alert", async () => {
+  // 고객 약속 알림을 여기 얹었다 — vercel 크론이 상한(40)이라 새 슬롯을 못 쓴다.
+  // run() 은 변동 없으면 조기 종료하므로 그 앞에서, 실패해도 재고 알림은 진행되게 분리한다.
+  try {
+    await notifyDuePromises();
+  } catch (e) {
+    console.warn("[low-stock-alert] 약속 알림 실패:", e instanceof Error ? e.message : String(e));
+  }
+  return run();
+});
 
 export async function POST() {
   try {

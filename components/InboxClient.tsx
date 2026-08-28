@@ -26,8 +26,11 @@ import {
   X,
   RotateCcw,
   Wrench,
+  CalendarClock,
 } from "lucide-react";
 import AsIntakeForm from "@/components/AsIntakeForm";
+import PromiseForm from "@/components/PromiseForm";
+import type { CsPromise } from "@/lib/cs/promises";
 import type {
   CsThread,
   CsMessage,
@@ -141,6 +144,7 @@ interface ThreadDetail {
   thread: CsThread;
   messages: CsMessage[];
   csReturn?: CsReturn | null;
+  csPromises?: CsPromise[] | null;
 }
 
 interface ContextData {
@@ -204,10 +208,27 @@ export default function InboxClient() {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const [asFormOpen, setAsFormOpen] = useState(false);
+  const [promiseFormOpen, setPromiseFormOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const completePromise = async (id: string) => {
+    try {
+      const res = await fetch("/api/cs/promises", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "done" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "처리 실패");
+      if (selectedId) await refreshDetail(selectedId);
+      showToast("약속을 완료 처리했습니다");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "약속 처리 실패");
+    }
   };
 
   const loadCounts = useCallback(async () => {
@@ -662,6 +683,8 @@ export default function InboxClient() {
               onNotCs={() => markNotCs(false)}
               onBlockSender={() => markNotCs(true)}
               onCreateAs={() => setAsFormOpen(true)}
+              onCreatePromise={() => setPromiseFormOpen(true)}
+              onPromiseDone={completePromise}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-zinc-400">
@@ -881,6 +904,8 @@ export default function InboxClient() {
             onNotCs={() => markNotCs(false)}
             onBlockSender={() => markNotCs(true)}
             onCreateAs={() => setAsFormOpen(true)}
+            onCreatePromise={() => setPromiseFormOpen(true)}
+            onPromiseDone={completePromise}
             returnBusy={returnBusy}
             onReturnAction={onReturnAction}
           />
@@ -932,7 +957,64 @@ export default function InboxClient() {
           }}
         />
       )}
+
+      {promiseFormOpen && detail && (
+        <PromiseForm
+          initial={{
+            threadId: detail.thread.id,
+            customerName: detail.csReturn?.customer_name ?? detail.thread.customer_name,
+            customerHandle: detail.thread.customer_handle,
+            orderNumber: detail.csReturn?.order_number ?? null,
+            seller: CHANNEL_LABEL[detail.thread.channel],
+          }}
+          onClose={() => setPromiseFormOpen(false)}
+          onCreated={async (message) => {
+            setPromiseFormOpen(false);
+            if (selectedId) await refreshDetail(selectedId);
+            showToast(message);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * 약속 배너 — 이 대화에서 한 약속을 대화 맨 위에 붙여 둔다.
+ * 답장하러 스레드를 열면 무조건 눈에 들어와야 해서 메시지 위, 헤더 바로 아래에 둔다.
+ */
+function PromiseBanner({
+  promises,
+  onDone,
+}: {
+  promises: CsPromise[];
+  onDone: (id: string) => void;
+}) {
+  return (
+    <div className="px-5 py-2.5 border-b border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 space-y-1.5">
+      {promises.map((p) => (
+        <div key={p.id} className="flex items-start gap-2 text-xs">
+          <CalendarClock size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <span className="font-semibold text-amber-900 dark:text-amber-200">약속</span>
+            <span className="text-amber-900 dark:text-amber-100"> · {p.text}</span>
+            {(p.dueOn || p.orderNumber) && (
+              <span className="text-amber-700/80 dark:text-amber-400/80">
+                {p.dueOn ? ` · 마감 ${p.dueOn}` : ""}
+                {p.orderNumber ? ` · 주문 ${p.orderNumber}` : ""}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => onDone(p.id)}
+            className="shrink-0 px-2 py-0.5 rounded-md font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            title="약속 이행 완료로 표시"
+          >
+            완료
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1024,6 +1106,8 @@ function ThreadDetailView({
   onNotCs,
   onBlockSender,
   onCreateAs,
+  onCreatePromise,
+  onPromiseDone,
   returnBusy,
   onReturnAction,
 }: {
@@ -1042,10 +1126,13 @@ function ThreadDetailView({
   onNotCs: () => void;
   onBlockSender: () => void;
   onCreateAs: () => void;
+  onCreatePromise: () => void;
+  onPromiseDone: (id: string) => void;
   returnBusy?: string | null;
   onReturnAction?: (action: string) => void;
 }) {
   const { thread, messages, csReturn } = detail;
+  const openPromises = (detail.csPromises ?? []).filter((p) => p.status !== "done");
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
 
@@ -1096,6 +1183,14 @@ function ThreadDetailView({
           </div>
           {/* 액션 버튼 — 좁은 폭에서는 아이콘만 보이도록 (lg 이상에서 라벨 표시) */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={onCreatePromise}
+              className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 flex items-center gap-1"
+              title="이 대화에서 한 약속을 저장 — 지정한 날 알림 + 출고 화면 경고"
+            >
+              <CalendarClock size={12} />
+              <span className="max-lg:hidden lg:inline">약속</span>
+            </button>
             <button
               onClick={onCreateAs}
               className="p-1.5 lg:px-2.5 lg:py-1.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300 flex items-center gap-1"
@@ -1156,6 +1251,8 @@ function ThreadDetailView({
           </div>
         </div>
       </header>
+
+      {openPromises.length > 0 && <PromiseBanner promises={openPromises} onDone={onPromiseDone} />}
 
       <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
         {isReturn ? (
@@ -1998,6 +2095,8 @@ function MobileThreadDetailView({
   onNotCs,
   onBlockSender,
   onCreateAs,
+  onCreatePromise,
+  onPromiseDone,
 }: {
   detail: ThreadDetail;
   context: ContextData | null;
@@ -2018,8 +2117,11 @@ function MobileThreadDetailView({
   onNotCs: () => void;
   onBlockSender: () => void;
   onCreateAs: () => void;
+  onCreatePromise: () => void;
+  onPromiseDone: (id: string) => void;
 }) {
   const { thread, messages } = detail;
+  const openPromises = (detail.csPromises ?? []).filter((p) => p.status !== "done");
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
   const customerName = thread.customer_name || thread.customer_handle || "알 수 없음";
@@ -2080,6 +2182,16 @@ function MobileThreadDetailView({
               onClick={() => setActionsOpen(false)}
             />
             <div className="absolute top-12 right-2 z-50 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 py-1 w-48 animate-in fade-in slide-in-from-top-1">
+              <button
+                onClick={() => {
+                  setActionsOpen(false);
+                  onCreatePromise();
+                }}
+                className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-amber-700 dark:text-amber-400 active:bg-amber-50 dark:active:bg-amber-900/20"
+              >
+                <CalendarClock size={14} />
+                약속 남기기
+              </button>
               <button
                 onClick={() => {
                   setActionsOpen(false);
@@ -2168,6 +2280,8 @@ function MobileThreadDetailView({
           </div>
         </div>
       )}
+
+      {openPromises.length > 0 && <PromiseBanner promises={openPromises} onDone={onPromiseDone} />}
 
       {/* 메시지 영역 */}
       <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-4 bg-zinc-50 dark:bg-zinc-950">

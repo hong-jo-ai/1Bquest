@@ -6,6 +6,7 @@
 import { type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { refreshShipmentTracking } from "@/lib/postParcel/refreshTracking";
+import { promisesByOrder } from "@/lib/cs/promises";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 종추적 갱신이 건수만큼 순차 호출되므로 여유 확보
@@ -50,7 +51,24 @@ export async function GET(req: NextRequest) {
 
   const counts: Record<string, number> = {};
   for (const r of data ?? []) counts[r.status] = (counts[r.status] ?? 0) + 1;
-  return Response.json({ shipments: data ?? [], counts });
+
+  // 고객 약속(쇼핑백 동봉 등)을 주문번호로 붙인다 — 포장·발송할 때 눈에 띄라고.
+  // pp_shipments 컬럼이 아니라 kv 조인이라 마이그레이션 없이 동작한다.
+  // ⚠️ 약속 조회가 깨져도 접수내역 자체는 떠야 한다 → 실패는 삼킨다.
+  let shipments = data ?? [];
+  try {
+    const byOrder = await promisesByOrder();
+    if (byOrder.size) {
+      shipments = shipments.map((s) => {
+        const hits = byOrder.get(String(s.order_number ?? "").trim());
+        return hits?.length ? { ...s, promises: hits.map((p) => p.text) } : s;
+      });
+    }
+  } catch (e) {
+    console.warn("[shipments] 약속 조회 실패:", e instanceof Error ? e.message : String(e));
+  }
+
+  return Response.json({ shipments, counts });
  } catch (e) {
   // 어떤 경우에도 JSON 으로 응답 (클라이언트 res.json() 깨짐 방지)
   return Response.json({ error: (e as Error)?.message || "접수내역 조회 중 오류" }, { status: 500 });

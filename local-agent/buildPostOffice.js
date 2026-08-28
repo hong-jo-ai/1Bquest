@@ -273,8 +273,13 @@ async function collectOutboundRows(){
   const rows=notHeld.filter(r=>!isPreorderProduct(r.prod));
   const preCount=notHeld.length-rows.length;
   if(preCount) log(`예약판매 상품명 ${preCount}행 제외(상품명에 예약/재입고 표시)`);
+  // 고객 약속(쇼핑백 동봉 등) 표시 — 제외가 아니라 경고다. 출고는 그대로 나간다.
+  const promises=await require("./postParcel/promiseOrders").promiseMap();
+  if(promises.size) for(const r of rows) r.promise=(promises.get(String(r.order).trim())||[]).join(" / ")||null;
+  const promiseRows=rows.filter(r=>r.promise);
+  if(promiseRows.length) log(`⚠️ 약속 있는 주문 ${promiseRows.length}행 — 포장 시 확인 필요`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, heldCount, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
+  return { rows, heldCount, promiseRows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient };
@@ -283,14 +288,14 @@ module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipie
 async function main(){
   const today = new Date();
   const date = process.env.PO_DATE || `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}${String(today.getDate()).padStart(2,"0")}`;
-  const { rows, counts, heldCount } = await collectOutboundRows();
+  const { rows, counts, heldCount, promiseRows } = await collectOutboundRows();
   // 합배송: 동일 수취인의 여러 주문/상품을 송장 1장(엑셀 1행)으로. 접수도 register.js 가 수취인별로 묶음.
   const ex = mergeByRecipient(rows);
   const aoa=[HEADER, ...ex.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
   const merged = rows.length - ex.length;
-  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})${heldCount?`\n⏸ 발송보류 ${heldCount}행 제외 (품절·예약판매 대기)`:""}`;
+  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})${heldCount?`\n⏸ 발송보류 ${heldCount}행 제외 (품절·예약판매 대기)`:""}${promiseRows&&promiseRows.length?`\n⚠️ 약속 있는 주문 ${promiseRows.length}건 — 포장 시 확인:\n${promiseRows.map(r=>`  · ${r.name}(${r.order}): ${r.promise}`).join("\n")}`:""}`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
   ex.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
