@@ -78,10 +78,13 @@ async function notifyActionable(): Promise<number> {
 }
 
 async function cronMain() {
+  // 사장님이 메타에서 직접 조치한 건을 먼저 닫는다 — 평가 전에 해야 브리핑·카드가 깨끗해진다.
+  const { reconcilePendingRecommendations } = await import("@/lib/mads/reconcile");
+  const reconciled = await reconcilePendingRecommendations();
   const result = await runEvaluationCycle();
   let cards = 0;
   try { cards = await notifyActionable(); } catch (e) { console.error("[mads-evaluate] 카드 발송 실패:", e); }
-  return Response.json({ ...result, telegramCards: cards }, { status: result.ok ? 200 : 500 });
+  return Response.json({ ...result, telegramCards: cards, reconciled }, { status: result.ok ? 200 : 500 });
 }
 
 /**

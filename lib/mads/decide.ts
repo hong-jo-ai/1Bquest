@@ -56,7 +56,13 @@ export async function decideRecommendation(
       },
     };
     const apply = await applyRecommendationAction(recForApply);
-    await setRecommendationStatus(recommendationId, "accepted", apply);
+    // ⚠️ 실패했으면 accepted 로 닫지 않는다 — 닫아버리면 "껐다"고 표시된 채 광고는 계속 돈다.
+    //    pending 으로 남겨야 다음 알림에서 다시 눈에 띈다(2026-08-28).
+    if (apply.ok) {
+      await setRecommendationStatus(recommendationId, "accepted", apply);
+    } else {
+      console.error("[mads-decide] Meta 적용 실패 — pending 유지:", recommendationId, apply.error);
+    }
     const budgetTxt = rec.currentBudget && rec.recommendedBudget
       ? ` (${Math.round(rec.currentBudget).toLocaleString()}→${Math.round(rec.recommendedBudget).toLocaleString()}원)`
       : "";

@@ -406,6 +406,19 @@ export async function listRecommendations(
   });
 }
 
+/**
+ * 광고세트 상태만 갱신 — 사장님이 메타에서 직접 끈 것을 확인했을 때 쓴다(reconcile.ts).
+ * 전체 upsert 를 돌리지 않고 상태만 맞춰, 다음 사이클까지 같은 판정을 반복하지 않게 한다.
+ */
+export async function updateAdSetStatus(metaAdsetId: string, status: string): Promise<void> {
+  const db = getDb();
+  const { error } = await db
+    .from("mads_ad_sets")
+    .update({ status, last_synced_at: new Date().toISOString() })
+    .eq("meta_adset_id", metaAdsetId);
+  if (error) throw new Error("adset status update: " + error.message);
+}
+
 export async function setRecommendationStatus(
   id: string,
   status: RecStatus,

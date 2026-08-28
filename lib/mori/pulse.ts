@@ -99,9 +99,18 @@ async function detectSignals(state: PulseState): Promise<{ signals: Signal[]; ne
 
   // ── 광고: MADS 신규(actionable) 추천 ──
   try {
+    // ⚠️ 먼저 "이미 처리된" 추천을 닫는다. 사장님이 메타에서 직접 끄면 그 세트는 평가 대상에서
+    //    빠져 새 추천이 안 생기고 → 기존 pending 이 superseded 되지 않아 36시간 남는다.
+    //    여기는 30분마다 도는 경로라, 그걸 그대로 읽으면 이미 끈 광고를 2시간마다 다시 알린다
+    //    (사장님 반복 불만, 2026-08-28 수정).
+    const { reconcilePendingRecommendations } = await import("@/lib/mads/reconcile");
+    await reconcilePendingRecommendations();
+
     const recs = await listRecommendations("pending", 50);
     for (const r of recs) {
       if (!T.ads.actionableTypes.includes(r.actionType)) continue; // 'hold' 등 제외
+      // 꺼진 세트엔 조치할 게 없다. 화해가 실패했을 때를 위한 2중 가드(상태 미상은 통과).
+      if (r.adset?.status && r.adset.status !== "ACTIVE") continue;
       const roas = r.trust?.roas7d;
       const cur = r.currentBudget != null ? won(r.currentBudget) : "?";
       const rec = r.recommendedBudget != null ? won(r.recommendedBudget) : "?";

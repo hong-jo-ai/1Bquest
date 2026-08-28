@@ -88,6 +88,8 @@ export async function sendMadsTelegramBrief(): Promise<{ sent: boolean; reason?:
   const actionCounts = new Map<ActionType, number>();
   for (const r of pending) {
     if (r.actionType === "hold") continue;
+    // 이미 꺼진 세트는 조치할 게 없다 — 브리핑 숫자에서도 뺀다(상태 미상은 통과).
+    if (r.adset?.status && r.adset.status !== "ACTIVE") continue;
     actionCounts.set(r.actionType, (actionCounts.get(r.actionType) ?? 0) + 1);
   }
   const recSummary = [...actionCounts.entries()]
