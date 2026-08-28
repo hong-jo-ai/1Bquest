@@ -84,7 +84,23 @@ async function cronMain() {
   return Response.json({ ...result, telegramCards: cards }, { status: result.ok ? 200 : 500 });
 }
 
-export const GET = withCron("mads-evaluate", () => cronMain());
+/**
+ * 크론 경로만 아침 브리핑까지 이어서 보낸다 — 예전엔 09:35 에 mads-telegram-brief 크론이
+ * 따로 돌았는데, 브리핑 내용이 전부 이 평가 결과에서 파생돼 순차 실행이 더 정확하다
+ * (평가가 늦어져도 낡은 데이터로 브리핑하지 않는다). 슬롯도 하나 아낀다(2026-08-28).
+ * ⚠️ 아래 POST(대시보드 "재평가" 버튼)에는 넣지 않는다 — 버튼 누를 때마다 브리핑이 가면 안 된다.
+ * ⚠️ 브리핑 실패가 평가 결과를 5xx 로 만들면 안 된다 → 삼킨다.
+ */
+export const GET = withCron("mads-evaluate", async () => {
+  const res = await cronMain();
+  try {
+    const { sendMadsTelegramBrief } = await import("@/lib/mads/telegramBrief");
+    await sendMadsTelegramBrief();
+  } catch (e) {
+    console.error("[mads-evaluate] 아침 브리핑 실패:", e instanceof Error ? e.message : String(e));
+  }
+  return res;
+});
 
 // 대시보드 "재평가" 버튼용 수동 트리거 (기존 GET 공개호출 → POST 이전)
 export async function POST() {

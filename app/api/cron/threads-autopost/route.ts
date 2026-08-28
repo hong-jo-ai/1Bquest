@@ -1,4 +1,5 @@
-export const maxDuration = 45;
+// 3개 브랜드를 한 번에 순차 처리한다(크론 슬롯 절약) — 영상 게시는 최대 30초 폴링이라 여유를 크게 준다.
+export const maxDuration = 180;
 
 import { NextResponse } from "next/server";
 import { getThreadsTokenFromStore, refreshThreadsTokenIfNeeded } from "@/lib/threadsTokenStore";
@@ -176,4 +177,39 @@ async function cronMain(request: Request) {
   }
 }
 
-export const GET = withCron("threads-autopost", (req) => cronMain(req));
+const ALL_BRANDS: BrandId[] = ["paulvice", "harriot", "hongsungjo"];
+
+/**
+ * 브랜드 3개를 한 번의 크론으로 처리한다 — 예전엔 :15/:35/:55 로 3개 엔트리를 썼는데
+ * 게시 여부는 `shouldPostNow(brand, UTC시)` 가 **시(hour)** 로만 판단해서 분 오프셋은 의미가 없었다.
+ * (Vercel 크론 상한이 빠듯해 슬롯을 회수, 2026-08-28)
+ *
+ * ⚠️ 반드시 순차 실행 — 큐(kv 한 행)를 read-modify-write 하므로 병렬이면 게시글이 유실된다.
+ * ⚠️ 브랜드별로 try/catch — 한 브랜드 토큰 만료가 나머지 브랜드 게시를 막으면 안 된다.
+ */
+export const GET = withCron("threads-autopost", async (req) => {
+  const requested = new URL(req.url).searchParams.get("brand") as BrandId | null;
+  const brands = requested ? [requested] : ALL_BRANDS;
+
+  const results: Array<Record<string, unknown>> = [];
+  let failed = 0;
+  for (const brand of brands) {
+    try {
+      const url = new URL(req.url);
+      url.searchParams.set("brand", brand);
+      const res = await cronMain(new Request(url.toString(), { headers: req.headers }));
+      const body = (await res.json()) as Record<string, unknown>;
+      results.push({ brand, status: res.status, ...body });
+      if (res.status >= 500) failed++;
+    } catch (e) {
+      failed++;
+      results.push({ brand, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // 전부 실패했을 때만 5xx — 일부 브랜드 실패로 withCron 실패알림이 울리면 알림이 무뎌진다.
+  return NextResponse.json(
+    { success: failed < brands.length, brands: brands.length, failed, results },
+    { status: failed === brands.length ? 500 : 200 }
+  );
+});

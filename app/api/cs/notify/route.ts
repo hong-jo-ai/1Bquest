@@ -40,18 +40,32 @@ export async function POST(req: Request) {
     }
   }
 
+  // 미답변 이메일 다이제스트 — 예전엔 /api/cs/notify/email 크론이 **같은 시각**에 따로 돌았다.
+  // 크론 슬롯이 빠듯해 여기로 합쳤다(2026-08-28). 워터마크가 서로 달라 텔레그램과 간섭하지 않는다.
+  // ⚠️ 주말 게이트 '앞'에 둔다 — 이메일 다이제스트는 원래 주말에도 나갔다.
+  // ⚠️ /api/cs/notify/email 라우트 자체는 남긴다(인스타·Crisp 웹훅이 직접 POST 한다).
+  let emailDigest: unknown = null;
+  if (mode !== "stale") {
+    try {
+      const { emailNewUnanswered } = await import("@/lib/cs/emailNotify");
+      emailDigest = await emailNewUnanswered();
+    } catch (e) {
+      console.warn("[cs-notify] 이메일 다이제스트 오류:", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // 주말(한국시간 토·일)에는 CS 알림을 보내지 않음 (사장님 요청).
   // notify 함수를 호출하지 않아 last_notify 워터마크가 전진하지 않음 →
   // 월요일 첫 실행 때 주말 동안 쌓인 미답변까지 한 번에 통지됨(알림 유실 없음).
   const kstDay = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay(); // 0=일,6=토 (KST 기준)
   if (kstDay === 0 || kstDay === 6) {
-    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0, webchatSweep, asSweep });
+    return Response.json({ ok: true, mode, skipped: "weekend", sent: 0, webchatSweep, asSweep, emailDigest });
   }
 
   try {
     const result =
       mode === "stale" ? await notifyStaleUnanswered() : await notifyNewUnanswered();
-    return Response.json({ ok: true, mode, ...result, webchatSweep, asSweep });
+    return Response.json({ ok: true, mode, ...result, webchatSweep, asSweep, emailDigest });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return Response.json({ ok: false, error: msg }, { status: 500 });

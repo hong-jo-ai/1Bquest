@@ -6,11 +6,7 @@
     },
     {
       "path": "/api/cron/promo-analyze",
-      "schedule": "10 0 * * 1,2,3,4,5"
-    },
-    {
-      "path": "/api/cron/promo-analyze",
-      "schedule": "0 5 * * 1,2,3,4,5"
+      "schedule": "0 0,5 * * 1,2,3,4,5"
     },
     {
       "path": "/api/cron/promo-deadline-check",
@@ -37,16 +33,8 @@
       "schedule": "0 0,5,12 * * *"
     },
     {
-      "path": "/api/cron/threads-autopost?brand=paulvice",
+      "path": "/api/cron/threads-autopost",
       "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=harriot",
-      "schedule": "35 * * * *"
-    },
-    {
-      "path": "/api/cron/threads-autopost?brand=hongsungjo",
-      "schedule": "55 * * * *"
     },
     {
       "path": "/api/cron/threads-monitor",
@@ -55,10 +43,6 @@
     {
       "path": "/api/cs/ingest/threads",
       "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cs/ingest/crisp",
-      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cs/ingest/instagram",
@@ -85,20 +69,12 @@
       "schedule": "30 0-11 * * *"
     },
     {
-      "path": "/api/cs/notify/email",
-      "schedule": "0 0-11 * * *"
-    },
-    {
       "path": "/api/cron/mads-evaluate",
       "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/mads-daily-report",
       "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/cron/mads-telegram-brief",
-      "schedule": "35 0 * * *"
     },
     {
       "path": "/api/cron/kakao-gift-po-sync",
@@ -111,10 +87,6 @@
     {
       "path": "/api/cron/revenue-snapshot",
       "schedule": "30 18 * * *"
-    },
-    {
-      "path": "/api/cron/bysoy-daily-report",
-      "schedule": "0 15 * * *"
     },
     {
       "path": "/api/cron/low-stock-alert",
@@ -134,7 +106,7 @@
     },
     {
       "path": "/api/cron/crm-cart-nudge",
-      "schedule": "23 * * * *"
+      "schedule": "23 1,4,7,10 * * *"
     },
     {
       "path": "/api/alba/ask",
