@@ -1,0 +1,16 @@
+{
+  "name": "하루 한 장",
+  "short_name": "TODAY",
+  "description": "폴바이스·해리엇·아르스·개인 아침 업무 보드",
+  "id": "/?app=today",
+  "start_url": "/today",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d4a42",
+  "theme_color": "#0d4a42",
+  "icons": [
+    { "src": "/app-icon-today-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app-icon-today-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app-icon-today-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
