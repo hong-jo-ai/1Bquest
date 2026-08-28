@@ -8,7 +8,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { classifySession } from "./classify";
 import { staleDaysSince } from "./date";
-import type { ActivityScan, ActivityThread, Domain, RawSession } from "./types";
+import type { ActivityScan, ActivityThread, Domain, RawSession, WorkItem } from "./types";
 
 /** 호스트별 키 접두사 — today:cc_activity:<host>. 구 단일 키(today:cc_activity)도 같이 잡힌다. */
 export const ACTIVITY_PREFIX = "today:cc_activity";
@@ -20,6 +20,8 @@ export const ACTIVITY_PREFIX = "today:cc_activity";
 export const WINDOW_DAYS = 7;
 export const OVERRIDES_KEY   = "today:domain_overrides";
 export const CLOSED_KEY    = "today:closed_threads";
+/** claudeWorkDigest.js 가 세션 발화를 "일" 단위로 쪼개 넣는 곳 */
+export const WORK_KEY      = "today:cc_work";
 
 /**
  * 닫은 줄기 기록. { 줄기id: 닫을 당시의 lastTouchedAt }
@@ -84,6 +86,46 @@ export function buildThreads(
   );
 }
 
+/**
+ * "일" 항목을 줄기로 바꾼다. 세션 제목 기반 묶음을 대체한다 —
+ * 한 세션에 여러 일이 섞여 있어 제목 하나로는 대부분이 사라졌다.
+ * 같은 제목의 일은 여러 세션에 걸쳐 있어도 하나로 합친다.
+ */
+export function buildThreadsFromWork(items: WorkItem[]): ActivityThread[] {
+  const groups = new Map<string, { rows: WorkItem[]; domain: Domain }>();
+  for (const it of items) {
+    if (!it.title) continue;
+    const key = `${it.domain}:${titleKey(it.title)}`;
+    const g = groups.get(key);
+    if (g) g.rows.push(it);
+    else groups.set(key, { rows: [it], domain: it.domain });
+  }
+
+  const threads: ActivityThread[] = [];
+  for (const [key, g] of groups) {
+    const rows = g.rows.sort((a, b) => (b.lastAt || "").localeCompare(a.lastAt || ""));
+    const latest = rows[0];
+    threads.push({
+      id:            `work:${key}`,
+      title:         latest.title,
+      domain:        g.domain,
+      side:          false,
+      sessions:      new Set(rows.map((r) => r.sessionId)).size,
+      lastTouchedAt: latest.lastAt,
+      staleDays:     staleDaysSince(latest.lastAt),
+      // 한 번이라도 미완으로 잡혔으면 미완으로 둔다 — 완료로 잘못 접히는 쪽이 더 나쁘다.
+      done:          rows.every((r) => r.done),
+      due:           rows.map((r) => r.due).find(Boolean) || "",
+    });
+  }
+
+  return threads.sort(
+    (a, b) => Number(a.done) - Number(b.done) ||
+              b.lastTouchedAt.localeCompare(a.lastTouchedAt) ||
+              b.sessions - a.sessions,
+  );
+}
+
 export interface ActivityResult {
   scannedAt: string | null;
   threads: ActivityThread[];
@@ -121,7 +163,7 @@ export async function getActivity(): Promise<ActivityResult> {
 
   const [scansRes, etcRes] = await Promise.all([
     db.from("kv_store").select("key, data").like("key", `${ACTIVITY_PREFIX}%`),
-    db.from("kv_store").select("key, data").in("key", [OVERRIDES_KEY, CLOSED_KEY]),
+    db.from("kv_store").select("key, data").in("key", [OVERRIDES_KEY, CLOSED_KEY, WORK_KEY]),
   ]);
   if (scansRes.error) return { scannedAt: null, threads: [], closedCount: 0, error: scansRes.error.message };
   if (etcRes.error)   return { scannedAt: null, threads: [], closedCount: 0, error: etcRes.error.message };
@@ -147,7 +189,13 @@ export async function getActivity(): Promise<ActivityResult> {
   const overrides = (map.get(OVERRIDES_KEY) ?? {}) as Record<string, Domain>;
   const closed    = (map.get(CLOSED_KEY) ?? {}) as ClosedMap;
 
-  const all  = buildThreads([...bySession.values()], overrides);
+  // 일 단위 결과가 있으면 그걸 쓴다. 없으면(요약이 아직 안 돌았거나 실패) 세션 제목으로
+  // 떨어져 최소한 화면이 비지는 않게 한다.
+  const work = map.get(WORK_KEY) as { bySession?: Record<string, { items?: WorkItem[] }> } | undefined;
+  const workItems = Object.values(work?.bySession ?? {}).flatMap((v) => v.items ?? []);
+  const all = workItems.length
+    ? buildThreadsFromWork(workItems)
+    : buildThreads([...bySession.values()], overrides);
   // 닫은 뒤로 새 세션이 붙은 줄기는 다시 살린다 — 일이 재개된 것이므로.
   // 기간 밖으로 밀려난 것과 사람이 끝냄 처리한 것은 다르다. 섞어 세면
   // 화면의 "끝냄" 숫자가 실제 누른 횟수와 무관해진다.

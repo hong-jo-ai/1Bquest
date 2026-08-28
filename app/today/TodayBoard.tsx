@@ -448,7 +448,9 @@ function DomainColumn({
         <>
           <p className="flex items-baseline justify-between border-t border-zinc-100 px-4 pt-2.5 font-mono text-[9.5px] uppercase tracking-[0.11em] text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
             <span>최근 작업 · 클로드 코드</span>
-            <span className="normal-case tracking-normal">{fresh.length}</span>
+            <span className="normal-case tracking-normal">
+              미완 {fresh.filter((t) => !t.done).length} / {fresh.length}
+            </span>
           </p>
           <ul className="max-h-72 overflow-y-auto px-4 pb-1 pt-1">
             {fresh.map((t) => (
@@ -458,12 +460,22 @@ function DomainColumn({
                   title="오늘 할일로 올리기"
                   className="mt-[3px] h-3.5 w-3.5 shrink-0 rounded-[3px] border-[1.5px] border-dashed border-zinc-300 hover:border-teal-600 dark:border-zinc-600 dark:hover:border-teal-400"
                 />
-                {/* 잘라내지 않는다 — 무슨 일이었는지 읽을 수 없으면 끝났는지 판단할 수가 없다. */}
-                <span className="break-words text-[12.5px] leading-snug text-zinc-500 dark:text-zinc-400">
+                {/* 잘라내지 않는다 — 무슨 일이었는지 읽을 수 없으면 끝났는지 판단할 수가 없다.
+                    완료로 잡힌 것도 숨기지 않는다. 판정이 틀렸을 때 일이 사라지면 안 된다. */}
+                <span className={`break-words text-[12.5px] leading-snug ${
+                  t.done ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-500 dark:text-zinc-400"
+                }`}>
                   {t.title}
+                  {t.due && (
+                    <span className={`ml-1.5 whitespace-nowrap rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                      daysUntil(t.due) < 0 ? TONE.late : daysUntil(t.due) <= 3 ? TONE.soon : TONE.none
+                    }`}>
+                      {daysUntil(t.due) < 0 ? `${-daysUntil(t.due)}일 지연` : daysUntil(t.due) === 0 ? "오늘 마감" : `D-${daysUntil(t.due)}`}
+                    </span>
+                  )}
                 </span>
                 <span className="mt-[2px] whitespace-nowrap font-mono text-[10px] text-zinc-400 dark:text-zinc-600">
-                  {t.staleDays === 0 ? "오늘" : `${t.staleDays}일`}
+                  {t.done ? "✓" : t.staleDays === 0 ? "오늘" : `${t.staleDays}일`}
                 </span>
                 <button
                   onClick={() => onClose(t)}

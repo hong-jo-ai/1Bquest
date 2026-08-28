@@ -65,4 +65,20 @@ export interface ActivityThread {
   lastTouchedAt: string;
   /** 오늘(KST) 기준 며칠째 안 건드렸는지. 0 = 오늘도 했음 */
   staleDays: number;
+  /** 대화에서 마무리했다고 말한 일. 숨기지는 않고 흐리게 보여준다 — 오판이면 사라지면 안 된다. */
+  done?: boolean;
+  /** YYYY-MM-DD. 대화에 마감이 언급된 경우만. */
+  due?: string;
+}
+
+/** claudeWorkDigest.js 가 세션 발화를 쪼개 만든 "일" 한 건 */
+export interface WorkItem {
+  title: string;
+  domain: Domain;
+  done: boolean;
+  due: string;
+  /** ISO — 이 일이 마지막으로 언급된 시각 */
+  lastAt: string;
+  sessionId: string;
+  projectDir: string;
 }

@@ -3,9 +3,13 @@
  *
  *   node claudeActivityScan.js [--days 21] [--dry]
  *
- * ~/.claude/projects/<프로젝트>/<세션>.jsonl 을 훑어 세션마다 제목과 마지막으로 만진 시각을
- * 뽑아 kv_store(today:cc_activity)에 적재한다. 분류·묶음은 서버(lib/today/activity.ts)가 한다 —
- * 규칙을 한 군데만 두려고 여기서는 원본만 넘긴다.
+ * ~/.claude/projects/<프로젝트>/<세션>.jsonl 을 훑어 제목·시각과 함께 **사용자 발화 전체**를
+ * 뽑아 kv_store(today:cc_activity:<host>)에 적재한다.
+ *
+ * 발화를 통째로 담는 이유: 사장님은 터미널 한 세션에서 CS·개발·재무·기획을 다 한다.
+ * 세션 제목 하나로는 그 안의 일들이 통째로 사라진다(실측: "김예성 반품 회수 완료" 제목
+ * 아래 54턴에 서로 다른 일 14건, 그중 "박대원 부채상환계획서 금요일 마감"이 묻혔다).
+ * 발화를 일 단위로 쪼개는 건 claudeWorkDigest.js 가 클로드에게 맡긴다.
  *
  * 이 파일들은 로컬 맥에만 있어서 배포된 대시보드가 직접 읽을 수 없다. 그래서 스캐너가 필요하다.
  */
@@ -40,22 +44,26 @@ function aiTitle(file) {
   return title;
 }
 
-/** ai-title 이 없는 세션의 폴백 — 첫 실제 사용자 발화. 훅·시스템 주입은 건너뛴다. */
-function firstUserText(file, maxLines = 400) {
-  let i = 0;
+/**
+ * 사람이 실제로 친 발화만 시각과 함께 뽑는다.
+ * 훅 주입·시스템 리마인더·중단 알림은 사람 말이 아니라 걸러낸다.
+ */
+function userTurns(file) {
+  const turns = [];
   for (const line of readLines(file)) {
-    if (++i > maxLines) break;
     if (!line.includes('"type":"user"')) continue;
     let o; try { o = JSON.parse(line); } catch { continue; }
     if (o.type !== "user" || o.isSidechain) continue;
     let c = o.message && o.message.content;
     if (Array.isArray(c)) c = c.filter((b) => b && b.type === "text").map((b) => b.text).join(" ");
     if (typeof c !== "string") continue;
-    const t = c.trim();
-    if (!t || t.startsWith("<") || t.startsWith("Caveat:") || t.slice(0, 200).includes("system-reminder")) continue;
-    return t.replace(/\s+/g, " ").slice(0, 140);
+    const t = c.replace(/\s+/g, " ").trim();
+    if (!t) continue;
+    if (t.startsWith("<") || t.startsWith("Caveat:") || t.startsWith("[Request interrupted")) continue;
+    if (t.slice(0, 200).includes("system-reminder")) continue;
+    turns.push({ at: o.timestamp || null, text: t.slice(0, 600) });
   }
-  return null;
+  return turns;
 }
 
 /** 11MB 짜리 세션도 있어서 통째로 안 올리고 청크로 흘려 읽는다. */
@@ -89,7 +97,8 @@ function scan() {
       if (st.mtimeMs < cutoff) continue;
 
       const t = aiTitle(file);
-      const title = t || firstUserText(file);
+      const turns = userTurns(file);
+      const title = t || (turns[0] && turns[0].text.slice(0, 140));
       if (!title) continue; // 제목도 발화도 못 뽑은 세션은 보드에 띄울 게 없다
 
       out.push({
@@ -98,6 +107,7 @@ function scan() {
         touchedAt:  new Date(st.mtimeMs).toISOString(),
         title,
         titled:     Boolean(t),
+        turns,
       });
     }
   }
@@ -109,7 +119,8 @@ function scan() {
   const sessions = scan();
   const payload = { scannedAt: new Date().toISOString(), host: HOST, sessions };
 
-  console.log(`세션 ${sessions.length}건 (최근 ${DAYS}일) · ${Date.now() - started}ms`);
+  const turnCount = sessions.reduce((n, s) => n + s.turns.length, 0);
+  console.log(`세션 ${sessions.length}건 · 발화 ${turnCount}턴 (최근 ${DAYS}일) · ${Date.now() - started}ms`);
   for (const s of sessions.slice(0, 10)) {
     console.log(`  ${s.touchedAt.slice(5, 16).replace("T", " ")} ${s.titled ? " " : "~"} ${s.projectDir.replace("-Users-mac-sungjo-ai", "~")}  ${s.title.slice(0, 50)}`);
   }
@@ -129,4 +140,16 @@ function scan() {
   await db.from("kv_store").delete().eq("key", LEGACY_KEY); // 구 키 정리(있을 때만)
   console.log(`적재 완료 → ${KEY}`);
   await beat("claude-activity-scan", { sessions: sessions.length, days: DAYS, host: HOST });
+
+  // 발화를 "일" 단위로 쪼개는 요약을 이어서 돌린다. 이쪽이 보드에 실제로 뜨는 내용이라
+  // 스캔만 하고 멈추면 화면이 옛 상태로 남는다. 세션별 발화 수를 캐시해 바뀐 것만 부른다.
+  try {
+    const { execFileSync } = require("child_process");
+    const out = execFileSync(process.execPath, [path.join(__dirname, "claudeWorkDigest.js"), "--days", "3"],
+      { encoding: "utf8", timeout: 15 * 60_000 });
+    console.log(out.trim().split("\n").slice(-3).map((l) => "  " + l).join("\n"));
+  } catch (e) {
+    // 요약이 실패해도 스캔 결과는 이미 적재됐다. 보드는 세션 제목으로 떨어져 동작한다.
+    console.error("[claudeActivityScan] 일 단위 요약 실패:", (e.message || "").slice(0, 200));
+  }
 })().catch((e) => { console.error("[claudeActivityScan]", e.message); process.exit(1); });

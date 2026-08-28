@@ -41,6 +41,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:alba-payroll-reminder", label: "알바 급여 리마인더(iMac·매일 18시)", maxHours: 28 },
   // /today 보드의 "진행 중인 일" 원천. 안 돌면 보드가 옛날 세션을 계속 보여줘 조용히 틀려진다.
   { key: "heartbeat:claude-activity-scan", label: "클로드 세션 스캔(iMac·매시)", maxHours: 3 },
+  // 세션 발화를 "일" 단위로 쪼개는 요약. 이게 멈추면 보드가 옛 목록에 머문다.
+  { key: "heartbeat:claude-work-digest", label: "클로드 작업 요약(iMac·매시)", maxHours: 4 },
   // 카톡 요약. 멈추면 보드가 며칠 전 대화를 오늘 것처럼 보여준다.
   { key: "heartbeat:kakao-digest", label: "카톡 대화 요약(iMac·매일)", maxHours: 28 },
   // 카톡 내보내기 UI 자동화. 화면 잠김·카톡 UI 변경에 취약해 감시가 특히 중요하다.
