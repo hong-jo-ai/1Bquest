@@ -33,14 +33,6 @@
       "schedule": "0 0,5,12 * * *"
     },
     {
-      "path": "/api/cron/threads-autopost",
-      "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/cron/threads-monitor",
-      "schedule": "0 23 * * *"
-    },
-    {
       "path": "/api/cs/ingest/threads",
       "schedule": "0 * * * *"
     },
@@ -73,10 +65,6 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/mads-daily-report",
-      "schedule": "30 0 * * *"
-    },
-    {
       "path": "/api/cron/kakao-gift-po-sync",
       "schedule": "0 6 * * *"
     },
@@ -103,10 +91,6 @@
     {
       "path": "/api/cron/review-sms-kr",
       "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/crm-cart-nudge",
-      "schedule": "23 1,4,7,10 * * *"
     },
     {
       "path": "/api/alba/ask",
