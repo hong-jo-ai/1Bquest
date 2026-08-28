@@ -155,6 +155,12 @@ const RULES: Rule[] = [
     ],
   },
   {
+    category: "매입",
+    patterns: [
+      /Alibaba|알리바바|AliExpress/i,        // 부품·샘플 해외 매입
+    ],
+  },
+  {
     category: "통신비",
     patterns: [
       /LGU|LG유플러스|유플러스|SKT|SK텔레콤|KT\s*통신|통신요금/i,
