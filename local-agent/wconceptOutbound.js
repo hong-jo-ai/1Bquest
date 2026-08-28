@@ -190,11 +190,21 @@ if (require.main === module) {
         console.log(`기존 캐시 ${prev.length}건과 병합 → ${merged.length}건`);
       } catch {}
     }
+    // ⚠️ 예전에는 0건이면 무조건 캐시를 보존했다(수집 실패로 캐시가 날아가는 걸 막으려던 것).
+    //    그런데 수집이 "성공했는데 0건"인 경우까지 옛 행이 살아남아, 이미 발송·배달완료된 주문이
+    //    매 런 우체국 양식에 다시 실렸다(이혜림 Z13268321이 8/26~8/28 계속 재등장, 접수 단계의
+    //    중복가드가 막아줘서 사고는 안 났지만 양식·집계가 계속 오염됐다).
+    //    → 여기까지 왔다는 건 수집이 예외 없이 끝났다는 뜻이므로 0건이면 캐시를 비운다.
+    //    단, 단일계정 실행(WC_ACCOUNT)은 반쪽 수집이라 기존 캐시를 건드리지 않는다.
     if (merged.length > 0) {
       fs.writeFileSync(FP, JSON.stringify(merged, null, 2));
       console.log("→ "+FP+" 저장 ("+merged.length+"건, 이번 실행 "+rows.length+"건)");
+    } else if (process.env.WC_ACCOUNT) {
+      console.log("0건 — 단일계정 실행이라 캐시 보존");
     } else {
-      console.log("0건 — 캐시 보존(덮어쓰기 안 함)");
+      const had = fs.existsSync(FP) ? (JSON.parse(fs.readFileSync(FP, "utf8") || "[]") || []).length : 0;
+      fs.writeFileSync(FP, "[]");
+      console.log(`0건 — 캐시 비움(이전 ${had}건 제거). 출고대기가 실제로 없다는 뜻.`);
     }
   }).catch(e => { console.error("ERR", e.message); process.exit(1); });
 }
