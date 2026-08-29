@@ -11,13 +11,13 @@
  *    동의를 강제하면 그 동의 자체가 무효가 된다.
  */
 import { type NextRequest } from "next/server";
-import { register, consumeSession, digits, isMobile } from "@/lib/care/store";
+import { register, consumeSession, assignSerial, serialsLeft, digits, isMobile } from "@/lib/care/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 
 export const dynamic = "force-dynamic";
 
-/** 스트랩 할인 쿠폰 — 카페24 쿠폰 발급 API 연동 전까지는 고정 코드로 운영한다. */
-const STRAP_COUPON = process.env.CARE_STRAP_COUPON || "CARE-STRAP";
+/** 시리얼 풀이 비었을 때만 쓰는 폴백 안내 문구 — 실제 쿠폰 코드는 care_coupon_serials 에서 배정한다. */
+const SERIAL_LOW_ALERT = 50;
 
 function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // 1인 1코드 배정(재등록이면 기존 코드 반환). 풀이 비면 null 이어도 등록은 계속 간다.
+    const coupon = await assignSerial(phone);
     const rec = await register({
       phone,
       product_no: b.productNo ?? null,
@@ -54,13 +56,22 @@ export async function POST(req: NextRequest) {
       product_other: b.productOther ?? null,
       ad_consent: !!b.adConsent,
       source: b.source ?? null,
-      coupon_code: STRAP_COUPON,
+      coupon_code: coupon,
     });
     // 등록은 드물게 일어나는 이벤트라 실시간으로 알린다(초기엔 반응을 봐야 한다).
     sendTelegramMessage(
       `🩺 <b>PAULVICE CARE 등록</b>\n${phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2")} · ${b.productName || b.productOther || "제품미상"}\n광고수신 ${b.adConsent ? "동의" : "미동의"}${b.source ? ` · 유입 ${b.source}` : ""}`,
     ).catch(() => {});
-    return Response.json({ ok: true, coupon: STRAP_COUPON, registered: !!rec }, { headers });
+    // 시리얼 소진 경보 — 다 떨어진 뒤 알면 늦다.
+    const left = await serialsLeft().catch(() => -1);
+    if (left >= 0 && (left === 0 || left === SERIAL_LOW_ALERT)) {
+      sendTelegramMessage(
+        left === 0
+          ? "🔴 <b>CARE 스트랩 쿠폰 시리얼 소진</b>\n관리자에서 추가 발급 후 CSV 를 넘겨주세요. 지금은 쿠폰 없이 등록만 됩니다."
+          : `⚠️ <b>CARE 쿠폰 시리얼 ${left}장 남음</b>\n여유 있을 때 추가 발급해 두세요.`,
+      ).catch(() => {});
+    }
+    return Response.json({ ok: true, coupon, registered: !!rec }, { headers });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500, headers });
   }

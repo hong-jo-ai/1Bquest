@@ -76,7 +76,7 @@ export default function CareClient({ source }: { source?: string }) {
         productOther: other ? "목록에 없음" : undefined,
         adConsent, source,
       });
-      setCoupon(j.coupon); setStep(4);
+      setCoupon(j.coupon ?? null); setStep(4);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally { setBusy(false); }
@@ -222,9 +222,15 @@ export default function CareClient({ source }: { source?: string }) {
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 10px" }}>등록 완료</h1>
           <p style={{ fontSize: 15, color: "#333", margin: "0 0 36px" }}>배터리 교체 1회 무료가 적용되었습니다</p>
           <div style={{ background: "#111", color: "#fff", borderRadius: 4, padding: "26px 20px", marginBottom: 20 }}>
-            <div style={{ fontSize: 12, letterSpacing: "0.18em", color: GRAY, marginBottom: 10 }}>STRAP COUPON</div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "0.04em" }}>{coupon}</div>
-            <div style={{ fontSize: 12.5, color: GRAY, marginTop: 10 }}>스트랩 구매 시 사용하실 수 있습니다</div>
+            <div style={{ fontSize: 12, letterSpacing: "0.18em", color: GRAY, marginBottom: 10 }}>STRAP COUPON 30%</div>
+            {coupon ? (
+              <>
+                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "0.12em" }}>{coupon}</div>
+                <div style={{ fontSize: 12.5, color: GRAY, marginTop: 10 }}>주문서 쿠폰란에 입력하시면 30% 할인됩니다</div>
+              </>
+            ) : (
+              <div style={{ fontSize: 14, lineHeight: 1.6 }}>쿠폰은 문자로 보내드리겠습니다</div>
+            )}
           </div>
           <a href={`${SHOP}/category/스트랩/`} style={{ textDecoration: "none" }}>
             <div style={{ width: "100%", padding: "17px 0", borderRadius: 4, background: "#111", color: "#fff", fontSize: 16, fontWeight: 600, textAlign: "center" }}>

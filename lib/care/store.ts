@@ -116,6 +116,37 @@ export async function register(r: CareRegistration): Promise<CareRegistration | 
   return (data as CareRegistration) ?? null;
 }
 
+/**
+ * 스트랩 쿠폰 시리얼 배정 — 미배정 코드 하나를 집어 이 번호에 묶는다.
+ * 같은 번호가 다시 등록하면 **이미 받은 코드를 그대로 돌려준다**(중복 소진 방지).
+ * 풀이 비면 null — 등록 자체는 계속 진행하고 쿠폰만 나중에 안내한다.
+ * 쿠폰이 없다고 등록을 실패시키면 우리가 진짜 원하는 것(동의받은 연락처)을 잃는다.
+ */
+export async function assignSerial(phone: string): Promise<string | null> {
+  const sb = db(); if (!sb) return null;
+  const mine = await sb.from("care_coupon_serials").select("code").eq("assigned_to", phone).limit(1).maybeSingle();
+  if (mine.data?.code) return mine.data.code as string;
+
+  // 경합 방지: 미배정 후보를 넉넉히 뽑아 하나씩 조건부 UPDATE(assigned_at IS NULL) 로 선점한다.
+  const { data: pool } = await sb.from("care_coupon_serials")
+    .select("code").is("assigned_at", null).limit(20);
+  for (const row of (pool ?? []) as Array<{ code: string }>) {
+    const { data } = await sb.from("care_coupon_serials")
+      .update({ assigned_to: phone, assigned_at: new Date().toISOString() })
+      .eq("code", row.code).is("assigned_at", null).select().maybeSingle();
+    if (data) return row.code;
+  }
+  return null;
+}
+
+/** 남은 시리얼 수 — 소진 경보용 */
+export async function serialsLeft(): Promise<number> {
+  const sb = db(); if (!sb) return 0;
+  const { count } = await sb.from("care_coupon_serials")
+    .select("*", { count: "exact", head: true }).is("assigned_at", null);
+  return count ?? 0;
+}
+
 export async function listByPhone(phone: string): Promise<CareRegistration[]> {
   const sb = db(); if (!sb) return [];
   const { data } = await sb.from("care_registrations").select("*").eq("phone", digits(phone));
