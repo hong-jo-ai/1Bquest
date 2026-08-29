@@ -70,6 +70,12 @@ const MOON_HOSTS = new Set([
   "moon.harriotwatches.co.kr",
 ]);
 
+// PAULVICE CARE 전용 도메인 — 동봉 카드 QR 이 가리키는 주소.
+// 인쇄물에 vercel.app 이 박히면 브랜드가 깨지고, 한 번 찍으면 되돌릴 수 없다.
+const CARE_HOSTS = new Set([
+  "care.paulvice.co.kr",
+]);
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -77,6 +83,12 @@ export async function proxy(req: NextRequest) {
   if (MOON_HOSTS.has(host) && pathname === "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/moon";
+    return NextResponse.rewrite(url);
+  }
+  // care.paulvice.co.kr/ → /care (쿼리스트링 ?s=card 는 그대로 유지된다)
+  if (CARE_HOSTS.has(host) && pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/care";
     return NextResponse.rewrite(url);
   }
   // 업무 화면이라 인증을 반드시 태운다. moon 처럼 여기서 바로 rewrite 를 반환하면
