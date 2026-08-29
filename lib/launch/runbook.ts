@@ -175,6 +175,26 @@ export async function completeStep(runbookId: string, key: string): Promise<Runb
   return rb;
 }
 
+/**
+ * 표준 템플릿에 없는 상품 고유 단계를 붙인다(설월 패키지 납품처럼 그 상품에만 있는 크리티컬 경로).
+ * date 를 주면 그 날짜로, 없으면 오늘로 `/today` 에 꽂는다.
+ */
+export async function addStep(
+  runbookId: string,
+  step: { key: string; title: string; phase?: Phase; date?: string },
+): Promise<Runbook | null> {
+  const list = await listRunbooks();
+  const rb = list.find((r) => r.id === runbookId);
+  if (!rb) return null;
+  if (rb.steps.some((s) => s.key === step.key)) return rb;
+  const s: RunbookStep = { key: step.key, title: step.title, phase: step.phase ?? "before", done: false };
+  s.taskId = await pushTask(rb, s, step.date || kstDate());
+  s.openedAt = new Date().toISOString();
+  rb.steps.unshift(s);   // 크리티컬 경로는 맨 앞에 — 보드에서 먼저 보이게
+  await saveAll(list);
+  return rb;
+}
+
 export function progressOf(rb: Runbook): { done: number; total: number; pct: number; nextUp: string[] } {
   const opened = rb.steps.filter((s) => s.openedAt);
   const done = opened.filter((s) => s.done).length;

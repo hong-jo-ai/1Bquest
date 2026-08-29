@@ -5,9 +5,10 @@
  * POST /api/launch  { product, pashoOrderNo?, productNo?, domain? }   → 런북 생성(before 단계 즉시 열림)
  * POST /api/launch  { runbookId, step }                                → 단계 완료
  * POST /api/launch  { arrived: "<runbookId|파쇼발주번호>" }             → 입고 확정(onArrival·after 열림)
+ * POST /api/launch  { runbookId, addStep:{key,title,phase?,date?} }    → 상품 고유 단계 추가
  */
 import { type NextRequest } from "next/server";
-import { listRunbooks, createRunbook, completeStep, markArrived, progressOf } from "@/lib/launch/runbook";
+import { listRunbooks, createRunbook, completeStep, markArrived, progressOf, addStep } from "@/lib/launch/runbook";
 import type { Domain } from "@/lib/today/types";
 
 export const dynamic = "force-dynamic";
@@ -29,13 +30,19 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  let b: { product?: string; pashoOrderNo?: string; productNo?: number; domain?: Domain; runbookId?: string; step?: string; arrived?: string };
+  let b: { product?: string; pashoOrderNo?: string; productNo?: number; domain?: Domain; runbookId?: string; step?: string; arrived?: string;
+           addStep?: { key: string; title: string; phase?: "before" | "onArrival" | "after"; date?: string } };
   try { b = await req.json(); } catch { return Response.json({ ok: false, error: "본문 파싱 실패" }, { status: 400 }); }
   try {
     if (b.arrived) {
       const rb = await markArrived(b.arrived);
       if (!rb) return Response.json({ ok: false, error: "런북 없음" }, { status: 404 });
       return Response.json({ ok: true, runbook: { id: rb.id, product: rb.product, arrivedAt: rb.arrivedAt, progress: progressOf(rb) } });
+    }
+    if (b.runbookId && b.addStep) {
+      const rb = await addStep(b.runbookId, b.addStep);
+      if (!rb) return Response.json({ ok: false, error: "런북 없음" }, { status: 404 });
+      return Response.json({ ok: true, progress: progressOf(rb) });
     }
     if (b.runbookId && b.step) {
       const rb = await completeStep(b.runbookId, b.step);
