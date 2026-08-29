@@ -25,7 +25,7 @@ export async function GET() {
   const sb = db();
   if (!sb) return Response.json({ ok: false, error: "KV 미설정" }, { status: 500 });
   try {
-    const [{ totals, campaigns, care }, serials, recent, pv, hr] = await Promise.all([
+    const [{ totals, campaigns, care }, serials, recent, pv, hr, cart] = await Promise.all([
       crmTotals(),
       Promise.all([
         sb.from("care_coupon_serials").select("*", { count: "exact", head: true }),
@@ -36,9 +36,16 @@ export async function GET() {
         .order("registered_at", { ascending: false }).limit(12),
       buildLeads({ brand: "paulvice", sinceDays: 180, waitlistKey: null }),
       buildLeads({ brand: "harriot", sinceDays: 180, waitlistKey: "harriot:seolwol:waitlist:v1" }),
+      // 장바구니 — 담기 대비 구매. 비로그인 수집은 2026-08-30 부터라 그 전 숫자는 회원분뿐이다.
+      sb.from("crm_cart_events").select("member_id,anon_id,status,converted_at,cart_at")
+        .gte("cart_at", new Date(Date.now() - 30 * 86400000).toISOString()),
     ]);
 
     const [{ count: serialTotal }, { count: serialFree }] = serials;
+    type Cart = { member_id: string | null; anon_id: string | null; status: string; converted_at: string | null };
+    const cartRows = (cart.data ?? []) as Cart[];
+    const carted = cartRows.length;
+    const cartConverted = cartRows.filter((r) => r.converted_at).length;
     type Reg = { phone: string; product_name: string | null; ad_consent: boolean; source: string | null; registered_at: string; orders: number | null; revenue: number | null };
 
     return Response.json({
@@ -56,6 +63,13 @@ export async function GET() {
         orders: r.orders ?? 0,
         revenue: Number(r.revenue ?? 0),
       })),
+      cart: {
+        carted,
+        converted: cartConverted,
+        rate: carted ? cartConverted / carted : 0,
+        members: cartRows.filter((r) => r.member_id).length,
+        guests: cartRows.filter((r) => !r.member_id && r.anon_id).length,
+      },
       reachable: {
         paulvice: pv.length,
         harriot: hr.length,

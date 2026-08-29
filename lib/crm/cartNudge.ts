@@ -109,9 +109,11 @@ export async function runCartNudge(mall: CrmMall, opts: { dryRun?: boolean } = {
 
   const res: CartNudgeResult = { mall, scanned: events.length, converted: 0, sent: 0, skipped: 0, expired: 0, failed: 0 };
 
-  // 회원별 그룹
+  // 회원별 그룹. 비로그인(anon_id) 담기는 넛지 대상이 아니다 —
+  // 연락처를 모르니 보낼 수단이 없다. 관측용으로만 쌓인다.
   const byMember = new Map<string, CartEventRow[]>();
   for (const e of events) {
+    if (!e.member_id) continue;
     const arr = byMember.get(e.member_id) ?? [];
     arr.push(e);
     byMember.set(e.member_id, arr);

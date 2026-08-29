@@ -4,11 +4,18 @@
  *  (대시보드와 쇼핑몰이 다른 도메인이라 쿠키로는 못 넘긴다 — URL 파라미터가 유일한 경로.)
  *  회원 식별: 카페24 프론트 SDK CAFE24API.getCustomerIDInfo (비동기). 회원ID 오기 전 담기는
  *  큐에 쌓았다가 조회 후 전송. 담기 감지: product_submit 래핑(주) + basket 네트워크/클릭(폴백).
- *  비로그인(member_id 없음)은 추적 안 함. 같은상품 2.5초 중복방지.
- *  스킨엔 <script src=".../pv-cart.js"> 한 줄만 있으면 됨(window.__PV는 선택).
+ *  비로그인 추적(2026-08-30): 예전엔 member_id 없으면 버려서 장바구니의 절반 이상이
+ *  기록되지 않았다(최근 30일 주문의 47%가 비회원 / 2개월 수집량 26건). 이제 브라우저에
+ *  임의 익명ID(pv_aid, 180일)를 심어 비로그인도 센다. 이름·연락처가 아니라 난수다.
+ *  전환 판정: 주문완료 페이지에 닿으면 같은 사람의 열린 담기를 닫는다. 비회원은 서버에서
+ *  주문과 이어붙일 열쇠가 없어, 이 페이지 신호가 유일한 연결고리다.
+ *  같은상품 2.5초 중복방지. 스킨엔 <script src=".../pv-cart.js"> 한 줄이면 됨.
+ *  ⚠️ 스킨과 스크립트태그(전 페이지 주입)에 둘 다 실릴 수 있어 중복실행 가드가 있다.
  */
 (function () {
   "use strict";
+  if (window.__pvCartLoaded) return;   // 스킨 + 스크립트태그 이중 로드 방지
+  window.__pvCartLoaded = true;
   var API = "https://paulvice-dashboard.vercel.app/api/crm/cart-event";
   var PV = window.__PV || {};
   var host = location.hostname || "";
@@ -18,6 +25,22 @@
   var SDK_VERSION = "2024-06-01";
 
   var memberId = null, resolved = false, pending = [];
+
+  // ── 익명 식별자 ─────────────────────────────────────────────
+  // 비로그인 방문자를 한 사람으로 묶기 위한 난수. 개인정보는 담지 않는다.
+  var AKEY = "pv_aid", ATTL = 180 * 864e5;
+  function anonId() {
+    try {
+      var raw = localStorage.getItem(AKEY);
+      if (raw) {
+        var o = JSON.parse(raw);
+        if (o && o.a && Date.now() - (o.t || 0) < ATTL) return o.a;
+      }
+      var a = (Date.now().toString(36) + Math.random().toString(36).slice(2, 12)).replace(/[^a-z0-9]/g, "");
+      localStorage.setItem(AKEY, JSON.stringify({ a: a, t: Date.now() }));
+      return a;
+    } catch (e) { return null; }   // 시크릿모드 등 저장 불가 → 익명추적 포기(담기 자체는 안 막는다)
+  }
 
   // ── 캠페인 코드 (문자 링크로 유입된 사람 식별) ──────────────────
   var CKEY = "pv_campaign_code", CTTL = 30 * 864e5;
@@ -38,7 +61,9 @@
   function whenSdk(cb, tries) {
     tries = tries || 0;
     if (window.CAFE24API && typeof window.CAFE24API.getCustomerIDInfo === "function") return cb();
-    if (tries > 20) return;
+    // SDK 가 끝내 안 뜨면(상세 외 페이지 등) 비회원으로 확정하고 큐를 내보낸다.
+    // 예전엔 여기서 그냥 포기해 큐가 영영 안 나갔다.
+    if (tries > 20) { resolved = true; flush(); return; }
     setTimeout(function () { whenSdk(cb, tries + 1); }, 500);
   }
   whenSdk(function () {
@@ -47,7 +72,7 @@
       window.CAFE24API.getCustomerIDInfo(function (err, data) {
         try { memberId = (data && data.id && data.id.member_id) || null; } catch (e) {}
         resolved = true;
-        if (memberId || campaignCode()) flush(); else pending.length = 0; // 회원도 캠페인도 아니면 폐기
+        flush();   // 비로그인도 익명ID 로 보낸다(예전엔 여기서 버렸다)
       });
     } catch (e) { resolved = true; }
   });
@@ -68,7 +93,8 @@
   }
 
   function send(ev) {
-    ev.memberId = memberId; // 전송 시점의 회원ID
+    ev.memberId = memberId; // 전송 시점의 회원ID(없으면 null)
+    ev.anonId = anonId();   // 비로그인 식별
     ev.campaignCode = campaignCode(); // 캠페인 유입이면 코드 동봉
     var payload = JSON.stringify(ev);
     try {
@@ -85,9 +111,9 @@
     if (lastFire[key] && now - lastFire[key] < 2500) return;
     lastFire[key] = now;
     var ev = { mall: mall, productNo: pno, productName: productName(), quantity: quantity() };
-    if (memberId || campaignCode()) send(ev);   // 회원이거나, 캠페인 유입이면 전송
-    else if (!resolved) pending.push(ev);        // 회원ID 조회 전 → 큐잉(조회 후 flush)
-    // resolved && !memberId && !campaignCode → 익명 비로그인 → 버림
+    // 회원ID 조회가 끝나기 전이면 큐에 담았다가 조회 후 보낸다(회원/비회원 라벨을 정확히 붙이려고).
+    // 조회가 끝났으면 회원이든 아니든 바로 보낸다.
+    if (resolved) send(ev); else pending.push(ev);
   }
 
   // ① product_submit 래핑 — 카페24 담기 정규 함수(가장 확실, AJAX/폼 무관)
@@ -140,5 +166,24 @@
   }, true);
 
   // 페이지 떠나기 직전(담기→basket.html 이동 등) 큐에 남은 게 있으면 마지막 전송 시도.
-  window.addEventListener("pagehide", function () { if (memberId) flush(); }, false);
+  window.addEventListener("pagehide", function () { flush(); }, false);
+
+  // ── 주문완료 도달 → 전환 처리 ──────────────────────────────
+  // 스크립트태그로 전 페이지에 실리므로 여기서 주문완료 페이지를 직접 감지한다.
+  // order_id 는 있으면 좋고 없어도 된다 — "이 사람이 샀다"는 사실이 핵심이다.
+  function orderIdFromPage() {
+    try {
+      var q = new URLSearchParams(location.search).get("order_id");
+      if (q) return q;
+      var m = (document.body.innerText || "").match(/\b(20\d{6}-\d{7})\b/);  // 카페24 주문번호 형식
+      return m ? m[1] : null;
+    } catch (e) { return null; }
+  }
+  if (/order[_/]?result|order_complete/i.test(location.pathname)) {
+    var fire = function () {
+      send({ mall: mall, type: "purchase", orderId: orderIdFromPage() });
+    };
+    // 회원ID 조회를 잠깐 기다린다(회원이면 회원ID로 닫는 게 정확). 못 기다려도 익명ID로 닫힌다.
+    if (resolved) fire(); else setTimeout(fire, 1500);
+  }
 })();

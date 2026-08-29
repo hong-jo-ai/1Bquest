@@ -16,7 +16,10 @@ export const CRM_BRANDS: Record<CrmMall, { cafe24Mall: Cafe24Mall; shopNo: numbe
 
 export interface CartEventInput {
   mall: CrmMall;
-  memberId: string;
+  /** 로그인 회원이면 회원ID. 비로그인은 null 이고 anonId 로 식별한다. */
+  memberId?: string | null;
+  /** 브라우저에 심은 임의 식별자(개인정보 아님). 비로그인 추적의 유일한 축. */
+  anonId?: string | null;
   productNo?: number | null;
   productName?: string | null;
   quantity?: number | null;
@@ -26,7 +29,9 @@ export interface CartEventRow {
   id: string;
   mall: CrmMall;
   shop_no: number;
-  member_id: string;
+  member_id: string | null;
+  anon_id: string | null;
+  order_id: string | null;
   product_no: number | null;
   product_name: string | null;
   quantity: number;
@@ -57,13 +62,18 @@ export async function ingestCartEvent(input: CartEventInput): Promise<{ id: stri
   const db = crmDb();
   const shopNo = CRM_BRANDS[input.mall].shopNo;
   const now = new Date().toISOString();
+  // 회원이면 회원ID, 아니면 익명ID 로 같은 사람을 묶는다.
+  // 둘 다 없으면 누가 담았는지 알 수 없어 집계에 쓸모가 없다.
+  const idCol = input.memberId ? "member_id" : "anon_id";
+  const idVal = input.memberId || input.anonId;
+  if (!idVal) throw new Error("memberId 또는 anonId 필요");
 
   if (input.productNo != null) {
     const { data: existing } = await db
       .from("crm_cart_events")
       .select("id")
       .eq("mall", input.mall)
-      .eq("member_id", input.memberId)
+      .eq(idCol, idVal)
       .eq("product_no", input.productNo)
       .eq("status", "active")
       .maybeSingle();
@@ -81,7 +91,8 @@ export async function ingestCartEvent(input: CartEventInput): Promise<{ id: stri
     .insert({
       mall: input.mall,
       shop_no: shopNo,
-      member_id: input.memberId,
+      member_id: input.memberId || null,
+      anon_id: input.anonId || null,
       product_no: input.productNo ?? null,
       product_name: input.productName ?? null,
       quantity: input.quantity ?? 1,
@@ -122,4 +133,33 @@ export async function markCartStatus(id: string, status: "converted" | "done" | 
     .from("crm_cart_events")
     .update({ status, ...(status === "converted" ? { converted_at: new Date().toISOString() } : {}) })
     .eq("id", id);
+}
+
+
+/**
+ * 구매 도달 처리 — 주문완료 페이지에 닿으면 그 사람의 열린 담기를 전환으로 닫는다.
+ *
+ * 왜 페이지에서 받는가: 비로그인 구매가 절반이라(최근 30일 47%) 서버에서 주문과
+ * 장바구니를 이어붙일 열쇠가 없다. 주문완료 페이지에서 같은 브라우저의 익명ID를
+ * 들고 알려주는 게 유일한 연결고리다.
+ *
+ * ⚠️ 담기 없이 바로 산 사람도 이 호출을 한다 — 그 경우 닫을 게 없어 0건이 되는 게 정상이다.
+ */
+export async function markPurchased(
+  mall: CrmMall,
+  who: { memberId?: string | null; anonId?: string | null },
+  orderId?: string | null,
+): Promise<number> {
+  const db = crmDb();
+  const idCol = who.memberId ? "member_id" : "anon_id";
+  const idVal = who.memberId || who.anonId;
+  if (!idVal) return 0;
+  const { data } = await db
+    .from("crm_cart_events")
+    .update({ status: "converted", converted_at: new Date().toISOString(), order_id: orderId ?? null })
+    .eq("mall", mall)
+    .eq(idCol, idVal)
+    .eq("status", "active")
+    .select("id");
+  return data?.length ?? 0;
 }

@@ -38,6 +38,7 @@ interface Overview {
   campaigns: CampaignMetrics[];
   care: CareMetrics | null;
   coupon: { total: number; free: number; used: number };
+  cart: { carted: number; converted: number; rate: number; members: number; guests: number };
   recent: Array<{ phone: string; product: string | null; consent: boolean; channel: string; at: string; orders: number; revenue: number }>;
   reachable: { paulvice: number; harriot: number; harriotEmail: number };
 }
@@ -243,6 +244,30 @@ export default function CrmSection() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ── 장바구니 ── */}
+      <div>
+        <div className="mb-2 flex items-baseline gap-2 px-1">
+          <h3 className="text-[13px] font-bold text-zinc-700 dark:text-zinc-200">장바구니</h3>
+          <span className="text-[11px] text-zinc-400">최근 30일 · 담기 → 구매</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          <Stat label="담기" value={won(d.cart.carted)} unit="건"
+                sub={`회원 ${won(d.cart.members)} · 비회원 ${won(d.cart.guests)}`} />
+          <Stat label="구매 전환" value={d.cart.carted ? pct(d.cart.rate) : "—"}
+                sub={`${won(d.cart.converted)}건 구매`}
+                tone={d.cart.carted && d.cart.rate < 0.2 ? "warn" : undefined} />
+          <Stat label="이탈" value={won(d.cart.carted - d.cart.converted)} unit="건"
+                sub="담고 아직 안 삼" />
+          <Stat label="넛지 발송" value="중단" sub="8/28 사장님 결정 · 수집만 진행" />
+        </div>
+        {d.cart.guests === 0 && (
+          <div className="mt-2 rounded-lg bg-zinc-50 px-3 py-2 text-[11px] text-zinc-500 dark:bg-zinc-800/50">
+            비로그인 수집은 2026-08-30부터 시작했습니다. 그 전에는 로그인 회원만 기록해
+            자사몰 주문의 절반(비회원 47%)이 통째로 빠져 있었습니다 — 며칠 지나야 실제 규모가 보입니다.
           </div>
         )}
       </div>
