@@ -24,6 +24,7 @@ import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
 import TodayHubSection from "@/app/_components/today-hub/TodayHubSection";
 import CrmSection from "@/components/dashboard/CrmSection";
+import ReviewSection from "@/components/dashboard/ReviewSection";
 import CampaignTracker from "@/components/CampaignTracker";
 
 import {
@@ -700,6 +701,11 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
         {/* CRM — CARE 등록·연락가능 모수·문자 캠페인 퍼널. 매일 보는 자리에 둔다. */}
         <CollapsibleSection title="CRM · 고객 관계" defaultOpen>
           <CrmSection />
+        </CollapsibleSection>
+
+        {/* 리뷰요청 — 요청→도달→열람→작성. 볼 데가 없어서 두 달간 안 챙겨졌던 지표다. */}
+        <CollapsibleSection title="리뷰 · 요청과 전환" defaultOpen>
+          <ReviewSection />
         </CollapsibleSection>
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}

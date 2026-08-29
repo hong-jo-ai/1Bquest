@@ -38,3 +38,27 @@ export async function resolveReviewCode(code: string): Promise<string | null> {
   if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
   return data.token as string;
 }
+
+/**
+ * 링크 열람 기록. 첫 클릭 시각은 보존하고 횟수만 누적한다.
+ *
+ * 왜 세는가: 리뷰 전환율이 낮을 때 원인이 둘로 갈린다 —
+ * ① 메시지를 안 열어본다(문안·발송타이밍 문제) ② 열었는데 안 쓴다(폼·보상 문제).
+ * 클릭을 안 세면 이 둘을 구분할 수 없어서 어디를 고칠지 정하지 못한다.
+ *
+ * ⚠️ 실패해도 조용히 넘어간다. 집계 때문에 리뷰 페이지가 안 열리면 본말전도다.
+ */
+export async function recordReviewLinkClick(code: string): Promise<void> {
+  try {
+    const sb = reviewsDb();
+    const { data } = await sb.from("review_links")
+      .select("first_clicked_at, click_count").eq("code", code).maybeSingle();
+    if (!data) return;
+    const now = new Date().toISOString();
+    await sb.from("review_links").update({
+      first_clicked_at: (data as { first_clicked_at?: string }).first_clicked_at || now,
+      last_clicked_at: now,
+      click_count: ((data as { click_count?: number }).click_count ?? 0) + 1,
+    }).eq("code", code);
+  } catch { /* 집계 실패가 페이지를 막지 않는다 */ }
+}
