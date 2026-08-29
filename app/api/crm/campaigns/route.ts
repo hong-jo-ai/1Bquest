@@ -25,9 +25,10 @@ export async function GET(req: NextRequest) {
   try {
     if (sp.get("preview")) {
       const sinceDays = Number(sp.get("sinceDays") || 180);
-      const people = await buildTargetsFromShipments(sinceDays);
+      const brand = sp.get("brand") === "harriot" ? "harriot" : sp.get("brand") === "paulvice" ? "paulvice" : undefined;
+      const people = await buildTargetsFromShipments(sinceDays, { brand });
       return Response.json({
-        ok: true, sinceDays, count: people.length,
+        ok: true, sinceDays, brand: brand ?? "all", count: people.length,
         note: "자사몰 직접구매 고객만. 마켓(무신사·W컨셉·29CM·공구·카카오) 경유 고객은 광고 발송 불가라 제외됨",
         sample: people.slice(0, 5).map((p) => ({ name: p.name, phone: p.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2"), orders: p.orders, lastAt: p.lastAt.slice(0, 10) })),
       });
@@ -43,13 +44,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   let b: {
     name?: string; landingUrl?: string; productNo?: number; couponCode?: string;
-    message?: string; sinceDays?: number; confirm?: boolean;
+    message?: string; sinceDays?: number; confirm?: boolean; brand?: "paulvice" | "harriot";
   };
   try { b = await req.json(); } catch { return Response.json({ ok: false, error: "본문 파싱 실패" }, { status: 400 }); }
   if (!b.name || !b.landingUrl) return Response.json({ ok: false, error: "name, landingUrl 필요" }, { status: 400 });
 
   try {
-    const people = await buildTargetsFromShipments(b.sinceDays ?? 180);
+    const people = await buildTargetsFromShipments(b.sinceDays ?? 180, { brand: b.brand });
     if (!b.confirm) {
       return Response.json({
         ok: true, dryRun: true, targetCount: people.length,

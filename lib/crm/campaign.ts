@@ -53,6 +53,16 @@ const K_CAMPAIGNS = "crm_campaigns:v1";
 /** 자사몰 직접 구매로 인정하는 채널 — 이 목록 밖은 광고 발송 대상이 아니다. */
 export const OWN_CHANNELS = ["카페24", "해리엇", "식스샵", "스마트스토어", "naver", "해리엇와치스"];
 
+/**
+ * 브랜드별 자사몰 채널. 설월(34.9만 해리엇 헤리티지)을 폴바이스 8.5만 시계 구매자에게
+ * 보내는 건 맞지 않아서, 대상 산출 때 브랜드를 좁힐 수 있어야 한다.
+ * ⚠️ 브랜드를 안 주면 종전대로 전체(=두 브랜드 합산)다.
+ */
+export const OWN_CHANNELS_BY_BRAND: Record<"paulvice" | "harriot", string[]> = {
+  paulvice: ["카페24", "스마트스토어", "naver"],
+  harriot:  ["해리엇", "해리엇와치스", "식스샵"],
+};
+
 function db(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -94,7 +104,7 @@ export async function getCampaign(id: string): Promise<Campaign | null> {
  */
 export async function buildTargetsFromShipments(
   sinceDays = 180,
-  opts: { excludeNameContains?: string[] } = {},
+  opts: { excludeNameContains?: string[]; brand?: "paulvice" | "harriot" } = {},
 ): Promise<Array<{ name: string; phone: string; lastAt: string; orders: number }>> {
   const sb = db(); if (!sb) return [];
   const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
@@ -109,7 +119,8 @@ export async function buildTargetsFromShipments(
   }
   const map = new Map<string, { name: string; phone: string; lastAt: string; orders: number }>();
   for (const r of rows) {
-    if (!OWN_CHANNELS.includes(r.channel)) continue;          // ← 마켓 고객 차단
+    const allow = opts.brand ? OWN_CHANNELS_BY_BRAND[opts.brand] : OWN_CHANNELS;
+    if (!allow.includes(r.channel)) continue;                 // ← 마켓 고객 차단 (+브랜드 좁히기)
     const phone = String(r.recipient_mobile || "").replace(/\D/g, "");
     if (!/^01[016789]\d{7,8}$/.test(phone)) continue;
     if (opts.excludeNameContains?.some((k) => (r.product_name || "").includes(k))) continue;
