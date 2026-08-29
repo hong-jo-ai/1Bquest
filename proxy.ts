@@ -33,6 +33,7 @@ const ALLOW_PREFIX = [
   "/api/meta/webhook", // Meta webhook
   "/review/",          // 고객 리뷰 작성 페이지 (토큰링크, 익명 접근)
   "/r/",               // 리뷰 짧은 링크 (/r/<code> → 리뷰 작성, 익명 접근)
+  "/c/",               // 캠페인 짧은 링크 (/c/<code> → 클릭기록 후 상품페이지 리다이렉트, 익명)
   "/moon",             // 해리엇 '그날의 달' 공개 인터랙티브 페이지
   "/api/reviews/submit",  // 리뷰 제출 (익명, 토큰검증)
   "/api/reviews/upload",  // 리뷰 미디어 업로드 (익명, 토큰검증)

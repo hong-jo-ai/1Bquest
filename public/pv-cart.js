@@ -1,4 +1,7 @@
-/*! Paulvice/Harriot 장바구니 이탈 추적 — 로그인 회원의 '담기'를 우리 백엔드로 전송.
+/*! Paulvice/Harriot 장바구니 이탈 추적 — '담기'를 우리 백엔드로 전송.
+ *  캠페인 추적(2026-08-29): 문자 링크 /c/<code> 를 타고 오면 랜딩 URL 에 ?pvc=<code> 가 붙는다.
+ *  이걸 localStorage 에 30일 보관해 담기 이벤트에 실어 보낸다 → 비로그인도 사람 단위로 이어붙는다.
+ *  (대시보드와 쇼핑몰이 다른 도메인이라 쿠키로는 못 넘긴다 — URL 파라미터가 유일한 경로.)
  *  회원 식별: 카페24 프론트 SDK CAFE24API.getCustomerIDInfo (비동기). 회원ID 오기 전 담기는
  *  큐에 쌓았다가 조회 후 전송. 담기 감지: product_submit 래핑(주) + basket 네트워크/클릭(폴백).
  *  비로그인(member_id 없음)은 추적 안 함. 같은상품 2.5초 중복방지.
@@ -16,6 +19,22 @@
 
   var memberId = null, resolved = false, pending = [];
 
+  // ── 캠페인 코드 (문자 링크로 유입된 사람 식별) ──────────────────
+  var CKEY = "pv_campaign_code", CTTL = 30 * 864e5;
+  function campaignCode() {
+    try {
+      var q = new URLSearchParams(location.search).get("pvc");
+      if (q) { localStorage.setItem(CKEY, JSON.stringify({ c: q, t: Date.now() })); return q; }
+      var raw = localStorage.getItem(CKEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !o.c || Date.now() - (o.t || 0) > CTTL) { localStorage.removeItem(CKEY); return null; }
+      return o.c;
+    } catch (e) { return null; }
+  }
+  // 유입 즉시 저장(담기 전에 이탈해도 재방문 때 이어짐)
+  try { campaignCode(); } catch (e) {}
+
   function whenSdk(cb, tries) {
     tries = tries || 0;
     if (window.CAFE24API && typeof window.CAFE24API.getCustomerIDInfo === "function") return cb();
@@ -28,7 +47,7 @@
       window.CAFE24API.getCustomerIDInfo(function (err, data) {
         try { memberId = (data && data.id && data.id.member_id) || null; } catch (e) {}
         resolved = true;
-        if (memberId) flush(); else pending.length = 0; // 비로그인 → 큐 폐기
+        if (memberId || campaignCode()) flush(); else pending.length = 0; // 회원도 캠페인도 아니면 폐기
       });
     } catch (e) { resolved = true; }
   });
@@ -50,6 +69,7 @@
 
   function send(ev) {
     ev.memberId = memberId; // 전송 시점의 회원ID
+    ev.campaignCode = campaignCode(); // 캠페인 유입이면 코드 동봉
     var payload = JSON.stringify(ev);
     try {
       // text/plain = CORS 안전목록(preflight 불필요) → 크로스오리진 beacon 성공. 서버 req.json()이 파싱.
@@ -65,9 +85,9 @@
     if (lastFire[key] && now - lastFire[key] < 2500) return;
     lastFire[key] = now;
     var ev = { mall: mall, productNo: pno, productName: productName(), quantity: quantity() };
-    if (memberId) send(ev);
-    else if (!resolved) pending.push(ev); // 회원ID 조회 전 → 큐잉(조회 후 flush)
-    // resolved && !memberId → 비로그인 → 버림
+    if (memberId || campaignCode()) send(ev);   // 회원이거나, 캠페인 유입이면 전송
+    else if (!resolved) pending.push(ev);        // 회원ID 조회 전 → 큐잉(조회 후 flush)
+    // resolved && !memberId && !campaignCode → 익명 비로그인 → 버림
   }
 
   // ① product_submit 래핑 — 카페24 담기 정규 함수(가장 확실, AJAX/폼 무관)

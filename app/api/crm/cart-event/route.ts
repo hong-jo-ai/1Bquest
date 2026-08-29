@@ -32,10 +32,19 @@ export async function POST(req: Request) {
   try {
     const b = (await req.json().catch(() => ({}))) as {
       mall?: unknown; memberId?: unknown; productNo?: unknown; productName?: unknown; quantity?: unknown;
+      campaignCode?: unknown;
     };
-    if (!isCrmMall(b.mall) || !b.memberId) {
-      return Response.json({ ok: false, error: "mall, memberId required" }, { status: 400, headers });
+    // 캠페인 유입(문자 링크)이면 비로그인이어도 받는다 — 사람 식별이 코드로 되기 때문.
+    const campaignCode = typeof b.campaignCode === "string" && b.campaignCode ? b.campaignCode : null;
+    if (!isCrmMall(b.mall) || (!b.memberId && !campaignCode)) {
+      return Response.json({ ok: false, error: "mall + (memberId | campaignCode) required" }, { status: 400, headers });
     }
+    if (campaignCode) {
+      // 캠페인 퍼널의 '장바구니' 단계. 실패해도 담기 수집 자체는 계속 간다.
+      try { const { markCart } = await import("@/lib/crm/campaign"); await markCart(campaignCode); }
+      catch (e) { console.error("[crm] markCart 실패:", e instanceof Error ? e.message : e); }
+    }
+    if (!b.memberId) return Response.json({ ok: true, campaignOnly: true }, { headers });
     const r = await ingestCartEvent({
       mall: b.mall,
       memberId: String(b.memberId).slice(0, 100),
