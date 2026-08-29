@@ -23,6 +23,7 @@ import ProfitDashboard, { type ProfitChannel } from "@/components/ProfitDashboar
 import ExcelUploadPanel from "@/components/ExcelUploadPanel";
 import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
 import TodayHubSection from "@/app/_components/today-hub/TodayHubSection";
+import CrmSection from "@/components/dashboard/CrmSection";
 import CampaignTracker from "@/components/CampaignTracker";
 
 import {
@@ -695,6 +696,11 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
         {/* 오늘의 운영 허브 — 양 브랜드 공통 (할일/외부약속/이메일은 전사 공통, 매출액션/빅이벤트는 브랜드별) */}
         {/* key={brand} 로 브랜드 전환 시 인스턴스 재생성 → 브랜드별 데이터 새로 로드 */}
         <TodayHubSection key={brand} brand={brand} monthRevenue={monthRevenue} channelRevenues={channelRevenues} />
+
+        {/* CRM — CARE 등록·연락가능 모수·문자 캠페인 퍼널. 매일 보는 자리에 둔다. */}
+        <CollapsibleSection title="CRM · 고객 관계" defaultOpen>
+          <CrmSection />
+        </CollapsibleSection>
 
         {/* 채널 비교 — 채널별 매출 한눈에 */}
         <ChannelComparisonChart channels={comparisonChannels} />
