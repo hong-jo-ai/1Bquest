@@ -180,15 +180,43 @@ export interface CareMetrics {
 }
 
 /**
- * 카드는 **모든 소포에 동봉**한다(자사몰 주문에도 들어간다 — 배송 준비 때
- * 구분해 넣는 게 현실적으로 불가능해서 사장님이 전량 동봉으로 결정, 2026-08-28).
- * 그래서 배포량 = CARE 시작일 이후 실제 발송 건수다.
+ * 카드 배포량 = 시작일 이후 나간 **폴바이스 시계** 수.
+ *
+ * 사장님 방침: 카드가 도착한 날부터 나가는 모든 폴바이스 시계에 동봉(2026-08-30).
+ * 자사몰 주문에도 들어간다 — 배송 준비 때 채널을 구분해 넣는 건 현실적으로 불가능하다.
+ *
+ * ⚠️ 전체 소포 수를 쓰면 안 된다. 증정 스트랩·조절도구·주얼리가 각각 별도 행이라
+ *    분모가 2배 넘게 부풀고 등록률이 실제의 절반으로 보인다(최근 30일 510행 중 시계는 ~210).
  */
+const HARRIOT_LINE = /(해리엇|기원|성산|가양|광안|도보|설월|썬레이)/;
+const ACCESSORY    = /(팔찌|목걸이|귀걸이|반지|조절|도구|케이스|파우치|시계줄|스프링바|버클|공구)/;
+// 라인명 또는 '워치'를 요구한다. 맨 '시계'만으로 받으면
+// "여성시계 가죽밴드 블랙 12mm" 같은 밴드 단품이 시계로 새어 들어온다.
+const PV_WATCH     = /(에끌라|오드리|미니엘|켈리|잭클린|옥타곤|워치)/;
+
+export function isPaulviceWatch(name: string | null | undefined): boolean {
+  const n = String(name ?? "");
+  if (!n) return false;
+  if (n.includes("[증정]")) return false;             // 사은품 행은 같은 주문의 중복
+  if (HARRIOT_LINE.test(n)) return false;             // CARE 는 폴바이스 전용
+  if (ACCESSORY.test(n)) return false;
+  // "가죽밴드"·"스트랩 12mm" 같은 단품. 단 "…워치 + 메탈밴드" 세트는 시계라 남긴다.
+  if (/(스트랩|밴드)/.test(n) && !/(워치|시계)/.test(n)) return false;
+  return PV_WATCH.test(n);
+}
+
 async function cardsShippedSince(sb: SupabaseClient, since: string): Promise<number> {
-  const { count } = await sb.from("pp_shipments")
-    .select("*", { count: "exact", head: true })
-    .eq("req_type", "1").eq("is_test", false).gte("created_at", since);
-  return count ?? 0;
+  const names: Array<{ product_name: string | null }> = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await sb.from("pp_shipments")
+      .select("product_name")
+      .eq("req_type", "1").eq("is_test", false).gte("created_at", since)
+      .range(from, from + 999);
+    if (!data?.length) break;
+    names.push(...(data as typeof names));
+    if (data.length < 1000) break;
+  }
+  return names.filter((r) => isPaulviceWatch(r.product_name)).length;
 }
 
 export interface CareRegRow {
