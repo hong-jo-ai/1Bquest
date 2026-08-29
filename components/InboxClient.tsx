@@ -178,6 +178,45 @@ interface ContextData {
     }>;
     nameOnlyCount: number;
   } | null;
+  /** PAULVICE CARE 등록 여부 — 배터리 무료 1회가 남았는지 상담 중 즉시 확인 */
+  care?: {
+    registered: boolean;
+    phone: string;
+    products: Array<{ productNo: number | null; name: string | null; registeredAt: string }>;
+    registeredAt: string | null;
+    batteryFree: boolean;
+    batteryUsedAt: string | null;
+    adConsent: boolean;
+    couponCode: string | null;
+    channel: string | null;
+    matchedBy: "handle" | "orders";
+  } | null;
+}
+
+/**
+ * CARE 배지 — 등록 고객이면 무조건 눈에 띄어야 한다.
+ * 배터리 무료가 남았는지까지 배지 하나로 끝낸다(상담 중 다시 뒤지지 않도록).
+ * 미등록이면 아무것도 그리지 않는다 — 배지가 흔해지면 안 보게 된다.
+ */
+function CareBadge({ care, compact }: { care: ContextData["care"]; compact?: boolean }) {
+  if (!care?.registered) return null;
+  const free = care.batteryFree;
+  return (
+    <span
+      title={
+        (free ? "배터리 교체 1회 무료 가능 (작업 무료, 보내는 택배비만 고객 부담)" : `배터리 무료 1회 사용함 (${care.batteryUsedAt?.slice(0, 10)})`)
+        + (care.matchedBy === "orders" ? " · 주문 전화번호로 매칭" : "")
+      }
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+        free
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+      }`}
+    >
+      CARE{free ? " · 배터리 무료" : " · 배터리 사용함"}
+      {!compact && care.matchedBy === "orders" && <span className="font-normal opacity-60">추정</span>}
+    </span>
+  );
 }
 
 export default function InboxClient() {
@@ -890,6 +929,7 @@ export default function InboxClient() {
         ) : (
           <ThreadDetailView
             detail={detail}
+            context={context}
             replyText={replyText}
             setReplyText={setReplyText}
             operatorNotes={operatorNotes}
@@ -1092,6 +1132,7 @@ function ThreadListItem({
 // ── 대화 상세 뷰 ──────────────────────────────────────────────
 function ThreadDetailView({
   detail,
+  context,
   replyText,
   setReplyText,
   operatorNotes,
@@ -1112,6 +1153,7 @@ function ThreadDetailView({
   onReturnAction,
 }: {
   detail: ThreadDetail;
+  context: ContextData | null;
   replyText: string;
   setReplyText: (v: string) => void;
   operatorNotes: string;
@@ -1169,6 +1211,7 @@ function ThreadDetailView({
                 >
                   {STATUS_LABEL[thread.status]}
                 </span>
+                <CareBadge care={context?.care} />
                 <span className="text-zinc-600 dark:text-zinc-400 truncate max-w-[160px]">
                   {customerName}
                 </span>
@@ -1623,6 +1666,51 @@ function ContextPanel({
           value={BRAND_LABEL[thread.brand]}
         />
       </div>
+
+      {context?.care?.registered && (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-800/60 dark:bg-emerald-900/20">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">PAULVICE CARE</span>
+            <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70">
+              {context.care.registeredAt?.slice(0, 10)} 등록
+            </span>
+          </div>
+          <div className={`text-[13px] font-bold ${context.care.batteryFree ? "text-emerald-700 dark:text-emerald-300" : "text-zinc-500"}`}>
+            {context.care.batteryFree ? "배터리 교체 1회 무료 사용 가능" : `배터리 무료 사용함 (${context.care.batteryUsedAt?.slice(0, 10)})`}
+          </div>
+          {context.care.batteryFree && (
+            <div className="mt-0.5 text-[11px] text-emerald-700/70 dark:text-emerald-400/70">
+              작업 무료 · 보내주시는 택배비만 고객 부담
+            </div>
+          )}
+          {context.care.products.length > 0 && (
+            <div className="mt-1.5 text-[11px] text-zinc-600 dark:text-zinc-400">
+              등록 제품: {context.care.products.map((p) => p.name ?? "제품미상").join(", ")}
+            </div>
+          )}
+          {context.care.matchedBy === "orders" && (
+            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+              ⚠️ 문의에 번호가 없어 과거 주문 전화번호로 매칭했습니다 — 안내 전 본인 확인 권장
+            </div>
+          )}
+          {context.care.batteryFree && (
+            <button
+              onClick={async () => {
+                if (!confirm("배터리 무료 1회를 사용 처리할까요? 실제로 접수했을 때만 누르세요.")) return;
+                await fetch("/api/cs/care/use-battery", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ phone: context.care!.phone }),
+                });
+                location.reload();
+              }}
+              className="mt-2 w-full rounded-lg border border-emerald-300 bg-white px-2 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:bg-transparent dark:text-emerald-300"
+            >
+              무료 교체 접수함 — 1회 사용 처리
+            </button>
+          )}
+        </div>
+      )}
 
       {context?.orderHistory && context.orderHistory.totalOrders > 0 && (
         <div className="mb-5 pb-5 border-b border-zinc-100 dark:border-zinc-800">
@@ -2165,6 +2253,7 @@ function MobileThreadDetailView({
               >
                 {STATUS_LABEL[thread.status]}
               </span>
+              <CareBadge care={context?.care} compact />
             </div>
           </div>
         </button>

@@ -204,8 +204,12 @@ export async function careMetrics(startDate?: string): Promise<CareMetrics | nul
     .order("registered_at", { ascending: false });
   const rows = (data ?? []) as CareRegRow[];
 
-  // 시작일: 명시값 > 첫 등록일 > 오늘. 카드를 넣기 시작한 날이 분모의 기준이다.
-  const since = startDate || rows[rows.length - 1]?.registered_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  // 시작일 = **카드를 박스에 넣기 시작한 날**. 이게 등록률의 분모를 정한다.
+  // 첫 등록일로 대신하면 카드가 나가기 전 기간이 빠져 등록률이 부풀려진다 →
+  // KV 로 실제 투입 개시일을 박아둘 수 있게 한다(운영 중 한 번만 정하면 된다).
+  const { data: cfg } = await sb.from("kv_store").select("data").eq("key", "care:config:v1").maybeSingle();
+  const configured = (cfg?.data as { cardStartDate?: string } | null)?.cardStartDate;
+  const since = startDate || configured || rows[rows.length - 1]?.registered_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
   const cardsShipped = await cardsShippedSince(sb, since);
 
   const registered = rows.length;

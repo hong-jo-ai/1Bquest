@@ -189,3 +189,73 @@ export async function stats(): Promise<CareStats> {
     last7d: rows.filter((r) => new Date(r.registered_at).getTime() > wk).length,
   };
 }
+
+// ── CS 조회 ─────────────────────────────────────────────────────────────────
+
+export interface CareLookup {
+  registered: boolean;
+  phone: string;
+  /** 등록한 제품들 (여러 개 등록 가능) */
+  products: Array<{ productNo: number | null; name: string | null; registeredAt: string }>;
+  registeredAt: string | null;
+  /** 배터리 교체 1회 무료가 아직 남아 있나 — 상담 중 즉시 답해야 하는 값 */
+  batteryFree: boolean;
+  batteryUsedAt: string | null;
+  adConsent: boolean;
+  couponCode: string | null;
+  /** 구매 채널(발송기록 역추적) — 마켓 고객이면 자사몰 유도 여지가 있다 */
+  channel: string | null;
+}
+
+/**
+ * 상담 화면에서 쓰는 CARE 조회 — **전화번호 하나로 혜택 여부까지** 한 번에 답한다.
+ *
+ * 상담 중에 "이 분 배터리 무료 되나요?"를 사람이 확인하려면 표를 뒤져야 하고,
+ * 그 몇 초가 결국 확인을 안 하게 만든다 → 혜택이 있는데도 안내를 못 한다.
+ * 그래서 문의가 뜨는 순간 자동으로 붙여둔다.
+ *
+ * ⚠️ 등록이 없으면 registered:false 를 돌려줄 뿐, 실패로 취급하지 않는다.
+ *    조회 실패와 미등록은 다르다 — 호출 쪽에서 이 둘을 섞으면 안 된다.
+ */
+export async function lookup(phoneRaw: string): Promise<CareLookup | null> {
+  const phone = digits(phoneRaw);
+  if (!isMobile(phone)) return null;
+  const rows = await listByPhone(phone);
+  if (!rows.length) {
+    return {
+      registered: false, phone, products: [], registeredAt: null,
+      batteryFree: false, batteryUsedAt: null, adConsent: false, couponCode: null,
+      channel: await detectChannel(phone).catch(() => null),
+    };
+  }
+  type Row = CareRegistration & { registered_at?: string; battery_used_at?: string | null };
+  const list = rows as Row[];
+  const sorted = [...list].sort((a, b) => (a.registered_at ?? "").localeCompare(b.registered_at ?? ""));
+  const usedAt = list.map((r) => r.battery_used_at).filter(Boolean).sort()[0] ?? null;
+  return {
+    registered: true,
+    phone,
+    products: sorted.map((r) => ({
+      productNo: r.product_no ?? null,
+      name: r.product_name ?? r.product_other ?? null,
+      registeredAt: r.registered_at ?? "",
+    })),
+    registeredAt: sorted[0]?.registered_at ?? null,
+    // 배터리 무료는 **사람당 1회**다(제품마다가 아니라). 한 건이라도 썼으면 소진.
+    batteryFree: !usedAt,
+    batteryUsedAt: usedAt,
+    adConsent: list.some((r) => r.ad_consent),
+    couponCode: list.find((r) => r.coupon_code)?.coupon_code ?? null,
+    channel: (sorted[0]?.source ?? "").split("/").pop() || null,
+  };
+}
+
+/** 배터리 무료 1회 사용 처리 — 상담에서 실제로 접수했을 때만 호출한다. */
+export async function useBattery(phoneRaw: string): Promise<boolean> {
+  const sb = db(); if (!sb) return false;
+  const phone = digits(phoneRaw);
+  const { data } = await sb.from("care_registrations")
+    .update({ battery_used_at: new Date().toISOString() })
+    .eq("phone", phone).is("battery_used_at", null).select();
+  return !!data?.length;
+}

@@ -1,3 +1,5 @@
+import { careContextFor, carePromptBlock } from "./careContext";
+import { getCustomerOrderHistory } from "./customerOrders";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -120,6 +122,22 @@ export async function generateDraft(
 - **rationale 필드**: 판단 근거 한 문장 (운영자만 봄, 고객에겐 안 보임)
 - **needsConfirmation 필드**: 운영자 확인 필요 항목 배열 (없으면 \`[]\`)`;
 
+  // CARE 등록 고객이면 배터리 무료 1회를 안내할 수 있다 — 모르면 유상으로 잘못 답한다.
+  // 조회가 실패해도 초안 생성은 계속한다(안내 한 줄이 빠질 뿐, 답변을 막을 일은 아니다).
+  let careBlock = "";
+  try {
+    const oh = await getCustomerOrderHistory({ phone: thread.customer_handle, name: thread.customer_name }).catch(() => null);
+    const care = await careContextFor({
+      handle: thread.customer_handle,
+      orderPhone: oh?.phone,
+      orderMatchedByPhone: !!oh?.orders?.some((o) => o.matchedBy === "phone"),
+    });
+    const block = carePromptBlock(care);
+    if (block) careBlock = `\n\n## PAULVICE CARE\n\n${block}`;
+  } catch (e) {
+    console.warn("[cs/draft] CARE 조회 실패:", e instanceof Error ? e.message : e);
+  }
+
   const systemPrompt = `${skill}${crispBlock}${examplesBlock}
 
 ---
@@ -131,7 +149,7 @@ export async function generateDraft(
 - 채널 유형: ${isWebWidget ? "웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
 - 고객 이름: ${thread.customer_name ?? "(알 수 없음)"}
 - 고객 연락처: ${thread.customer_handle ?? "(알 수 없음)"}
-- 제목: ${thread.subject ?? "(없음)"}
+- 제목: ${thread.subject ?? "(없음)"}${careBlock}
 
 이 메타데이터를 바탕으로 스킬의 규칙에 따라 답변 초안을 생성한다. 브랜드는 이미 확정돼 있으므로 재질문하지 말 것.${operatorBlock}${outputOverride}`;
 
