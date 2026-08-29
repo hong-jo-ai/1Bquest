@@ -284,6 +284,20 @@ export async function confirmPendingReceipt(id: string): Promise<{ ok: boolean; 
 
   await addReceipt({ orderNo: p.orderNo, at: p.at, items: p.items, note: p.note, id: receiptId });
   const cafe24 = await applyCafe24(p.orderNo, p.items);
+
+  // 신상 출시 런북 — 이 발주에 걸린 런북이 있으면 입고 확정으로 보고 출시 단계를 연다.
+  // (상품등록·문자발송·광고 같은 할 일이 /today 보드에 자동으로 꽂힌다)
+  let launchNote = "";
+  try {
+    const { markArrived, progressOf } = await import("@/lib/launch/runbook");
+    const rb = await markArrived(p.orderNo);
+    if (rb?.arrivedAt) {
+      const pr = progressOf(rb);
+      launchNote = ` · 🚀${rb.product} 출시 단계 ${pr.total - pr.done}건 오늘 보드에 열림`;
+    }
+  } catch (e) {
+    console.error("[pasho] 출시 런북 연결 실패:", e instanceof Error ? e.message : e);
+  }
   await deletePending(id);
   const order = await getOrderWithBalance(p.orderNo);
   const totalIn = p.items.reduce((a, it) => a + it.qty, 0);
@@ -291,7 +305,7 @@ export async function confirmPendingReceipt(id: string): Promise<{ ok: boolean; 
   const amt = p.totalAmount != null
     ? ` · 명세표 ${p.currency === "USD" ? "$" : "₩"}${p.totalAmount.toLocaleString("ko-KR")}`
     : "";
-  const summary = `입고 ${totalIn} 기록 · 잔량 ${rem}${rem > 0 ? "" : " (완료)"}${amt} · ${cafe24}${docNote}`;
+  const summary = `입고 ${totalIn} 기록 · 잔량 ${rem}${rem > 0 ? "" : " (완료)"}${amt} · ${cafe24}${docNote}${launchNote}`;
   return { ok: true, summary };
 }
 
