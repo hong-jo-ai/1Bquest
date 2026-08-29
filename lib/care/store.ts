@@ -69,6 +69,34 @@ export async function verifyOtp(phone: string, code: string): Promise<{ ok: bool
   return { ok: true };
 }
 
+const SESS_TTL_SEC = 600;   // 10분 — 인증 후 제품 선택·동의까지 넉넉히
+const sessKey = (t: string) => `care:sess:${t}`;
+
+/**
+ * 본인확인 통과 증표. 인증번호는 1회용이라 검증 단계에서 사라지므로,
+ * 등록 API 가 다시 확인할 수 있게 짧은 세션 토큰을 발급한다.
+ * (이게 없으면 등록에서 "인증번호를 다시 요청해 주세요"가 뜬다 — 2026-08-29 실제로 발생)
+ */
+export async function issueSession(phone: string): Promise<string> {
+  const sb = db(); if (!sb) throw new Error("KV 미설정");
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  await sb.from("kv_store").upsert({
+    key: sessKey(token), data: { phone, exp: Date.now() + SESS_TTL_SEC * 1000 },
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "key" });
+  return token;
+}
+
+/** 등록 시 1회 소모. 같은 토큰으로 두 번 등록되지 않는다. */
+export async function consumeSession(phone: string, token: string): Promise<boolean> {
+  const sb = db(); if (!sb || !token) return false;
+  const { data } = await sb.from("kv_store").select("data").eq("key", sessKey(token)).maybeSingle();
+  const rec = data?.data as { phone: string; exp: number } | undefined;
+  if (!rec || rec.phone !== phone || Date.now() > rec.exp) return false;
+  await sb.from("kv_store").delete().eq("key", sessKey(token));
+  return true;
+}
+
 /** 등록 — 같은 번호·같은 제품이면 덮어쓴다(중복 탭/재등록 대응) */
 export async function register(r: CareRegistration): Promise<CareRegistration | null> {
   const sb = db(); if (!sb) return null;

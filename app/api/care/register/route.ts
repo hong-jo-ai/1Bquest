@@ -2,15 +2,16 @@
  * CARE 등록 — 본인확인·제품선택·동의를 받아 저장하고 스트랩 쿠폰을 발급한다.
  *
  * POST /api/care/register
- *   { phone, code, productNo?, productName?, productOther?, adConsent, source? }
+ *   { phone, token, productNo?, productName?, productOther?, adConsent, source? }
  *
- * ⚠️ 인증번호를 여기서 한 번 더 검증한다. 프론트에서 이미 확인했더라도,
- *    등록 API 를 직접 때리면 남의 번호로 등록될 수 있기 때문이다.
+ * ⚠️ 본인확인 세션 토큰을 여기서 검증한다. 프론트만 믿으면 API 를 직접 때려
+ *    남의 번호로 등록할 수 있다. 인증번호 자체는 검증 단계에서 이미 소모되므로
+ *    토큰으로 이어받는다(초기 버전이 인증번호를 다시 요구해 등록이 전부 실패했다).
  * ⚠️ 광고 수신동의(adConsent)는 **선택**이다. 미동의여도 등록은 정상 처리한다 —
  *    동의를 강제하면 그 동의 자체가 무효가 된다.
  */
 import { type NextRequest } from "next/server";
-import { register, verifyOtp, digits, isMobile } from "@/lib/care/store";
+import { register, consumeSession, digits, isMobile } from "@/lib/care/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 
 export const dynamic = "force-dynamic";
@@ -32,14 +33,14 @@ export async function OPTIONS(req: Request) { return new Response(null, { status
 export async function POST(req: NextRequest) {
   const headers = cors(req);
   const b = (await req.json().catch(() => ({}))) as {
-    phone?: string; code?: string; productNo?: number; productName?: string;
+    phone?: string; token?: string; productNo?: number; productName?: string;
     productOther?: string; adConsent?: boolean; source?: string;
   };
   const phone = digits(b.phone);
   if (!isMobile(phone)) return Response.json({ ok: false, error: "휴대폰 번호를 확인해 주세요" }, { status: 400, headers });
 
-  const v = await verifyOtp(phone, String(b.code ?? ""));
-  if (!v.ok) return Response.json({ ok: false, error: v.reason ?? "본인확인이 필요합니다" }, { status: 401, headers });
+  const ok = await consumeSession(phone, String(b.token ?? ""));
+  if (!ok) return Response.json({ ok: false, error: "본인확인이 만료되었습니다. 처음부터 다시 진행해 주세요" }, { status: 401, headers });
 
   if (!b.productNo && !b.productOther) {
     return Response.json({ ok: false, error: "제품을 선택해 주세요" }, { status: 400, headers });

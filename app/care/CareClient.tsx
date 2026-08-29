@@ -31,6 +31,7 @@ export default function CareClient({ source }: { source?: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [coupon, setCoupon] = useState<string | null>(null);
   const [cool, setCool] = useState(0);
+  const [token, setToken] = useState<string | null>(null);   // 본인확인 통과 증표
 
   useEffect(() => {
     if (step !== 2 || products.length) return;
@@ -59,7 +60,7 @@ export default function CareClient({ source }: { source?: string }) {
 
   const verify = async () => {
     setBusy(true); setErr(null);
-    try { await post("/api/care/otp?verify=1", { phone, code }); setStep(2); }
+    try { const j = await post("/api/care/otp?verify=1", { phone, code }); setToken(j.token); setStep(2); }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
@@ -68,10 +69,9 @@ export default function CareClient({ source }: { source?: string }) {
     if (!required) { setErr("필수 항목에 동의해 주세요"); return; }
     setBusy(true); setErr(null);
     try {
-      // ⚠️ 인증번호는 등록 API 에서 소모된다 — 검증 단계에서 이미 지워지면 재발급이 필요하므로
-      //    여기서 한 번 더 보낸다(서버가 남의 번호 등록을 막는 유일한 방어선).
+      // 인증번호가 아니라 본인확인 토큰을 보낸다 — 인증번호는 검증 단계에서 이미 소모됐다.
       const j = await post("/api/care/register", {
-        phone, code,
+        phone, token,
         productNo: picked?.no, productName: picked?.name,
         productOther: other ? "목록에 없음" : undefined,
         adConsent, source,

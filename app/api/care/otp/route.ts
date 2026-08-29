@@ -6,7 +6,7 @@
  * POST /api/care/otp?verify=1   { phone, code }  → 검증
  */
 import { type NextRequest } from "next/server";
-import { issueOtp, verifyOtp, digits, isMobile } from "@/lib/care/store";
+import { issueOtp, verifyOtp, issueSession, digits, isMobile } from "@/lib/care/store";
 import { sendMany } from "@/lib/sms/solapi";
 import { createClient } from "@supabase/supabase-js";
 
@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
 
   if (req.nextUrl.searchParams.get("verify")) {
     const r = await verifyOtp(phone, String(b.code ?? ""));
-    return Response.json(r.ok ? { ok: true } : { ok: false, error: r.reason }, { status: r.ok ? 200 : 400, headers });
+    if (!r.ok) return Response.json({ ok: false, error: r.reason }, { status: 400, headers });
+    // 인증번호는 여기서 소모된다 → 등록 API 가 확인할 수 있게 세션 토큰을 준다.
+    const token = await issueSession(phone);
+    return Response.json({ ok: true, token }, { headers });
   }
 
   // 쿨다운 — 같은 번호로 30초 안에 재발송 금지(문자 폭탄·요금 방지)
