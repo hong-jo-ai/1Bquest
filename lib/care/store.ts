@@ -122,6 +122,24 @@ export async function register(r: CareRegistration): Promise<CareRegistration | 
  * 풀이 비면 null — 등록 자체는 계속 진행하고 쿠폰만 나중에 안내한다.
  * 쿠폰이 없다고 등록을 실패시키면 우리가 진짜 원하는 것(동의받은 연락처)을 잃는다.
  */
+/**
+ * 이 번호가 **어느 채널에서 샀는지** 발송기록으로 역추적한다.
+ *
+ * 카드는 전 주문에 동봉하므로 QR 파라미터만으로는 자사몰/마켓 구분이 안 된다.
+ * 그런데 발송기록(pp_shipments)에 수취인 연락처가 이미 있어서, 등록 시점에 대조하면
+ * 운영 부담 없이 채널이 붙는다 → "카드가 마켓 고객을 실제로 몇 명 데려왔나"를 잴 수 있다.
+ * 여러 채널에서 산 사람은 가장 최근 구매 채널을 채택한다.
+ */
+export async function detectChannel(phone: string): Promise<string | null> {
+  const sb = db(); if (!sb) return null;
+  const { data } = await sb.from("pp_shipments")
+    .select("channel,created_at")
+    .eq("recipient_mobile", digits(phone))
+    .eq("req_type", "1").eq("is_test", false)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return (data as { channel?: string } | null)?.channel ?? null;
+}
+
 export async function assignSerial(phone: string): Promise<string | null> {
   const sb = db(); if (!sb) return null;
   const mine = await sb.from("care_coupon_serials").select("code").eq("assigned_to", phone).limit(1).maybeSingle();

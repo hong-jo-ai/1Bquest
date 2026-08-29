@@ -11,7 +11,7 @@
  *    동의를 강제하면 그 동의 자체가 무효가 된다.
  */
 import { type NextRequest } from "next/server";
-import { register, consumeSession, assignSerial, serialsLeft, digits, isMobile } from "@/lib/care/store";
+import { register, consumeSession, assignSerial, serialsLeft, detectChannel, digits, isMobile } from "@/lib/care/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
 
 export const dynamic = "force-dynamic";
@@ -49,18 +49,20 @@ export async function POST(req: NextRequest) {
   try {
     // 1인 1코드 배정(재등록이면 기존 코드 반환). 풀이 비면 null 이어도 등록은 계속 간다.
     const coupon = await assignSerial(phone);
+    // 카드는 전 주문에 동봉되므로 QR 파라미터로는 채널 구분이 안 된다 → 발송기록으로 역추적.
+    const channel = await detectChannel(phone).catch(() => null);
     const rec = await register({
       phone,
       product_no: b.productNo ?? null,
       product_name: b.productName ?? null,
       product_other: b.productOther ?? null,
       ad_consent: !!b.adConsent,
-      source: b.source ?? null,
+      source: [b.source, channel].filter(Boolean).join("/") || null,
       coupon_code: coupon,
     });
     // 등록은 드물게 일어나는 이벤트라 실시간으로 알린다(초기엔 반응을 봐야 한다).
     sendTelegramMessage(
-      `🩺 <b>PAULVICE CARE 등록</b>\n${phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2")} · ${b.productName || b.productOther || "제품미상"}\n광고수신 ${b.adConsent ? "동의" : "미동의"}${b.source ? ` · 유입 ${b.source}` : ""}`,
+      `🩺 <b>PAULVICE CARE 등록</b>\n${phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2")} · ${b.productName || b.productOther || "제품미상"}\n광고수신 ${b.adConsent ? "동의" : "미동의"} · 구매채널 ${channel ?? "미확인"}${coupon ? ` · 쿠폰 ${coupon}` : " · ⚠️쿠폰 미배정"}`,
     ).catch(() => {});
     // 시리얼 소진 경보 — 다 떨어진 뒤 알면 늦다.
     const left = await serialsLeft().catch(() => -1);
