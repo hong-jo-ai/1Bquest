@@ -36,6 +36,12 @@ export interface CampaignTarget {
   code: string;
   name?: string | null;
   phone?: string | null;
+  /** 해외 고객은 문자를 못 받는다 — 이메일이 유일한 채널 */
+  email?: string | null;
+  /** sms | email — 연락수단이 곧 발송 경로 */
+  channel?: "sms" | "email";
+  /** 어디서 온 명단인지: shipments(구매) | waitlist(출시알림 신청) */
+  source?: string | null;
   mall?: string;
   sent_at?: string | null;
   send_status?: string | null;
@@ -131,14 +137,76 @@ export async function buildTargetsFromShipments(
   return [...map.values()].sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
 
+export interface Lead {
+  name: string;
+  phone?: string;
+  email?: string;
+  channel: "sms" | "email";
+  source: string;
+  lastAt: string;
+}
+
+/**
+ * 설월 출시 대기명단 — 인트로 페이지에서 "출시되면 알려달라"고 **직접 남긴** 사람들.
+ * 구매 이력보다 강한 신호다(명시적 요청이라 동의 문제도 없다).
+ * 영문몰(en)은 이메일, 국내(kr)는 전화가 들어온다.
+ */
+export async function buildTargetsFromWaitlist(key = "harriot:seolwol:waitlist:v1"): Promise<Lead[]> {
+  const sb = db(); if (!sb) return [];
+  const { data } = await sb.from("kv_store").select("data").eq("key", key).maybeSingle();
+  const rows = (data?.data as Array<{ mall?: string; contact?: string; createdAt?: string; name?: string }>) ?? [];
+  const out: Lead[] = [];
+  for (const r of rows) {
+    const c = String(r.contact || "").trim();
+    if (!c) continue;
+    if (c.includes("@")) out.push({ name: r.name || "", email: c.toLowerCase(), channel: "email", source: "waitlist", lastAt: r.createdAt || "" });
+    else {
+      const p = c.replace(/\D/g, "");
+      if (/^01[016789]\d{7,8}$/.test(p)) out.push({ name: r.name || "", phone: p, channel: "sms", source: "waitlist", lastAt: r.createdAt || "" });
+    }
+  }
+  return out;
+}
+
+/**
+ * 여러 소스를 합쳐 발송 명단을 만든다. 같은 사람이 여러 소스에 있으면 한 번만 남기고,
+ * **대기명단을 우선**한다(직접 요청한 사람이 구매이력보다 강한 신호).
+ */
+export async function buildLeads(opts: {
+  brand?: "paulvice" | "harriot";
+  sinceDays?: number;
+  waitlistKey?: string | null;
+  includeShipments?: boolean;
+}): Promise<Lead[]> {
+  const leads: Lead[] = [];
+  if (opts.waitlistKey !== null) leads.push(...(await buildTargetsFromWaitlist(opts.waitlistKey || undefined)));
+  if (opts.includeShipments !== false) {
+    const buyers = await buildTargetsFromShipments(opts.sinceDays ?? 180, { brand: opts.brand });
+    leads.push(...buyers.map((b) => ({ name: b.name, phone: b.phone, channel: "sms" as const, source: "shipments", lastAt: b.lastAt })));
+  }
+  const seen = new Set<string>();
+  const out: Lead[] = [];
+  for (const l of leads) {                       // waitlist 가 앞에 있으므로 먼저 채택된다
+    const k = l.email || l.phone || "";
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(l);
+  }
+  return out;
+}
+
 /** 대상 명단을 캠페인에 등록하고 1인 1코드를 발급 */
 export async function enrollTargets(
   campaignId: string,
-  people: Array<{ name: string; phone: string }>,
+  people: Array<{ name: string; phone?: string; email?: string; channel?: "sms" | "email"; source?: string }>,
 ): Promise<CampaignTarget[]> {
   const sb = db(); if (!sb) throw new Error("KV 미설정");
   const rows: CampaignTarget[] = people.map((p) => ({
-    campaign_id: campaignId, code: makeCode(), name: p.name, phone: p.phone.replace(/\D/g, ""),
+    campaign_id: campaignId, code: makeCode(), name: p.name,
+    phone: p.phone ? p.phone.replace(/\D/g, "") : null,
+    email: p.email ?? null,
+    channel: p.channel ?? (p.email ? "email" : "sms"),
+    source: p.source ?? null,
   }));
   const out: CampaignTarget[] = [];
   for (let i = 0; i < rows.length; i += 200) {

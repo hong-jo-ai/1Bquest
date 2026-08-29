@@ -11,7 +11,7 @@
  */
 import { type NextRequest } from "next/server";
 import {
-  listCampaigns, saveCampaign, funnelOf, buildTargetsFromShipments, enrollTargets,
+  listCampaigns, saveCampaign, funnelOf, buildLeads, enrollTargets,
   type Campaign,
 } from "@/lib/crm/campaign";
 
@@ -26,11 +26,21 @@ export async function GET(req: NextRequest) {
     if (sp.get("preview")) {
       const sinceDays = Number(sp.get("sinceDays") || 180);
       const brand = sp.get("brand") === "harriot" ? "harriot" : sp.get("brand") === "paulvice" ? "paulvice" : undefined;
-      const people = await buildTargetsFromShipments(sinceDays, { brand });
+      const waitlistKey = sp.get("waitlist");   // 예: harriot:seolwol:waitlist:v1 · "none"이면 제외
+      const people = await buildLeads({
+        brand, sinceDays,
+        waitlistKey: waitlistKey === "none" ? null : waitlistKey,
+        includeShipments: sp.get("shipments") !== "0",
+      });
+      const bySource: Record<string, number> = {}, byChannel: Record<string, number> = {};
+      for (const p of people) { bySource[p.source] = (bySource[p.source] ?? 0) + 1; byChannel[p.channel] = (byChannel[p.channel] ?? 0) + 1; }
       return Response.json({
-        ok: true, sinceDays, brand: brand ?? "all", count: people.length,
-        note: "자사몰 직접구매 고객만. 마켓(무신사·W컨셉·29CM·공구·카카오) 경유 고객은 광고 발송 불가라 제외됨",
-        sample: people.slice(0, 5).map((p) => ({ name: p.name, phone: p.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2"), orders: p.orders, lastAt: p.lastAt.slice(0, 10) })),
+        ok: true, sinceDays, brand: brand ?? "all", count: people.length, bySource, byChannel,
+        note: "구매자는 자사몰 직접구매만(마켓 경유는 광고 발송 불가). 대기명단은 본인이 알림을 요청한 사람이라 우선 채택.",
+        sample: people.slice(0, 5).map((p) => ({
+          name: p.name, channel: p.channel, source: p.source,
+          contact: p.email ? p.email.replace(/(.{3}).*(@.*)/, "$1***$2") : (p.phone ?? "").replace(/(\d{3})\d{4}(\d{4})/, "$1****$2"),
+        })),
       });
     }
     const campaigns = await listCampaigns();
@@ -45,12 +55,16 @@ export async function POST(req: NextRequest) {
   let b: {
     name?: string; landingUrl?: string; productNo?: number; couponCode?: string;
     message?: string; sinceDays?: number; confirm?: boolean; brand?: "paulvice" | "harriot";
+    waitlistKey?: string | null; includeShipments?: boolean;
   };
   try { b = await req.json(); } catch { return Response.json({ ok: false, error: "본문 파싱 실패" }, { status: 400 }); }
   if (!b.name || !b.landingUrl) return Response.json({ ok: false, error: "name, landingUrl 필요" }, { status: 400 });
 
   try {
-    const people = await buildTargetsFromShipments(b.sinceDays ?? 180, { brand: b.brand });
+    const people = await buildLeads({
+      brand: b.brand, sinceDays: b.sinceDays ?? 180,
+      waitlistKey: b.waitlistKey, includeShipments: b.includeShipments,
+    });
     if (!b.confirm) {
       return Response.json({
         ok: true, dryRun: true, targetCount: people.length,
@@ -64,10 +78,11 @@ export async function POST(req: NextRequest) {
       message: b.message ?? null, status: "draft", createdAt: new Date().toISOString(),
     };
     await saveCampaign(campaign);
-    const targets = await enrollTargets(campaign.id, people.map((p) => ({ name: p.name, phone: p.phone })));
+    const targets = await enrollTargets(campaign.id, people);
     return Response.json({
       ok: true, campaign,
-      targets: targets.map((t) => ({ name: t.name, phone: t.phone, code: t.code, link: `${BASE}/c/${t.code}` })),
+      counts: { total: targets.length, sms: targets.filter((t) => t.channel === "sms").length, email: targets.filter((t) => t.channel === "email").length },
+      targets: targets.map((t) => ({ name: t.name, channel: t.channel, source: t.source, phone: t.phone, email: t.email, code: t.code, link: `${BASE}/c/${t.code}` })),
     });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
