@@ -79,11 +79,16 @@ const BASE_SCOPES = [
 
 // 적립금(mileage)·회원(customer) 추가 스코프 — 리뷰 보상 자동지급 + 회원 매칭.
 // mileage 는 앱별 승인제(개발자센터). 해리엇 앱(2026-06-25)·폴바이스 앱(2026-06-30) 둘 다 승인 완료 → 양쪽 요청.
+// 프로모션(쿠폰) — PAULVICE CARE 스트랩 쿠폰 발급·시리얼 자동보충용(2026-08-29 추가).
+// ⚠️ 앱에 권한이 켜져 있어도 **토큰 발급 시 요청하지 않으면** 403 insufficient_scope 가 난다.
+//    실제로 쿠폰 생성이 이것 때문에 막혔다 — 앱 설정이 아니라 이 목록이 원인이었다.
 const EXTRA_SCOPES = [
   "mall.read_customer",
   "mall.write_customer",
   "mall.read_mileage",
   "mall.write_mileage",
+  "mall.read_promotion",
+  "mall.write_promotion",
 ];
 
 /** OAuth 스코프 문자열. 두 몰 모두 적립금/회원 스코프 승인 완료 → 동일하게 요청. */
