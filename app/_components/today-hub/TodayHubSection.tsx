@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import TodayScheduleWidget    from "./TodayScheduleWidget";
-import InboxActionWidget      from "./InboxActionWidget";
-import TodayTasksWidget       from "./TodayTasksWidget";
+import { useState, useEffect, useRef, useCallback } from "react";
 import RevenueActionsWidget   from "./RevenueActionsWidget";
 import RevenueTrendWidget     from "./RevenueTrendWidget";
 import BigEventsWidget        from "./BigEventsWidget";
 import type { MirroredCampaign } from "./BigEventsWidget";
 import {
-  SEED_TASKS,
   SEED_ROUTINES_PAULVICE,
   SEED_GOAL_PAULVICE, SEED_GOAL_HARRIOT,
   SEED_EVENTS_PAULVICE,
 } from "./mockData";
-import { kstDateStr, kstMonthStr, kstWeekStartStr, daysUntil } from "./dateUtils";
+import { kstDateStr, kstMonthStr, kstWeekStartStr } from "./dateUtils";
 import type {
-  Task, RevenueAction, RevenueGoal, BigEvent, InjectedEventItem,
+  RevenueAction, RevenueGoal, BigEvent,
   ChannelRevenueSnapshot, LeverSources,
 } from "./types";
 import type { Brand } from "@/lib/multiChannelData";
@@ -33,16 +29,6 @@ function todayLabel(): string {
 }
 
 // ── 정규화 ──────────────────────────────────────────────────────────────────
-
-function normalizeTasks(tasks: Task[]): Task[] {
-  const today = kstDateStr(0);
-  const out: Task[] = [];
-  for (const t of tasks) {
-    if (t.date === today)              out.push(t);
-    else if (t.date < today && !t.done) out.push({ ...t, date: today });
-  }
-  return out;
-}
 
 function normalizeRoutines(routines: RevenueAction[]): RevenueAction[] {
   const week  = kstWeekStartStr();
@@ -79,14 +65,13 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
   const [label, setLabel] = useState("");
   const [loaded, setLoaded] = useState(false);
 
-  const [tasks,    setTasks]    = useState<Task[]>(SEED_TASKS);
   const [routines, setRoutines] = useState<RevenueAction[]>(() => seedRoutines(brand));
   const [goal,     setGoal]     = useState<RevenueGoal>(() => seedGoal(brand));
   const [events,   setEvents]   = useState<BigEvent[]>(() => seedEvents(brand));
   const [mirroredCampaigns, setMirroredCampaigns] = useState<MirroredCampaign[]>([]);
   const [leverSources, setLeverSources] = useState<LeverSources | null>(null);
 
-  const lastSaved = useRef({ tasks: "", routines: "", goal: "", events: "" });
+  const lastSaved = useRef({ routines: "", goal: "", events: "" });
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLabel(todayLabel()); }, []);
@@ -141,9 +126,9 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
   }, [brand]);
 
   const save = useCallback(
-    (type: "tasks" | "routines" | "goal" | "events", payload: unknown) => {
+    (type: "routines" | "goal" | "events", payload: unknown) => {
       const body: { type: string; payload: unknown; brand?: Brand } = { type, payload };
-      if (type !== "tasks") body.brand = brand;
+      body.brand = brand;
       fetch("/api/today-hub", {
         method:  "PUT",
         headers: { "Content-Type": "application/json" },
@@ -161,28 +146,23 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
       .then((j) => {
         if (cancelled) return;
 
-        const rawTasks    = (j.tasks    ?? SEED_TASKS)         as Task[];
         const rawRoutines = (j.routines ?? seedRoutines(brand)) as RevenueAction[];
         const rawGoal     = (j.goal     ?? seedGoal(brand))     as RevenueGoal;
         const rawEvents   = (j.events   ?? seedEvents(brand))   as BigEvent[];
 
-        const t = normalizeTasks(rawTasks);
         const r = normalizeRoutines(rawRoutines);
         const g = rawGoal;
         const e = rawEvents;
 
-        const tStr = JSON.stringify(t);
         const rStr = JSON.stringify(r);
         const gStr = JSON.stringify(g);
         const eStr = JSON.stringify(e);
 
-        setTasks(t);
         setRoutines(r);
         setGoal(g);
         setEvents(e);
-        lastSaved.current = { tasks: tStr, routines: rStr, goal: gStr, events: eStr };
+        lastSaved.current = { routines: rStr, goal: gStr, events: eStr };
 
-        if (j.tasks    === undefined || tStr !== JSON.stringify(rawTasks))    save("tasks",    t);
         if (j.routines === undefined || rStr !== JSON.stringify(rawRoutines)) save("routines", r);
         if (j.goal     === undefined || gStr !== JSON.stringify(rawGoal))     save("goal",     g);
         if (j.events   === undefined || eStr !== JSON.stringify(rawEvents))   save("events",   e);
@@ -191,56 +171,18 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
       })
       .catch(() => {
         if (cancelled) return;
-        const t = normalizeTasks(SEED_TASKS);
         const r = normalizeRoutines(seedRoutines(brand));
         const g = seedGoal(brand);
         const e = seedEvents(brand);
-        setTasks(t); setRoutines(r); setGoal(g); setEvents(e);
+        setRoutines(r); setGoal(g); setEvents(e);
         lastSaved.current = {
-          tasks: JSON.stringify(t), routines: JSON.stringify(r),
-          goal:  JSON.stringify(g), events:   JSON.stringify(e),
+          routines: JSON.stringify(r), goal: JSON.stringify(g), events: JSON.stringify(e),
         };
         setLoaded(true);
       });
     return () => { cancelled = true; };
   }, [brand, save]);
 
-  // 공통 tasks 슬롯 라이브 동기화 — 텔레그램/모바일(MCP)에서 추가된 할일을
-  // 새로고침 없이 반영. lastSaved 와 다를 때만 적용하므로 로컬 편집을 덮지 않고,
-  // setTasks 직전에 lastSaved 를 갱신해 save 이펙트의 불필요한 재저장(=clobber)도 막는다.
-  useEffect(() => {
-    if (!loaded) return;
-    let cancelled = false;
-    const sync = () => {
-      fetch(`/api/today-hub?brand=${brand}`, { cache: "no-store" })
-        .then((r) => r.json())
-        .then((j) => {
-          if (cancelled || j.tasks === undefined) return;
-          const tStr = JSON.stringify(normalizeTasks(j.tasks as Task[]));
-          if (tStr === lastSaved.current.tasks) return; // 외부 변경 없음(또는 이미 반영됨)
-          lastSaved.current.tasks = tStr;
-          setTasks(JSON.parse(tStr) as Task[]);
-        })
-        .catch(() => { /* 폴링 실패는 무시 */ });
-    };
-    const id = setInterval(sync, 15000);
-    // 탭 복귀 시 즉시 동기화 — 폰에서 추가 후 데스크톱으로 돌아오면 바로 반영
-    const onVis = () => { if (document.visibilityState === "visible") sync(); };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [brand, loaded]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    const s = JSON.stringify(tasks);
-    if (s === lastSaved.current.tasks) return;
-    lastSaved.current.tasks = s;
-    save("tasks", tasks);
-  }, [tasks, loaded, save]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -266,41 +208,8 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
     save("events", events);
   }, [events, loaded, save]);
 
-  // 빅 이벤트 → 오늘 할일 자동 주입
-  // 포함 대상: 오늘 마감(delta=0) + 지난 미완료(delta<0) + 내일 마감(delta=1)
-  // delta = daysLeft - c.dDay (0 = 오늘, 음수 = 지남, 양수 = 미래)
-  const injectedItems = useMemo<InjectedEventItem[]>(() => {
-    return events.flatMap((e) => {
-      const daysLeft = daysUntil(e.targetDate);
-      return e.checklist
-        .filter((c) => {
-          if (c.done) return false;
-          const delta = daysLeft - c.dDay;
-          return delta <= 1; // 지남(<0) + 오늘(0) + 내일(1)
-        })
-        .map((c) => ({
-          eventId:        e.id,
-          eventTitle:     e.title,
-          checklistId:    c.id,
-          dDay:           c.dDay,
-          daysLeftDelta:  daysLeft - c.dDay,
-          title:          c.title,
-        }));
-    });
-  }, [events]);
-
-  const toggleEventChecklist = useCallback(
-    (eventId: string, checklistId: string) => {
-      setEvents((prev) =>
-        prev.map((e) =>
-          e.id !== eventId
-            ? e
-            : { ...e, checklist: e.checklist.map((c) => (c.id === checklistId ? { ...c, done: !c.done } : c)) }
-        )
-      );
-    },
-    []
-  );
+  // 빅 이벤트 체크리스트는 BigEventsWidget 안에서 직접 체크한다.
+  // 예전엔 오늘 할일 위젯으로 주입했지만, 그 위젯이 /today 보드와 중복이라 대시보드에서 걷어냈다(2026-08-29).
 
   return (
     <section className="space-y-3 sm:space-y-4">
@@ -311,7 +220,7 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
             <span className="font-medium text-zinc-500 ml-2 text-sm sm:text-base">({label})</span>
           )}
         </h2>
-        <span className="text-[11px] text-zinc-400">출근 직후 5분 체크 · 매출/이벤트는 {BRAND_NAMES[brand]}</span>
+        <span className="text-[11px] text-zinc-400">할 일·일정·메일은 <a href="/today" className="underline">오늘 보드</a>에서 · 매출/이벤트는 {BRAND_NAMES[brand]}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
@@ -320,19 +229,8 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
           <div className="h-[320px] sm:h-[360px] shrink-0">
             <RevenueTrendWidget brand={brand} brandLabel={BRAND_NAMES[brand]} />
           </div>
-          {/* 오늘 할 일 — 아래쪽 절반 (남은 영역 채움) */}
-          <div className="flex-1 min-h-0">
-            <TodayTasksWidget
-              tasks={tasks}
-              setTasks={setTasks}
-              injectedItems={injectedItems}
-              onToggleInjected={toggleEventChecklist}
-            />
-          </div>
         </div>
         <div className="lg:col-span-5 grid grid-cols-1 gap-3 sm:gap-4">
-          <TodayScheduleWidget />
-          <InboxActionWidget />
           <RevenueActionsWidget
             routines={routines}
             setRoutines={setRoutines}
