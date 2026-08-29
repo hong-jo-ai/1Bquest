@@ -29,19 +29,32 @@ const SEEN_KEY = "tax_invoice_seen"; // 처리한 gmail msgId 집합
 // 우리 사업자번호(복호화 비번 = 공급받는자 사업자번호). 매입/매출 방향 판별에도 사용.
 const PASSWORDS = ["6632301279", "2092770599"];
 const OUR_REGS = new Set(PASSWORDS); // 정규화(숫자만) 형태
+// ⚠️ 메일함을 빠뜨리면 그 계정으로 온 계산서는 영영 안 잡힌다.
+//    harriotwatches@gmail 은 승화프린팅 등 해리엇 초기 거래처가 아직 쓰는 주소인데
+//    2026-08-24까지 감시 대상이 아니었다(사장님 지적).
 const MAILBOXES = [
   { label: "plvekorea", kvKey: "kakao_gift_gmail_token" },
   { label: "shong", kvKey: "google_refresh_token" },
+  { label: "harriotwatches", csAccount: "harriotwatches@gmail.com" },
 ];
 
 async function tg(msg) {
   await require("./telegramRelay").relayText(msg);
 }
 
-async function accessToken(kvKey) {
-  const { data } = await sb().from("kv_store").select("data").eq("key", kvKey).maybeSingle();
-  const refresh = data && data.data;
-  if (!refresh) throw new Error(`${kvKey} 토큰 없음`);
+// mb = { kvKey } (kv_store) 또는 { csAccount } (cs_accounts.credentials.refresh_token)
+async function accessToken(mb) {
+  let refresh;
+  if (mb.csAccount) {
+    const { data } = await sb().from("cs_accounts").select("credentials").eq("channel", "gmail").eq("display_name", mb.csAccount).maybeSingle();
+    refresh = data && data.credentials && data.credentials.refresh_token;
+    if (!refresh) throw new Error(`cs_accounts ${mb.csAccount} 토큰 없음`);
+  } else {
+    const { data } = await sb().from("kv_store").select("data").eq("key", mb.kvKey).maybeSingle();
+    refresh = data && data.data;
+    if (typeof refresh === "object" && refresh) refresh = refresh.refresh_token;
+    if (!refresh) throw new Error(`${mb.kvKey} 토큰 없음`);
+  }
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, refresh_token: String(refresh), grant_type: "refresh_token" }),
@@ -255,7 +268,7 @@ async function main() {
   try {
     for (const mb of MAILBOXES) {
       let tok;
-      try { tok = await accessToken(mb.kvKey); } catch (e) { log(`${mb.label} 토큰 실패: ${e.message}`); continue; }
+      try { tok = await accessToken(mb); } catch (e) { log(`${mb.label} 토큰 실패: ${e.message}`); continue; }
       const q = `from:hometax.go.kr 전자세금계산서 has:attachment newer_than:${DAYS}d`;
       const list = await gJson(tok, `/messages?q=${encodeURIComponent(q)}&maxResults=60`).catch(() => ({}));
       const msgs = list.messages || [];
@@ -306,7 +319,7 @@ async function main() {
     // ── 2차: 발행대행사(바로빌·빌36524) 발행분 ──────────────────────
     for (const mb of MAILBOXES) {
       let tok;
-      try { tok = await accessToken(mb.kvKey); } catch (e) { log(`${mb.label} 토큰 실패(대행사): ${e.message}`); continue; }
+      try { tok = await accessToken(mb); } catch (e) { log(`${mb.label} 토큰 실패(대행사): ${e.message}`); continue; }
       for (const ag of AGENCIES) {
         const q = `from:${ag.from} newer_than:${DAYS}d`;
         const list = await gJson(tok, `/messages?q=${encodeURIComponent(q)}&maxResults=60`).catch(() => ({}));

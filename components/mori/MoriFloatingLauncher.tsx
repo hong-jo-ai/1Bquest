@@ -15,6 +15,7 @@ export default function MoriFloatingLauncher() {
     pathname === "/login" ||
     pathname === "/mori" ||
     pathname === "/mori-embed" ||
+    pathname.startsWith("/moon") || // 해리엇 고객용 인터랙티브 페이지
     pathname.startsWith("/api/") ||
     pathname.startsWith("/review/") || // 고객용 리뷰 작성 페이지(익명)
     pathname.startsWith("/r/");        // 리뷰 짧은 링크

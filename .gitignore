@@ -74,3 +74,4 @@ local-agent/_*
 # 로컬 에이전트 의존성 — package.json/lock 으로 재현 가능. 2,571개가 추적돼
 # ssh2 테스트 픽스처(더미 개인키)까지 올라가며 GitHub 푸시 보호에 걸렸음(2026-07-27)
 local-agent/node_modules/
+local-agent/.secrets/

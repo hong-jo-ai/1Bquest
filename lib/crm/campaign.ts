@@ -52,6 +52,8 @@ export interface CampaignTarget {
   order_id?: string | null;
   revenue?: number | null;
   attribution?: string | null;
+  /** 대조군 — 일부러 발송하지 않는다. 이들의 구매율이 성과 측정의 기준선이다. */
+  holdout?: boolean;
 }
 
 const K_CAMPAIGNS = "crm_campaigns:v1";
@@ -195,18 +197,32 @@ export async function buildLeads(opts: {
   return out;
 }
 
-/** 대상 명단을 캠페인에 등록하고 1인 1코드를 발급 */
+/**
+ * 대상 명단을 캠페인에 등록하고 1인 1코드를 발급.
+ *
+ * @param holdoutRatio 일부러 **안 보낼** 비율(0~0.5). 이 사람들의 구매율이
+ *   "문자가 없었을 때의 기본 구매율"이고, 발송군과의 차이가 곧 문자의 진짜 성과다.
+ *   이게 없으면 가만 둬도 살 사람의 매출까지 캠페인 성과로 잡힌다.
+ *   ⚠️ 홀드아웃이 20명 미만이면 비율이 요동쳐 오히려 오해를 부른다 →
+ *   그 경우 지표 계산 쪽(metrics.ts)에서 증분을 아예 내지 않는다.
+ *   ⚠️ 무작위 배정이어야 한다. 앞에서 자르면 명단 정렬(최근 구매순)이 그대로 편향이 된다.
+ */
 export async function enrollTargets(
   campaignId: string,
   people: Array<{ name: string; phone?: string; email?: string; channel?: "sms" | "email"; source?: string }>,
+  holdoutRatio = 0,
 ): Promise<CampaignTarget[]> {
   const sb = db(); if (!sb) throw new Error("KV 미설정");
-  const rows: CampaignTarget[] = people.map((p) => ({
+  const held = new Set<number>();
+  const wanted = Math.min(Math.floor(people.length * Math.max(0, Math.min(0.5, holdoutRatio))), people.length);
+  while (held.size < wanted) held.add(Math.floor(Math.random() * people.length));
+  const rows: CampaignTarget[] = people.map((p, i) => ({
     campaign_id: campaignId, code: makeCode(), name: p.name,
     phone: p.phone ? p.phone.replace(/\D/g, "") : null,
     email: p.email ?? null,
     channel: p.channel ?? (p.email ? "email" : "sms"),
     source: p.source ?? null,
+    holdout: held.has(i),
   }));
   const out: CampaignTarget[] = [];
   for (let i = 0; i < rows.length; i += 200) {

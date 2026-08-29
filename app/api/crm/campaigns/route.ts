@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   let b: {
     name?: string; landingUrl?: string; productNo?: number; couponCode?: string;
     message?: string; sinceDays?: number; confirm?: boolean; brand?: "paulvice" | "harriot";
-    waitlistKey?: string | null; includeShipments?: boolean;
+    waitlistKey?: string | null; includeShipments?: boolean; holdoutRatio?: number;
   };
   try { b = await req.json(); } catch { return Response.json({ ok: false, error: "본문 파싱 실패" }, { status: 400 }); }
   if (!b.name || !b.landingUrl) return Response.json({ ok: false, error: "name, landingUrl 필요" }, { status: 400 });
@@ -78,11 +78,18 @@ export async function POST(req: NextRequest) {
       message: b.message ?? null, status: "draft", createdAt: new Date().toISOString(),
     };
     await saveCampaign(campaign);
-    const targets = await enrollTargets(campaign.id, people);
+    // 기본 10% 는 일부러 안 보낸다 — 이 대조군이 없으면 '문자 덕분'인지 영영 모른다.
+    const targets = await enrollTargets(campaign.id, people, b.holdoutRatio ?? 0.1);
     return Response.json({
       ok: true, campaign,
-      counts: { total: targets.length, sms: targets.filter((t) => t.channel === "sms").length, email: targets.filter((t) => t.channel === "email").length },
-      targets: targets.map((t) => ({ name: t.name, channel: t.channel, source: t.source, phone: t.phone, email: t.email, code: t.code, link: `${BASE}/c/${t.code}` })),
+      counts: {
+        total: targets.length,
+        sms: targets.filter((t) => t.channel === "sms" && !t.holdout).length,
+        email: targets.filter((t) => t.channel === "email" && !t.holdout).length,
+        holdout: targets.filter((t) => t.holdout).length,
+      },
+      // 홀드아웃은 발송 목록에서 빼서 내보낸다 — 실수로라도 보내면 대조군이 깨진다.
+      targets: targets.filter((t) => !t.holdout).map((t) => ({ name: t.name, channel: t.channel, source: t.source, phone: t.phone, email: t.email, code: t.code, link: `${BASE}/c/${t.code}` })),
     });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
