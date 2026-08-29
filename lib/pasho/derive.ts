@@ -59,7 +59,10 @@ export async function pashoToPurchaseOrders(): Promise<PurchaseOrder[]> {
     .filter((o) => poTypes.has(o.type))
     .map((o) => {
       const received = o.receivedQty ?? 0;
-      const done = (o.remainingQty ?? o.orderedQty) === 0 && received > 0;
+      // 원장 단계가 '입고/정산'이면 완료로 본다 — 사장님은 단계만 바꾸고 라인별 수량은 잘 안 채운다
+      // (2026-08-28 실측: P26-005·006·007이 단계=입고인데 lines.received 전부 0이라 리포트에 입고대기로 계속 떴다).
+      const stageDone = ["입고", "정산"].includes(o.status);
+      const done = stageDone || ((o.remainingQty ?? o.orderedQty) === 0 && received > 0);
       const firstSku = o.cafe24Map ? Object.values(o.cafe24Map)[0] : undefined;
       // 확정 입고예정일(eta)이 있으면 기본 리드타임 대신 그 날짜로 ETA 고정
       let leadMin = DEFAULT_LEAD_MIN_DAYS, leadMax = DEFAULT_LEAD_MAX_DAYS;
@@ -79,9 +82,9 @@ export async function pashoToPurchaseOrders(): Promise<PurchaseOrder[]> {
         leadMinDays: leadMin,
         leadMaxDays: leadMax,
         status: (done ? "received" : "ordered") as PurchaseOrder["status"],
-        receivedDate: null,
-        receivedQty: received || null,
-        stockApplied: !!(o.cafe24Map && received > 0),
+        receivedDate: done ? (o.eta || o.date) : null,
+        receivedQty: received || (stageDone ? o.orderedQty : null),
+        stockApplied: !!(o.cafe24Map && (received > 0 || stageDone)),
         notes: `[파쇼 ${o.no}] ${o.lines.map((l) => `${l.variant} ${l.received ?? 0}/${l.qty}`).join(", ")}`,
         createdAt: `${o.date}T00:00:00Z`,
         updatedAt: new Date().toISOString(),
