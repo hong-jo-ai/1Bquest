@@ -159,7 +159,32 @@ export default function CareClient({ source }: { source?: string }) {
 
       {step === 3 && (
         <>
-          <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 28px" }}>동의</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 20px" }}>동의</h1>
+
+          {/* 전체동의 — 개별 항목이 아래에 그대로 보이고 개별 해제가 가능해야 유효하다.
+              선택 항목을 미리 체크해두는 건(다크패턴) 안 되지만, 고객이 능동적으로 누르는
+              전체동의 버튼은 적법하다. '선택 포함'을 반드시 명시한다. */}
+          <label style={{
+            display: "block", border: `1.5px solid ${required && adConsent ? "#111" : "#111"}`,
+            background: required && adConsent ? "#111" : "#fff",
+            color: required && adConsent ? "#fff" : "#111",
+            borderRadius: 4, padding: "20px 18px", marginBottom: 16, cursor: "pointer",
+          }}>
+            <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={required && adConsent}
+                onChange={(e) => { setRequired(e.target.checked); setAdConsent(e.target.checked); }}
+                style={{ width: 20, height: 20, accentColor: required && adConsent ? "#fff" : "#111" }}
+              />
+              <span>
+                <b style={{ fontSize: 17 }}>모두 동의합니다</b>
+                <span style={{ display: "block", fontSize: 12.5, opacity: 0.75, marginTop: 4 }}>
+                  선택 항목(광고성 정보 수신)을 포함합니다
+                </span>
+              </span>
+            </span>
+          </label>
 
           <label style={{ display: "block", border: "1px solid #E5E2DC", borderRadius: 4, padding: 16, marginBottom: 12, cursor: "pointer" }}>
             <span style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -181,6 +206,7 @@ export default function CareClient({ source }: { source?: string }) {
               <span>
                 <b style={{ fontSize: 14.5 }}>[선택] 광고성 정보 수신 동의 (문자)</b>
                 <span style={{ display: "block", fontSize: 12.5, color: GRAY, lineHeight: 1.6, marginTop: 6 }}>
+                  배터리 교체 시기 안내, 신제품 출시 소식, 케어 등록 고객 전용 혜택을 보내드립니다<br />
                   미동의해도 케어 서비스는 그대로 제공됩니다
                 </span>
               </span>
