@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, TrendingUp, Package } from "lucide-react";
+import { RefreshCw, TrendingUp, Package, ChevronDown } from "lucide-react";
 import type { ProductRank } from "@/lib/cafe24Data";
 
 type Period = "today" | "week" | "month" | "quarter";
@@ -62,6 +62,8 @@ export default function TopProducts({
   const [quarterData, setQuarterData]   = useState<ProductRank[] | null>(null);
   const [quarterLoading, setQuarterLoading] = useState(false);
   const [quarterError, setQuarterError]     = useState("");
+  // 상품명이 길어 모바일에서 잘린다. 탭하면 전체 이름·SKU 를 펼친다(사장님 요청 2026-08-30).
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const handlePeriodChange = async (p: Period) => {
     setActivePeriod(p);
@@ -186,44 +188,65 @@ export default function TopProducts({
 
         ) : (
           <div className="space-y-3">
-            {products.map((p) => (
-              <div key={p.sku || p.rank} className="flex items-center gap-3">
+            {products.map((p) => {
+              const key = p.sku || String(p.rank);
+              const open = expanded === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setExpanded(open ? null : key)}
+                  aria-expanded={open}
+                  className="flex w-full items-start gap-3 rounded-lg text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                >
+                  {/* 순위 */}
+                  <span className={`w-5 shrink-0 pt-0.5 text-center text-sm font-bold ${
+                    p.rank <= 3 ? medalColors[p.rank - 1] : "text-zinc-400"
+                  }`}>
+                    {p.rank}
+                  </span>
 
-                {/* 순위 */}
-                <span className={`w-5 text-center text-sm font-bold shrink-0 ${
-                  p.rank <= 3 ? medalColors[p.rank - 1] : "text-zinc-400"
-                }`}>
-                  {p.rank}
-                </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-start gap-1.5">
+                      {/* 접힘: 한 줄 말줄임 / 펼침: 전체 줄바꿈.
+                          모바일은 이름 칸이 좁아 대부분 잘렸다 — 탭으로 전체를 확인한다. */}
+                      <span className={`flex-1 text-sm font-medium text-zinc-700 dark:text-zinc-200 ${
+                        open ? "whitespace-normal break-words" : "truncate"
+                      }`}>
+                        {p.name}
+                      </span>
+                      <ChevronDown
+                        size={13}
+                        className={`mt-0.5 shrink-0 text-zinc-300 transition-transform dark:text-zinc-600 ${open ? "rotate-180" : ""}`}
+                      />
+                    </div>
 
-                {/* 이름 + 바 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate pr-2">
-                      {p.name}
-                    </span>
-                    <span className="text-xs text-zinc-400 shrink-0 tabular-nums">
-                      {p.sold}개
-                    </span>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${
+                          p.rank <= 3 ? barColors[p.rank - 1] : "from-violet-400 to-purple-500"
+                        }`}
+                        style={{ width: `${Math.max(4, (p.sold / max) * 100)}%` }}
+                      />
+                    </div>
+
+                    {/* 판매량·매출을 바 아래로 내렸다. 오른쪽 고정 칸을 없애야 이름이 폭을 갖는다. */}
+                    <div className="mt-1 flex items-baseline justify-between gap-2 text-xs text-zinc-400">
+                      <span className="tabular-nums">{p.sold}개</span>
+                      <span className="font-semibold tabular-nums text-zinc-600 dark:text-zinc-300">{fmt(p.revenue)}</span>
+                    </div>
+
+                    {open && (
+                      <div className="mt-1.5 space-y-0.5 rounded-lg bg-zinc-50 px-2.5 py-2 text-[11px] text-zinc-500 dark:bg-zinc-800/60">
+                        {p.sku && <div>SKU · <span className="tabular-nums text-zinc-700 dark:text-zinc-300">{p.sku}</span></div>}
+                        <div>판매 {p.sold.toLocaleString("ko-KR")}개 · 매출 {p.revenue.toLocaleString("ko-KR")}원</div>
+                        {p.sold > 0 && <div>객단가 {Math.round(p.revenue / p.sold).toLocaleString("ko-KR")}원</div>}
+                      </div>
+                    )}
                   </div>
-                  <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${
-                        p.rank <= 3
-                          ? barColors[p.rank - 1]
-                          : "from-violet-400 to-purple-500"
-                      }`}
-                      style={{ width: `${Math.max(4, (p.sold / max) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* 매출액 */}
-                <span className="text-sm font-semibold text-zinc-600 dark:text-zinc-300 shrink-0 w-20 text-right tabular-nums">
-                  {fmt(p.revenue)}
-                </span>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
