@@ -18,6 +18,17 @@ function digits(s: string | null | undefined): string {
   return (s || "").replace(/\D/g, "");
 }
 
+/** UTF-8 바이트 기준으로 자른다. 글자 중간에서 잘리지 않게 한 글자씩 확인한다. */
+function clampBytes(s: string, max: number): string {
+  if (Buffer.byteLength(s, "utf8") <= max) return s;
+  let out = "";
+  for (const ch of s) {
+    if (Buffer.byteLength(out + ch, "utf8") > max) break;
+    out += ch;
+  }
+  return out;
+}
+
 /** 카페24 회원 조회 — 휴대폰 번호로(국내 회원은 cellphone 등록). 매칭되면 member_id 반환. */
 export async function findMemberIdByPhone(
   cafe24Mall: Cafe24Mall,
@@ -45,6 +56,29 @@ export async function findMemberIdByPhone(
   return null;
 }
 
+/**
+ * 주문번호로 회원ID 조회 — **전화 매칭보다 이게 정본이다.**
+ *
+ * 왜 필요한가: 네이버·카카오 간편가입 회원(member_id 가 `...@n` / `...@k`)은
+ * 카페24 회원정보에 휴대폰이 없어서 cellphone 조회가 원천적으로 0건이다.
+ * 실측(2026-08-30) — 미지급 99건 중 **7건 23,500P 가 실제 회원인데 전화 미매칭으로 누락**됐고,
+ * 7건 전부 @n / @k 계정이었다. 주문에는 member_id 가 그대로 들어 있으니 그걸 쓰면 정확하다.
+ */
+export async function findMemberIdByOrder(
+  cafe24Mall: Cafe24Mall,
+  orderRef: string,
+  at: string,
+): Promise<string | null> {
+  if (!orderRef) return null;
+  try {
+    const res = await cafe24Get(`/api/v2/admin/orders/${encodeURIComponent(orderRef)}`, at, cafe24Mall);
+    const mid = res?.order?.member_id;
+    return mid && String(mid).trim() ? String(mid) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface RewardResult {
   status: "paid" | "skipped" | "failed";
   memberId?: string;
@@ -56,6 +90,8 @@ export interface RewardResult {
 export async function issueReward(args: {
   mall: MallId;
   phone?: string | null;
+  /** 주문번호. 회원 매칭의 1순위 열쇠다(간편가입 회원은 전화로 못 찾는다). */
+  orderRef?: string | null;
   points: number;
   productName?: string | null;
 }): Promise<RewardResult> {
@@ -66,16 +102,23 @@ export async function issueReward(args: {
   const at = await getAccessTokenFromStore(mall.cafe24Mall);
   if (!at) return { status: "failed", note: "cafe24 토큰 없음" };
 
-  // 1) 회원 매칭 — 전화번호 기준(국내). 비회원/게스트면 skip.
-  if (!args.phone) return { status: "skipped", note: "전화번호 없음(회원매칭 불가)" };
-  const memberId = await findMemberIdByPhone(mall.cafe24Mall, mall.shopNo, args.phone, at);
-  if (!memberId) return { status: "skipped", note: "카페24 회원 아님(전화 미매칭)" };
+  // 1) 회원 매칭 — **주문번호 우선**, 전화는 폴백.
+  //    순서가 중요하다. 간편가입(@n/@k) 회원은 휴대폰이 등록돼 있지 않아 전화로는 영영 못 찾는다.
+  let memberId = args.orderRef
+    ? await findMemberIdByOrder(mall.cafe24Mall, args.orderRef, at)
+    : null;
+  if (!memberId && args.phone) {
+    memberId = await findMemberIdByPhone(mall.cafe24Mall, mall.shopNo, args.phone, at);
+  }
+  if (!memberId) return { status: "skipped", note: "카페24 회원 아님(게스트 주문)" };
 
   // 2) 적립금 지급 — POST /api/v2/admin/points (검증완료 2026-06-25, 201).
   //    스코프 mall.write_mileage 필요("특정 클라이언트만" → 개발자센터 승인). 공지의 /mileage URL은 404, /points가 실제 엔드포인트.
   //    엔드포인트는 env(REVIEW_MILEAGE_PATH)로 덮어쓰기 가능.
   const path = process.env.REVIEW_MILEAGE_PATH || "/api/v2/admin/points";
-  const reason = `리뷰 작성 감사 적립${args.productName ? ` — ${args.productName}` : ""}`;
+  // ⚠️ 카페24 적립 사유는 **60바이트** 상한이다. 한글은 3바이트라 20자면 찬다.
+  //    상품명을 그대로 붙였다가 422 로 지급이 실패한 적이 있다(2026-08-19).
+  const reason = clampBytes(`리뷰 작성 감사 적립${args.productName ? ` — ${args.productName}` : ""}`, 60);
   try {
     const res = await cafe24Post(
       path,
@@ -107,7 +150,7 @@ export async function payPendingRewards(mall: MallId, limit = 50): Promise<{
   const sb = reviewsDb();
   const { data: rows } = await sb
     .from("reviews")
-    .select("id, mall, customer_phone, reward_points, product_name, status")
+    .select("id, mall, customer_phone, order_ref, reward_points, product_name, status")
     .eq("mall", mall)
     .eq("reward_status", "pending")
     .eq("status", "published") // 숨김/스팸은 보상 제외
@@ -120,6 +163,7 @@ export async function payPendingRewards(mall: MallId, limit = 50): Promise<{
     const res = await issueReward({
       mall: r.mall as MallId,
       phone: r.customer_phone,
+      orderRef: r.order_ref,
       points: r.reward_points,
       productName: r.product_name,
     });
