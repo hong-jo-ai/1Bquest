@@ -127,6 +127,10 @@
     {
       "path": "/api/cron/delivery-complete",
       "schedule": "20 0,5,12 * * *"
+    },
+    {
+      "path": "/api/cron/popup-guard",
+      "schedule": "40 0 * * *"
     }
   ]
 }

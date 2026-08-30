@@ -12,6 +12,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildLeads } from "@/lib/crm/campaign";
 import { crmTotals } from "@/lib/crm/metrics";
+import { popupStats } from "@/lib/storefront/popup";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,7 +26,7 @@ export async function GET() {
   const sb = db();
   if (!sb) return Response.json({ ok: false, error: "KV 미설정" }, { status: 500 });
   try {
-    const [{ totals, campaigns, care }, serials, recent, pv, hr, cart] = await Promise.all([
+    const [{ totals, campaigns, care }, serials, recent, pv, hr, cart, popup] = await Promise.all([
       crmTotals(),
       Promise.all([
         sb.from("care_coupon_serials").select("*", { count: "exact", head: true }),
@@ -39,6 +40,7 @@ export async function GET() {
       // 장바구니 — 담기 대비 구매. 비로그인 수집은 2026-08-30 부터라 그 전 숫자는 회원분뿐이다.
       sb.from("crm_cart_events").select("member_id,anon_id,status,converted_at,cart_at")
         .gte("cart_at", new Date(Date.now() - 30 * 86400000).toISOString()),
+      popupStats(14).catch(() => null),
     ]);
 
     const [{ count: serialTotal }, { count: serialFree }] = serials;
@@ -63,6 +65,7 @@ export async function GET() {
         orders: r.orders ?? 0,
         revenue: Number(r.revenue ?? 0),
       })),
+      popup,
       cart: {
         carted,
         converted: cartConverted,

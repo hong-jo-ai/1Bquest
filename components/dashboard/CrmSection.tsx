@@ -39,6 +39,12 @@ interface Overview {
   care: CareMetrics | null;
   coupon: { total: number; free: number; used: number };
   cart: { carted: number; converted: number; rate: number; members: number; guests: number };
+  popup: {
+    days: number; eligible: number; shown: number; clicked: number; dismissed: number;
+    clickRate: number; shownBuyers: number; shownCvr: number;
+    holdoutSize: number; holdoutBuyers: number; holdoutCvr: number;
+    liftPp: number | null; enabled: boolean;
+  } | null;
   recent: Array<{ phone: string; product: string | null; consent: boolean; channel: string; at: string; orders: number; revenue: number }>;
   reachable: { paulvice: number; harriot: number; harriotEmail: number };
 }
@@ -271,6 +277,45 @@ export default function CrmSection() {
           </div>
         )}
       </div>
+
+      {/* ── 망설임 팝업 ── */}
+      {d.popup && (
+        <div>
+          <div className="mb-2 flex items-baseline gap-2 px-1">
+            <h3 className="text-[13px] font-bold text-zinc-700 dark:text-zinc-200">망설임 팝업</h3>
+            <span className={`text-[11px] ${d.popup.enabled ? "text-emerald-600" : "text-red-600"}`}>
+              {d.popup.enabled ? "작동 중" : "⛔ 중단됨"}
+            </span>
+            <span className="text-[11px] text-zinc-400">최근 {d.popup.days}일 · 후기 노출(쿠폰 없음)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+            <Stat label="망설인 사람" value={won(d.popup.eligible)} unit="명"
+                  sub="체류 45초+스크롤 60%+미행동" />
+            <Stat label="팝업 노출" value={won(d.popup.shown)} unit="명"
+                  sub={`클릭 ${won(d.popup.clicked)} · 닫기 ${won(d.popup.dismissed)}`} />
+            <Stat label="본 사람 구매율" value={d.popup.shown ? pct(d.popup.shownCvr) : "—"}
+                  sub={`${won(d.popup.shownBuyers)}명 구매`} />
+            <Stat label="안 본 사람(대조군)" value={d.popup.holdoutSize ? pct(d.popup.holdoutCvr) : "—"}
+                  sub={`${won(d.popup.holdoutSize)}명 중 ${won(d.popup.holdoutBuyers)}명`} />
+          </div>
+          <div className="mt-2 px-1 text-[11px]">
+            {d.popup.liftPp === null ? (
+              <span className="text-zinc-400">
+                증분은 양쪽 표본이 20명씩 쌓여야 계산합니다 — 그 전엔 몇 건 차이로 결론이 뒤집힙니다.
+              </span>
+            ) : d.popup.liftPp > 0 ? (
+              <span className="text-emerald-600">
+                팝업이 구매율을 <b>{(d.popup.liftPp * 100).toFixed(1)}%p</b> 올렸습니다.
+              </span>
+            ) : (
+              <span className="text-red-600">
+                ⚠️ 팝업군이 대조군보다 <b>{(Math.abs(d.popup.liftPp) * 100).toFixed(1)}%p</b> 낮습니다 —
+                3%p 이상 벌어지면 매일 아침 크론이 자동으로 끕니다(2026-07-08 웰컴팝업 사고 재발 방지).
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── 모수 — 다음 캠페인의 상한 ── */}
       <div>
