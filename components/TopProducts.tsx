@@ -11,6 +11,20 @@ interface Props {
   week: ProductRank[];
   month: ProductRank[];
   isReal?: boolean;
+  /** 3개월 조회 대상 몰 — 해리엇 탭에서 폴바이스 순위가 나오던 문제 때문에 명시한다. */
+  brand?: "paulvice" | "harriot";
+  /** 지금 보고 있는 채널 이름 — 어느 채널 순위인지 화면에 명시한다. */
+  channelName?: string;
+  /**
+   * 이 채널이 실제로 제공하는 기간.
+   * 엑셀 업로드 채널은 파일 한 벌뿐이라 일/주 구분이 없다. 예전엔 없는 기간에
+   * 월 데이터를 그대로 돌려줘서 오늘·이번주·이번달이 **같은 숫자**로 보였다(2026-08-30 수정).
+   */
+  availablePeriods?: Period[];
+  /** 업로드 채널의 실제 데이터 기간 — "이번 달"이 아니라 파일이 담은 구간이다. */
+  uploadPeriod?: { start: string; end: string } | null;
+  /** 기간별로 집계 범위가 다를 때의 주석(예: 전체 탭의 오늘/이번주는 카페24만) */
+  periodNote?: Partial<Record<Period, string>>;
 }
 
 const PERIODS: { key: Period; label: string; shortLabel: string }[] = [
@@ -37,19 +51,27 @@ const barColors = [
   "from-amber-500 to-amber-600",
 ];
 
-export default function TopProducts({ today, week, month, isReal }: Props) {
-  const [activePeriod, setActivePeriod] = useState<Period>("month");
+export default function TopProducts({
+  today, week, month, isReal, brand = "paulvice",
+  channelName, availablePeriods, uploadPeriod, periodNote,
+}: Props) {
+  const periods = availablePeriods ?? ["today", "week", "month", "quarter"];
+  const [activePeriod, setActivePeriod] = useState<Period>(
+    periods.includes("month") ? "month" : periods[0] ?? "month",
+  );
   const [quarterData, setQuarterData]   = useState<ProductRank[] | null>(null);
   const [quarterLoading, setQuarterLoading] = useState(false);
   const [quarterError, setQuarterError]     = useState("");
 
   const handlePeriodChange = async (p: Period) => {
     setActivePeriod(p);
+    // ⚠️ 3개월은 카페24 주문 API 로만 만든다. 업로드 채널에서 이걸 호출하면
+    //    무신사 탭에 카페24 순위가 뜬다(실제로 그랬다). periods 에 quarter 가 있을 때만 부른다.
     if (p === "quarter" && !quarterData && !quarterLoading && isReal) {
       setQuarterLoading(true);
       setQuarterError("");
       try {
-        const res  = await fetch("/api/cafe24/ranking");
+        const res  = await fetch(`/api/cafe24/ranking?brand=${brand}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
         setQuarterData(data.products ?? []);
@@ -88,9 +110,15 @@ export default function TopProducts({ today, week, month, isReal }: Props) {
             상품별 판매 순위
             <span className="text-sm font-normal text-zinc-400 ml-1.5">TOP 10</span>
           </h2>
-          {!isReal && (
-            <p className="text-[11px] text-zinc-400 mt-0.5">실데이터 없음</p>
-          )}
+          <p className="mt-0.5 text-[11px] text-zinc-400">
+            {!isReal ? "실데이터 없음" : (
+              <>
+                {channelName ?? "전체"}
+                {uploadPeriod && ` · 업로드 기간 ${uploadPeriod.start} ~ ${uploadPeriod.end}`}
+                {periodNote?.[activePeriod] && ` · ${periodNote[activePeriod]}`}
+              </>
+            )}
+          </p>
         </div>
 
         {/* 기간 소계 */}
@@ -108,8 +136,8 @@ export default function TopProducts({ today, week, month, isReal }: Props) {
       </div>
 
       {/* ── 기간 탭 ── */}
-      <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 mb-5 gap-0.5">
-        {PERIODS.map((p) => {
+      <div className={`${periods.length <= 1 ? "hidden" : "flex"} bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 mb-5 gap-0.5`}>
+        {PERIODS.filter((p) => periods.includes(p.key)).map((p) => {
           const disabled = p.key === "quarter" && !isReal;
           return (
             <button

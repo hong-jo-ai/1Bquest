@@ -746,19 +746,34 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
         {/* 상품별 판매 순위 — 보조 정보 (접힘) */}
         <CollapsibleSection title="상품별 판매 순위" defaultOpen={false}>
+          {/*
+            채널마다 실제로 가진 기간이 다르다. 예전엔 없는 기간에 월 데이터를 그대로 돌려줘
+            오늘·이번주·이번달이 같은 숫자로 보였고, 업로드 채널에서 3개월을 누르면
+            카페24 순위가 떴다(2026-08-30 수정). 이제 제공하는 기간만 노출한다.
+              - 카페24 계열: 오늘·이번주·이번달·3개월 전부
+              - 엑셀 업로드 채널: 파일 한 벌뿐 → 기간 구분 없음. 파일이 담은 구간을 그대로 표기
+              - 전체: 이번 달만 전 채널 합산. 오늘·이번주는 카페24만이라 그렇게 적어둔다
+          */}
           <TopProducts
-            today={
-              !isUploadableActive && activeCafe24IsReal
-                ? (activeCafe24Data?.topProductsToday ?? displayData.topProducts)
-                : displayData.topProducts
-            }
-            week={
-              !isUploadableActive && activeCafe24IsReal
-                ? (activeCafe24Data?.topProductsWeek ?? displayData.topProducts)
-                : displayData.topProducts
-            }
+            brand={brand}
+            channelName={activeChannelMeta?.name ?? "전체"}
+            today={activeCafe24Data?.topProductsToday ?? []}
+            week={activeCafe24Data?.topProductsWeek ?? []}
             month={displayData.topProducts}
             isReal={(activeCafe24IsReal && !isUploadableActive) || activeHasUpload}
+            availablePeriods={
+              isUploadableActive
+                ? ["month"]
+                : activeChannel === "all"
+                  ? ["today", "week", "month"]
+                  : ["today", "week", "month", "quarter"]
+            }
+            uploadPeriod={isUploadableActive && activeMeta ? activeMeta.period : null}
+            periodNote={
+              activeChannel === "all"
+                ? { today: "카페24 기준", week: "카페24 기준", month: "전 채널 합산" }
+                : undefined
+            }
           />
         </CollapsibleSection>
         </div>

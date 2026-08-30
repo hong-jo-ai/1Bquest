@@ -1,6 +1,7 @@
 import { fetchAllOrders, buildRanking, isPaidOrder } from "@/lib/cafe24Data";
 import { getValidC24Token } from "@/lib/cafe24Auth";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import type { Brand } from "@/lib/multiChannelData";
 
 function kstNow() {
   return new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -13,7 +14,8 @@ function kstStr(d: Date) {
 // → 월별로 나눠서 병렬 조회 후 합산
 async function fetchOrdersForMonths(
   token: string,
-  months: number
+  months: number,
+  brand: Brand,
 ): Promise<any[]> {
   const now = kstNow();
   const todayStr = kstStr(now);
@@ -38,7 +40,7 @@ async function fetchOrdersForMonths(
 
   // 병렬 조회
   const results = await Promise.all(
-    ranges.map(([s, e]) => fetchAllOrders(token, s, e).catch((err) => {
+    ranges.map(([s, e]) => fetchAllOrders(token, s, e, true, brand).catch((err) => {
       console.error(`[ranking] 구간 ${s}~${e} 실패:`, err.message);
       return [] as any[];
     }))
@@ -59,15 +61,18 @@ async function fetchOrdersForMonths(
   return all;
 }
 
-export async function GET() {
-  const accessToken = await getValidC24Token();
+export async function GET(req: NextRequest) {
+  // ⚠️ 예전엔 몰 구분 없이 기본몰(폴바이스)만 조회했다. 그래서 해리엇 카페24 탭에서
+  //    3개월을 누르면 폴바이스 순위가 떴다(2026-08-30 수정).
+  const brand: Brand = req.nextUrl.searchParams.get("brand") === "harriot" ? "harriot" : "paulvice";
+  const accessToken = await getValidC24Token(brand === "harriot" ? "harriot" : "paulvice");
   if (!accessToken) {
     return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   }
 
   try {
     // 입금전 주문 제외 — 매출/판매 통계는 결제 확정된 주문만 집계
-    const orders   = (await fetchOrdersForMonths(accessToken, 3)).filter(isPaidOrder);
+    const orders   = (await fetchOrdersForMonths(accessToken, 3, brand)).filter(isPaidOrder);
     const products = buildRanking(orders, 10);
 
     const now = kstNow();
@@ -78,6 +83,7 @@ export async function GET() {
     console.log(`[ranking] 완료 - 주문 ${orders.length}건, 상품 ${products.length}개`);
 
     return NextResponse.json({
+      brand,
       products,
       period: { start: kstStr(start), end: kstStr(now) },
       totalOrders: orders.length,
