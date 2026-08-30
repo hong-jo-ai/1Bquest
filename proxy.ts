@@ -38,7 +38,7 @@ const ALLOW_PREFIX = [
   "/api/care/",        // CARE 등록 API (본인확인·제품목록·등록, 익명 공개)
   "/moon",             // 해리엇 '그날의 달' 공개 인터랙티브 페이지
   "/api/reviews/submit",  // 리뷰 제출 (익명, 토큰검증)
-  "/api/reviews/upload",  // 리뷰 미디어 업로드 (익명, 토큰검증)
+  "/api/reviews/upload",  // 리뷰 미디어 업로드 (익명, 토큰검증) — /upload-url 도 이 프리픽스로 커버
   "/api/reviews/widget",  // 스토어프론트 리뷰 위젯 데이터 (공개 읽기, CORS)
   "/api/reviews/counts",  // 상품별 리뷰수 맵 (watchshop 타일 등, 공개 읽기, CORS)
   "/pv-reviews.js",       // 스토어프론트 리뷰 위젯 스크립트 (공개 정적파일)

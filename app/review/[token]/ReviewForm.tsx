@@ -90,16 +90,39 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
     setTimeout(() => textRef.current?.focus(), 0);
   }
 
+  /**
+   * 업로드는 **Supabase 로 직접** 올린다. 우리 API 를 거치면 Vercel 함수 페이로드 한도
+   * (4.5MB)에 걸려 동영상이 전부 실패한다 — 실측 4MB 통과 / 6MB 부터 413.
+   * 서버는 '올릴 자리'(서명 URL)만 내주고 파일은 지나가지 않는다.
+   *
+   * ⚠️ 예전엔 413 응답이 JSON 이 아니라(HTML) r.json() 이 throw 했고, catch 가 없어
+   *    에러 메시지도 없이 조용히 아무 일도 안 일어났다. 그래서 고객은 "안 된다"고만 느꼈다.
+   *    이제 모든 실패에 이유를 보여준다.
+   */
   async function onFiles(files: FileList | null) {
     if (!files?.length) return;
     setErr(""); setUploading(true);
     try {
       for (const file of Array.from(files).slice(0, 10 - media.length)) {
-        const fd = new FormData(); fd.append("file", file);
-        const r = await fetch(`/api/reviews/upload?t=${encodeURIComponent(token)}`, { method: "POST", body: fd });
-        const j = await r.json();
-        if (!r.ok) { setErr(j.error || t.errUpload); continue; }
-        setMedia((m) => [...m, { type: j.type, url: j.url }]);
+        try {
+          const r = await fetch(`/api/reviews/upload-url?t=${encodeURIComponent(token)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mime: file.type, size: file.size, filename: file.name }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.uploadUrl) { setErr(j.error || t.errUpload); continue; }
+
+          const up = await fetch(j.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": j.mime },
+            body: file,
+          });
+          if (!up.ok) { setErr(t.errUpload); continue; }
+          setMedia((m) => [...m, { type: j.type, url: j.url }]);
+        } catch {
+          setErr(t.errUpload);
+        }
       }
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   }
