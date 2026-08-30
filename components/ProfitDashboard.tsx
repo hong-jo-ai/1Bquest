@@ -377,8 +377,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           </button>
         </div>
 
-        {/* 기간 선택 — 모바일에선 가로 스크롤 */}
-        <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
+        {/* 기간 선택 — 모바일에서도 줄바꿈. 가로 스크롤이면 뒤쪽 항목을 놓친다(2026-08-30) */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {(
             [
               { k: "today" as const, label: "오늘" },
@@ -419,8 +419,8 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           )}
         </div>
 
-        {/* 채널 토글 — 모바일에선 가로 스크롤 */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 overflow-x-auto -mx-1 px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
+        {/* 채널 토글 — 모바일에서도 줄바꿈. 가로 스크롤이면 뒤쪽 항목을 놓친다(2026-08-30) */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-zinc-100 pt-3 sm:gap-2 dark:border-zinc-800">
           <span className="shrink-0 text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1">
             채널
           </span>

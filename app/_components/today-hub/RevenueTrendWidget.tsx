@@ -12,6 +12,11 @@ interface Point { date: string; revenue: number }
 interface Props {
   brand: Brand;
   brandLabel: string;
+  /** 상단 판매채널 탭과 연동. "all" 이면 전체 합계. */
+  channel?: string;
+  channelLabel?: string;
+  /** 채널별 고유색 — 어느 채널을 보고 있는지 그래프 색으로도 알 수 있게 */
+  channelColor?: string;
 }
 
 const ACCENT: Record<Brand, string> = {
@@ -76,7 +81,7 @@ function formatLabel(date: string, g: Granularity): string {
   return date;
 }
 
-export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
+export default function RevenueTrendWidget({ brand, brandLabel, channel = "all", channelLabel, channelColor }: Props) {
   const [granularity, setGranularity] = useState<Granularity>("day");
   const [range, setRange] = useState<{ from: string; to: string }>(() => defaultRange("day"));
   const [touched, setTouched] = useState(false); // 사용자가 수동 변경했는지
@@ -113,7 +118,7 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
     setLoading(true);
     setError(null);
     const qs = new URLSearchParams({
-      brand, granularity, from: range.from, to: range.to,
+      brand, granularity, from: range.from, to: range.to, channel,
     });
     fetch(`/api/revenue-trend?${qs.toString()}`)
       .then((r) => r.json())
@@ -125,9 +130,11 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
       .catch((e) => { if (!cancel) setError(String(e)); })
       .finally(() => { if (!cancel) setLoading(false); });
     return () => { cancel = true; };
-  }, [brand, granularity, range.from, range.to]);
+  }, [brand, granularity, range.from, range.to, channel]);
 
   const total = useMemo(() => points.reduce((s, p) => s + p.revenue, 0), [points]);
+  // 채널을 고르면 그 채널색으로 — 브랜드색만 쓰면 탭을 바꿔도 화면이 같아 보인다.
+  const accent = (channel !== "all" && channelColor) || ACCENT[brand];
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 overflow-hidden flex flex-col h-full">
@@ -135,12 +142,17 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
       <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2.5">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
-          style={{ background: `linear-gradient(135deg, ${ACCENT[brand]}, ${ACCENT[brand]}cc)` }}
+          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}
         >
           <TrendingUp size={13} />
         </div>
-        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex-1">매출 추이</h3>
-        <span className="text-[10px] font-medium text-zinc-400">{brandLabel}</span>
+        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex-1 truncate">
+          매출 추이
+          {channel !== "all" && channelLabel && (
+            <span className="ml-1.5 text-[11px] font-medium text-zinc-500">· {channelLabel}</span>
+          )}
+        </h3>
+        <span className="hidden sm:inline text-[10px] font-medium text-zinc-400 shrink-0">{brandLabel}</span>
       </div>
 
       <div className="px-5 py-3 flex flex-col gap-3 flex-1 min-h-0">
@@ -207,8 +219,8 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
               <LineChart data={points} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
                 <defs>
                   <linearGradient id={`revLine-${brand}`} x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"  stopColor={ACCENT[brand]} stopOpacity={0.6} />
-                    <stop offset="100%" stopColor={ACCENT[brand]} stopOpacity={1}  />
+                    <stop offset="0%"  stopColor={accent} stopOpacity={0.6} />
+                    <stop offset="100%" stopColor={accent} stopOpacity={1}  />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.4} vertical={false} />
@@ -228,14 +240,14 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
                   width={48}
                 />
                 <Tooltip
-                  cursor={{ stroke: ACCENT[brand], strokeOpacity: 0.2 }}
+                  cursor={{ stroke: accent, strokeOpacity: 0.2 }}
                   content={({ active, payload }) => {
                     if (!active || !payload || payload.length === 0) return null;
                     const p = payload[0]!.payload as Point;
                     return (
                       <div className="bg-zinc-900 text-white rounded-lg px-3 py-2 shadow-xl text-xs">
                         <div className="font-semibold mb-0.5">{formatLabel(p.date, granularity)}</div>
-                        <div className="tabular-nums" style={{ color: ACCENT[brand] === "#7c3aed" ? "#c4b5fd" : "#fcd34d" }}>
+                        <div className="tabular-nums" style={{ color: accent }}>
                           {fmtKRWFull(p.revenue)}
                         </div>
                       </div>
@@ -248,7 +260,7 @@ export default function RevenueTrendWidget({ brand, brandLabel }: Props) {
                   stroke={`url(#revLine-${brand})`}
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 4, fill: ACCENT[brand] }}
+                  activeDot={{ r: 4, fill: accent }}
                 />
               </LineChart>
             </ResponsiveContainer>

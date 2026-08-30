@@ -57,20 +57,21 @@ function Stat({ label, value, unit, sub, tone }: { label: string; value: string;
 function Funnel({ steps }: { steps: Array<{ label: string; n: number; note?: string }> }) {
   const top = steps[0]?.n || 0;
   return (
-    <div className="flex flex-wrap items-stretch gap-1.5">
+    // 모바일은 2×2 그리드(가로 화살표는 폭을 넘긴다), sm 이상은 한 줄 흐름.
+    <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-stretch">
       {steps.map((s, i) => {
         const prev = i > 0 ? steps[i - 1].n : 0;
         const drop = i > 0 && prev > 0 ? s.n / prev : 1;
         return (
           <div key={s.label} className="flex items-center gap-1.5">
-            <div className="min-w-[92px] rounded-lg bg-zinc-100 px-3 py-2 dark:bg-zinc-700/50">
+            <div className="w-full rounded-lg bg-zinc-100 px-3 py-2 sm:w-auto sm:min-w-[92px] dark:bg-zinc-700/50">
               <div className="text-[10px] text-zinc-400">{s.label}</div>
               <div className="text-[16px] font-bold text-zinc-800 dark:text-zinc-100">{num(s.n)}</div>
               <div className="text-[10px] text-zinc-400">
                 {i === 0 ? (s.note ?? " ") : `${top ? pct(s.n / top) : "—"} · 직전 ${pct(drop)}`}
               </div>
             </div>
-            {i < steps.length - 1 && <span className="text-zinc-300">→</span>}
+            {i < steps.length - 1 && <span className="hidden text-zinc-300 sm:inline">→</span>}
           </div>
         );
       })}
@@ -181,8 +182,8 @@ export default function ReviewSection() {
       )}
 
       {/* ── 몰별 ── */}
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-        <table className="w-full min-w-[380px] text-[12px]">
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
+        <table className="w-full text-[11px] sm:text-[12px]">
           <thead className="bg-zinc-50 text-[11px] text-zinc-500 dark:bg-zinc-800/60">
             <tr>
               <th className="px-2.5 py-2 text-left font-medium">몰</th>

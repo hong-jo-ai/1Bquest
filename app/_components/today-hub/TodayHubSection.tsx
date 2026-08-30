@@ -15,7 +15,7 @@ import type {
   RevenueAction, RevenueGoal, BigEvent,
   ChannelRevenueSnapshot, LeverSources,
 } from "./types";
-import type { Brand } from "@/lib/multiChannelData";
+import { CHANNELS, type Brand } from "@/lib/multiChannelData";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const BRAND_NAMES: Record<Brand, string> = { paulvice: "폴바이스", harriot: "해리엇" };
@@ -56,12 +56,15 @@ function seedEvents(brand: Brand): BigEvent[] {
 
 interface Props {
   brand: Brand;
+  /** 상단 판매채널 탭 선택값 — 매출 추이가 이 채널을 따라간다.
+   *  같은 화면에서 채널을 바꿔가며 추이를 비교하려고 연동했다(사장님 요청 2026-08-30). */
+  activeChannel?: string;
   /** 이번 달(KST) 누적 매출. 브랜드의 모든 채널 합산. */
   monthRevenue: number;
   channelRevenues: ChannelRevenueSnapshot[];
 }
 
-export default function TodayHubSection({ brand, monthRevenue, channelRevenues }: Props) {
+export default function TodayHubSection({ brand, monthRevenue, channelRevenues, activeChannel = "all" }: Props) {
   const [label, setLabel] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -220,35 +223,40 @@ export default function TodayHubSection({ brand, monthRevenue, channelRevenues }
             <span className="font-medium text-zinc-500 ml-2 text-sm sm:text-base">({label})</span>
           )}
         </h2>
-        <span className="text-[11px] text-zinc-400">할 일·일정·메일은 <a href="/today" className="underline">오늘 보드</a>에서 · 매출/이벤트는 {BRAND_NAMES[brand]}</span>
+        <span className="text-[11px] text-zinc-400">할 일·일정은 <a href="/today" className="underline">오늘 보드</a>에서</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
-        <div className="lg:col-span-7 flex flex-col gap-3 sm:gap-4">
-          {/* 매출 추이 그래프 — 위쪽 절반 */}
-          <div className="h-[320px] sm:h-[360px] shrink-0">
-            <RevenueTrendWidget brand={brand} brandLabel={BRAND_NAMES[brand]} />
-          </div>
-        </div>
-        <div className="lg:col-span-5 grid grid-cols-1 gap-3 sm:gap-4">
-          <RevenueActionsWidget
-            routines={routines}
-            setRoutines={setRoutines}
-            goal={goal}
-            setGoal={setGoal}
-            currentRevenue={monthRevenue}
-            brandLabel={BRAND_NAMES[brand]}
-            events={events}
-            leverSources={leverSources}
-            channelRevenues={channelRevenues}
-          />
-          <BigEventsWidget
-            events={events}
-            setEvents={setEvents}
-            brandLabel={BRAND_NAMES[brand]}
-            mirroredCampaigns={mirroredCampaigns}
-          />
-        </div>
+      {/* 매출 추이 — 전폭. 예전엔 7/12 칸에 360px 로 박아두고 옆 칸에 위젯 둘을 세로로 쌓아서,
+          데스크톱에서 왼쪽 아래가 수백 px 씩 비어 있었다(사장님 지적 2026-08-30).
+          채널 탭과 연동되면서 이 그래프를 자주 보게 됐으니 폭도 높이도 키운다. */}
+      <div className="h-[300px] sm:h-[380px] xl:h-[420px]">
+        <RevenueTrendWidget
+          brand={brand}
+          brandLabel={BRAND_NAMES[brand]}
+          channel={activeChannel}
+          channelLabel={CHANNELS.find((c) => c.id === activeChannel)?.name}
+          channelColor={CHANNELS.find((c) => c.id === activeChannel)?.color}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
+        <RevenueActionsWidget
+          routines={routines}
+          setRoutines={setRoutines}
+          goal={goal}
+          setGoal={setGoal}
+          currentRevenue={monthRevenue}
+          brandLabel={BRAND_NAMES[brand]}
+          events={events}
+          leverSources={leverSources}
+          channelRevenues={channelRevenues}
+        />
+        <BigEventsWidget
+          events={events}
+          setEvents={setEvents}
+          brandLabel={BRAND_NAMES[brand]}
+          mirroredCampaigns={mirroredCampaigns}
+        />
       </div>
     </section>
   );

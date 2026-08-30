@@ -474,150 +474,177 @@ export default function RevenueActionsWidget({
         <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full shrink-0">{brandLabel} 기준</span>
       </div>
 
-      <div className="p-4 space-y-4">
-        <div className="grid grid-cols-3 gap-2">
-          <MetricCard label="연 순이익" value={fmtCompact(resolvedGoal.annualProfitTarget)} sub={`월 ${fmtCompact(resolvedGoal.monthlyProfitTarget)}`} />
-          <MetricCard label="월 판매량" value={`${resolvedGoal.monthlyUnitsTarget.toLocaleString("ko-KR")}개`} sub={`현재 ${estimatedUnits.toLocaleString("ko-KR")}개`} />
-          <MetricCard label="연 출시" value={`${resolvedGoal.annualLaunchTarget}회`} sub={`월 캠페인 ${resolvedGoal.monthlyCampaignTarget}회`} />
-        </div>
-
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div>
-              <p className="text-[11px] font-semibold text-zinc-500">이번 달 스코어 <span className="font-normal text-zinc-400">· {brandLabel} 매출 기준 (전체매출과 다름)</span></p>
-              <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
-                <span className="text-base font-bold text-zinc-900 dark:text-zinc-50 tabular-nums">{fmtKRW(currentRevenue)}</span>
-                <span className="text-zinc-400 text-xs">/</span>
+      <div className="p-4 space-y-3">
+        {/* ① 판정 한 줄 — 이 판이 답해야 할 첫 질문은 "되고 있나" 하나다.
+            예전엔 목표카드 3개·진행바 3개·분기일정·레버 4개를 10px 글씨로 동시에 늘어놓아
+            무엇도 눈에 안 들어왔다(사장님 지적 2026-08-30). 판정을 크게 하나만 남기고 나머지는 접는다. */}
+        <div className="rounded-xl border border-zinc-200 p-3.5 dark:border-zinc-800">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] text-zinc-500">이번 달 {brandLabel} 매출</p>
+              <p className="mt-1 text-[26px] font-bold leading-none tabular-nums text-zinc-900 dark:text-zinc-50">
+                {fmtKRW(currentRevenue)}
+              </p>
+              <p className="mt-1.5 text-[11px] text-zinc-500">
+                목표{" "}
                 {editingGoal ? (
-                  <span className="inline-flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      value={goalDraft}
-                      onChange={(e) => setGoalDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveGoalEdit();
-                        if (e.key === "Escape") setEditingGoal(false);
-                      }}
-                      onBlur={saveGoalEdit}
-                      autoFocus
-                      className="w-20 text-sm font-bold px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-50 tabular-nums"
-                    />
-                    <span className="text-xs text-zinc-500">만원</span>
-                  </span>
+                  <input
+                    type="number" min={0} value={goalDraft}
+                    onChange={(e) => setGoalDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveGoalEdit(); if (e.key === "Escape") setEditingGoal(false); }}
+                    onBlur={saveGoalEdit}
+                    autoFocus
+                    className="w-16 rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] tabular-nums dark:border-zinc-700 dark:bg-zinc-800"
+                  />
                 ) : (
-                  <button
-                    onClick={startGoalEdit}
-                    className="text-sm font-bold text-zinc-900 dark:text-zinc-50 inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-300 group"
-                    title="목표 수정"
-                  >
+                  <button onClick={startGoalEdit} className="group inline-flex items-center gap-1 font-semibold text-zinc-700 hover:text-zinc-900 dark:text-zinc-300">
                     {fmtKRW(resolvedGoal.target)}
-                    <Pencil size={10} className="opacity-0 group-hover:opacity-100 transition" />
+                    <Pencil size={9} className="opacity-0 transition group-hover:opacity-100" />
                   </button>
                 )}
-              </div>
+                {" · "}
+                {resolvedGoal.target > currentRevenue
+                  ? `${fmtKRW(resolvedGoal.target - currentRevenue)} 남음`
+                  : "달성"}
+              </p>
             </div>
-            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
-              revenuePct >= expectedPct ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+              revenuePct >= expectedPct
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
             }`}>
-              {revenuePct}% / {expectedPct}%
+              {revenuePct >= expectedPct ? "순조" : `${expectedPct - revenuePct}%p 뒤처짐`}
             </span>
           </div>
-          <Progress label="매출" value={revenuePct} />
-          <Progress label="추정 순이익" value={profitPct} detail={fmtKRW(estimatedProfit)} />
-          <Progress label="판매량" value={unitsPct} detail={`${estimatedUnits.toLocaleString("ko-KR")}개`} />
+
+          {/* 진행바 위의 세로선 = 오늘 날짜 기준으로 있어야 할 위치. 이 하나로 페이스가 읽힌다. */}
+          <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <div
+              className={`h-full transition-all ${revenuePct >= expectedPct ? "bg-emerald-500" : "bg-amber-500"}`}
+              style={{ width: `${Math.min(100, Math.max(0, revenuePct))}%` }}
+            />
+            <div
+              className="absolute top-0 h-full w-0.5 bg-zinc-900 dark:bg-zinc-100"
+              style={{ left: `${Math.min(100, Math.max(0, expectedPct))}%` }}
+              title={`오늘 기준 있어야 할 위치 ${expectedPct}%`}
+            />
+          </div>
+          <div className="mt-1 flex justify-between text-[10px] text-zinc-400">
+            <span>{revenuePct}% 달성</span>
+            <span>오늘 기준 {expectedPct}%</span>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-zinc-500">{quarterLabel()} 핵심 일정</p>
-            <Target size={13} className="text-zinc-400" />
-          </div>
-          {nextEvent ? (
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate">{nextEvent.event.title}</p>
-                <span className={`text-[10px] font-bold shrink-0 ${nextEvent.daysLeft < 0 ? "text-rose-600" : "text-violet-600 dark:text-violet-400"}`}>
-                  {nextEvent.daysLeft < 0 ? `D+${Math.abs(nextEvent.daysLeft)}` : `D-${nextEvent.daysLeft}`}
-                </span>
-              </div>
-              <div className="mt-2">
-                <Progress label="준비율" value={nextEvent.pct} detail={`${nextEvent.done}/${nextEvent.total}`} />
-              </div>
-            </div>
+        {/* ② 지금 할 일 — 최대 3개. 읽히는 크기로. */}
+        <div>
+          <p className="mb-1.5 px-0.5 text-[11px] font-semibold text-zinc-500">지금 할 일</p>
+          {weeklyActions.length === 0 && bottlenecks.length === 0 ? (
+            <p className="rounded-xl bg-zinc-50 px-3 py-3 text-xs text-zinc-400 dark:bg-zinc-800/50">
+              자동으로 잡히는 과제가 없습니다. 페이스가 맞고 지연 신호도 없다는 뜻입니다.
+            </p>
           ) : (
-            <p className="text-xs text-zinc-400 py-2">예정된 이벤트 카드 없음</p>
+            <div className="space-y-1.5">
+              {weeklyActions.slice(0, 3).map((action) => (
+                <div key={`${action.source}-${action.title}`} className="rounded-xl border border-zinc-200 p-2.5 dark:border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      action.tone === "risk" ? "bg-amber-500" : action.tone === "review" ? "bg-violet-500" : "bg-zinc-400"
+                    }`} />
+                    <p className="min-w-0 flex-1 text-[13px] font-semibold text-zinc-900 dark:text-zinc-50">{action.title}</p>
+                    <span className="shrink-0 text-[10px] text-zinc-400">{action.source}</span>
+                  </div>
+                  <p className="mt-1 pl-3.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">{action.detail}</p>
+                </div>
+              ))}
+              {bottlenecks.slice(0, 3 - Math.min(3, weeklyActions.length)).map((item, idx) => (
+                <div key={`bn-${idx}`} className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 dark:border-amber-900/50 dark:bg-amber-950/20">
+                  <AlertTriangle size={13} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                  <p className="min-w-0 flex-1 text-[12px] text-zinc-800 dark:text-zinc-100">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {weeklyActions.length > 3 && (
+            <p className="mt-1 px-0.5 text-[10px] text-zinc-400">+{weeklyActions.length - 3}건 더 — 아래 자세히에서</p>
           )}
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-zinc-500">자동 성장 레버</p>
-            <span className="text-[10px] text-zinc-400">실데이터 기반</span>
-          </div>
+        {/* ③ 나머지 지표는 접는다. 필요할 때만 열어 본다. */}
+        <details className="group rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer list-none px-3 py-2.5 text-[11px] font-semibold text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+            자세히 — 목표·일정·레버
+            <span className="float-right text-zinc-400 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <div className="space-y-3 border-t border-zinc-100 p-3 dark:border-zinc-800">
+            <div className="grid grid-cols-3 gap-2">
+              <MetricCard label="연 순이익" value={fmtCompact(resolvedGoal.annualProfitTarget)} sub={`월 ${fmtCompact(resolvedGoal.monthlyProfitTarget)}`} />
+              <MetricCard label="월 판매량" value={`${resolvedGoal.monthlyUnitsTarget.toLocaleString("ko-KR")}개`} sub={`현재 ${estimatedUnits.toLocaleString("ko-KR")}개`} />
+              <MetricCard label="연 출시" value={`${resolvedGoal.annualLaunchTarget}회`} sub={`월 캠페인 ${resolvedGoal.monthlyCampaignTarget}회`} />
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {(Object.keys(LEVERS) as LeverKey[]).map((key) => {
-              const meta = LEVERS[key];
-              const Icon = meta.icon;
-              const health = leverHealth[key];
-              return (
-                <div key={key} className={`rounded-lg border p-2 ${meta.tone}`}>
-                  <div className="flex items-center gap-1.5">
-                    <Icon size={12} className="shrink-0" />
-                    <span className="text-[11px] font-bold flex-1">{meta.label}</span>
-                    <span className="text-[10px] font-semibold tabular-nums">{health.value}</span>
-                  </div>
-                  <p className="mt-1 text-[10px] leading-snug opacity-80 truncate">{health.detail}</p>
-                  <div className="mt-1.5 h-1 bg-white/60 dark:bg-zinc-900/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-current opacity-70" style={{ width: `${Math.min(100, Math.max(0, health.pct))}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+            <div>
+              <Progress label="추정 순이익" value={profitPct} detail={fmtKRW(estimatedProfit)} />
+              <Progress label="판매량" value={unitsPct} detail={`${estimatedUnits.toLocaleString("ko-KR")}개`} />
+            </div>
 
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-zinc-500">이번 주 3대 과제</p>
-            <span className="text-[10px] text-zinc-400">자동 추천</span>
-          </div>
-          <div className="space-y-2">
-            {weeklyActions.map((action) => (
-              <div key={`${action.source}-${action.title}`} className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    action.tone === "risk" ? "bg-amber-500" : action.tone === "review" ? "bg-violet-500" : "bg-zinc-400"
-                  }`} />
-                  <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50 flex-1 truncate">{action.title}</p>
-                  <span className="text-[10px] text-zinc-400 shrink-0">{action.source}</span>
-                </div>
-                <p className="mt-1 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{action.detail}</p>
+            <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-zinc-500">{quarterLabel()} 핵심 일정</p>
+                <Target size={13} className="text-zinc-400" />
               </div>
-            ))}
-            {weeklyActions.length === 0 && (
-              <p className="text-xs text-zinc-400 py-2">이번 주 자동 과제 없음</p>
-            )}
-          </div>
-        </div>
+              {nextEvent ? (
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">{nextEvent.event.title}</p>
+                    <span className={`shrink-0 text-[10px] font-bold ${nextEvent.daysLeft < 0 ? "text-rose-600" : "text-violet-600 dark:text-violet-400"}`}>
+                      {nextEvent.daysLeft < 0 ? `D+${Math.abs(nextEvent.daysLeft)}` : `D-${nextEvent.daysLeft}`}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <Progress label="준비율" value={nextEvent.pct} detail={`${nextEvent.done}/${nextEvent.total}`} />
+                  </div>
+                </div>
+              ) : (
+                <p className="py-2 text-xs text-zinc-400">예정된 이벤트 카드 없음</p>
+              )}
+            </div>
 
-        <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <AlertTriangle size={13} className="text-amber-700 dark:text-amber-300" />
-            <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300">이번 주 병목</p>
-          </div>
-          <ul className="space-y-1">
-            {bottlenecks.map((item, idx) => (
-              <li key={`${item.tone}-${idx}`} className="text-xs text-zinc-700 dark:text-zinc-200 truncate">
-                {item.text}
-              </li>
-            ))}
-            {bottlenecks.length === 0 && (
-              <li className="text-xs text-zinc-500 dark:text-zinc-400">지연 신호 없음</li>
+            <div>
+              <p className="mb-2 text-[11px] font-semibold text-zinc-500">자동 성장 레버 <span className="font-normal text-zinc-400">· 실데이터</span></p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {(Object.keys(LEVERS) as LeverKey[]).map((key) => {
+                  const meta = LEVERS[key];
+                  const Icon = meta.icon;
+                  const health = leverHealth[key];
+                  return (
+                    <div key={key} className={`rounded-lg border p-2 ${meta.tone}`}>
+                      <div className="flex items-center gap-1.5">
+                        <Icon size={12} className="shrink-0" />
+                        <span className="flex-1 text-[11px] font-bold">{meta.label}</span>
+                        <span className="text-[10px] font-semibold tabular-nums">{health.value}</span>
+                      </div>
+                      <p className="mt-1 truncate text-[10px] leading-snug opacity-80">{health.detail}</p>
+                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/60 dark:bg-zinc-900/40">
+                        <div className="h-full bg-current opacity-70" style={{ width: `${Math.min(100, Math.max(0, health.pct))}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {weeklyActions.length > 3 && (
+              <div className="space-y-1.5">
+                {weeklyActions.slice(3).map((a) => (
+                  <div key={`${a.source}-${a.title}`} className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800/50">
+                    <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{a.title}</p>
+                    <p className="mt-0.5 text-[10px] text-zinc-500">{a.detail}</p>
+                  </div>
+                ))}
+              </div>
             )}
-          </ul>
-        </div>
+          </div>
+        </details>
       </div>
     </div>
   );

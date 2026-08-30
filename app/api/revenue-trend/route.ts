@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 type Granularity = "day" | "week" | "month";
 
 /**
- * GET /api/revenue-trend?brand=paulvice&granularity=day&from=2026-04-01&to=2026-05-01
+ * GET /api/revenue-trend?brand=paulvice&granularity=day&from=2026-04-01&to=2026-05-01&channel=cafe24
+ *
+ * channel 을 주면 그 채널만, 없거나 "all" 이면 전체 합계.
+ * (일별 byChannel 이 이미 저장돼 있어 추가 조회 없이 걸러진다)
  *
  * 응답:
  *   { ok: true, points: [{ date: "2026-04-01", revenue: 1234567 }, ...] }
@@ -22,6 +25,7 @@ export async function GET(req: NextRequest) {
   const granularity = (sp.get("granularity") ?? "day") as Granularity;
   const from = sp.get("from"); // "YYYY-MM-DD"
   const to   = sp.get("to");   // "YYYY-MM-DD"
+  const channel = sp.get("channel");   // ChannelId. 없거나 "all" 이면 전체
 
   if (!brand || (brand !== "paulvice" && brand !== "harriot")) {
     return NextResponse.json({ ok: false, error: "invalid brand" }, { status: 400 });
@@ -36,10 +40,12 @@ export async function GET(req: NextRequest) {
   const history = await loadRevenueHistory(brand);
 
   // 기간 내 일별 entries 만 추리기
+  const onlyChannel = channel && channel !== "all" ? channel : null;
   const inRange: Array<{ date: string; total: number }> = [];
   for (const [date, day] of Object.entries(history.days)) {
     if (date < from || date > to) continue;
-    inRange.push({ date, total: day.total });
+    // 채널 지정 시 그 채널 값만. 그날 그 채널 매출이 없으면 0 으로 남겨 선이 끊기지 않게 한다.
+    inRange.push({ date, total: onlyChannel ? (day.byChannel?.[onlyChannel] ?? 0) : day.total });
   }
   inRange.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -54,7 +60,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, revenue]) => ({ date, revenue }));
 
-  return NextResponse.json({ ok: true, points, granularity, brand, from, to });
+  return NextResponse.json({ ok: true, points, granularity, brand, channel: onlyChannel ?? "all", from, to });
 }
 
 /** 일자(YYYY-MM-DD) → granularity 별 bucket key */

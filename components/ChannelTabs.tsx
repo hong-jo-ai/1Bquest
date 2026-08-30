@@ -23,7 +23,8 @@ export default function ChannelTabs({
     : CHANNELS;
 
   return (
-    <div className="min-w-0 flex items-center gap-1.5 overflow-x-auto rounded-2xl bg-zinc-100/70 p-1.5 dark:bg-zinc-800/70">
+    // 가로 스크롤 대신 줄바꿈. 스크롤이면 화면 밖 채널을 못 보고 지나친다(사장님 지적 2026-08-30).
+    <div className="min-w-0 flex flex-wrap items-center gap-1.5 rounded-2xl bg-zinc-100/70 p-1.5 dark:bg-zinc-800/70">
       {channelsToShow.map((ch) => {
         const isActive = activeChannel === ch.id;
         const isUploadable = UPLOADABLE_CHANNELS.includes(ch.id as UploadableChannel);
@@ -36,7 +37,7 @@ export default function ChannelTabs({
             key={ch.id}
             onClick={() => onChange(ch.id)}
             className={`
-              flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 border
+              flex items-center gap-1.5 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-sm font-medium transition-all whitespace-nowrap shrink-0 border
               ${isActive
                 ? "border-white bg-white text-zinc-950 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
                 : "border-transparent text-zinc-500 hover:bg-white/70 hover:text-zinc-800 dark:hover:bg-zinc-900/70 dark:hover:text-zinc-200"}

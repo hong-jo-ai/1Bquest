@@ -569,7 +569,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
       >
       {/* API 오류 배너 (폴바이스 카페24만) */}
       {apiError && brand === "paulvice" && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl px-4 py-3 text-sm">
             <AlertCircle size={16} className="shrink-0" />
             카페24 API 오류: {apiError} — 샘플값 없이 빈 상태로 표시합니다.
@@ -579,7 +579,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
       {/* 미연결 배너 (폴바이스만) */}
       {!isAuthenticated && brand === "paulvice" && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 pt-4">
           <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded-xl px-4 py-3 text-sm">
             <span>카페24가 연결되지 않았습니다. 샘플값 없이 빈 상태로 표시 중입니다.</span>
             <a href="/api/auth/login" className="ml-4 shrink-0 font-semibold underline underline-offset-2 hover:opacity-70">
@@ -591,7 +591,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
       {/* 업로드 가능 채널 배너 */}
       {isUploadableActive && activeChannelMeta && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 pt-4">
           {activeHasUpload ? (
             /* 실 데이터 사용 중 */
             <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl px-4 py-3 text-sm">
@@ -628,7 +628,7 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
       {/* 메인 */}
       <main className="w-full min-w-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.08),transparent_34%),linear-gradient(180deg,rgba(244,244,245,0.9),rgba(250,250,250,1))] px-3 py-4 dark:bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.14),transparent_34%),linear-gradient(180deg,rgba(9,9,11,1),rgba(24,24,27,1))] sm:px-6 sm:py-6">
-        <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
+        <div className="mx-auto max-w-[1600px] space-y-4 sm:space-y-6">
 
         <DashboardOverview
           now={now}
@@ -696,7 +696,13 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
         {/* 오늘의 운영 허브 — 양 브랜드 공통 (할일/외부약속/이메일은 전사 공통, 매출액션/빅이벤트는 브랜드별) */}
         {/* key={brand} 로 브랜드 전환 시 인스턴스 재생성 → 브랜드별 데이터 새로 로드 */}
-        <TodayHubSection key={brand} brand={brand} monthRevenue={monthRevenue} channelRevenues={channelRevenues} />
+        <TodayHubSection
+          key={brand}
+          brand={brand}
+          monthRevenue={monthRevenue}
+          channelRevenues={channelRevenues}
+          activeChannel={activeChannel}
+        />
 
         {/* CRM — CARE 등록·연락가능 모수·문자 캠페인 퍼널. 매일 보는 자리에 둔다. */}
         <CollapsibleSection title="CRM · 고객 관계" defaultOpen>

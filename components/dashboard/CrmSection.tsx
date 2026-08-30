@@ -73,15 +73,16 @@ function Stat({ label, value, unit, sub, tone }: { label: string; value: string;
 function Funnel({ steps }: { steps: Array<{ label: string; n: number }> }) {
   const top = steps[0]?.n || 0;
   return (
-    <div className="flex flex-wrap items-stretch gap-1.5">
+    // 모바일 2×2 그리드 — 가로 화살표 흐름은 폭을 넘겨 스크롤을 만든다.
+    <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-stretch">
       {steps.map((s, i) => (
         <div key={s.label} className="flex items-center gap-1.5">
-          <div className="rounded-lg bg-zinc-100 px-3 py-2 dark:bg-zinc-700/50">
+          <div className="w-full rounded-lg bg-zinc-100 px-3 py-2 sm:w-auto dark:bg-zinc-700/50">
             <div className="text-[10px] text-zinc-400">{s.label}</div>
             <div className="text-[15px] font-bold text-zinc-800 dark:text-zinc-100">{won(s.n)}</div>
             {i > 0 && <div className="text-[10px] text-zinc-400">{top ? pct(s.n / top) : "—"}</div>}
           </div>
-          {i < steps.length - 1 && <span className="text-zinc-300">→</span>}
+          {i < steps.length - 1 && <span className="hidden text-zinc-300 sm:inline">→</span>}
         </div>
       ))}
     </div>
@@ -137,7 +138,32 @@ export default function CrmSection() {
             그때부터 이 표에 ROAS 가 찍힌다.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <>
+          {/* 모바일 — 13열 표는 가로스크롤 없이는 못 담는다. 카드로 편다. */}
+          <div className="space-y-2 sm:hidden">
+            {sentCampaigns.map((c) => (
+              <div key={c.id} className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate font-medium text-zinc-800 dark:text-zinc-100">{c.name}</span>
+                  <span className="shrink-0 text-[15px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {dash(c.roas, (v) => `${v.toFixed(0)}x`)}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-y-1.5 text-[11px]">
+                  {[
+                    ["발송", won(c.sent)], ["클릭", `${won(c.clicked)} · ${pct(c.ctr)}`], ["구매", `${won(c.purchased)} · ${pct(c.cvr)}`],
+                    ["비용", `${won(c.cost)}원`], ["전환당", dash(c.cpa, (v) => `${won(v)}원`)], ["매출", `${money(c.revenue)}원`],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <div className="text-zinc-400">{k}</div>
+                      <div className="font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 sm:block dark:border-zinc-700">
             <table className="w-full min-w-[820px] text-[12px]">
               <thead className="bg-zinc-50 text-[11px] text-zinc-500 dark:bg-zinc-800/60">
                 <tr>
@@ -175,6 +201,7 @@ export default function CrmSection() {
               </tbody>
             </table>
           </div>
+          </>
         )}
         {sentCampaigns.some((c) => c.holdout) && (
           <div className="mt-2 space-y-1 px-1">
@@ -220,13 +247,13 @@ export default function CrmSection() {
               <Stat label="ROAS" value={dash(care.roas, (v) => `${v.toFixed(1)}x`)} sub="매출 ÷ 카드비" />
             </div>
             {ch.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-                <table className="w-full min-w-[460px] text-[12px]">
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
+                <table className="w-full text-[11px] sm:text-[12px]">
                   <thead className="bg-zinc-50 text-[11px] text-zinc-500 dark:bg-zinc-800/60">
                     <tr>
                       <th className="px-2.5 py-2 text-left font-medium">구매 채널</th>
                       <th className="px-2.5 py-2 text-right font-medium">등록</th>
-                      <th className="px-2.5 py-2 text-right font-medium">동의</th>
+                      <th className="hidden px-2.5 py-2 text-right font-medium sm:table-cell">동의</th>
                       <th className="px-2.5 py-2 text-right font-medium">자사몰 구매</th>
                       <th className="px-2.5 py-2 text-right font-medium">전환율</th>
                       <th className="px-2.5 py-2 text-right font-medium">매출</th>
@@ -237,7 +264,7 @@ export default function CrmSection() {
                       <tr key={name}>
                         <td className="px-2.5 py-2 font-medium text-zinc-700 dark:text-zinc-200">{name}</td>
                         <td className="px-2.5 py-2 text-right tabular-nums">{won(v.total)}</td>
-                        <td className="px-2.5 py-2 text-right tabular-nums text-zinc-500">{won(v.consent)}</td>
+                        <td className="hidden px-2.5 py-2 text-right tabular-nums text-zinc-500 sm:table-cell">{won(v.consent)}</td>
                         <td className="px-2.5 py-2 text-right tabular-nums font-semibold">{won(v.buyers)}</td>
                         <td className="px-2.5 py-2 text-right tabular-nums text-zinc-500">{v.total ? pct(v.buyers / v.total) : "—"}</td>
                         <td className="px-2.5 py-2 text-right tabular-nums">{money(v.revenue)}</td>
