@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { reviewsDb, verifyReviewToken, getMall, rewardFor, type MediaType } from "@/lib/reviews/core";
+import { reviewsDb, verifyReviewToken, getMall, rewardFor, paidAmountForReview, type MediaType } from "@/lib/reviews/core";
 import { cafe24Post } from "@/lib/cafe24Client";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 
@@ -59,11 +59,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 적립금은 실결제가 비율로 준다. 주문 조회가 실패해도 후기는 저장되고, 그 경우 정액으로 폴백한다.
+  const paid = await paidAmountForReview(mall, tok.orderRef, tok.productNo);
+
   const row = {
     mall: mall.id, cafe24_shop_no: mall.shopNo, product_no: tok.productNo, product_name: tok.productName,
     order_ref: tok.orderRef || null, customer_name: writer, customer_email: tok.email || null,
     customer_phone: tok.phone || null,
-    rating, content, media, media_type: mediaType, reward_points: rewardFor(mall, mediaType),
+    rating, content, media, media_type: mediaType, reward_points: rewardFor(mall, mediaType, paid),
     status: "published", reward_status: "pending", source: "review_app", ip,
   };
   const { data: inserted, error } = await sb.from("reviews").insert(row).select("id").single();

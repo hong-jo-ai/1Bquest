@@ -105,10 +105,33 @@ export function kakaoReviewConfig(mall: MallConfig): KakaoReviewConfig | null {
 }
 
 export type MediaType = "none" | "photo" | "video";
-export function rewardFor(mall: MallConfig, type: MediaType): number {
-  if (type === "video") return mall.reward.video;
-  if (type === "photo") return mall.reward.photo;
-  return mall.reward.text;
+/**
+ * 적립금 **비율제** — 실결제가에 비례한다(사장님 결정 2026-08-30).
+ *
+ * 왜 바꿨나: 브랜드별 정액이라 가격을 전혀 안 봤다. 그 결과 33,000원짜리 가죽밴드에
+ * 7,000원(21%)이 나갔고, 실제로 한 건은 10,000원(30%)까지 지급됐다.
+ * 같은 정액이 171,000원 시계에는 4% 였으니 상품 간 형평도 깨져 있었다.
+ *
+ * 하한을 두는 이유: 저가품이라고 몇백 원을 주면 후기를 쓸 이유가 안 된다.
+ * 상한을 두는 이유: 고가 시계에서 비율이 그대로 커지면 마진이 감당 못 한다.
+ */
+export const REWARD_RATE: Record<MediaType, number> = { none: 0.02, photo: 0.04, video: 0.06 };
+export const REWARD_MIN = 1000;
+export const REWARD_CAP: Record<MediaType, number> = { none: 3000, photo: 6000, video: 10000 };
+
+/**
+ * @param paidAmount 그 상품의 **실결제가**. 정가가 아니다 —
+ *   공홈은 평균 17.7% 상시할인이라 정가로 계산하면 실제보다 후하게 나간다.
+ *   모르면(주문 조회 실패 등) null 을 넘긴다 → 종전 정액으로 안전하게 폴백한다.
+ */
+export function rewardFor(mall: MallConfig, type: MediaType, paidAmount?: number | null): number {
+  if (!paidAmount || paidAmount <= 0) {
+    // 폴백: 가격을 모르면 예전 정액. 보상이 0이 되어 고객이 손해보는 쪽으로는 실패하지 않는다.
+    return type === "video" ? mall.reward.video : type === "photo" ? mall.reward.photo : mall.reward.text;
+  }
+  const raw = paidAmount * REWARD_RATE[type];
+  const rounded = Math.round(raw / 100) * 100;   // 100원 단위 — 적립금 안내가 지저분해지지 않게
+  return Math.min(REWARD_CAP[type], Math.max(REWARD_MIN, rounded));
 }
 
 // ── 토큰 (로그인 없이 누가/뭘 샀는지 식별) ───────────────────
@@ -168,3 +191,36 @@ export function reviewsDb(): SupabaseClient {
 }
 
 export const REVIEW_MEDIA_BUCKET = "review-media";
+
+/**
+ * 후기 대상 상품의 **실결제가**를 주문에서 읽는다.
+ *
+ * ⚠️ 주문 총액이 아니라 **그 상품 항목**의 결제금액이다. 시계와 밴드를 한 주문에
+ *    같이 샀는데 밴드 후기에 주문 총액을 적용하면 크게 과지급된다.
+ * ⚠️ 실패하면 null 을 돌려준다 — 호출부가 정액으로 폴백한다. 여기서 던지면
+ *    적립금 계산 때문에 후기 저장 자체가 막힌다. 후기를 잃는 게 더 손해다.
+ */
+export async function paidAmountForReview(
+  mall: MallConfig,
+  orderRef: string | null | undefined,
+  productNo: number,
+): Promise<number | null> {
+  if (!orderRef) return null;
+  try {
+    const { getAccessTokenFromStore } = await import("@/lib/cafe24TokenStore");
+    const { cafe24Get } = await import("@/lib/cafe24Client");
+    const at = await getAccessTokenFromStore(mall.cafe24Mall);
+    if (!at) return null;
+    const res = await cafe24Get(
+      `/api/v2/admin/orders/${encodeURIComponent(orderRef)}?embed=items`, at, mall.cafe24Mall);
+    const items = (res?.order?.items ?? []) as Array<{ product_no?: number | string; payment_amount?: string; product_price?: string; quantity?: number }>;
+    const hit = items.find((i) => Number(i.product_no) === Number(productNo));
+    if (!hit) return null;
+    // payment_amount = 할인·쿠폰까지 반영된 실제 결제금액. 수량이 2개면 1개당으로 나눈다.
+    const amount = Number(hit.payment_amount || hit.product_price || 0);
+    const qty = Math.max(1, Number(hit.quantity) || 1);
+    return amount > 0 ? amount / qty : null;
+  } catch {
+    return null;
+  }
+}

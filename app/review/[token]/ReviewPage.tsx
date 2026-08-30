@@ -1,4 +1,4 @@
-import { verifyReviewToken, getMall, reviewsDb, type MallConfig, type MallId } from "@/lib/reviews/core";
+import { verifyReviewToken, getMall, reviewsDb, type MallConfig, type MallId, rewardFor, paidAmountForReview } from "@/lib/reviews/core";
 import ReviewForm from "./ReviewForm";
 
 function money(mall: MallConfig, points: number): string {
@@ -72,6 +72,10 @@ export default async function ReviewPage({ token }: { token: string | null }) {
     }
   }
 
+  // 적립금은 상품 실결제가 비율이라 상품마다 다르다 — 화면에도 **이 상품 기준 금액**을 보여준다.
+  // 브랜드 정액을 그대로 띄우면 실제 지급액과 달라 고객이 덜 받았다고 느낀다.
+  const paid = await paidAmountForReview(mall, tok.orderRef, tok.productNo);
+
   return (
     <ReviewForm
       token={token}
@@ -80,7 +84,11 @@ export default async function ReviewPage({ token }: { token: string | null }) {
       lang={lang}
       homeUrl={home}
       brand={brand}
-      reward={{ text: money(mall, mall.reward.text), photo: money(mall, mall.reward.photo), video: money(mall, mall.reward.video) }}
+      reward={{
+        text:  money(mall, rewardFor(mall, "none",  paid)),
+        photo: money(mall, rewardFor(mall, "photo", paid)),
+        video: money(mall, rewardFor(mall, "video", paid)),
+      }}
     />
   );
 }
