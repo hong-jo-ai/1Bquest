@@ -47,6 +47,59 @@ function maxInboundAgeMs(): number {
   return safeMinutes * 60 * 1000;
 }
 
+/** 자동 발송기가 남기는 sent_via. 이건 "사람이 상담 중"이라는 신호가 아니다. */
+const MACHINE_SENT_VIA: ReadonlySet<string> = new Set([
+  "auto_reply_off_hours",
+  "as_shipped_confirmed",
+]);
+
+function operatorQuietMs(): number {
+  const minutes = Number(process.env.CS_AUTO_REPLY_OPERATOR_QUIET_MINUTES ?? "90");
+  const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 90;
+  return safeMinutes * 60 * 1000;
+}
+
+function autoCooldownMs(): number {
+  const minutes = Number(process.env.CS_AUTO_REPLY_COOLDOWN_MINUTES ?? "3");
+  const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 3;
+  return safeMinutes * 60 * 1000;
+}
+
+/** 직전 자동응답이 쿨다운 안에 나갔는가 (연사 방지). */
+function lastAutoReplyWithin(messages: CsMessage[], windowMs: number): boolean {
+  const since = Date.now() - windowMs;
+  return messages.some((m) => {
+    if (m.direction !== "out") return false;
+    if ((m.raw as { sent_via?: string } | null)?.sent_via !== "auto_reply_off_hours") return false;
+    const at = new Date(m.sent_at).getTime();
+    return Number.isFinite(at) && at >= since;
+  });
+}
+
+/**
+ * 사장님이 직접 상담 중인 대화인가 — 최근 N분 안에 사람이 보낸 답장이 있으면 그렇다고 본다.
+ *
+ * 업무시간엔 mode=off_hours 가 이미 막지만, 업무외(밤·주말)에도 사장님이 직접 붙는 일이 잦다.
+ * 그때 흐름은 이렇다: 사장님 답장(status=waiting) → 고객 재문의(status=unanswered)
+ * → 상태 가드가 풀려 자동응답이 사장님 말 위에 끼어든다. 그걸 막는다.
+ *
+ * ⚠️ 모르는 sent_via 는 사람으로 친다. 잘못 침묵하면 사장님이 이어서 답하면 그만이지만,
+ *    사장님 말 위에 자동응답이 겹치는 건 고객이 먼저 본다 — 되돌릴 수 없다.
+ */
+function operatorRepliedRecently(messages: CsMessage[]): CsMessage | null {
+  const since = Date.now() - operatorQuietMs();
+  let found: CsMessage | null = null;
+  for (const m of messages) {
+    if (m.direction !== "out") continue;
+    const via = (m.raw as { sent_via?: string } | null)?.sent_via ?? "inbox_ui";
+    if (MACHINE_SENT_VIA.has(via)) continue;
+    const at = new Date(m.sent_at).getTime();
+    if (!Number.isFinite(at) || at < since) continue;
+    if (!found || at > new Date(found.sent_at).getTime()) found = m;
+  }
+  return found;
+}
+
 /** KST 기준 "YYYY-MM-DD" (공휴일 조회용). */
 function kstDateString(date: Date): string {
   // en-CA 로케일은 YYYY-MM-DD 형식
@@ -141,6 +194,18 @@ export async function maybeAutoReplyOffHours(
   const latest = latestMessage(messages);
   if (!latest || latest.direction !== "in") {
     return { ok: true, sent: false, reason: "latest_not_inbound" };
+  }
+  // 사장님이 직접 붙어 있는 대화면 손대지 않는다 (사장님 지시 2026-08-31).
+  const operator = operatorRepliedRecently(messages);
+  if (operator) {
+    const mins = Math.round((Date.now() - new Date(operator.sent_at).getTime()) / 60000);
+    console.info(`[auto-reply] ${threadId}: ${mins}분 전 직접 응대 — 자동응답 보류`);
+    return { ok: true, sent: false, reason: "operator_active" };
+  }
+  // 연사 방지 — 중복 가드가 인입 메시지 단위라, 고객이 짧게 여러 줄 보내면 줄마다 한 통씩 나간다.
+  // 2026-08-31 최수현 건에서 18:10 한 분 동안 세 통이 연달아 나갔다.
+  if (lastAutoReplyWithin(messages, autoCooldownMs())) {
+    return { ok: true, sent: false, reason: "auto_reply_cooldown" };
   }
   // 게시판은 폴링 인입이라 글이 좀 묵을 수 있어 나이 체크 제외(채팅 채널만 30분 가드)
   const latestAt = new Date(latest.sent_at).getTime();
