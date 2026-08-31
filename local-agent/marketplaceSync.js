@@ -189,6 +189,7 @@ const KEEP_ALIVE = new Set(
 const CDP_PORTS = { musinsa: 9333, "29cm": 9334, wconcept: 9335 };
 const cdpPort = (channel) => Number(env(`${channel.toUpperCase()}_CDP_PORT`) || CDP_PORTS[channel] || 9333);
 const isKeepAlive = (channel) => KEEP_ALIVE.has(channel);
+const TRUTHY = new Set(["1", "true", "on", "yes"]);
 
 function chromeExecutable() {
   const explicit = env("MARKETPLACE_CHROME_PATH");
@@ -420,7 +421,27 @@ async function ensureLoggedIn(channel, page, log) {
       }
       return true;
     }
-    log(`${cfg.label} 세션 만료 — 로그인 진행`);
+
+    // ⚠️ 상시 창 채널은 **자동 로그인을 하지 않는다**(2026-08-31 사장님 결정).
+    //
+    // 왜: 세션이 죽으면 매 실행마다 아이디·비밀번호를 자동 제출하고 2차 인증 메일까지
+    //     자동 요청했다. 채널 3개 × 하루 2회 × 실패 시 매번 반복 → 무신사·29CM 사기탐지에
+    //     크리덴셜 스터핑처럼 보였고, 실제로 8월 말 두 곳이 비밀번호를 강제 초기화해
+    //     이틀치 수집이 통째로 비었다.
+    //     탐지를 우회하는 대신 **자동 로그인 자체를 없앤다.** 로그인은 사장님이 그 창에서 직접 한다.
+    //
+    // 세션 확인(페이지 이동)은 남긴다 — 그건 로그인 시도가 아니다.
+    if (!TRUTHY.has(String(env("MARKETPLACE_AUTO_LOGIN") || "").toLowerCase())) {
+      // 알림은 호출부의 notifyFail 한 곳으로 보낸다(두 경로로 보내면 같은 건이 두 번 온다).
+      // 그래서 메시지 자체를 '무엇을 해야 하는지'로 쓴다.
+      const msg = `${cfg.label} 로그인 세션 만료 — 자동 로그인 안 함. `
+        + `상시 크롬 창(CDP ${cdpPort(channel)})에서 직접 로그인해 주세요. 로그인하면 다음 실행부터 자동 재개됩니다.`;
+      log(msg);
+      const err = new Error(msg);
+      err.needsManualLogin = true;
+      throw err;
+    }
+    log(`${cfg.label} 세션 만료 — 로그인 진행 (MARKETPLACE_AUTO_LOGIN=on)`);
   }
 
   await page.goto(cfg.loginUrl, { waitUntil: "domcontentloaded" });
