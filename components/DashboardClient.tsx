@@ -25,6 +25,7 @@ import KakaoGiftSyncPanel from "@/components/KakaoGiftSyncPanel";
 import TodayHubSection from "@/app/_components/today-hub/TodayHubSection";
 import CrmSection from "@/components/dashboard/CrmSection";
 import ReviewSection from "@/components/dashboard/ReviewSection";
+import CreativeSection from "@/components/dashboard/CreativeSection";
 import CampaignTracker from "@/components/CampaignTracker";
 
 import {
@@ -719,6 +720,11 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
 
         {/* 광고 성과 KPI — 기간별 지출/매출/ROAS/전환수 */}
         <DashboardAdsKpi brand={brand} />
+
+        {/* 소재별 성과 — 수집은 원래 되고 있었는데 화면이 없어 감으로 판단하고 있었다(2026-08-30) */}
+        <CollapsibleSection title="광고 소재 · 어떤 게 파나" defaultOpen>
+          <CreativeSection brand={brand} />
+        </CollapsibleSection>
 
         {/* 캠페인 트래킹 — 인플루언서 컬랩 등, Cafe24 쿠폰 코드 매칭. 폴바이스 한정(v1). */}
         {brand === "paulvice" && <CampaignTracker brand={brand} />}
