@@ -369,7 +369,7 @@ export async function notifyWebchatReply(threadId: string): Promise<{
   if (thread.channel !== "webchat") return { ok: false, skipped: "not_webchat" };
 
   // 국내=SMS, 영문몰=이메일. 해외 고객은 국내 SMS 수신 불가라 이메일이 유일한 통로다.
-  const phone = normalizePhone(thread.customer_handle);
+  const phone = smsablePhone(thread.customer_handle);
   const email = isValidWebchatEmail(thread.customer_handle) ? thread.customer_handle!.trim() : null;
   const via: "sms" | "email" | null = phone ? "sms" : email ? "email" : null;
   if (!via) return { ok: false, skipped: "missing_contact" };
@@ -627,9 +627,28 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/**
+ * 웹챗 연락처 → 숫자만. **+82 국제표기는 국내표기로 되돌린다.**
+ *
+ * ⚠️ 2026-08-31 사고: 위젯이 `+821099546707` 로 넘긴 걸 그대로 `821099546707` 로 발송해
+ *    통신사가 튕겼다(Solapi 3058). 그런데 우리 로그엔 "성공 1/실패 0" 으로 남았다 —
+ *    접수는 성공하고 전송이 나중에 실패하기 때문이다. 그래서 아무도 못 알아챘고,
+ *    고객(정민지)은 색상 변경 답변을 이틀 넘게 못 받았다.
+ */
 function normalizePhone(value: string | null | undefined): string | null {
-  const digits = (value ?? "").replace(/\D/g, "");
+  let digits = (value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("82")) digits = "0" + digits.slice(2);
   return digits.length >= 10 ? digits : null;
+}
+
+/**
+ * 국내 SMS 로 보낼 수 있는 번호만 통과시킨다.
+ * 해외 번호는 국내 SMS 가 안 가므로 null 을 돌려 **이메일 경로로 떨어지게** 한다 —
+ * 예전엔 아무 번호나 SMS 로 시도해 조용히 실패했다.
+ */
+function smsablePhone(value: string | null | undefined): string | null {
+  const d = normalizePhone(value);
+  return d && /^01[016789]\d{7,8}$/.test(d) ? d : null;
 }
 
 function isInternalSystemMessage(raw: unknown): boolean {

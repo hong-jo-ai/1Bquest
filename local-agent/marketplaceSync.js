@@ -562,11 +562,23 @@ async function downloadOrders(channel, page, startDate, endDate, log) {
       if (await excel.count().catch(() => 0)) await robustClick(excel);
       else await robustClick(page.getByText("엑셀 다운로드", { exact: true }).first());
       await sleep(1500);
-      await robustClick(page.locator('xpath=//*[normalize-space()="전체 주문 상품 다운로드"]/following::button[normalize-space()="받기"][1]').first());
+      // 29CONNECT+ 개편(2026-08) — 드롭다운이 '전체 주문 다운로드 / 선택 주문 다운로드' 두 항목으로 바뀌고
+      // 항목별 '받기' 버튼이 사라졌다. 옛 경로도 남겨 둔다(계정·화면에 따라 아직 옛 UI 가 나올 수 있다).
+      const newItem = page.getByRole("menuitem", { name: /전체 주문 다운로드/ }).first();
+      const newItemAlt = page.getByText(/^전체 주문 다운로드$/).first();
+      if (await newItem.count().catch(() => 0)) await robustClick(newItem);
+      else if (await newItemAlt.count().catch(() => 0)) await robustClick(newItemAlt);
+      else await robustClick(page.locator('xpath=//*[normalize-space()="전체 주문 상품 다운로드"]/following::button[normalize-space()="받기"][1]').first());
       await sleep(1500);
-      await page.getByPlaceholder(/사유/).first().fill("월별 매출/정산 관리");
-      await sleep(400);
-      await robustClick(page.getByRole("button", { name: "확인" }).last());
+      // 사유 모달은 남아 있을 수도, 없어졌을 수도 있다 — 있으면 채우고 없으면 그냥 진행한다.
+      const reason = page.getByPlaceholder(/사유/).first();
+      if (await reason.count().catch(() => 0)) {
+        await reason.fill("월별 매출/정산 관리");
+        await sleep(400);
+        await robustClick(page.getByRole("button", { name: "확인" }).last());
+      } else {
+        log("29CM 다운로드 사유 모달 없음 — 바로 진행");
+      }
     };
     const [dl] = await Promise.all([
       page.waitForEvent("download", { timeout: 120000 }),
