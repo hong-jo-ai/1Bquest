@@ -93,13 +93,30 @@ function payloadFor(
   };
 }
 
+/**
+ * 어떤 호출자도 넘을 수 없는 나이 상한.
+ *
+ * ⚠️ 2026-09-01: 수동 백필(POST)이 sinceDays 없이 돌아 **2024년 댓글까지 94건**이 미답변으로
+ *    쏟아졌다. 인박스가 못 쓰게 됐다. 같은 사고가 2026-07-17 IG DM 에서도 있었다
+ *    ("전체백필이 2020년~ 옛 DM 71건을 쌓음") — 두 번째다.
+ *    몇 달 지난 공개 댓글은 답할 수 있는 CS 가 아니다. 호출자가 뭘 넘기든 여기서 막는다.
+ */
+function hardFloor(): Date {
+  const days = Number(process.env.CS_IG_COMMENT_MAX_AGE_DAYS ?? "30");
+  const safe = Number.isFinite(days) && days > 0 ? days : 30;
+  return new Date(Date.now() - safe * 86_400_000);
+}
+
 export async function syncAllIgComments(
   opts: { sinceDays?: number; maxPages?: number } = {},
 ): Promise<IgCommentSyncResult> {
   const accounts = await listIgAccounts();
-  const since = opts.sinceDays
+  const requested = opts.sinceDays
     ? new Date(Date.now() - opts.sinceDays * 86_400_000)
     : undefined;
+  const floor = hardFloor();
+  // 요청 창과 상한 중 **더 최근** 쪽을 쓴다 — 백필이라도 상한을 못 넘는다.
+  const since = requested && requested.getTime() > floor.getTime() ? requested : floor;
   // 게시물은 최신 것부터 — 오래된 글에 새 댓글이 달리는 일은 드물다.
   const mediaLimit = Math.max(5, (opts.maxPages ?? 1) * 10);
 
@@ -152,7 +169,9 @@ export async function syncAllIgComments(
             (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
           );
           // 스레드 전체가 창 밖이면 통째로 건너뛴다(오래된 글 재수집 비용 절약).
-          if (since && chain.every((c) => new Date(c.timestamp).getTime() < since.getTime())) {
+          // since 는 이제 항상 존재한다(상한 보장) — 옵셔널 체크를 지운다.
+          // 지웠던 게 아니라, 예전엔 undefined 일 수 있어 이 가드가 통째로 무력화됐다.
+          if (chain.every((c) => new Date(c.timestamp).getTime() < since.getTime())) {
             continue;
           }
           for (const c of chain) {
