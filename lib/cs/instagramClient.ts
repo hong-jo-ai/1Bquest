@@ -350,6 +350,10 @@ export interface IgMedia {
   caption?: string;
   permalink?: string;
   timestamp: string;
+  media_type?: string;
+  /** ⚠️ 서명된 CDN URL — 몇 시간이면 만료된다. DB 에 넣지 말고 볼 때마다 새로 받을 것. */
+  media_url?: string;
+  thumbnail_url?: string;
 }
 
 export interface IgComment {
@@ -369,7 +373,7 @@ export async function listIgMedia(
   if (!account.igLoginToken) return [];
   const limit = Math.min(50, Math.max(1, opts.limit ?? 10));
   const url =
-    `${IG_LOGIN_BASE}/me/media?fields=id,caption,permalink,timestamp&limit=${limit}` +
+    `${IG_LOGIN_BASE}/me/media?fields=id,caption,permalink,timestamp,media_type&limit=${limit}` +
     `&access_token=${encodeURIComponent(account.igLoginToken)}`;
   const res = await metaFetch(url, { tries: 4, timeoutMs: 15000 });
   if (!res.ok) throw new Error(`IG 게시물 조회 실패: ${await res.text()}`);

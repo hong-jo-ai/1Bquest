@@ -140,6 +140,59 @@ const BRAND_COLOR: Record<CsBrandId, string> = {
 type BrandFilter = CsBrandId | "all";
 type StatusFilter = CsStatus | "all";
 
+/**
+ * 인스타 댓글이 **어느 게시물에 달렸는지** 보여주는 카드.
+ * 그전엔 제목 자리에 permalink URL 만 있어서 눌러서 인스타로 나가기 전엔 알 수 없었다
+ * (사장님 지적 2026-09-01). 썸네일 + 캡션 + 원문 링크를 대화 맨 위에 붙인다.
+ */
+function IgPostCard({ messages, brand }: { messages: CsMessage[]; brand: string }) {
+  const post = messages
+    .map((m) => (m.raw as { post?: { id?: string; permalink?: string; caption?: string; mediaType?: string; timestamp?: string } } | null)?.post)
+    .find((p) => p?.id);
+  if (!post?.id) return null;
+
+  const caption = (post.caption ?? "").replace(/\s+/g, " ").trim();
+  const when = post.timestamp
+    ? new Date(post.timestamp).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })
+    : null;
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex gap-3 p-3">
+        {/* 썸네일은 서명 URL 이라 저장해두면 만료된다 → 볼 때마다 프록시가 새로 받아온다. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/cs/instagram/media?id=${encodeURIComponent(post.id)}&brand=${encodeURIComponent(brand)}`}
+          alt=""
+          className="h-20 w-20 flex-shrink-0 rounded-lg object-cover bg-zinc-100 dark:bg-zinc-800"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+            <Camera className="h-3 w-3" />
+            <span>이 게시물의 댓글</span>
+            {when && <span>· {when}</span>}
+            {post.mediaType === "VIDEO" && <span>· 영상</span>}
+          </div>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-700 line-clamp-3 dark:text-zinc-300">
+            {caption || "(캡션 없음)"}
+          </p>
+          {post.permalink && (
+            <a
+              href={post.permalink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-block text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              인스타그램에서 열기 ↗
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ThreadDetail {
   thread: CsThread;
   messages: CsMessage[];
@@ -1298,6 +1351,7 @@ function ThreadDetailView({
       {openPromises.length > 0 && <PromiseBanner promises={openPromises} onDone={onPromiseDone} />}
 
       <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6 space-y-5 bg-zinc-50 dark:bg-zinc-950">
+        {thread.channel === "ig_comment" && <IgPostCard messages={messages} brand={thread.brand} />}
         {isReturn ? (
           <div className="max-w-md mx-auto rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-5 space-y-1.5 text-sm">
             <div className="font-semibold text-zinc-800 dark:text-zinc-200">{thread.subject || "반품/교환"}</div>
@@ -2374,6 +2428,7 @@ function MobileThreadDetailView({
 
       {/* 메시지 영역 */}
       <div ref={messagesScrollRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-4 bg-zinc-50 dark:bg-zinc-950">
+        {thread.channel === "ig_comment" && <IgPostCard messages={messages} brand={thread.brand} />}
         {messages.map((m) => (
           <MessageBubble
             key={m.id}

@@ -66,6 +66,29 @@ Crisp는 웹사이트 실시간 채팅 위젯이다. 이메일 톤은 부적절�
 "문의 주셔서 감사합니다. 각인은 한글도 가능하며 최대 5자까지 가능합니다. 추가로 궁금하신 점 있으시면 말씀해 주십시오."
 `;
 
+const IG_COMMENT_TONE_BLOCK = `
+## 인스타 댓글 톤 — 반드시 준수 (사장님 지시 2026-09-01)
+
+공개 피드의 댓글이다. **고객 한 명이 아니라 그 글을 보는 모두가 읽는다.**
+CS 응대문이 아니라 브랜드가 말을 거는 자리다 — **가볍고 위트 있게.**
+
+- **한두 문장.** 길면 광고문처럼 보인다
+- **말 걸듯이.** 존댓말은 지키되 딱딱한 CS 문장("문의 주셔서 감사합니다", "확인 후 안내드리겠습니다") 금지
+- **이모지 1개 정도는 좋다.** 남발은 금지
+- **서명·인사말 금지.** "안녕하세요 폴바이스입니다" 같은 도입 금지 — 바로 본론
+- **상대 핸들 멘션으로 시작**(@handle) — 인스타 답글 관례다
+- **고객 언어로 답한다.** 영어 댓글엔 영어로
+- 확답 못 할 것(출시일·가격)은 **얼버무리지 말고 기대감으로 넘긴다.** 없는 날짜를 지어내지 말 것
+
+좋은 예
+- "@ted_odens_day Very soon — we're counting the days too 🌙"
+- "@woong_riginal 사이즈요? 그 마음 저희도 압니다. 곧 공개할게요 😌"
+- "@darksea.noxxs 일구 옆자리 하나 비워두셔도 좋을 것 같아요 🙂"
+
+나쁜 예 (절대 금지)
+- "안녕하세요, 해리엇입니다. 문의 주셔서 감사합니다. 출시일은 확정되는 대로 공지드리겠습니다."
+`;
+
 export interface DraftResult {
   draft: string;
   rationale: string;
@@ -99,7 +122,9 @@ export async function generateDraft(
   // 같은 브랜드·채널의 최근 답변 6개를 few-shot 예시로 주입
   const examples = await getReplyExamples(thread.brand, thread.channel, 6);
   const examplesBlock = formatExamples(examples);
-  const crispBlock = isWebWidget ? CRISP_TONE_BLOCK : "";
+  // 공개 피드 댓글은 CS 응대가 아니라 브랜드 발화다 — 전용 톤을 쓴다.
+  const isIgComment = thread.channel === "ig_comment";
+  const crispBlock = isIgComment ? IG_COMMENT_TONE_BLOCK : isWebWidget ? CRISP_TONE_BLOCK : "";
 
   const operatorNote = options.operatorNotes?.trim();
   const operatorBlock = operatorNote
@@ -146,7 +171,7 @@ export async function generateDraft(
 
 - 브랜드: ${brandLabel} (${thread.brand})
 - 채널: ${channelLabel} (${thread.channel})
-- 채널 유형: ${isWebWidget ? "웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
+- 채널 유형: ${isIgComment ? "인스타 공개 댓글 (한두 문장·위트 있게·@멘션으로 시작)" : isWebWidget ? "웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
 - 고객 이름: ${thread.customer_name ?? "(알 수 없음)"}
 - 고객 연락처: ${thread.customer_handle ?? "(알 수 없음)"}
 - 제목: ${thread.subject ?? "(없음)"}${careBlock}

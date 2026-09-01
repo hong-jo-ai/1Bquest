@@ -18,6 +18,7 @@ import {
   listIgAccounts,
   refreshIgLoginTokenIfNeeded,
   type IgComment,
+  type IgMedia,
 } from "./instagramClient";
 import type { IngestPayload } from "./types";
 
@@ -44,12 +45,22 @@ function isOwn(c: IgComment, ownUsername: string): boolean {
   return Boolean(u) && u === bareHandle(ownUsername);
 }
 
+/** 캡션 한 줄 요약 — 인박스에서 "어느 글에 달린 댓글인지" 한눈에 알아보게. */
+function captionLine(caption?: string): string {
+  const one = (caption ?? "").replace(/\s+/g, " ").trim();
+  if (!one) return "";
+  // 해시태그 뭉치는 제목으로 쓸모없다 — 본문만 남긴다.
+  const body = one.replace(/(^|\s)#[^\s#]+/g, " ").replace(/\s+/g, " ").trim();
+  const text = body || one;
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+}
+
 function payloadFor(
   brand: IngestPayload["brand"],
   root: IgComment,
   c: IgComment,
   ownUsername: string,
-  mediaPermalink?: string,
+  post: IgMedia,
 ): IngestPayload {
   // 스레드의 "고객"은 **최상위 댓글 작성자**로 고정한다. 메시지 작성자를 쓰면
   // 우리가 답글을 다는 순간 스레드 주인이 우리로 바뀐다(2026-09-01 실측).
@@ -62,11 +73,23 @@ function payloadFor(
     externalMessageId: `igc:${c.id}`,
     customerHandle: rootHandle ? `@${rootHandle}` : undefined,
     customerName: rootHandle || undefined,
-    subject: mediaPermalink,
+    // URL 만 있으면 눌러보기 전엔 어느 글인지 모른다 → 캡션 한 줄을 제목으로 쓴다.
+    subject: captionLine(post.caption) || post.permalink,
     bodyText: c.text ?? "",
     sentAt: new Date(c.timestamp),
     direction: isOwn(c, ownUsername) ? "out" : "in",
-    raw: c as unknown,
+    // ⚠️ 썸네일 URL 은 저장하지 않는다(서명 CDN, 몇 시간이면 만료).
+    //    id 만 두고 볼 때 /api/cs/instagram/media 로 새로 받는다.
+    raw: {
+      comment: c,
+      post: {
+        id: post.id,
+        permalink: post.permalink,
+        caption: post.caption,
+        mediaType: post.media_type,
+        timestamp: post.timestamp,
+      },
+    },
   };
 }
 
@@ -143,7 +166,7 @@ export async function syncAllIgComments(
             }
             try {
               const res = await ingestMessage(
-                payloadFor(account.brand, root, c, account.displayName, post.permalink),
+                payloadFor(account.brand, root, c, account.displayName, post),
               );
               if (res.inserted) inserted++;
               else skipped++;
