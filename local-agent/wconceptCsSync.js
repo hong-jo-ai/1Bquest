@@ -1,5 +1,9 @@
 /**
- * W컨셉 CS 동기화 — 반품/교환 클레임을 CS 인박스로 보냄.
+ * W컨셉 CS 동기화 — 반품/교환 클레임을 **텔레그램으로 알림만** 보냄.
+ *
+ * ⚠️ 2026-09-01 방침 변경(사장님): 마켓 CS 는 **인박스로 가져오지 않는다.**
+ *    W컨셉·무신사·29CM 은 답장이 각 마켓 어드민에서만 되고 우리 발송 경로가 없다.
+ *    인박스에 쌓이면 "여기서 처리 가능한 것"과 섞여 오히려 놓친다 → 알림만 보내고 직접 처리.
  * 소스: 교환/반품 접수 내역(OrderReturnManageShipping?type=return|exchange). 로그인(SMS 자동) 후 그리드 파싱.
  * 회수는 W컨셉 계약배송사 자동 진행 — 우리는 신청정보 기록 후, 택배 도착하면 인박스에서 '회수완료'(write-back).
  *
@@ -81,6 +85,7 @@ async function scrapeClaims(page, claimType, log) {
           customerName: r.customerName,
           recoveryTrackingNo: r.recoveryTrackingNo,
           requestedAt: /\d{4}-\d{2}-\d{2}/.test(r.acceptedAt) ? `${r.acceptedAt}T00:00:00+09:00` : undefined,
+          statusText: r.statusText,
           raw: { statusText: r.statusText, receivedAt: r.receivedAt, tracking: r.recoveryTrackingNo },
         });
       }
@@ -96,12 +101,9 @@ async function scrapeClaims(page, claimType, log) {
     await require("./heartbeat").beat("wconcept-cs-sync", { claims: 0 });
     return;
   }
-  const res = await fetch(`${base()}/api/cs/ingest/sixshop-returns`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-agent-token": env("PAULWISE_MCP_TOKEN") },
-    body: JSON.stringify({ claims }),
-  });
-  log(`반품 적재: ${JSON.stringify(await res.json().catch(() => ({})))}`);
+  const { notifyMarketplaceCs } = require("./marketplaceCsNotify");
+  const r = await notifyMarketplaceCs("wconcept", claims);
+  log(`텔레그램 알림: 신규 ${r.notified}건 / 기존 ${r.skipped}건 (인박스 적재 안 함)`);
   await require("./heartbeat").beat("wconcept-cs-sync");
   log("=== 완료 ===");
 })().catch(async (e) => { console.error("ERR", e); try { await require("./notifyFail").notifyFail("W컨셉 CS 동기화", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });
