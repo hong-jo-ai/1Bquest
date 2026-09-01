@@ -276,6 +276,18 @@ async function createReplyDraft(H, po, results, buffer) {
     await sendTelegram(msg, { tag: "chosunmall-po" });
   }
 
+  // 접수가 끝나면 대시보드 매출도 같이 올린다 — 조선몰은 카페24를 안 타서
+  // 이걸 안 하면 매출이 통째로 대시보드에서 빠진다(사장님 지적 2026-09-01).
+  if (send && results.length) {
+    try {
+      const { execFileSync } = require("child_process");
+      const out = execFileSync(process.execPath, ["chosunmallRevenue.js", "--send"], { cwd: __dirname, encoding: "utf8" });
+      log(`매출 적재: ${out.trim().split("\n").slice(-1)[0]}`);
+    } catch (e) {
+      log(`⚠️ 매출 적재 실패(접수는 정상): ${e.message.slice(0, 120)}`);
+    }
+  }
+
   await beat("chosunmall-po-sync", { orders: parsed.orders.length, registered: results.length });
   log("=== 완료 ===");
   process.exit(0);

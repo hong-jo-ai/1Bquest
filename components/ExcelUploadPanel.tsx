@@ -23,7 +23,8 @@ interface Props {
     | "kakao_gift"
     | "lotte_dutyfree"
     | "shinsegae_dutyfree"
-    | "naver_smartstore";
+    | "naver_smartstore"
+    | "chosunmall";
   channelName: string;
   channelColor: string;
   onDataLoaded: (data: MultiChannelData, meta: UploadMeta) => void;
