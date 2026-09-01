@@ -25,8 +25,8 @@ function loadEnv() {
 
 const MARKETS = {
   wconcept: { label: "W컨셉", url: "https://newpin.wconcept.co.kr/Order/OrderReturnManageShipping?type=return" },
-  musinsa:  { label: "무신사", url: "https://partner.musinsa.com/claim/list" },
-  cm29:     { label: "29CM",  url: "https://partner-order.29cm.co.kr/claim" },
+  musinsa:  { label: "무신사", url: "https://partner.musinsa.com/claim" },
+  "29cm":   { label: "29CM",  url: "https://partner-order.29cm.co.kr/return" },
 };
 
 function kvUrl() {
@@ -83,7 +83,7 @@ function formatClaim(c) {
 
 /**
  * 새 클레임만 골라 텔레그램으로 알린다. 인박스 적재는 하지 않는다.
- * @param {"wconcept"|"musinsa"|"cm29"} market
+ * @param {"wconcept"|"musinsa"|"29cm"} market
  * @param {Array<{orderNumber:string,claimType?:string,statusText?:string,customerName?:string,product?:string,reason?:string}>} claims
  * @returns {Promise<{notified:number, skipped:number}>}
  */
