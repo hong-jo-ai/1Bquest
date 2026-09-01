@@ -475,17 +475,23 @@ export function mergeUploads(uploads: PerUpload[]): MergedChannelUpload | null {
   };
 
   // meta: 누적 정보 + 가장 최근 파일명
+  //
+  // ⚠️ period/rowCount 가 없는 업로드가 섞일 수 있다(2026-09-01 실측: groupbuy 의
+  //    "정산정정_에끌라69k_20260901" 이 봉투 없이 저장됨). 예전엔 여기서 바로 터졌고,
+  //    그러면 /api/profit/channel-uploads 가 통째로 500 → **모든 채널의 서버 동기화가 죽었다.**
+  //    한 채널의 불량 레코드가 전 채널을 끌고 내려가면 안 된다 → 옵셔널로 읽고 일자로 보강한다.
   const newest = sorted[sorted.length - 1];
-  const totalRows = sorted.reduce((s, u) => s + u.rowCount, 0);
+  const totalRows = sorted.reduce((s, u) => s + (Number(u.rowCount) || 0), 0);
+  const dayKeys = dailyRevenue.map((d) => d.date).filter(Boolean).sort();
   const periodStart = sorted
-    .map((u) => u.period.start)
+    .map((u) => u.period?.start)
     .filter(Boolean)
-    .sort()[0] ?? newest.period.start;
+    .sort()[0] ?? newest.period?.start ?? dayKeys[0] ?? "";
   const periodEnd = sorted
-    .map((u) => u.period.end)
+    .map((u) => u.period?.end)
     .filter(Boolean)
     .sort()
-    .slice(-1)[0] ?? newest.period.end;
+    .slice(-1)[0] ?? newest.period?.end ?? dayKeys[dayKeys.length - 1] ?? "";
 
   return {
     data,

@@ -81,8 +81,8 @@ const kstDate = (iso) =>
     byDate.set(d, { revenue: (byDate.get(d)?.revenue ?? 0) + amount, orders: (byDate.get(d)?.orders ?? 0) + 1 });
     // 각인·색상 꼬리표를 떼고 라인 단위로 묶는다
     const base = String(r.product_name).replace(/\s*\(각인:[\s\S]*$/, "").trim();
-    const p = byProduct.get(base) ?? { revenue: 0, units: 0 };
-    p.revenue += amount; p.units += qty; byProduct.set(base, p);
+    const p = byProduct.get(base) ?? { revenue: 0, sold: 0 };
+    p.revenue += amount; p.sold += qty; byProduct.set(base, p);
   }
 
   for (const [d, v] of [...byDate].sort()) console.log(`  ${d}  ${v.orders}건  ${v.revenue.toLocaleString("ko-KR")}원`);
@@ -99,8 +99,10 @@ const kstDate = (iso) =>
   const dates = [...byDate.keys()].sort();
   const payload = {
     salesSummary: { today: EMPTY, week: EMPTY, month: period, prevMonth: EMPTY },
+    // ⚠️ 판매수량 필드명은 `sold` 다. `units` 로 넣으면 머지에서 null 이 되어
+    //    매출은 맞는데 수량만 비는 상태가 된다(2026-09-01 실측).
     topProducts: [...byProduct].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 10)
-      .map(([name, v], i) => ({ rank: i + 1, name, revenue: v.revenue, units: v.units, image: "" })),
+      .map(([name, v], i) => ({ rank: i + 1, name, sku: "", sold: v.sold, revenue: v.revenue, image: "⌚" })),
     hourlyOrders: Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, "0")}시`, orders: 0, revenue: 0 })),
     weeklyRevenue: ["월","화","수","목","금","토","일"].map((day) => ({ day, revenue: 0, orders: 0 })),
     dailyRevenue: dates.map((d) => ({ date: d, revenue: byDate.get(d).revenue, orders: byDate.get(d).orders })),
