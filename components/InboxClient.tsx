@@ -539,6 +539,10 @@ export default function InboxClient() {
       } else {
         showToast(json.error ?? "전송 실패");
       }
+    } catch (e) {
+      // catch 가 없어서 fetch·JSON 파싱이 터지면 **아무 표시 없이** 조용히 끝났다.
+      // 전송 실패를 모르고 넘어가는 게 가장 나쁜 경우다 (2026-09-01).
+      showToast(`전송 실패: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSending(false);
     }

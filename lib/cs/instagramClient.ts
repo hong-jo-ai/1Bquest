@@ -434,3 +434,26 @@ export async function igCommentsForMedia(
   }
   return comments;
 }
+
+/**
+ * 댓글에 답글 달기 — `POST /{ig-comment-id}/replies`.
+ *
+ * 최상위 댓글 id 에 달아야 그 대화에 스레드된다. 답글 id 에 또 답글을 달 수는 없다
+ * (인스타는 2단계까지만 지원) → 호출측이 항상 루트 댓글 id 를 넘길 것.
+ */
+export async function replyToIgComment(
+  account: IgAccount,
+  commentId: string,
+  message: string,
+): Promise<{ id: string }> {
+  if (!account.igLoginToken) {
+    throw new Error("IG 로그인 토큰이 없어 댓글 답글을 달 수 없습니다");
+  }
+  const res = await fetch(`${IG_LOGIN_BASE}/${commentId}/replies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, access_token: account.igLoginToken }),
+  });
+  if (!res.ok) throw new Error(`IG 댓글 답글 실패: ${await res.text()}`);
+  return res.json() as Promise<{ id: string }>;
+}

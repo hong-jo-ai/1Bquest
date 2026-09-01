@@ -7,7 +7,12 @@ import {
 import { getThreadsTokenFromStore } from "../threadsTokenStore";
 import { listCrispAccounts, sendCrispMessage } from "./crispClient";
 import { listRedditAccounts, postRedditReply } from "./reddit";
-import { listIgAccounts, sendIgMessage } from "./instagramClient";
+import {
+  listIgAccounts,
+  refreshIgLoginTokenIfNeeded,
+  replyToIgComment,
+  sendIgMessage,
+} from "./instagramClient";
 import { notifyWebchatReply } from "./webchat";
 import { cafe24Post, cafe24Put, type MallId } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
@@ -47,6 +52,7 @@ export async function sendReply(
     crisp: sendCrispReply,
     reddit: sendRedditReply,
     ig_dm: sendIgReply,
+    ig_comment: sendIgCommentReply,
     cafe24_board: sendCafe24BoardReply,
     sixshop: sendSixshopReply,
   };
@@ -523,6 +529,53 @@ async function sendIgReply(
     const db = getCsSupabase();
     await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
     return { ok: true, externalMessageId: result.message_id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * 인스타 댓글 답글.
+ *
+ * ⚠️ 2026-09-01: 댓글 수집만 붙이고 **발송 경로를 안 만들어** 인박스에서 전송해도
+ *    아무 일도 일어나지 않았다(사장님 지적). 디스패처에 없으면 sendReply 가
+ *    "지원하지 않습니다" 로 떨어진다.
+ *
+ * 답글은 **루트 댓글 id** 에 단다 — external_thread_id 가 `igc:<rootCommentId>` 다.
+ * 인스타는 2단계까지만 스레드되므로 답글에 답글을 달 수 없다.
+ */
+async function sendIgCommentReply(
+  threadId: string,
+  body: string,
+  options: ReplyOptions = {}
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  const rootCommentId = (thread.external_thread_id ?? "").replace(/^igc:/, "");
+  if (!rootCommentId) return { ok: false, error: "댓글 id 를 찾을 수 없음" };
+
+  const accounts = await listIgAccounts();
+  let account = accounts.find((a) => a.brand === thread.brand && a.igLoginToken);
+  if (!account) return { ok: false, error: "IG 로그인 토큰이 있는 계정 미등록" };
+  account = await refreshIgLoginTokenIfNeeded(account);
+
+  try {
+    const result = await replyToIgComment(account, rootCommentId, body);
+    await ingestMessage({
+      brand: thread.brand as CsBrandId,
+      channel: "ig_comment",
+      externalThreadId: thread.external_thread_id,
+      externalMessageId: `igc:${result.id}`,
+      bodyText: body,
+      sentAt: new Date(),
+      direction: "out",
+      raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
+    });
+    const db = getCsSupabase();
+    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+    return { ok: true, externalMessageId: result.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
