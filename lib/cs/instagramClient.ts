@@ -340,3 +340,93 @@ export async function sendIgMessage(
   if (!res.ok) throw new Error(`IG 메시지 전송 실패: ${await res.text()}`);
   return res.json() as Promise<{ message_id: string }>;
 }
+
+// ── 댓글 (ig_comment) ──────────────────────────────────────────
+// IG 로그인 토큰(IGAA) + graph.instagram.com 경로만 쓴다.
+// 페이지 토큰 경로(/{ig_user}/media)는 2026-07 진단에서 code 3 로 죽었다.
+
+export interface IgMedia {
+  id: string;
+  caption?: string;
+  permalink?: string;
+  timestamp: string;
+}
+
+export interface IgComment {
+  id: string;
+  text?: string;
+  timestamp: string;
+  username?: string;
+  from?: { id: string; username?: string };
+  replies?: { data: IgComment[] };
+}
+
+/** 최근 게시물. 댓글은 게시물 단위로만 조회할 수 있어 먼저 목록이 필요하다. */
+export async function listIgMedia(
+  account: IgAccount,
+  opts: { limit?: number } = {},
+): Promise<IgMedia[]> {
+  if (!account.igLoginToken) return [];
+  const limit = Math.min(50, Math.max(1, opts.limit ?? 10));
+  const url =
+    `${IG_LOGIN_BASE}/me/media?fields=id,caption,permalink,timestamp&limit=${limit}` +
+    `&access_token=${encodeURIComponent(account.igLoginToken)}`;
+  const res = await metaFetch(url, { tries: 4, timeoutMs: 15000 });
+  if (!res.ok) throw new Error(`IG 게시물 조회 실패: ${await res.text()}`);
+  const json = (await res.json()) as { data?: IgMedia[] };
+  return json.data ?? [];
+}
+
+/** 답글 1건의 작성자를 채운다. 중첩 확장에선 안 오고 개별 조회로만 온다. */
+async function hydrateAuthor(account: IgAccount, c: IgComment): Promise<void> {
+  const url =
+    `${IG_LOGIN_BASE}/${c.id}?fields=from{id,username}` +
+    `&access_token=${encodeURIComponent(account.igLoginToken!)}`;
+  const res = await metaFetch(url, { tries: 2, timeoutMs: 10000 });
+  if (!res.ok) return; // 못 채우면 작성자 미상 — 방향 판정은 호출측이 보수적으로 처리
+  const json = (await res.json()) as { from?: { id: string; username?: string } };
+  if (json.from) c.from = json.from;
+}
+
+/**
+ * 게시물의 최상위 댓글 + 대댓글.
+ *
+ * ⚠️ 작성자 정보가 두 단계로 갈린다(2026-09-01 실측).
+ *  - 최상위 댓글: `from{id,username}` 을 **명시해야** 남이 쓴 댓글의 작성자가 온다.
+ *    `username` 만 요청하면 우리가 쓴 것만 채워지고 고객 댓글은 빈 값이다.
+ *  - 대댓글: 중첩 확장(`replies{...from}`)에도, 전용 `/replies` 엔드포인트에도 **작성자가 안 온다.**
+ *    답글 id 로 **개별 조회**해야만 나온다. 그래서 답글만 따로 채운다.
+ *
+ * 이걸 안 하면 우리가 단 답글이 전부 "고객 문의"로 들어와 인박스가 미답변으로 가득 찬다.
+ */
+export async function igCommentsForMedia(
+  account: IgAccount,
+  mediaId: string,
+  opts: { hydrateRepliesSince?: Date; maxHydrate?: number } = {},
+): Promise<IgComment[]> {
+  if (!account.igLoginToken) return [];
+  const fields =
+    "id,text,timestamp,username,from{id,username}," +
+    "replies{id,text,timestamp,username}";
+  const url =
+    `${IG_LOGIN_BASE}/${mediaId}/comments?fields=${encodeURIComponent(fields)}&limit=50` +
+    `&access_token=${encodeURIComponent(account.igLoginToken)}`;
+  const res = await metaFetch(url, { tries: 4, timeoutMs: 15000 });
+  if (!res.ok) throw new Error(`IG 댓글 조회 실패: ${await res.text()}`);
+  const json = (await res.json()) as { data?: IgComment[] };
+  const comments = json.data ?? [];
+
+  // 답글 작성자 채우기 — 개별 호출이라 창(기본: 최근 것만)과 상한으로 묶는다.
+  const sinceMs = opts.hydrateRepliesSince?.getTime() ?? 0;
+  let budget = opts.maxHydrate ?? 60;
+  for (const root of comments) {
+    for (const r of root.replies?.data ?? []) {
+      if (budget <= 0) break;
+      if (r.from?.username || r.username) continue;
+      if (sinceMs && new Date(r.timestamp).getTime() < sinceMs) continue;
+      budget--;
+      await hydrateAuthor(account, r);
+    }
+  }
+  return comments;
+}

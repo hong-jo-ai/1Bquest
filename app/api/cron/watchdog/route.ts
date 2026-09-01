@@ -61,6 +61,8 @@ const JOBS: JobSpec[] = [
   // 카페24 주문알림 비활성화(2026-07-11 사장님) — 잡을 꺼서 하트비트 미갱신 → 오탐 방지 위해 감시 제외. 재활성화 시 주석 해제.
   // { key: "cron_last_ok:cafe24-orders-notify", label: "카페24 주문알림", maxHours: 2 },
   { key: "cron_last_ok:crm-cart-nudge", label: "장바구니 넛지", maxHours: 3 },
+  // 2026-05 토큰 무효화가 두 달간 안 잡힌 곳. 매시 크론이라 3시간이면 충분히 여유롭다.
+  { key: "cron_last_ok:cs-ingest-instagram", label: "인스타 DM·댓글 수집", maxHours: 3 },
 ];
 
 const ALERT_DEDUP_H = 6;   // 같은 잡 재경보 간격
