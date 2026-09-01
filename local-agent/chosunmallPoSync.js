@@ -159,7 +159,10 @@ function parsePo(buffer) {
       prod: [String(c[idx.product] ?? "").trim(), color].filter(Boolean).join(" - ")
         + (engraving ? ` (각인:${engraving})` : ""),
       qty: String(c[idx.qty] ?? "1").trim() || "1",
-      msg,
+      // 각인은 **배송메시지에도** 싣는다. 품목명은 길면 송장에서 잘려
+      // "다이얼 9시 방면 문구 : …" 같은 긴 지시가 통째로 사라진다(사장님 제안 2026-09-01).
+      // 배송요청이 먼저다 — 집배원이 볼 문구를 각인이 밀어내면 안 된다.
+      msg: [msg, engraving ? `[각인] ${engraving}` : ""].filter(Boolean).join(" "),
       engraving,
       engravingMissing,
     });
