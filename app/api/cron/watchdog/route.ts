@@ -39,6 +39,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:naver-ads-sync", label: "네이버 검색광고 광고비 동기화(iMac·09:20)", maxHours: 28 },
   // 무신사·29CM CS 점검(10/16시). 인박스로 안 가져오는 채널이라 이 알림이 유일한 통로다.
   { key: "heartbeat:marketplace-cs-scan", label: "무신사·29CM CS 점검(iMac·10/16시)", maxHours: 28, weekdaysOnly: true },
+  // 조선몰 발주 접수(10:30). 회신 마감이 당일 17시라 하루만 놓쳐도 정산에서 빠진다.
+  { key: "heartbeat:chosunmall-po-sync", label: "조선몰 발주 접수(iMac·10:30)", maxHours: 28, weekdaysOnly: true },
   // 말일에만 발송하지만 하트비트는 매일 찍는다(스킵한 날도) — 그래야 감시가 촘촘하다.
   { key: "heartbeat:alba-payroll-reminder", label: "알바 급여 리마인더(iMac·매일 18시)", maxHours: 28 },
   // /today 보드의 "진행 중인 일" 원천. 안 돌면 보드가 옛날 세션을 계속 보여줘 조용히 틀려진다.
