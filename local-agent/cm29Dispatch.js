@@ -11,6 +11,7 @@ const DASH="/Users/mac/sungjo_ai/paulwise-dashboard";
 function le(p){try{for(const l of fs.readFileSync(p,"utf8").split("\n")){const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(!m)continue;let v=m[2].trim().replace(/^["']|["']$/g,"");if(!(m[1] in process.env))process.env[m[1]]=v;}}catch{}}
 le(DASH+"/.env.supabase"); le(DASH+"/.env.local");
 const { createClient } = require(DASH+"/node_modules/@supabase/supabase-js");
+require("./shippingHold").checkOrExit("29CM 송장입력", "paulvice");
 const { getMarketplacePage, ensureLoggedIn, closeMarketplaceBrowsers } = require("./marketplaceSync");
 const { dismissOnboardingLayers } = require("./cm29Outbound");
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));

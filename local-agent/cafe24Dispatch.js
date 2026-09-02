@@ -15,6 +15,10 @@ const POST_CODE = "0012"; // 우체국택배 (이 몰 기존 배송 주문에서
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 // 멀티몰: pp_shipments.channel(=판매처) → 해당 카페24 몰. 폴바이스(카페24) + 해리엇.
+// 브랜드별 출고 보류(사장님 지시로 한쪽만 멈출 수 있다). '카페24'=폴바이스, '해리엇'=해리엇.
+const HOLD = require("./shippingHold");
+const BRAND_OF = { "카페24": "paulvice", "해리엇": "harriot" };
+
 const MALLS = [
   { channel:"카페24", mallId:process.env.CAFE24_MALL_ID,         clientId:process.env.CAFE24_CLIENT_ID,         secret:process.env.CAFE24_CLIENT_SECRET,         kvKey:"cafe24_refresh_token" },
   { channel:"해리엇", mallId:process.env.HARRIOT_CAFE24_MALL_ID, clientId:process.env.HARRIOT_CAFE24_CLIENT_ID, secret:process.env.HARRIOT_CAFE24_CLIENT_SECRET, kvKey:"cafe24_refresh_token:harriot" },
@@ -82,6 +86,8 @@ async function dispatchMall(sb, m, limit){
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   let tOk=0, tFail=0;
   for(const m of MALLS){
+    // 브랜드 보류 중이면 그 몰만 건너뛴다 — 다른 브랜드 출고까지 멈추면 안 된다.
+    if (HOLD.isHeldFor(BRAND_OF[m.channel])) { log(`[${m.channel}] ${HOLD.describe()} — 송장입력 스킵`); continue; }
     try { const r = await dispatchMall(sb, m, limit); tOk+=r.ok; tFail+=r.fail; }
     catch(e){ log(`[${m.channel}] 송장입력 실패: ${e.message}`); }
   }

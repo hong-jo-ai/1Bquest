@@ -54,6 +54,8 @@ const LS_KEY: Record<UploadableChannel, { data: string; meta: string; history: s
   shinsegae_dutyfree: { data: "shinsegae_dutyfree_excel_data", meta: "shinsegae_dutyfree_excel_meta", history: "shinsegae_dutyfree_excel_history" },
   naver_smartstore: { data: "naver_smartstore_excel_data", meta: "naver_smartstore_excel_meta", history: "naver_smartstore_excel_history" },
   chosunmall:       { data: "chosunmall_excel_data",       meta: "chosunmall_excel_meta",       history: "chosunmall_excel_history"       },
+  direct_paulvice:  { data: "direct_paulvice_data",        meta: "direct_paulvice_meta",        history: "direct_paulvice_history"        },
+  direct_harriot:   { data: "direct_harriot_data",         meta: "direct_harriot_meta",         history: "direct_harriot_history"         },
   b2b_harriot:      { data: "b2b_harriot_data",            meta: "b2b_harriot_meta",            history: "b2b_harriot_history"            },
 };
 
@@ -70,17 +72,17 @@ type ChannelHistories = Record<UploadableChannel, UploadMeta[]>;
 const EMPTY_UPLOADS: ChannelUploads = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   lotte_dutyfree: null, shinsegae_dutyfree: null,
-  naver_smartstore: null, chosunmall: null, b2b_harriot: null,
+  naver_smartstore: null, chosunmall: null, direct_paulvice: null, direct_harriot: null, b2b_harriot: null,
 };
 const EMPTY_METAS: ChannelMetas = {
   wconcept: null, musinsa: null, "29cm": null, groupbuy: null, kakao_gift: null,
   lotte_dutyfree: null, shinsegae_dutyfree: null,
-  naver_smartstore: null, chosunmall: null, b2b_harriot: null,
+  naver_smartstore: null, chosunmall: null, direct_paulvice: null, direct_harriot: null, b2b_harriot: null,
 };
 const EMPTY_HISTORIES: ChannelHistories = {
   wconcept: [], musinsa: [], "29cm": [], groupbuy: [], kakao_gift: [],
   lotte_dutyfree: [], shinsegae_dutyfree: [],
-  naver_smartstore: [], chosunmall: [], b2b_harriot: [],
+  naver_smartstore: [], chosunmall: [], direct_paulvice: [], direct_harriot: [], b2b_harriot: [],
 };
 const EMPTY_PERIOD = { revenue: 0, orders: 0, avgOrder: 0 };
 const EMPTY_CHANNEL_DATA: MultiChannelData = {
@@ -404,6 +406,8 @@ export default function DashboardClient({ brand, cafe24Data, harriotCafe24Data =
       shinsegae_dutyfree: uploads.shinsegae_dutyfree ?? UPLOADABLE_DUMMIES.shinsegae_dutyfree,
       naver_smartstore: uploads.naver_smartstore ?? UPLOADABLE_DUMMIES.naver_smartstore,
       chosunmall:       uploads.chosunmall       ?? UPLOADABLE_DUMMIES.chosunmall,
+      direct_paulvice:  uploads.direct_paulvice  ?? UPLOADABLE_DUMMIES.direct_paulvice,
+      direct_harriot:   uploads.direct_harriot   ?? UPLOADABLE_DUMMIES.direct_harriot,
       b2b_harriot:      uploads.b2b_harriot      ?? UPLOADABLE_DUMMIES.b2b_harriot,
     };
   }, [uploads, cafe24Data]);

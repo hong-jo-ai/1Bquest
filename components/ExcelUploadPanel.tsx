@@ -24,7 +24,9 @@ interface Props {
     | "lotte_dutyfree"
     | "shinsegae_dutyfree"
     | "naver_smartstore"
-    | "chosunmall";
+    | "chosunmall"
+    | "direct_paulvice"
+    | "direct_harriot";
   channelName: string;
   channelColor: string;
   onDataLoaded: (data: MultiChannelData, meta: UploadMeta) => void;

@@ -23,6 +23,8 @@ export type ChannelId =
   | "cafe24_harriot"
   | "cafe24_harriot_global"
   | "chosunmall"
+  | "direct_paulvice"
+  | "direct_harriot"
   | "b2b_harriot";
 
 export type UploadableChannel =
@@ -35,6 +37,8 @@ export type UploadableChannel =
   | "shinsegae_dutyfree"
   | "naver_smartstore"
   | "chosunmall"
+  | "direct_paulvice"
+  | "direct_harriot"
   | "b2b_harriot";
 
 export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
@@ -47,6 +51,8 @@ export const UPLOADABLE_CHANNELS: UploadableChannel[] = [
   "shinsegae_dutyfree",
   "naver_smartstore",
   "chosunmall",
+  "direct_paulvice",
+  "direct_harriot",
   "b2b_harriot",
 ];
 
@@ -60,8 +66,8 @@ export const BRANDS: { id: Brand; name: string; gradient: string; accent: string
 
 /** 브랜드별 매출 채널 — 대시보드 탭에 노출되는 순서 */
 export const BRAND_CHANNELS: Record<Brand, ChannelId[]> = {
-  paulvice: ["all", "cafe24", "cafe24_global", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree"],
-  harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore", "chosunmall", "b2b_harriot"],
+  paulvice: ["all", "cafe24", "cafe24_global", "wconcept", "musinsa", "29cm", "groupbuy", "kakao_gift", "lotte_dutyfree", "shinsegae_dutyfree", "direct_paulvice"],
+  harriot:  ["all", "cafe24_harriot", "cafe24_harriot_global", "naver_smartstore", "chosunmall", "direct_harriot", "b2b_harriot"],
 };
 
 export interface ChannelMeta {
@@ -91,6 +97,9 @@ export const CHANNELS: ChannelMeta[] = [
   { id: "naver_smartstore",      name: "네이버 스마트스토어", color: "#22c55e", bgColor: "bg-green-500",   textColor: "text-green-600"   },
   // 조선몰 — 벤더사 (주)디즈먼트 경유. 발주서 메일로 주문이 오고 카페24를 안 탄다.
   { id: "chosunmall",            name: "조선몰",             color: "#1d4ed8", bgColor: "bg-blue-700",    textColor: "text-blue-800"    },
+  // 직거래 — 웹챗·전화·DM 으로 주문받고 계좌이체로 결제. 카페24를 안 타서 매출이 통째로 샌다.
+  { id: "direct_paulvice",       name: "직거래",             color: "#9333ea", bgColor: "bg-purple-600",  textColor: "text-purple-700"  },
+  { id: "direct_harriot",        name: "직거래",             color: "#9333ea", bgColor: "bg-purple-600",  textColor: "text-purple-700"  },
   // 단체·법인 대량주문(현금결제+세금계산서 발행) — 카페24를 안 타는 오프라인 매출
   { id: "b2b_harriot",           name: "단체·법인",          color: "#57534e", bgColor: "bg-stone-600",   textColor: "text-stone-700"   },
 ];
@@ -193,8 +202,19 @@ export const chosunmallDummy: MultiChannelData = {
   topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
 };
 
+export const directPaulviceDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+export const directHarriotDummy: MultiChannelData = {
+  salesSummary: { today: PERIOD_EMPTY, week: PERIOD_EMPTY, month: PERIOD_EMPTY, prevMonth: PERIOD_EMPTY },
+  topProducts: [], hourlyOrders: HOURS_EMPTY, weeklyRevenue: WEEK_EMPTY, inventory: [],
+};
+
 export const UPLOADABLE_DUMMIES: Record<UploadableChannel, MultiChannelData> = {
   chosunmall: chosunmallDummy,
+  direct_paulvice: directPaulviceDummy,
+  direct_harriot: directHarriotDummy,
   wconcept: wconceptDummy,
   musinsa: musinsaDummy,
   "29cm": twentyNineCmDummy,

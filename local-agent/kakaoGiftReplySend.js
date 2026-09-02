@@ -10,6 +10,7 @@ require("dotenv").config({ override: true });
 le(DASH+"/.env.supabase"); le(DASH+"/.env.local");
 const XLSX=require(DASH+"/node_modules/xlsx");
 const { createClient }=require(DASH+"/node_modules/@supabase/supabase-js");
+require("./shippingHold").checkOrExit("카카오선물 회신", "paulvice");
 const GMAIL="https://gmail.googleapis.com/gmail/v1/users/me";
 const SENDER="song@fjord.kr", TO="song@fjord.kr";
 const BODY="안녕하세요. 폴바이스입니다.\n오늘 발송 완료했습니다.\n송장번호는 첨부한 엑셀파일을 참고해주세요.\n\n감사합니다.";

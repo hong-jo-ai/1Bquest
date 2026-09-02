@@ -9,6 +9,7 @@ const DASH="/Users/mac/sungjo_ai/paulwise-dashboard";
 function le(p){try{for(const l of fs.readFileSync(p,"utf8").split("\n")){const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(!m)continue;let v=m[2].trim().replace(/^["']|["']$/g,"");if(!(m[1] in process.env))process.env[m[1]]=v;}}catch{}}
 le(DASH+"/.env.supabase"); le(DASH+"/.env.local");
 const { chromium } = require("playwright");
+require("./shippingHold").checkOrExit("W컨셉 송장입력", "paulvice");
 const { loginWconcept, ACCOUNTS } = require("./wconceptSync");
 const { dispatchInvoicesOnPage } = require("./wconceptInvoice");
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
