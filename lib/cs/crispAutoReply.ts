@@ -23,9 +23,13 @@ export interface CrispAutoReplyResult {
 }
 
 function autoReplyMode(): AutoReplyMode {
-  // 기본 off_hours — 업무시간(평일 9~18시 KST)엔 사장님이 직접 상담하므로 자동응대가 먼저
-  // 끼어들면 대화가 꼬인다(사장님 지시 2026-08-12). 업무외에만 자동 1차응대. env로 always/off 전환 가능.
-  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "off_hours").toLowerCase();
+  // ⛔ 기본 off — **자동응답 전면 중지**(사장님 지시 2026-09-02: "아직 불안해서 안되겠어").
+  //    9/1~9/2 에 사장님 상담 중 끼어든 사고가 있었고, 가드를 넣었지만 신뢰가 회복되기 전엔
+  //    고객에게 자동으로 나가는 글을 두지 않는다.
+  //    ⚠️ 미답변 문의 알림은 이것과 무관하게 계속 온다(/api/cs/notify 크론) — 놓치지 않는다.
+  //    되켤 때: env `CS_CRISP_AUTO_REPLY_MODE=off_hours`(업무외만) 또는 `always`.
+  //    (이전 기본값은 off_hours 였다 — 업무시간엔 사장님이 직접 상담하므로.)
+  const raw = (process.env.CS_CRISP_AUTO_REPLY_MODE ?? "off").toLowerCase();
   if (raw === "always" || raw === "off" || raw === "off_hours") return raw;
   return "off_hours";
 }
