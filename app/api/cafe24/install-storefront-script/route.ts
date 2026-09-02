@@ -27,11 +27,18 @@ type Cafe24ScriptTag = { script_no: number; src?: string | null; display_locatio
 /** 주입을 허용하는 스크립트 — 임의 URL 주입을 막는다(자사몰에 남의 스크립트가 실리면 끝이다). */
 const ALLOWED_SCRIPTS = ["pv-cart.js", "pv-hesitate.js"] as const;
 
+/**
+ * 스크립트태그에 박히는 주소는 **배포가 바뀌어도 살아있는 주소**여야 한다.
+ * ⚠️ `VERCEL_URL` 은 배포마다 달라지는 그 배포 전용 주소다. 그걸 박으면 다음 배포 뒤에도
+ *    쇼핑몰은 계속 옛 배포의 스크립트를 불러온다(고쳐도 반영이 안 되는 유령 버그).
+ *    그래서 안정 주소만 쓴다 — 자사몰 스크립트들이 하드코딩해 둔 주소와 같은 것이다.
+ */
+const STABLE_ORIGIN = "https://paulvice-dashboard.vercel.app";
 function origin() {
   const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (explicit) return explicit.replace(/\/$/, "");
-  const v = process.env.VERCEL_URL?.trim();
-  return v ? `https://${v.replace(/^https?:\/\//, "").replace(/\/$/, "")}` : "https://paulvice-dashboard.vercel.app";
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  return prod ? `https://${prod.replace(/^https?:\/\//, "").replace(/\/$/, "")}` : STABLE_ORIGIN;
 }
 
 function isAuthorized(req: Request) {
