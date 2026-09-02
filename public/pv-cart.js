@@ -58,6 +58,24 @@
   // 유입 즉시 저장(담기 전에 이탈해도 재방문 때 이어짐)
   try { campaignCode(); } catch (e) {}
 
+  // ── 담아둔 것 스냅샷 (온사이트 리마인더용) ──────────────────
+  // 재방문했을 때 "담아두신 거 있어요"를 서버 왕복 없이 즉시 띄우려고 브라우저에 남긴다.
+  // 담긴 사실과 상품명뿐이고 개인정보는 없다. 읽는 쪽은 pv-hesitate.js.
+  var SNAP_KEY = "pv_cart_snap", SNAP_MAX = 5;
+  function saveSnap(ev) {
+    try {
+      var raw = localStorage.getItem(SNAP_KEY);
+      var o = raw ? JSON.parse(raw) : null;
+      var items = (o && o.items) || [];
+      // 같은 상품은 갱신(중복 누적 방지). 상품번호가 없으면 이름으로 구분한다.
+      var key = String(ev.productNo || ev.productName || "");
+      items = items.filter(function (it) { return String(it.n || it.t || "") !== key; });
+      items.unshift({ n: ev.productNo, t: ev.productName, q: ev.quantity, at: Date.now() });
+      localStorage.setItem(SNAP_KEY, JSON.stringify({ items: items.slice(0, SNAP_MAX), t: Date.now() }));
+    } catch (e) {}
+  }
+  function clearSnap() { try { localStorage.removeItem(SNAP_KEY); } catch (e) {} }
+
   function whenSdk(cb, tries) {
     tries = tries || 0;
     if (window.CAFE24API && typeof window.CAFE24API.getCustomerIDInfo === "function") return cb();
@@ -92,8 +110,18 @@
     return v > 0 ? v : 1;
   }
 
+  // 영문몰은 경로가 /shop2/ 로 시작한다. 국내(문자)와 해외(이메일)를 가르는 기준이라
+  // 담기 시점에 실어 보낸다 — 나중에 서버에서 되짚을 방법이 없다.
+  function shopNo() {
+    try {
+      var m = location.pathname.match(/^\/shop(\d+)\//i);
+      return m ? Number(m[1]) : 1;
+    } catch (e) { return 1; }
+  }
+
   function send(ev) {
     ev.memberId = memberId; // 전송 시점의 회원ID(없으면 null)
+    ev.shopNo = shopNo();   // 1=국내 · 2=영문
     ev.anonId = anonId();   // 비로그인 식별
     ev.campaignCode = campaignCode(); // 캠페인 유입이면 코드 동봉
     var payload = JSON.stringify(ev);
@@ -111,6 +139,7 @@
     if (lastFire[key] && now - lastFire[key] < 2500) return;
     lastFire[key] = now;
     var ev = { mall: mall, productNo: pno, productName: productName(), quantity: quantity() };
+    saveSnap(ev);   // 전송 성공 여부와 무관하게 남긴다 — 리마인더는 이 기록만 있으면 뜬다
     // 회원ID 조회가 끝나기 전이면 큐에 담았다가 조회 후 보낸다(회원/비회원 라벨을 정확히 붙이려고).
     // 조회가 끝났으면 회원이든 아니든 바로 보낸다.
     if (resolved) send(ev); else pending.push(ev);
@@ -183,7 +212,22 @@
     var fire = function () {
       send({ mall: mall, type: "purchase", orderId: orderIdFromPage() });
     };
+    clearSnap();   // 샀으면 리마인더가 뜰 이유가 없다
     // 회원ID 조회를 잠깐 기다린다(회원이면 회원ID로 닫는 게 정확). 못 기다려도 익명ID로 닫힌다.
     if (resolved) fire(); else setTimeout(fire, 1500);
+  }
+
+  // ── 장바구니를 직접 비운 경우 ────────────────────────────────
+  // 스냅샷만 믿으면 이미 비운 장바구니를 두고 "담아두신 게 있어요"라고 하게 된다.
+  // 장바구니 페이지에 왔을 때 실제로 비었으면 기록을 지운다.
+  if (/\/order\/basket/i.test(location.pathname)) {
+    setTimeout(function () {
+      try {
+        var rows = document.querySelectorAll(".xans-order-basketpackage tbody tr, .xans-order-normalpackage tbody tr, table.orderListTable tbody tr");
+        var empty = document.querySelector(".xans-order-basketempty, .basketEmpty, td.empty");
+        // 행이 하나도 없거나 '비어있음' 영역이 보이면 비운 것으로 본다.
+        if (empty || rows.length === 0) clearSnap();
+      } catch (e) {}
+    }, 1200);
   }
 })();

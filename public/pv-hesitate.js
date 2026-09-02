@@ -14,6 +14,16 @@
  *  오퍼는 쿠폰이 아니라 **후기**다(사장님 결정 2026-08-30). 공홈은 이미 평균 17.7%
  *  상시할인 중이라 추가 할인은 마진만 깎는다. 망설임의 원인을 '가격'이 아니라
  *  '확신 부족'으로 보고, 실제 구매자들의 평가로 그걸 푼다.
+ *
+ *  ── 두 번째 모듈: 장바구니 리마인더 (2026-09-02) ──────────────────────
+ *  담아두고 안 산 사람이 **다시 왔을 때** 그 사실만 알려준다. 담기의 85%가 비회원이라
+ *  (최근 30일 181건 중 153건) 문자·이메일로는 닿지 않는다. 온사이트가 그 85%에게
+ *  닿는 유일한 경로다. 새 팝업을 만들지 않고 이 파일에 얹은 이유는 자사몰에
+ *  웰컴팝업·망설임팝업이 이미 있어 세 번째 팝업이 되면 그 자체가 방해이기 때문이다.
+ *
+ *  망설임 팝업과 다른 점: **모달이 아니라 상단 슬림 바**다. 구매 CTA 를 가리지 않고,
+ *  스스로 접히고, 상품 상세가 아닌 곳(메인·목록)에서도 뜬다 — 재방문자는 대개
+ *  메인으로 들어오기 때문이다. 둘은 **한 세션에 하나만** 뜬다.
  */
 (function () {
   "use strict";
@@ -29,8 +39,18 @@
   var SNOOZE_KEY = "pv_hesitate_snooze";
   var SHOWN_KEY = "pv_hesitate_shown";   // 세션당 1회
 
-  // 상품 상세가 아니면 아무것도 하지 않는다.
-  if (!/\/product\//i.test(location.pathname)) return;
+  var CART_SNOOZE_KEY = "pv_cart_snooze";
+  var CART_SHOWN_KEY = "pv_cart_bar_shown";  // 세션당 1회
+  // 두 모듈이 한 세션에 겹쳐 뜨면 그게 곧 '팝업 두 개'다. 먼저 뜬 쪽이 세션을 가져간다.
+  var INTERVENED_KEY = "pv_intervened";
+
+  function isProductPage() { return /\/product\//i.test(location.pathname); }
+  // 결제 흐름·로그인 중에는 어떤 개입도 하지 않는다. 방해가 곧 이탈이다.
+  function inCheckoutFlow() {
+    return /\/order\/|\/myshop\/|\/member\/login|\/member\/join/i.test(location.pathname);
+  }
+  function intervened() { try { return !!sessionStorage.getItem(INTERVENED_KEY); } catch (e) { return false; } }
+  function markIntervened() { try { sessionStorage.setItem(INTERVENED_KEY, "1"); } catch (e) {} }
 
   function productNo() {
     var raw = window.iProductNo != null ? window.iProductNo : null;
@@ -53,17 +73,19 @@
   }
 
   // 익명ID 해시로 홀드아웃을 고정 배정한다. 매번 새로 뽑으면 같은 사람이 오락가락해 비교가 깨진다.
-  function inHoldout(id, ratio) {
+  // salt 를 주는 이유: 두 팝업이 같은 10%를 제외하면 "개입 안 받은 사람" 집단이 겹쳐
+  // 각 팝업의 효과를 따로 볼 수 없다. 팝업마다 다른 10%를 뽑는다.
+  function inHoldout(id, ratio, salt) {
     if (!id || !ratio) return false;
-    var h = 0;
-    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    var src = (salt || "") + id, h = 0;
+    for (var i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) >>> 0;
     return (h % 1000) / 1000 < ratio;
   }
 
-  function post(event, extra) {
+  function post(event, extra, popup) {
     try {
       var body = JSON.stringify(Object.assign({
-        mall: mall, popup: "hesitation", anonId: anonId(),
+        mall: mall, popup: popup || "hesitation", anonId: anonId(),
         productNo: productNo(), event: event, path: location.pathname,
       }, extra || {}));
       if (navigator.sendBeacon) navigator.sendBeacon(API_CFG, new Blob([body], { type: "text/plain" }));
@@ -71,14 +93,14 @@
     } catch (e) {}
   }
 
-  function snoozed() {
+  function snoozed(key) {
     try {
-      var v = localStorage.getItem(SNOOZE_KEY);
+      var v = localStorage.getItem(key || SNOOZE_KEY);
       return v && Date.now() < Number(v);
     } catch (e) { return false; }
   }
-  function snooze(hours) {
-    try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + hours * 3600e3)); } catch (e) {}
+  function snooze(hours, key) {
+    try { localStorage.setItem(key || SNOOZE_KEY, String(Date.now() + hours * 3600e3)); } catch (e) {}
   }
 
   // ── 구매 의사 감지 ─────────────────────────────────────────
@@ -168,10 +190,11 @@
       var el = document.querySelector("#pvReviews, .pv-reviews, #prdReview, .xans-product-review");
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     };
+    markIntervened();
     post("shown");
   }
 
-  // ── 실행 ──────────────────────────────────────────────────
+  // ── 망설임 팝업 실행 ──────────────────────────────────────
   var CFG = null;
   var started = Date.now();
 
@@ -183,35 +206,148 @@
     return true;
   }
 
+  function runHesitation(cfg) {
+    if (!cfg.hesitation || !cfg.hesitation.enabled) return;
+    if (!isProductPage()) return;        // 후기 팝업은 상품 상세에서만 의미가 있다
+    if (snoozed(SNOOZE_KEY)) return;
+    try { if (sessionStorage.getItem(SHOWN_KEY)) return; } catch (e) {}
+
+    var pno = productNo();
+    if (!pno) return;
+    var held = inHoldout(anonId(), cfg.holdout, "hesitation");
+
+    var timer = setInterval(function () {
+      if (!eligible()) return;
+      if (intervened()) { clearInterval(timer); return; }   // 이번 세션엔 이미 다른 개입이 있었다
+      clearInterval(timer);
+      try { sessionStorage.setItem(SHOWN_KEY, "1"); } catch (e) {}
+      // 조건 충족은 홀드아웃이든 아니든 기록한다 — 이게 비교의 분모다.
+      post("eligible", { holdout: held });
+      if (held) return;
+
+      fetch(API_REVIEW + "?mall=" + mall + "&product_no=" + pno + "&limit=1", { mode: "cors" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          // 후기가 적으면 띄우지 않는다. 근거가 약한 설득은 오히려 의심을 부른다.
+          if (!d || !d.ok || !d.summary || (d.summary.count || 0) < CFG.hesitation.minReviews) return;
+          render(d);
+        })
+        .catch(function () {});
+    }, 2000);
+  }
+
+  // ── 장바구니 리마인더 ──────────────────────────────────────
+  // pv-cart.js 가 담기 때 남긴 스냅샷을 읽는다. 서버를 다녀오지 않아 즉시 뜨고,
+  // 스크립트가 실패해도 쇼핑을 막지 않는다.
+  function cartSnapshot() {
+    try {
+      var raw = localStorage.getItem("pv_cart_snap");
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !o.items || !o.items.length) return null;
+      return o;
+    } catch (e) { return null; }
+  }
+
+  function renderCartBar(snap, cfg) {
+    var first = snap.items[0] || {};
+    var name = (first.t || "").trim();
+    var rest = snap.items.length - 1;
+    var en = /^en/i.test(document.documentElement.lang || "");
+    var label = name
+      ? (en ? "You left <b>" + name + "</b> in your bag" + (rest > 0 ? " and " + rest + " more" : "")
+            : "장바구니에 <b>" + name + "</b>" + (rest > 0 ? " 외 " + rest + "개" : "") + " 담아두셨어요")
+      : (en ? "You have items waiting in your bag" : "장바구니에 담아두신 상품이 있어요");
+    var cta = en ? "View bag" : "장바구니 보기";
+
+    var bar = document.createElement("div");
+    bar.id = "pvCartBar";
+    bar.innerHTML = [
+      '<div class="pvc-in">',
+      '  <span class="pvc-txt">' + label + '</span>',
+      '  <button class="pvc-cta">' + cta + '</button>',
+      '</div>',
+      '<button class="pvc-x" aria-label="' + (en ? "Close" : "닫기") + '">&times;</button>',
+    ].join("");
+
+    var css = document.createElement("style");
+    css.textContent = [
+      // ⚠️ 상단이다. 모바일 하단 고정 CART/BUY 버튼을 절대 건드리지 않기 위해서다(2026-07 사고).
+      "#pvCartBar{position:fixed;left:0;right:0;top:0;z-index:99998;background:#111;color:#fff;",
+      "  font-family:'Pretendard',-apple-system,sans-serif;box-shadow:0 2px 14px rgba(0,0,0,.18);",
+      "  padding:calc(env(safe-area-inset-top,0px) + 10px) 40px 10px 16px;",
+      "  transform:translateY(-100%);transition:transform .32s ease}",
+      "#pvCartBar.on{transform:translateY(0)}",
+      "#pvCartBar .pvc-in{display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap}",
+      "#pvCartBar .pvc-txt{font-size:13.5px;letter-spacing:-.01em;line-height:1.4}",
+      "#pvCartBar .pvc-txt b{font-weight:600}",
+      "#pvCartBar .pvc-cta{flex:none;border:0;border-radius:999px;background:#fff;color:#111;",
+      "  font-size:12.5px;font-weight:600;padding:7px 14px;cursor:pointer}",
+      "#pvCartBar .pvc-x{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;",
+      "  background:none;color:#B1AAA2;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px}",
+    ].join("");
+    document.head.appendChild(css);
+    document.body.appendChild(bar);
+    requestAnimationFrame(function () { bar.classList.add("on"); });
+
+    var gone = false;
+    function hide(kind) {
+      if (gone) return; gone = true;
+      if (kind) post(kind, null, "cart");
+      // 자동으로 접힌 건 거절이 아니다 — 닫기를 눌렀을 때만 재노출을 미룬다.
+      if (kind === "dismiss") snooze(cfg.cart.snoozeHours, CART_SNOOZE_KEY);
+      bar.classList.remove("on");
+      setTimeout(function () { try { bar.remove(); } catch (e) {} }, 350);
+    }
+    bar.querySelector(".pvc-x").onclick = function () { hide("dismiss"); };
+    bar.querySelector(".pvc-cta").onclick = function () {
+      post("click", null, "cart");
+      // 하위몰(영문몰 /shop2/ 등)이면 접두어를 유지해야 한다 — 안 그러면 국문몰로 튄다.
+      var m = location.pathname.match(/^\/(shop\d+)\//i);
+      location.href = (m ? "/" + m[1] : "") + "/order/basket.html";
+    };
+    setTimeout(function () { hide(null); }, cfg.cart.autoHideMs);
+
+    markIntervened();
+    post("shown", null, "cart");
+  }
+
+  function runCart(cfg) {
+    if (!cfg.cart || !cfg.cart.enabled) return;
+    if (inCheckoutFlow()) return;        // 장바구니로 가는 중인 사람에게 장바구니를 권하지 않는다
+    if (snoozed(CART_SNOOZE_KEY)) return;
+    try { if (sessionStorage.getItem(CART_SHOWN_KEY)) return; } catch (e) {}
+
+    var snap = cartSnapshot();
+    if (!snap) return;
+    var age = Date.now() - (snap.t || 0);
+    // 방금 담은 사람은 지금 쇼핑 중이다. 오래된 담기는 이미 식은 관심이다. 그 사이만 대상.
+    if (age < cfg.cart.minAgeMin * 60e3) return;
+    if (age > cfg.cart.maxAgeDays * 864e5) return;
+
+    var held = inHoldout(anonId(), cfg.holdout, "cart");
+
+    setTimeout(function () {
+      if (intervened()) return;          // 망설임 팝업이 먼저 떴으면 양보한다
+      if (document.hidden) return;
+      try { sessionStorage.setItem(CART_SHOWN_KEY, "1"); } catch (e) {}
+      post("eligible", { holdout: held }, "cart");
+      // ⚠️ 홀드아웃도 여기서 세션을 점유한다. 점유하지 않으면 홀드아웃인 사람만
+      //    뒤이어 망설임 팝업을 받게 되고, 그러면 '바 vs 무개입'이 아니라
+      //    '바 vs 다른 팝업'을 비교하는 셈이라 리프트 숫자가 거짓말이 된다.
+      markIntervened();
+      if (held) return;
+      renderCartBar(snap, cfg);
+    }, cfg.cart.delayMs);               // 착지 직후 발동 금지
+  }
+
   fetch(API_CFG, { mode: "cors" })
     .then(function (r) { return r.json(); })
     .then(function (cfg) {
       CFG = cfg;
-      if (!cfg.enabled || !cfg.hesitation || !cfg.hesitation.enabled) return;
-      if (snoozed()) return;
-      try { if (sessionStorage.getItem(SHOWN_KEY)) return; } catch (e) {}
-
-      var pno = productNo();
-      if (!pno) return;
-      var held = inHoldout(anonId(), cfg.holdout);
-
-      var timer = setInterval(function () {
-        if (!eligible()) return;
-        clearInterval(timer);
-        try { sessionStorage.setItem(SHOWN_KEY, "1"); } catch (e) {}
-        // 조건 충족은 홀드아웃이든 아니든 기록한다 — 이게 비교의 분모다.
-        post("eligible", { holdout: held });
-        if (held) return;
-
-        fetch(API_REVIEW + "?mall=" + mall + "&product_no=" + pno + "&limit=1", { mode: "cors" })
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            // 후기가 적으면 띄우지 않는다. 근거가 약한 설득은 오히려 의심을 부른다.
-            if (!d || !d.ok || !d.summary || (d.summary.count || 0) < CFG.hesitation.minReviews) return;
-            render(d);
-          })
-          .catch(function () {});
-      }, 2000);
+      if (!cfg.enabled) return;
+      runCart(cfg);
+      runHesitation(cfg);
     })
     .catch(function () { /* 설정을 못 읽으면 아무것도 하지 않는다 — 페일클로즈 */ });
 })();

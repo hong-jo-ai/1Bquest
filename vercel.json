@@ -131,6 +131,10 @@
     {
       "path": "/api/cron/popup-guard",
       "schedule": "40 0 * * *"
+    },
+    {
+      "path": "/api/cron/crm-cart-nudge",
+      "schedule": "23 * * * *"
     }
   ]
 }

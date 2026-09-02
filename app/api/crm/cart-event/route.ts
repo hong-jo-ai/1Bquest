@@ -8,17 +8,17 @@
  * 익명ID는 브라우저에 심은 임의 문자열이고 이름·연락처가 아니다.
  */
 import { ingestCartEvent, markPurchased, isCrmMall } from "@/lib/crm/cartStore";
+import { isAllowedStorefrontOrigin, DEFAULT_STOREFRONT_ORIGIN } from "@/lib/storefrontOrigin";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_ORIGINS = [
-  "https://paulvice.co.kr", "https://www.paulvice.co.kr", "https://m.paulvice.co.kr", "https://paulvice.cafe24.com",
-  "https://harriot.co.kr", "https://www.harriot.co.kr", "https://m.harriot.co.kr", "https://harriotkorea.cafe24.com",
-];
-
+// ⚠️ 예전엔 이 파일이 허용 도메인 목록을 따로 갖고 있었다. 그래서 **영문몰(paulvice.kr /
+//    harriotwatches.com)과 harriotwatches.co.kr 이 통째로 빠져** 그쪽 담기는 한 건도
+//    기록되지 않았다 — 버튼은 눌리는데 전송만 조용히 실패하는 무증상 장애다.
+//    허용 목록은 lib/storefrontOrigin.ts 하나만 본다(2026-08-05 웹챗 때와 같은 사고).
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allow = isAllowedStorefrontOrigin(origin) ? origin : DEFAULT_STOREFRONT_ORIGIN;
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   try {
     const b = (await req.json().catch(() => ({}))) as {
       mall?: unknown; memberId?: unknown; anonId?: unknown; productNo?: unknown; productName?: unknown;
-      quantity?: unknown; campaignCode?: unknown; type?: unknown; orderId?: unknown;
+      quantity?: unknown; campaignCode?: unknown; type?: unknown; orderId?: unknown; shopNo?: unknown;
     };
     const campaignCode = typeof b.campaignCode === "string" && b.campaignCode ? b.campaignCode : null;
     const memberId = b.memberId ? String(b.memberId).slice(0, 100) : null;
@@ -64,6 +64,7 @@ export async function POST(req: Request) {
       productNo: b.productNo != null && b.productNo !== "" ? Number(b.productNo) : null,
       productName: b.productName ? String(b.productName).slice(0, 200) : null,
       quantity: b.quantity != null ? Math.max(1, Number(b.quantity) || 1) : 1,
+      shopNo: Number(b.shopNo) === 2 ? 2 : 1,
     });
     return Response.json({ ok: true, ...r }, { headers });
   } catch (e) {

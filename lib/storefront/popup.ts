@@ -33,6 +33,24 @@ export interface PopupConfig {
     /** 닫으면 이 시간 동안 다시 안 뜬다(시간) */
     snoozeHours: number;
   };
+  /**
+   * 장바구니 리마인더 — 담아두고 안 산 사람이 **다시 왔을 때** 그 사실만 알려준다.
+   * 모달이 아니라 상단 슬림 바다. 2026-07 웰컴팝업 사고의 원인이 '구매 CTA 가림'이었기에
+   * 화면을 막지 않고, 스스로 사라지며, 담은 직후에는 뜨지 않는다(둘러보는 중이므로).
+   */
+  cart: {
+    enabled: boolean;
+    /** 담은 뒤 이만큼 지나야 '잊었다'로 본다(분). 방금 담은 사람에겐 잔소리다. */
+    minAgeMin: number;
+    /** 이보다 오래된 담기는 무시(일) — 관심이 식은 걸 들추지 않는다 */
+    maxAgeDays: number;
+    /** 페이지 착지 후 지연(ms). 착지 직후 발동 금지 규칙. */
+    delayMs: number;
+    /** 이 시간 지나면 스스로 접힌다(ms). 닫기를 강요하지 않는다. */
+    autoHideMs: number;
+    /** 닫으면 이 시간 동안 다시 안 뜬다(시간) */
+    snoozeHours: number;
+  };
 }
 
 export const DEFAULT_CONFIG: PopupConfig = {
@@ -43,6 +61,14 @@ export const DEFAULT_CONFIG: PopupConfig = {
     dwellMs: 45_000,
     scrollPct: 0.6,
     minReviews: 10,
+    snoozeHours: 24,
+  },
+  cart: {
+    enabled: true,
+    minAgeMin: 30,
+    maxAgeDays: 7,
+    delayMs: 4_000,
+    autoHideMs: 12_000,
     snoozeHours: 24,
   },
 };
@@ -60,6 +86,7 @@ export async function getConfig(): Promise<PopupConfig> {
   return {
     ...DEFAULT_CONFIG, ...saved,
     hesitation: { ...DEFAULT_CONFIG.hesitation, ...(saved.hesitation ?? {}) },
+    cart: { ...DEFAULT_CONFIG.cart, ...(saved.cart ?? {}) },
   };
 }
 
@@ -69,6 +96,15 @@ export async function setConfig(patch: Partial<PopupConfig>): Promise<PopupConfi
   await sb.from("kv_store").upsert(
     { key: CONFIG_KEY, data: next, updated_at: new Date().toISOString() }, { onConflict: "key" });
   return next;
+}
+
+/**
+ * 팝업 하나만 끈다. `setConfig` 은 얕은 병합이라 `{cart:{enabled:false}}` 를 넘기면
+ * 나머지 설정값이 통째로 날아간다 — 그래서 현재 설정을 읽어 그 블록만 갈아끼운다.
+ */
+export async function disablePopup(kind: "hesitation" | "cart"): Promise<void> {
+  const cfg = await getConfig();
+  await setConfig({ [kind]: { ...cfg[kind], enabled: false } } as Partial<PopupConfig>);
 }
 
 export interface PopupEvent {
@@ -94,6 +130,8 @@ export async function recordEvent(e: PopupEvent): Promise<void> {
 // ── 성과 ────────────────────────────────────────────────────────────────────
 
 export interface PopupStats {
+  /** 어떤 팝업의 성과인지. 종류를 섞으면 어느 쪽이 해로운지 알 수 없다. */
+  popup: "hesitation" | "cart";
   days: number;
   /** 조건을 충족한 사람 = 망설인 사람. 팝업군 + 홀드아웃 */
   eligible: number;
@@ -117,13 +155,18 @@ export interface PopupStats {
  * 팝업을 본 사람이 실제로 샀는지는 `crm_cart_events` 의 전환 신호(주문완료 도달)로 본다.
  * 두 테이블 모두 같은 익명ID를 쓰기 때문에 사람 단위로 이어붙는다.
  */
-export async function popupStats(days = 14): Promise<PopupStats | null> {
+export async function popupStats(
+  days = 14,
+  popup: "hesitation" | "cart" = "hesitation",
+): Promise<PopupStats | null> {
   const sb = db(); if (!sb) return null;
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const cfg = await getConfig();
 
+  // ⚠️ 반드시 팝업 종류로 걸러야 한다. 섞어서 집계하면 자동차단 크론이
+  //    엉뚱한 팝업을 끈다(A가 해로운데 B가 꺼지는 식).
   const { data: evs } = await sb.from("storefront_popup_events")
-    .select("anon_id,event,holdout").gte("created_at", since);
+    .select("anon_id,event,holdout").eq("popup", popup).gte("created_at", since);
   const rows = (evs ?? []) as Array<{ anon_id: string | null; event: string; holdout: boolean }>;
 
   const eligible = new Set<string>(), shown = new Set<string>(), held = new Set<string>();
@@ -151,6 +194,7 @@ export async function popupStats(days = 14): Promise<PopupStats | null> {
   const holdoutCvr = held.size ? holdoutBuyers / held.size : 0;
 
   return {
+    popup,
     days,
     eligible: eligible.size,
     shown: shown.size, clicked, dismissed,
@@ -159,6 +203,6 @@ export async function popupStats(days = 14): Promise<PopupStats | null> {
     holdoutSize: held.size, holdoutBuyers, holdoutCvr,
     // 홀드아웃이 너무 작으면 비율이 요동친다 — 비교를 아예 하지 않는다.
     liftPp: held.size >= 20 && shown.size >= 20 ? shownCvr - holdoutCvr : null,
-    enabled: cfg.enabled,
+    enabled: cfg.enabled && cfg[popup].enabled,
   };
 }

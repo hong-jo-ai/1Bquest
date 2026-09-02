@@ -7,17 +7,15 @@
  * 공개 엔드포인트다. 설정에는 비밀이 없고, 이벤트는 익명ID만 받는다.
  */
 import { getConfig, recordEvent } from "@/lib/storefront/popup";
+import { isAllowedStorefrontOrigin, DEFAULT_STOREFRONT_ORIGIN } from "@/lib/storefrontOrigin";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED = [
-  "https://paulvice.co.kr", "https://www.paulvice.co.kr", "https://m.paulvice.co.kr", "https://paulvice.cafe24.com",
-  "https://harriot.co.kr", "https://www.harriot.co.kr", "https://m.harriot.co.kr", "https://harriotkorea.cafe24.com",
-];
+// 허용 도메인은 lib/storefrontOrigin.ts 하나만 본다 — 목록이 두 벌이면 한쪽이 낡는다.
 function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
   return {
-    "Access-Control-Allow-Origin": ALLOWED.includes(origin) ? origin : ALLOWED[0],
+    "Access-Control-Allow-Origin": isAllowedStorefrontOrigin(origin) ? origin : DEFAULT_STOREFRONT_ORIGIN,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Origin",

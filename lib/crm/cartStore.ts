@@ -8,11 +8,27 @@ import type { MallId as Cafe24Mall } from "@/lib/cafe24Client";
 
 export type CrmMall = "paulvice" | "harriot";
 
-/** 위젯몰키(브랜드) → 카페24 토큰 몰키 + 자사몰 도메인. 국내 자사몰은 shop_no 1. */
+/**
+ * 위젯몰키(브랜드) → 카페24 토큰 몰키 + 자사몰 도메인.
+ * shopNo 는 **국내몰 기본값**이다. 영문몰(shop_no=2)은 담기 이벤트가 실어 보낸 값을 쓴다.
+ */
 export const CRM_BRANDS: Record<CrmMall, { cafe24Mall: Cafe24Mall; shopNo: number; storeUrl: string; label: string }> = {
   paulvice: { cafe24Mall: "paulvice", shopNo: 1, storeUrl: "https://paulvice.co.kr", label: "폴바이스" },
   harriot:  { cafe24Mall: "harriot",  shopNo: 1, storeUrl: "https://harriot.co.kr",  label: "해리엇" },
 };
+
+/** 영문몰(shop_no=2) 주소 — 넛지 메일의 장바구니 링크가 국문몰로 튀면 안 된다. */
+export const CRM_EN_STORE_URL: Record<CrmMall, string> = {
+  paulvice: "https://paulvice.kr",
+  harriot:  "https://harriotwatches.com",
+};
+
+/** 그 담기가 일어난 몰의 장바구니 주소. */
+export function basketUrl(mall: CrmMall, shopNo: number): string {
+  return shopNo === 1
+    ? `${CRM_BRANDS[mall].storeUrl}/order/basket.html`
+    : `${CRM_EN_STORE_URL[mall]}/order/basket.html`;
+}
 
 export interface CartEventInput {
   mall: CrmMall;
@@ -20,6 +36,8 @@ export interface CartEventInput {
   memberId?: string | null;
   /** 브라우저에 심은 임의 식별자(개인정보 아님). 비로그인 추적의 유일한 축. */
   anonId?: string | null;
+  /** 담기가 일어난 몰. 1=국내, 2=영문. 국내는 문자·해외는 이메일로 갈리는 기준이다. */
+  shopNo?: number | null;
   productNo?: number | null;
   productName?: string | null;
   quantity?: number | null;
@@ -60,7 +78,8 @@ export function isCrmMall(v: unknown): v is CrmMall {
  */
 export async function ingestCartEvent(input: CartEventInput): Promise<{ id: string; refreshed: boolean }> {
   const db = crmDb();
-  const shopNo = CRM_BRANDS[input.mall].shopNo;
+  // 클라이언트가 알려준 몰이 우선. 없으면 국내몰(후방호환).
+  const shopNo = input.shopNo === 2 ? 2 : CRM_BRANDS[input.mall].shopNo;
   const now = new Date().toISOString();
   // 회원이면 회원ID, 아니면 익명ID 로 같은 사람을 묶는다.
   // 둘 다 없으면 누가 담았는지 알 수 없어 집계에 쓸모가 없다.
@@ -75,6 +94,7 @@ export async function ingestCartEvent(input: CartEventInput): Promise<{ id: stri
       .eq("mall", input.mall)
       .eq(idCol, idVal)
       .eq("product_no", input.productNo)
+      .eq("shop_no", shopNo)
       .eq("status", "active")
       .maybeSingle();
     if (existing?.id) {
