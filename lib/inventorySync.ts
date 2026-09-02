@@ -413,6 +413,10 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     // 값은 겹친다(해리엇 P00000DW=서해 선레이 / 폴바이스 P00000DW=[증정] 가죽 스트랩 블랙).
     // 가드 없이 두면 폴바이스 동기화에서 엉뚱한 상품이 차감된다.
     if (row.key === "channel_upload:b2b_harriot" && mall !== "harriot") continue;
+    // 같은 이유로 브랜드 전용 채널을 몰별로 가둔다. 조선몰=해리엇 상품만 판다.
+    if (row.key === "channel_upload:chosunmall" && mall !== "harriot") continue;
+    if (row.key === "channel_upload:direct_harriot" && mall !== "harriot") continue;
+    if (row.key === "channel_upload:direct_paulvice" && mall !== "paulvice") continue;
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
     const omap = channelOptMaps.get(channelId);

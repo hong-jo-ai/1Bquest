@@ -192,7 +192,9 @@ const HARRIOT_LINE = /(해리엇|기원|성산|가양|광안|도보|설월|썬�
 const ACCESSORY    = /(팔찌|목걸이|귀걸이|반지|조절|도구|케이스|파우치|시계줄|스프링바|버클|공구)/;
 // 라인명 또는 '워치'를 요구한다. 맨 '시계'만으로 받으면
 // "여성시계 가죽밴드 블랙 12mm" 같은 밴드 단품이 시계로 새어 들어온다.
-const PV_WATCH     = /(에끌라|오드리|미니엘|켈리|잭클린|옥타곤|워치)/;
+// ⚠️ 영문 상품명도 받는다 — "Archive Piece - Jacklyn No.10" 이 한글 '잭클린' 만 보던 규칙에
+//    걸러져 CARE 카드 집계에서 빠졌다(2026-09-02 실측). 아카이브 라인은 영문으로만 등록된다.
+const PV_WATCH     = /(에끌라|오드리|미니엘|켈리|잭클린|옥타곤|워치|jacklyn|kelly|eclat|audrey|archive\s*piece)/i;
 
 export function isPaulviceWatch(name: string | null | undefined): boolean {
   const n = String(name ?? "");

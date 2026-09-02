@@ -37,6 +37,30 @@ const SUPPLY_PRICE = [
   { match: /서해/, price: 116_350, label: "서해" },
   { match: /성산/, price: 116_350, label: "성산" },
 ];
+
+/**
+ * 조선몰 상품명 → **카페24 상품명**.
+ *
+ * ⚠️ 재고 차감은 상품명으로 SKU 를 찾는다. 조선몰이 쓰는
+ * "[단독최저가] 해리엇 서해 시리즈 시계 - 로즈골드" 는 카페24의 "서해 로즈골드" 와
+ * 정규화해도 안 맞아, **팔린 만큼 재고가 안 빠졌다**(2026-09-02 실측: 로즈골드 14개 누락).
+ * 매출과 재고가 같은 이름을 쓰도록 여기서 카페24 이름으로 바꿔 적재한다.
+ */
+const LINE = [
+  { match: /가양/, line: "가양" }, { match: /광안/, line: "광안" },
+  { match: /서해/, line: "서해" }, { match: /성산/, line: "성산" },
+];
+const COLOR = [
+  { match: /로즈\s*골드/, color: "로즈골드" }, { match: /선레이/, color: "선레이" },
+  { match: /실버/, color: "실버" }, { match: /블랙/, color: "블랙" },
+];
+function cafe24Name(raw) {
+  const s = String(raw ?? "");
+  const line = LINE.find((l) => l.match.test(s))?.line;
+  const color = COLOR.find((c) => c.match.test(s))?.color;
+  // 라인·색을 못 읽으면 원본을 그대로 둔다 — 억지로 바꿔 엉뚱한 SKU 에서 빠지는 게 더 나쁘다.
+  return line && color ? `${line} ${color}` : s;
+}
 const KEY = "channel_upload:chosunmall";
 
 function priceFor(name) {
@@ -80,9 +104,17 @@ const kstDate = (iso) =>
     revenue += amount; orders += 1;
     byDate.set(d, { revenue: (byDate.get(d)?.revenue ?? 0) + amount, orders: (byDate.get(d)?.orders ?? 0) + 1 });
     // 각인·색상 꼬리표를 떼고 라인 단위로 묶는다
-    const base = String(r.product_name).replace(/\s*\(각인:[\s\S]*$/, "").trim();
-    const p = byProduct.get(base) ?? { revenue: 0, sold: 0 };
-    p.revenue += amount; p.sold += qty; byProduct.set(base, p);
+    // ⚠️ 한 주문에 여러 개면 품목명이 "1) …로즈골드 + 2) …실버" 로 합쳐져 있다.
+    //    통째로 세면 4개가 전부 로즈골드로 잡혀 **재고가 엉뚱한 색에서 빠진다**.
+    const raw = String(r.product_name);
+    const parts = raw.includes(" + ") ? raw.split(" + ") : [raw];
+    for (const part of parts) {
+      const base = cafe24Name(part.replace(/^\d\)\s*/, "").replace(/\s*\(각인:[\s\S]*$/, "").trim());
+      const p = byProduct.get(base) ?? { revenue: 0, sold: 0 };
+      p.revenue += unit;   // 합본은 라인당 1개씩 — 금액도 라인 단가로 쪼갠다
+      p.sold += 1;
+      byProduct.set(base, p);
+    }
   }
 
   for (const [d, v] of [...byDate].sort()) console.log(`  ${d}  ${v.orders}건  ${v.revenue.toLocaleString("ko-KR")}원`);
@@ -108,17 +140,45 @@ const kstDate = (iso) =>
     dailyRevenue: dates.map((d) => ({ date: d, revenue: byDate.get(d).revenue, orders: byDate.get(d).orders })),
     inventory: [],
   };
-  // 날짜 범위를 파일명으로 삼는다 → 같은 구간 재실행 시 교체(누적 중복 방지).
-  const fileName = `조선몰_발주_${dates[0]}_${dates[dates.length - 1]}`;
-  const meta = { fileName, rowCount: orders, period: { start: dates[0], end: dates[dates.length - 1] }, uploadedAt: new Date().toISOString() };
-
-  const { data: row } = await sb.from("kv_store").select("data").eq("key", KEY).maybeSingle();
+  // ⚠️ 파일명을 **날짜별**로 쪼갠다. 날짜범위로 잡으면 --from 을 바꿔 돌릴 때마다
+  //    파일명이 달라져 기존 항목이 남고 **매출·판매수량이 이중계상**된다(2026-09-02 실측).
+  //    날짜 단위면 언제 어떤 범위로 돌려도 그 날짜만 덮어쓴다.
+  const { data: row } = await sb.from("kv_store").select("data").eq(  "key", KEY).maybeSingle();
   const stored = (row?.data && Array.isArray(row.data.uploads)) ? row.data : { uploads: [] };
-  const others = stored.uploads.filter((u) => u.fileName !== fileName);
-  others.push({ ...meta, data: payload });
-  others.sort((a, b) => String(a.uploadedAt).localeCompare(String(b.uploadedAt)));
+  const touched = new Set(dates.map((d) => `조선몰_발주_${d}`));
+  const others = stored.uploads.filter((u) => !touched.has(u.fileName));
+
+  for (const d of dates) {
+    const dayRows = rows.filter((r) => kstDate(r.created_at) === d);
+    const dayProduct = new Map();
+    let dayRev = 0, dayOrders = 0;
+    for (const r of dayRows) {
+      const unit = priceFor(r.product_name);
+      if (unit === null) continue;
+      dayOrders += 1;
+      const raw = String(r.product_name);
+      for (const part of (raw.includes(" + ") ? raw.split(" + ") : [raw])) {
+        const base = cafe24Name(part.replace(/^\d\)\s*/, "").replace(/\s*\(각인:[\s\S]*$/, "").trim());
+        const p = dayProduct.get(base) ?? { revenue: 0, sold: 0 };
+        p.revenue += unit; p.sold += 1; dayProduct.set(base, p);
+        dayRev += unit;
+      }
+    }
+    const payload = {
+      salesSummary: { today: EMPTY, week: EMPTY, month: { revenue: dayRev, orders: dayOrders, avgOrder: Math.round(dayRev / Math.max(1, dayOrders)) }, prevMonth: EMPTY },
+      topProducts: [...dayProduct].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 10)
+        .map(([name, v], i) => ({ rank: i + 1, name, sku: "", sold: v.sold, revenue: v.revenue, image: "⌚" })),
+      hourlyOrders: Array.from({ length: 24 }, (_, h) => ({ hour: `${String(h).padStart(2, "0")}시`, orders: 0, revenue: 0 })),
+      weeklyRevenue: ["월","화","수","목","금","토","일"].map((day) => ({ day, revenue: 0, orders: 0 })),
+      dailyRevenue: [{ date: d, revenue: dayRev, orders: dayOrders }],
+      inventory: [],
+    };
+    others.push({ fileName: `조선몰_발주_${d}`, rowCount: dayOrders, period: { start: d, end: d },
+                  uploadedAt: new Date().toISOString(), data: payload });
+  }
+  others.sort((a, b) => String(a.fileName).localeCompare(String(b.fileName)));
   const { error: wErr } = await sb.from("kv_store")
     .upsert({ key: KEY, data: { uploads: others }, updated_at: new Date().toISOString() }, { onConflict: "key" });
   if (wErr) throw new Error(wErr.message);
-  console.log(`\n적재 완료 — "${fileName}" (누적 ${others.length}건)`);
+  console.log(`\n적재 완료 — ${dates.length}일치 (저장소 누적 ${others.length}건)`);
 })().catch((e) => { console.error("ERR", e.message); process.exit(1); });
