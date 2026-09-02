@@ -13,11 +13,34 @@
 import { type NextRequest } from "next/server";
 import { register, consumeSession, assignSerial, serialsLeft, detectChannel, digits, isMobile } from "@/lib/care/store";
 import { sendTelegramMessage } from "@/lib/cs/telegram";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
 /** 시리얼 풀이 비었을 때만 쓰는 폴백 안내 문구 — 실제 쿠폰 코드는 care_coupon_serials 에서 배정한다. */
 const SERIAL_LOW_ALERT = 50;
+
+/**
+ * 카드 배포 개시(care:config:v1.cardStartDate) 이후 **첫 등록**인지.
+ *
+ * 왜 따로 보나: 첫 등록은 숫자가 아니라 **카드가 실제로 작동한다는 신호**다.
+ * QR 이 찍히는지, 랜딩이 뜨는지, 인증이 되는지가 그 한 건으로 증명된다.
+ * (배포 전 테스트 등록이 이미 있어 전체 건수로는 판별할 수 없다 — 개시일 기준으로 센다.)
+ * 실패해도 등록 자체를 막지 않는다.
+ */
+async function isFirstSinceCards(): Promise<boolean> {
+  try {
+    const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return false;
+    const sb = createClient(url, key, { auth: { persistSession: false } });
+    const { data: cfg } = await sb.from("kv_store").select("data").eq("key", "care:config:v1").maybeSingle();
+    const since = (cfg?.data as { cardStartDate?: string } | null)?.cardStartDate;
+    if (!since) return false;
+    const { count } = await sb.from("care_registrations")
+      .select("phone", { count: "exact", head: true }).gte("registered_at", since);
+    return count === 1;
+  } catch { return false; }
+}
 
 function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
@@ -61,8 +84,12 @@ export async function POST(req: NextRequest) {
       coupon_code: coupon,
     });
     // 등록은 드물게 일어나는 이벤트라 실시간으로 알린다(초기엔 반응을 봐야 한다).
+    const first = await isFirstSinceCards();
+    const head = first
+      ? "🎉 <b>CARE 첫 등록</b> — 카드가 작동합니다\n<i>QR·랜딩·본인확인까지 한 바퀴 다 돌았습니다.</i>\n"
+      : "🩺 <b>PAULVICE CARE 등록</b>\n";
     sendTelegramMessage(
-      `🩺 <b>PAULVICE CARE 등록</b>\n${phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2")} · ${b.productName || b.productOther || "제품미상"}\n광고수신 ${b.adConsent ? "동의" : "미동의"} · 구매채널 ${channel ?? "미확인"}${coupon ? ` · 쿠폰 ${coupon}` : " · ⚠️쿠폰 미배정"}`,
+      `${head}${phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2")} · ${b.productName || b.productOther || "제품미상"}\n광고수신 ${b.adConsent ? "동의" : "미동의"} · 구매채널 ${channel ?? "미확인"}${coupon ? ` · 쿠폰 ${coupon}` : " · ⚠️쿠폰 미배정"}`,
     ).catch(() => {});
     // 시리얼 소진 경보 — 다 떨어진 뒤 알면 늦다.
     const left = await serialsLeft().catch(() => -1);
