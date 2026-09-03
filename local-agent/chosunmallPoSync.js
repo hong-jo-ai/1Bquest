@@ -137,6 +137,25 @@ function engravingForColor(engraving, color) {
 }
 
 /**
+ * 이 **행**이 각인 대상인가.
+ *
+ * ⚠️ 배송메세지는 **주문 단위**(같은 주문의 모든 행에 같은 문구가 온다)인데
+ *    각인선택 옵션은 **행 단위**다. 이걸 구분하지 않으면 각인을 안 시킨 행에도
+ *    각인 문구가 붙는다.
+ *    2026-09-03 강한석 20260901-0000038: 서해 4개 중 `각인선택=각인 추가`는 2개뿐인데
+ *    배송메시지의 각인 문구가 4행 전부에 붙어 **송장에 4개 다 각인으로 찍혔고 그대로 출고**됐다.
+ *    (색상별로 쪼개는 engravingForColor 는 "어느 색에 뭘 새길지"만 풀었지
+ *     "이 행이 각인 건인지"는 보지 않았다.)
+ *
+ * → 명시적으로 '각인 안함'인 행은 각인을 붙이지 않는다.
+ *   각인선택 옵션 자체가 없는 상품은 종전대로 배송메시지를 따른다
+ *   (배송메세지에만 각인이 오는 케이스 ③ 을 죽이지 않기 위해).
+ */
+function rowWantsEngraving(option) {
+  return !/각인[^,]*=\s*각인\s*안함|각인\s*안함/.test(String(option ?? ""));
+}
+
+/**
  * 옵션 열에서 색상을 뽑는다. **키 이름이 라인마다 다르다**(2026-09-03 실측).
  *   · 서해 — `색상=실버, 각인선택=각인 안함`
  *   · 성산 — `옵션 선택=성산 로즈골드`      ← 라인명이 값 앞에 붙어 온다
@@ -187,8 +206,10 @@ function parsePo(buffer) {
     const order = String(c[idx.order] ?? "").trim();
     if (!/^\d{8}-\d+$/.test(order)) continue;
     const option = String(c[idx.option] ?? "");
-    const { msg, engraving, engravingMissing } = splitMessage(c[idx.msg], option);
+    const { msg, engraving: rawEngraving, engravingMissing } = splitMessage(c[idx.msg], option);
     const color = colorOf(option, c[idx.product]);
+    // '각인 안함' 행은 각인을 싣지 않는다 — 배송메시지는 주문 단위라 그냥 두면 전 행에 붙는다.
+    const engraving = rowWantsEngraving(option) ? rawEngraving : "";
     orders.push({
       rowIndex: r,
       order,
