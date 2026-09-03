@@ -19,6 +19,12 @@ import {
 } from "./classifier";
 import type { CsChannel, IngestPayload } from "./types";
 
+/**
+ * 우리 문의폼에서 나온 메일 — 제목이 우리가 정한 형식이다. 이건 정의상 고객 문의라
+ * AI 에 물어볼 이유가 없다. 물어봤다가 쿼터가 막히면 오히려 유실된다(2026-09-03 사고).
+ */
+const OWN_FORM_SUBJECT = /^\s*(?:re\s*:|fwd?\s*:|답장\s*:)?\s*\[(HARRIOT|PAULVICE|해리엇|폴바이스)\s*문의\]/i;
+
 const SIXSHOP_SENDER_PATTERNS = [/sixshop/i, /식스샵/, /noreply@.*sixshop/i];
 const CAFE24_SENDER_PATTERNS = [/cafe24/i, /카페24/, /cafe24corp/i];
 
@@ -72,6 +78,20 @@ export async function syncAllGmailAccounts(): Promise<{
   const accounts = await listGmailAccounts();
   const blacklist = await getSenderBlacklist();
   const db = getCsSupabase();
+
+  // 이미 '실패가 아닌' 판정을 받은 메일 = 다시 물어볼 필요 없는 것.
+  // (failed 인 건은 판정이 없었던 것이라 재시도 대상으로 남긴다)
+  const judgedOut = new Set<string>();
+  {
+    const { data } = await db
+      .from("cs_classified_out")
+      .select("gmail_message_id")
+      .eq("failed", false)
+      .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString());
+    for (const r of (data ?? []) as Array<{ gmail_message_id: string }>) judgedOut.add(r.gmail_message_id);
+  }
+  // 쿼터가 막히면 이번 사이클은 더 부르지 않는다.
+  let quotaExhausted = false;
   let inserted = 0;
   let skipped = 0;
   let classifiedOut = 0;
@@ -136,6 +156,30 @@ export async function syncAllGmailAccounts(): Promise<{
         const latestSubject = extractHeader(latestIncoming, "Subject") ?? "(제목 없음)";
         const { text: latestText } = extractBody(latestIncoming);
 
+        // 탈락 기록. 기록 실패가 수집을 막아선 안 되므로 통째로 감싼다.
+        const recordDropped = async (v: {
+          failed: boolean; category: string; confidence: number; reason: string | null;
+        }) => {
+          try {
+            await db.from("cs_classified_out").upsert({
+              brand: account.brand,
+              account: account.displayName ?? null,
+              gmail_message_id: latestIncoming.id,
+              gmail_thread_id: latestIncoming.threadId ?? null,
+              from_email: latestEmail ?? null,
+              from_name: latestName ?? null,
+              subject: latestSubject.slice(0, 500),
+              snippet: (latestText || latestIncoming.snippet || "").slice(0, 1000),
+              category: v.category,
+              confidence: v.confidence,
+              reason: v.reason?.slice(0, 500) ?? null,
+              failed: v.failed,
+            }, { onConflict: "gmail_message_id" });
+          } catch (e) {
+            console.warn("[gmail-ingest] classified_out 기록 실패:", e instanceof Error ? e.message : e);
+          }
+        };
+
         // 네이버페이센터 알림 메일: 본문 정형이라 AI 분류 우회.
         // 고객문의 0건이면 skip, N>0 이면 subject 만 알림용으로 가공해서 ingest.
         if (isNaverPayCenterNotice(latestFromHeader, latestSubject)) {
@@ -170,41 +214,44 @@ export async function syncAllGmailAccounts(): Promise<{
         }
 
         // 2차: AI 분류 — 최근 수신 메시지 기준으로 스레드 전체를 판단
-        const cls = await classifyEmail({
-          brand: account.brand,
-          fromName: latestName,
-          fromEmail: latestEmail,
-          subject: latestSubject,
-          bodySnippet: latestText || latestIncoming.snippet || "",
-        });
+        // 우리 문의폼 메일은 분류를 건너뛴다(정의상 고객 문의). 쿼터도 아낀다.
+        const isOwnForm = OWN_FORM_SUBJECT.test(latestSubject);
+        // 이미 '실패가 아닌' 판정을 받은 메일은 다시 묻지 않는다. 예전엔 매 사이클
+        // 같은 메일을 재분류해 하루치 쿼터를 새 메일이 아니라 옛 메일에 다 썼다.
+        if (!isOwnForm && judgedOut.has(latestIncoming.id)) {
+          classifiedOut++;
+          continue;
+        }
+        // 쿼터가 이미 막혔으면 더 부르지 않는다. 429 를 연달아 맞아봐야
+        // 남은 메일까지 같이 죽고, 다음 사이클 복구만 늦어진다.
+        if (!isOwnForm && quotaExhausted) {
+          classifiedOut++;
+          await recordDropped({ failed: true, category: "other", confidence: 0, reason: "분류 실패 → 스킵(쿼터 소진, 이번 사이클 중단)" });
+          continue;
+        }
+
+        const cls = isOwnForm
+          ? { isCs: true, confidence: 1, category: "customer_inquiry" as const, reason: "우리 문의폼 제목 — 분류 생략" }
+          : await classifyEmail({
+              brand: account.brand,
+              fromName: latestName,
+              fromEmail: latestEmail,
+              subject: latestSubject,
+              bodySnippet: latestText || latestIncoming.snippet || "",
+            });
+        if (/429|RESOURCE_EXHAUSTED|quota/i.test(cls.reason ?? "")) quotaExhausted = true;
         if (!cls.isCs) {
           classifiedOut++;
-          // 무엇이 왜 떨어졌는지 남긴다. 예전엔 카운트만 있어서, 진짜 고객 문의가
-          // 섞여 떨어져도 아무 흔적이 없었다(2026-09-03 박민 고객 [HARRIOT 문의] 유실).
-          // 기록 실패가 수집을 막아선 안 되므로 통째로 감싼다.
-          try {
-            await db.from("cs_classified_out").upsert({
-              brand: account.brand,
-              account: account.displayName ?? null,
-              gmail_message_id: latestIncoming.id,
-              gmail_thread_id: latestIncoming.threadId ?? null,
-              from_email: latestEmail ?? null,
-              from_name: latestName ?? null,
-              subject: latestSubject.slice(0, 500),
-              snippet: (latestText || latestIncoming.snippet || "").slice(0, 1000),
-              category: cls.category,
-              confidence: cls.confidence,
-              reason: cls.reason?.slice(0, 500) ?? null,
-              // 분류가 '실패'해서 스킵된 건은 진짜 비CS와 뜻이 다르다 — 재시도 대상이다.
-              failed: /분류 실패/.test(cls.reason ?? ""),
-            }, { onConflict: "gmail_message_id" });
-          } catch (e) {
-            console.warn("[gmail-ingest] classified_out 기록 실패:", e instanceof Error ? e.message : e);
-          }
+          await recordDropped({
+            failed: /분류 실패/.test(cls.reason ?? ""),
+            category: cls.category,
+            confidence: cls.confidence,
+            reason: cls.reason ?? null,
+          });
           continue;
         }
         // Gemini 무료쿼터 429 버스트 방지 — 분류 호출 간 짧은 간격
-        await new Promise((r) => setTimeout(r, 400));
+        if (!isOwnForm) await new Promise((r) => setTimeout(r, 400));
 
         const channel = detectChannel(latestFromHeader, account);
 
