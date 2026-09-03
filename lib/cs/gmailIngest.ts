@@ -92,6 +92,9 @@ export async function syncAllGmailAccounts(): Promise<{
   }
   // 쿼터가 막히면 이번 사이클은 더 부르지 않는다.
   let quotaExhausted = false;
+  // 함수 실행시간(300s) 안에 반드시 끝내고 결과를 저장한다. 넘길 것 같으면 분류를 멈추고
+  // 남은 건 다음 사이클로 넘긴다 — 통째로 타임아웃 나면 그 사이클 작업이 전부 버려진다.
+  const deadline = Date.now() + 240_000;
   let inserted = 0;
   let skipped = 0;
   let classifiedOut = 0;
@@ -224,9 +227,9 @@ export async function syncAllGmailAccounts(): Promise<{
         }
         // 쿼터가 이미 막혔으면 더 부르지 않는다. 429 를 연달아 맞아봐야
         // 남은 메일까지 같이 죽고, 다음 사이클 복구만 늦어진다.
-        if (!isOwnForm && quotaExhausted) {
+        if (!isOwnForm && (quotaExhausted || Date.now() > deadline)) {
           classifiedOut++;
-          await recordDropped({ failed: true, category: "other", confidence: 0, reason: "분류 실패 → 스킵(쿼터 소진, 이번 사이클 중단)" });
+          await recordDropped({ failed: true, category: "other", confidence: 0, reason: quotaExhausted ? "분류 실패 → 스킵(쿼터 소진, 이번 사이클 중단)" : "분류 실패 → 스킵(시간 초과, 다음 사이클 재시도)" });
           continue;
         }
 
@@ -250,8 +253,8 @@ export async function syncAllGmailAccounts(): Promise<{
           });
           continue;
         }
-        // Gemini 무료쿼터 429 버스트 방지 — 분류 호출 간 짧은 간격
-        if (!isOwnForm) await new Promise((r) => setTimeout(r, 400));
+        // (Gemini 무료쿼터 시절의 400ms 간격은 제거했다 — Anthropic 레이트리밋은 이 정도로 막히지 않고,
+        //  그 대기가 쌓여 함수 타임아웃을 만들었다.)
 
         const channel = detectChannel(latestFromHeader, account);
 

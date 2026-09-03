@@ -1,7 +1,9 @@
 import { syncAllGmailAccounts } from "@/lib/cs/gmailIngest";
 import { syncHarriotWebform } from "@/lib/cs/harriotWebform";
 
-export const maxDuration = 60;
+// ⚠️ 60초였는데, 분류가 실제로 동작하기 시작하자(2026-09-03 Haiku 전환) 타임아웃이 났다.
+// 예전엔 429 로 즉시 실패해서 빨랐던 것이지 일이 적었던 게 아니다.
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 async function run() {
