@@ -1,7 +1,15 @@
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
+import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { getCsSupabase } from "./store";
 
-const MODEL = "gemini-2.5-flash";
+/**
+ * 2026-09-03: Gemini 2.5 Flash → Claude Haiku 4.5.
+ * 무료 티어 한도(20요청)가 한 사이클 분류량보다 작아 **429 로 분류가 통째로 죽어 있었다.**
+ * 탈락 38건이 전부 429였고 'CS 아님' 판정은 0건 — 고객 문의가 조용히 사라지고 있었다.
+ * 레포의 다른 분류기(notifyFilter·inboxClassifier)와 같은 모델·계정으로 통일한다.
+ * 물량 기준 월 $2 수준이라 무료 쿼터를 아낄 이유가 없다.
+ */
+const MODEL = "claude-haiku-4-5";
 const BLACKLIST_KEY = "cs_sender_blacklist";
 const NEGATIVES_KEY = "cs_classifier_negatives";
 const MAX_NEGATIVES = 30; // 프롬프트 길이/예시 가치 균형
@@ -168,19 +176,32 @@ export async function addClassifierNegative(neg: ClassifierNegative): Promise<vo
     );
 }
 
-let cachedClient: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI | null {
+let cachedClient: Anthropic | null = null;
+function getClient(): Anthropic | null {
   if (cachedClient) return cachedClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  cachedClient = new GoogleGenAI({ apiKey });
+  cachedClient = new Anthropic({ apiKey });
   return cachedClient;
 }
 
-/**
- * Gemini Flash로 메일이 고객 문의인지 분류한다.
- * 빠르고 저렴 (free tier 내에서 무료 운영 가능).
- */
+/** 응답 스키마를 서버가 강제한다 — 예전엔 텍스트에서 ```json 을 벗겨 파싱하다 실패할 수 있었다. */
+const RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    is_cs: { type: "boolean" },
+    confidence: { type: "number" },
+    category: {
+      type: "string",
+      enum: ["customer_inquiry", "order_notification", "marketing", "system", "newsletter", "other"],
+    },
+    reason: { type: "string" },
+  },
+  required: ["is_cs", "confidence", "category", "reason"],
+  additionalProperties: false,
+} as const;
+
+/** 메일이 고객 문의인지 분류한다. 응답 스키마는 서버가 강제한다. */
 export async function classifyEmail(
   input: ClassifyInput
 ): Promise<ClassifyResult> {
@@ -191,7 +212,7 @@ export async function classifyEmail(
       isCs: true,
       confidence: 0,
       category: "other",
-      reason: "GEMINI_API_KEY 미설정 — 분류 생략",
+      reason: "ANTHROPIC_API_KEY 미설정 — 분류 생략",
     };
   }
 
@@ -226,54 +247,31 @@ export async function classifyEmail(
 
 핵심 구분 기준: "내가 직접 답을 보내야 하는 사람의 메시지인가?" 자동발송 트랜잭션 알림은 답할 대상이 없으므로 모두 false.${negativesBlock}
 
-응답은 반드시 아래 JSON 형식만:
-{
-  "is_cs": true 또는 false,
-  "confidence": 0.0~1.0,
-  "category": "customer_inquiry" | "order_notification" | "marketing" | "system" | "newsletter" | "other",
-  "reason": "한 줄 판단 근거"
-}
-
----
-
-분류할 이메일:
-From: ${input.fromName ?? ""} <${input.fromEmail ?? ""}>
-Subject: ${input.subject}
-Body (요약): ${input.bodySnippet.slice(0, 500)}`;
+confidence 는 0.0~1.0, reason 은 한 줄 판단 근거로 쓴다.`;
 
   try {
-    const res = await client.models.generateContent({
+    // 프롬프트 앞부분(브랜드 지시문 + 학습사례)은 한 사이클에서 계속 같다 → 캐시로 재사용.
+    // 뒤쪽(분류할 메일)만 매번 달라지도록 순서를 잡아 둔다.
+    const res = await client.messages.parse({
       model: MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 300,
-        // Gemini 2.5 Flash는 기본적으로 thinking 토큰을 소비하는데
-        // 분류처럼 추론 깊이가 거의 필요없는 작업은 비활성화해야 출력 토큰이 살아남음
-        thinkingConfig: { thinkingBudget: 0 },
-      },
+      max_tokens: 300,
+      system: [{ type: "text", text: prompt, cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: `From: ${input.fromName ?? ""} <${input.fromEmail ?? ""}>\nSubject: ${input.subject}\nBody (요약): ${input.bodySnippet.slice(0, 500)}`,
+        },
+      ],
+      output_config: { format: jsonSchemaOutputFormat(RESULT_SCHEMA) },
     });
-    const text = res.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    if (!text) {
-      return fallback("Gemini 응답 비어있음");
-    }
-    const cleaned = text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    const parsed = JSON.parse(cleaned) as {
-      is_cs: boolean;
-      confidence: number;
-      category: ClassifyResult["category"];
-      reason: string;
-    };
+
+    const out = res.parsed_output;
+    if (!out) return fallback("응답 파싱 실패(parsed_output 없음)");
     return {
-      isCs: !!parsed.is_cs,
-      confidence: Number(parsed.confidence) || 0,
-      category: parsed.category ?? "other",
-      reason: parsed.reason ?? "",
+      isCs: !!out.is_cs,
+      confidence: Number(out.confidence) || 0,
+      category: out.category,
+      reason: out.reason ?? "",
     };
   } catch (e) {
     return fallback(e instanceof Error ? e.message : String(e));
