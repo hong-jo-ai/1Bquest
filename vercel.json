@@ -135,6 +135,10 @@
     {
       "path": "/api/cron/crm-cart-nudge",
       "schedule": "23 * * * *"
+    },
+    {
+      "path": "/api/cron/cs-dropped-digest",
+      "schedule": "10 0 * * *"
     }
   ]
 }

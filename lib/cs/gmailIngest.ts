@@ -1,4 +1,4 @@
-import { ingestMessage, refreshThreadCustomer } from "./store";
+import { ingestMessage, refreshThreadCustomer, getCsSupabase } from "./store";
 import {
   extractBody,
   extractHeader,
@@ -71,6 +71,7 @@ export async function syncAllGmailAccounts(): Promise<{
 }> {
   const accounts = await listGmailAccounts();
   const blacklist = await getSenderBlacklist();
+  const db = getCsSupabase();
   let inserted = 0;
   let skipped = 0;
   let classifiedOut = 0;
@@ -178,6 +179,28 @@ export async function syncAllGmailAccounts(): Promise<{
         });
         if (!cls.isCs) {
           classifiedOut++;
+          // 무엇이 왜 떨어졌는지 남긴다. 예전엔 카운트만 있어서, 진짜 고객 문의가
+          // 섞여 떨어져도 아무 흔적이 없었다(2026-09-03 박민 고객 [HARRIOT 문의] 유실).
+          // 기록 실패가 수집을 막아선 안 되므로 통째로 감싼다.
+          try {
+            await db.from("cs_classified_out").upsert({
+              brand: account.brand,
+              account: account.displayName ?? null,
+              gmail_message_id: latestIncoming.id,
+              gmail_thread_id: latestIncoming.threadId ?? null,
+              from_email: latestEmail ?? null,
+              from_name: latestName ?? null,
+              subject: latestSubject.slice(0, 500),
+              snippet: (latestText || latestIncoming.snippet || "").slice(0, 1000),
+              category: cls.category,
+              confidence: cls.confidence,
+              reason: cls.reason?.slice(0, 500) ?? null,
+              // 분류가 '실패'해서 스킵된 건은 진짜 비CS와 뜻이 다르다 — 재시도 대상이다.
+              failed: /분류 실패/.test(cls.reason ?? ""),
+            }, { onConflict: "gmail_message_id" });
+          } catch (e) {
+            console.warn("[gmail-ingest] classified_out 기록 실패:", e instanceof Error ? e.message : e);
+          }
           continue;
         }
         // Gemini 무료쿼터 429 버스트 방지 — 분류 호출 간 짧은 간격
