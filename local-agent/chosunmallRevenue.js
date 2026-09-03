@@ -57,7 +57,10 @@ const COLOR = [
 function cafe24Name(raw) {
   const s = String(raw ?? "");
   const line = LINE.find((l) => l.match.test(s))?.line;
-  const color = COLOR.find((c) => c.match.test(s))?.color;
+  let color = COLOR.find((c) => c.match.test(s))?.color;
+  // 같은 색으로 남성용·여성용이 따로 있는 라인이 있다(성산 실버 / 성산 실버 여성용).
+  // 떼어내면 남성용 SKU 에서 재고가 빠진다.
+  if (color && /여성용/.test(s)) color += " 여성용";
   // 라인·색을 못 읽으면 원본을 그대로 둔다 — 억지로 바꿔 엉뚱한 SKU 에서 빠지는 게 더 나쁘다.
   return line && color ? `${line} ${color}` : s;
 }

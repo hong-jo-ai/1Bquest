@@ -118,6 +118,52 @@ function splitMessage(raw, option) {
   return { msg, engraving, engravingMissing: wantsEngraving && !engraving };
 }
 
+/**
+ * 각인 문구가 색상별로 갈려 오는 경우를 쪼갠다.
+ *   "실버각인 - K.HAN.SUK  로즈골드 각인 - shinseop"  → 실버행엔 K.HAN.SUK, 로즈골드행엔 shinseop
+ * 한 주문에 색상이 섞여 있으면 고객이 이렇게 한 칸에 몰아 쓴다(2026-09-02 강한석 건).
+ * 그대로 두면 송장 4장에 같은 문구가 찍혀 어느 걸 새길지 알 수 없다.
+ */
+function engravingForColor(engraving, color) {
+  const text = String(engraving ?? "");
+  if (!color || !text) return text;
+  // "<색상>...각인...- 값" 조각들을 찾는다. 색상 토큰이 2개 이상일 때만 쪼갠다.
+  const seg = [...text.matchAll(/(로즈골드|실버|선레이|골드)\s*각인\s*[-:]?\s*([^\n]*?)(?=(?:로즈골드|실버|선레이|골드)\s*각인|$)/g)]
+    .map((m) => ({ color: m[1], value: m[2].trim() }))
+    .filter((x) => x.value);
+  if (seg.length < 2) return text;
+  const hit = seg.find((x) => color.includes(x.color) || x.color.includes(color));
+  return hit ? hit.value : text;
+}
+
+/**
+ * 옵션 열에서 색상을 뽑는다. **키 이름이 라인마다 다르다**(2026-09-03 실측).
+ *   · 서해 — `색상=실버, 각인선택=각인 안함`
+ *   · 성산 — `옵션 선택=성산 로즈골드`      ← 라인명이 값 앞에 붙어 온다
+ * `색상=` 만 보던 탓에 성산은 색이 통째로 빠져, 송장 품목명이 "해리엇 성산 시리즈 시계"로
+ * 나가고(포장할 때 무슨 색인지 알 수 없다) 매출 적재도 색을 못 읽어 **재고가 안 빠졌다**
+ * (2026-09-03 서기원 20260902-0002783). 어제 고친 조선몰 재고 누락과 같은 계열의 다른 구멍.
+ *
+ * 각인 옵션(`각인선택=각인 추가`)은 건너뛴다 — 색상이 아니다.
+ * 라인명이 붙어 오는 형태는 **상품명에 이미 있는 단어를 빼서** 남는 말만 쓴다.
+ * 통째로 남기는 이유: "성산 실버 여성용" 처럼 색 뒤에 사양이 더 붙는 상품이 있어
+ * 색상 토큰만 뽑으면 "여성용"이 사라져 엉뚱한 SKU 에서 빠진다.
+ */
+function colorOf(option, product) {
+  const prod = String(product ?? "");
+  for (const seg of String(option ?? "").split(",")) {
+    const eq = seg.indexOf("=");
+    if (eq < 0) continue;
+    const key = seg.slice(0, eq).trim();
+    const val = seg.slice(eq + 1).trim();
+    if (!val || /각인/.test(key) || /각인/.test(val)) continue;
+    if (/색상|컬러/.test(key)) return val;
+    const rest = val.split(/\s+/).filter((w) => !prod.includes(w)).join(" ").trim();
+    if (rest) return rest;
+  }
+  return "";
+}
+
 function parsePo(buffer) {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName = wb.SheetNames[0];
@@ -142,7 +188,7 @@ function parsePo(buffer) {
     if (!/^\d{8}-\d+$/.test(order)) continue;
     const option = String(c[idx.option] ?? "");
     const { msg, engraving, engravingMissing } = splitMessage(c[idx.msg], option);
-    const color = (option.match(/색상\s*=\s*([^,]+)/) || [])[1]?.trim() || "";
+    const color = colorOf(option, c[idx.product]);
     orders.push({
       rowIndex: r,
       order,
@@ -156,18 +202,41 @@ function parsePo(buffer) {
       // ⚠️ 각인 문구는 **품목명에 실어야 한다.** 사장님은 송장을 먼저 뽑고, 거기 적힌 대로
       //    시계를 챙겨 각인 작업을 한다 → 송장에 안 찍히면 각인을 못 한다(2026-09-01 지적).
       //    카페24 건은 buildPostOffice 가 이미 `(각인:값)` 으로 붙이고 있었는데 조선몰만 빠졌다.
+      color,
       prod: [String(c[idx.product] ?? "").trim(), color].filter(Boolean).join(" - ")
-        + (engraving ? ` (각인:${engraving})` : ""),
+        + (engraving ? ` (각인:${engravingForColor(engraving, color)})` : ""),
       qty: String(c[idx.qty] ?? "1").trim() || "1",
       // 각인은 **배송메시지에도** 싣는다. 품목명은 길면 송장에서 잘려
       // "다이얼 9시 방면 문구 : …" 같은 긴 지시가 통째로 사라진다(사장님 제안 2026-09-01).
       // 배송요청이 먼저다 — 집배원이 볼 문구를 각인이 밀어내면 안 된다.
-      msg: [msg, engraving ? `[각인] ${engraving}` : ""].filter(Boolean).join(" "),
-      engraving,
+      msg: [msg, engraving ? `[각인] ${engravingForColor(engraving, color)}` : ""].filter(Boolean).join(" "),
+      engraving: engravingForColor(engraving, color),
       engravingMissing,
     });
   }
-  return { wb, sheetName, rows, idx, orders };
+  // ⚠️ 한 주문에 여러 상품이면 행이 여러 개로 온다(강한석 4개). 접수 dedup 은
+  //    order_number+channel 기준이라 **묶지 않으면 첫 행만 접수되고 나머지는 조용히 누락**된다.
+  //    같은 주문 = 같은 주소 = 한 소포이므로 하나로 합친다.
+  const merged = [];
+  const byOrder = new Map();
+  for (const o of orders) {
+    const cur = byOrder.get(o.order);
+    if (!cur) { byOrder.set(o.order, { ...o, lines: [o.prod], rowIndexes: [o.rowIndex] }); merged.push(byOrder.get(o.order)); continue; }
+    cur.lines.push(o.prod);
+    cur.rowIndexes.push(o.rowIndex);
+    cur.qty = String(Number(cur.qty) + Number(o.qty || 1));
+    if (!cur.msg && o.msg) cur.msg = o.msg;
+    if (o.engraving) cur.engraving = [cur.engraving, o.engraving].filter(Boolean).join(" / ");
+    if (o.engravingMissing) cur.engravingMissing = true;
+  }
+  for (const o of merged) {
+    if (o.lines.length > 1) {
+      // 품목명에 전부 나열 — 송장을 보고 챙기므로 몇 개가 무슨 각인인지 다 보여야 한다.
+      o.prod = o.lines.map((l, i) => `${i + 1}) ${l.replace(/^\[단독최저가\]\s*/, "")}`).join(" + ");
+      o.msg = [o.msg.replace(/\s*\[각인\][\s\S]*$/, "").trim(), `[각인] ${o.engraving}`].filter(Boolean).join(" ");
+    }
+  }
+  return { wb, sheetName, rows, idx, orders: merged };
 }
 
 /** 접수 결과를 원본 엑셀의 택배사/송장 열에 기입해 새 버퍼로 만든다. */
