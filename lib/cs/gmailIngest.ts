@@ -243,6 +243,14 @@ export async function syncAllGmailAccounts(): Promise<{
               bodySnippet: latestText || latestIncoming.snippet || "",
             });
         if (/429|RESOURCE_EXHAUSTED|quota/i.test(cls.reason ?? "")) quotaExhausted = true;
+
+        if (cls.isCs) {
+          // 예전에 실패로 남은 기록을 지운다. 안 지우면 429 로 한 번 실패했다가 나중에
+          // 통과한 메일이 계속 '분류 실패'로 남아 일일 알림에 허위로 뜬다.
+          try {
+            await db.from("cs_classified_out").delete().eq("gmail_message_id", latestIncoming.id);
+          } catch { /* 정리 실패는 수집을 막지 않는다 */ }
+        }
         if (!cls.isCs) {
           classifiedOut++;
           await recordDropped({
