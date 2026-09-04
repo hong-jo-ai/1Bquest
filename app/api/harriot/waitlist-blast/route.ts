@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
     bySource: s.bySource,
     sentCampaigns: await readBlastLog(),
     preview: {
-      kr: buildKrText("https://harriotwatches.co.kr/seolwol/"),
-      en: { subject: buildEnSubject(), body: buildEnBody("https://harriotwatches.com/seolwol/") },
+      kr: buildKrText("https://harriotwatches.co.kr/product/detail.html?product_no=136"),
+      en: { subject: buildEnSubject(), body: buildEnBody("https://harriotwatches.com/product/detail.html?product_no=136") },
     },
     hint: "발송하려면 POST + { campaign, confirm: 'SEND:<campaign>' }. confirm 없으면 dry-run.",
   });

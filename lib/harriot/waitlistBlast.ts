@@ -67,7 +67,8 @@ export function buildKrText(landingUrl: string): string {
     "(광고) 해리엇",
     "",
     "기다려주신 설월 雪月, 오늘 공개되었습니다.",
-    "그날의 달을 손목에 담는 문페이즈 시계입니다.",
+    "달이 차고 기울지 않습니다. 처마 위 어디에 걸렸는가가 바뀝니다.",
+    "38mm · 349,000원 · 각인 무료",
     "",
     landingUrl,
     "",
@@ -76,14 +77,15 @@ export function buildKrText(landingUrl: string): string {
 }
 
 export function buildEnSubject(): string {
-  return "SEOLWOL is here — the moon of your night";
+  return "SEOLWOL — the moon that does not wane";
 }
 
 export function buildEnBody(landingUrl: string): string {
   return [
-    "You asked us to tell you the day SEOLWOL arrived.",
+    "You asked us to tell you when SEOLWOL arrived. It is here.",
     "",
-    "It is here — a moonphase watch that keeps the moon of a night that mattered to you.",
+    "The moon does not wane. What changes is where it sits above the eaves.",
+    "38mm · $350 · free engraving",
     "",
     landingUrl,
     "",
@@ -152,10 +154,10 @@ export async function runBlast(
   input: BlastInput,
   waitlist: { mall: string; contact: string }[],
 ): Promise<BlastResult> {
-  const landing = input.landingUrl ?? "https://harriotwatches.co.kr/seolwol/";
+  const landing = input.landingUrl ?? "https://harriotwatches.co.kr/product/detail.html?product_no=136";
   const krText = buildKrText(landing);
   const enSubject = buildEnSubject();
-  const enBody = buildEnBody(input.landingUrl ?? "https://harriotwatches.com/seolwol/");
+  const enBody = buildEnBody(input.landingUrl ?? "https://harriotwatches.com/product/detail.html?product_no=136");
 
   const test = input.testOnly;
   const krList = test
