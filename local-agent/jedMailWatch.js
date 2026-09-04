@@ -5,12 +5,17 @@
  *   요구한 상태. 회신이 오면 바로 알아야 하는데, plvekorea@gmail.com 은 평소 안 보는
  *   계정이라 놓치기 쉽다. (7/31 명세서 회신도 8/6에 와서 8/8에야 확인됨.)
  *
- * 대상 = plvekorea 메일함에 diameter3615@hanmail.net 로부터 새로 도착한 메일.
- *   커서(kv `jed_mail_cursor`)보다 새 메일만 알린다. 첫 실행은 알림 없이 커서만 잡는다
- *   (과거 메일 폭탄 방지).
+ * 확장(2026-09-04): 상환계획서 공문이 jhong@haberdashers.co.kr(실수신함
+ *   shong@harriotwatches.com)로 도착해 감시 사각으로 알림이 안 갔다(사장님이 직접 발견).
+ *   → plvekorea + shong@ 두 계정을 모두 폴링한다. 커서는 계정별 분리.
+ *
+ * 대상 = 각 메일함에 diameter3615@hanmail.net 로부터 새로 도착한 메일.
+ *   커서(kv `jed_mail_cursor` / `jed_mail_cursor_shong`)보다 새 메일만 알린다.
+ *   계정별 첫 실행은 알림 없이 커서만 잡는다(과거 메일 폭탄 방지).
  *
  * ⚠️ MCP 커넥터(gmail)는 훅 타임아웃으로 못 쓴다 → KV 리프레시 토큰으로 Gmail API 직접 호출.
  *    KV row 의 data 는 평문 refresh_token 문자열이다(객체 아님).
+ *    client_id 는 .env.supabase, client_secret 은 local-agent/.env 에서 로드(두 계정 공용).
  *
  * 실행:  node jedMailWatch.js         ← 1회 (launchd StartInterval 600)
  *        node jedMailWatch.js --dry   ← 조회만, 알림·커서갱신 안 함
@@ -28,8 +33,10 @@ const { beat } = require("./heartbeat");
 const DRY = process.argv.includes("--dry");
 const RESET = process.argv.includes("--reset");
 const WATCH = "diameter3615@hanmail.net";     // 박대원 대표 — 결제·미수금 소통 창구
-const TOKEN_KEY = "kakao_gift_gmail_token";   // plvekorea@gmail.com (평문 refresh_token)
-const CURSOR_KEY = "jed_mail_cursor";
+const ACCOUNTS = [
+  { label: "plvekorea",                tokenKey: "kakao_gift_gmail_token", cursorKey: "jed_mail_cursor" },
+  { label: "shong@harriotwatches.com", tokenKey: "google_refresh_token",   cursorKey: "jed_mail_cursor_shong" },
+];
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 const SB = process.env.SUPABASE_URL;
@@ -50,10 +57,10 @@ async function kvSet(key, data) {
   });
 }
 
-async function accessToken() {
-  const raw = await kvGet(TOKEN_KEY);
+async function accessToken(tokenKey) {
+  const raw = await kvGet(tokenKey);
   const refresh = typeof raw === "string" ? raw : raw && raw.refresh_token;
-  if (!refresh) throw new Error(`KV ${TOKEN_KEY} 없음/형식불명`);
+  if (!refresh) throw new Error(`KV ${tokenKey} 없음/형식불명`);
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -63,7 +70,7 @@ async function accessToken() {
     signal: AbortSignal.timeout(20000),
   });
   const j = await r.json();
-  if (!j.access_token) throw new Error(`토큰 갱신 실패: ${JSON.stringify(j).slice(0, 200)}`);
+  if (!j.access_token) throw new Error(`토큰 갱신 실패(${tokenKey}): ${JSON.stringify(j).slice(0, 200)}`);
   return j.access_token;
 }
 
@@ -80,67 +87,84 @@ function htmlToText(h) {
 }
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-(async () => {
-  try {
-    if (RESET) { await kvSet(CURSOR_KEY, { lastInternalDate: null, seen: [] }); log("커서 초기화 완료"); return; }
+async function watchAccount({ label, tokenKey, cursorKey }) {
+  const at = await accessToken(tokenKey);
+  const AT = { Authorization: `Bearer ${at}` };
+  const q = encodeURIComponent(`from:${WATCH} newer_than:30d`);
+  const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=20`, { headers: AT, signal: AbortSignal.timeout(20000) });
+  const list = await listRes.json();
+  if (list.error) throw new Error(`Gmail list 실패(${label}): ${JSON.stringify(list.error).slice(0, 200)}`);
+  const ids = (list.messages || []).map((m) => m.id);
+  log(`[${label}] 대상 메일 ${ids.length}건 조회`);
 
-    const at = await accessToken();
-    const AT = { Authorization: `Bearer ${at}` };
-    const q = encodeURIComponent(`from:${WATCH} newer_than:30d`);
-    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=20`, { headers: AT, signal: AbortSignal.timeout(20000) });
-    const list = await listRes.json();
-    if (list.error) throw new Error(`Gmail list 실패: ${JSON.stringify(list.error).slice(0, 200)}`);
-    const ids = (list.messages || []).map((m) => m.id);
-    log(`대상 메일 ${ids.length}건 조회`);
+  const cur = (await kvGet(cursorKey)) || {};
+  const seen = new Set(cur.seen || []);
+  const first = !cur.lastInternalDate && !(cur.seen || []).length;
 
-    const cur = (await kvGet(CURSOR_KEY)) || {};
-    const seen = new Set(cur.seen || []);
-    const first = !cur.lastInternalDate && !(cur.seen || []).length;
-
-    const fresh = [];
-    let maxInternal = Number(cur.lastInternalDate || 0);
-    for (const id of ids) {
-      if (seen.has(id)) continue;
-      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, { headers: AT, signal: AbortSignal.timeout(20000) });
-      const m = await r.json();
-      const internal = Number(m.internalDate || 0);
-      if (internal > maxInternal) maxInternal = internal;
-      if (!first && internal <= Number(cur.lastInternalDate || 0)) { seen.add(id); continue; }
-      const H = Object.fromEntries((m.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]));
-      let body = plainBody(m.payload).join("\n").trim();
-      if (!body) {
-        const htmls = [];
-        (function walk(p) { if (p.mimeType === "text/html" && p.body?.data) htmls.push(decode(p.body.data)); (p.parts || []).forEach(walk); })(m.payload);
-        body = htmlToText(htmls.join("\n"));
-      }
-      body = body.split(/-{5,}\s*원본 메일\s*-{5,}/)[0].trim();   // 인용문 제거
-      fresh.push({ id, date: H["date"], subject: H["subject"], from: H["from"], body, attach: (m.payload?.parts || []).filter((p) => p.filename).map((p) => p.filename) });
-      seen.add(id);
+  const fresh = [];
+  let maxInternal = Number(cur.lastInternalDate || 0);
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, { headers: AT, signal: AbortSignal.timeout(20000) });
+    const m = await r.json();
+    const internal = Number(m.internalDate || 0);
+    if (internal > maxInternal) maxInternal = internal;
+    if (!first && internal <= Number(cur.lastInternalDate || 0)) { seen.add(id); continue; }
+    const H = Object.fromEntries((m.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]));
+    let body = plainBody(m.payload).join("\n").trim();
+    if (!body) {
+      const htmls = [];
+      (function walk(p) { if (p.mimeType === "text/html" && p.body?.data) htmls.push(decode(p.body.data)); (p.parts || []).forEach(walk); })(m.payload);
+      body = htmlToText(htmls.join("\n"));
     }
-
-    if (first) {
-      log(`최초 실행 — 기준점만 설정(알림 없음). 기존 ${ids.length}건 스킵`);
-    } else if (fresh.length) {
-      for (const f of fresh) {
-        const body = f.body.length > 1200 ? f.body.slice(0, 1200) + "\n…(생략)" : f.body;
-        const msg =
-          `📩 <b>제드아이티씨 박대원 대표 메일 도착</b>\n` +
-          `<b>제목</b> ${esc(f.subject)}\n<b>수신</b> ${esc(f.date)}\n` +
-          (f.attach.length ? `<b>첨부</b> ${esc(f.attach.join(", "))}\n` : "") +
-          `\n${esc(body)}\n\n` +
-          `— plvekorea 메일함. 클로드에게 "제드 메일 왔어" 하면 회신 초안 준비합니다.`;
-        await sendTelegram(msg, { parseMode: "HTML" });
-        log(`알림 발송: ${f.subject}`);
-      }
-    } else {
-      log("새 메일 없음");
-    }
-
-    if (!DRY) await kvSet(CURSOR_KEY, { lastInternalDate: String(maxInternal), seen: [...seen].slice(-100) });
-    await beat("jed-mail-watch", { checked: ids.length, notified: first ? 0 : fresh.length });
-  } catch (e) {
-    log(`실패: ${(e && e.message) || e}`);
-    try { await notifyFail("제드 메일 감시", (e && e.message) || String(e)); } catch {}
-    process.exitCode = 1;
+    body = body.split(/-{5,}\s*원본 메일\s*-{5,}/)[0].trim();   // 인용문 제거
+    fresh.push({ id, date: H["date"], subject: H["subject"], from: H["from"], body, attach: (m.payload?.parts || []).filter((p) => p.filename).map((p) => p.filename) });
+    seen.add(id);
   }
+
+  if (first) {
+    log(`[${label}] 최초 실행 — 기준점만 설정(알림 없음). 기존 ${ids.length}건 스킵`);
+  } else if (fresh.length) {
+    for (const f of fresh) {
+      const body = f.body.length > 1200 ? f.body.slice(0, 1200) + "\n…(생략)" : f.body;
+      const msg =
+        `📩 <b>제드아이티씨 박대원 대표 메일 도착</b>\n` +
+        `<b>제목</b> ${esc(f.subject)}\n<b>수신</b> ${esc(f.date)}\n` +
+        (f.attach.length ? `<b>첨부</b> ${esc(f.attach.join(", "))}\n` : "") +
+        `\n${esc(body)}\n\n` +
+        `— ${label} 메일함. 클로드에게 "제드 메일 왔어" 하면 회신 초안 준비합니다.`;
+      if (DRY) { log(`[${label}] (dry) 알림 생략: ${f.subject}`); continue; }
+      await sendTelegram(msg, { parseMode: "HTML" });
+      log(`[${label}] 알림 발송: ${f.subject}`);
+    }
+  } else {
+    log(`[${label}] 새 메일 없음`);
+  }
+
+  if (!DRY) await kvSet(cursorKey, { lastInternalDate: String(maxInternal), seen: [...seen].slice(-100) });
+  return { checked: ids.length, notified: first || DRY ? 0 : fresh.length };
+}
+
+(async () => {
+  if (RESET) {
+    try {
+      for (const a of ACCOUNTS) await kvSet(a.cursorKey, { lastInternalDate: null, seen: [] });
+      log("커서 초기화 완료 (전 계정)");
+    } catch (e) { log(`실패: ${(e && e.message) || e}`); process.exitCode = 1; }
+    return;
+  }
+
+  let checked = 0, notified = 0, failed = 0;
+  for (const acct of ACCOUNTS) {
+    try {
+      const r = await watchAccount(acct);
+      checked += r.checked; notified += r.notified;
+    } catch (e) {
+      failed++;
+      log(`[${acct.label}] 실패: ${(e && e.message) || e}`);
+      try { await notifyFail(`제드 메일 감시(${acct.label})`, (e && e.message) || String(e)); } catch {}
+    }
+  }
+  if (failed) { process.exitCode = 1; return; }   // 한 계정이라도 실패면 beat 생략 → 워치독이 감지
+  await beat("jed-mail-watch", { checked, notified });
 })();
