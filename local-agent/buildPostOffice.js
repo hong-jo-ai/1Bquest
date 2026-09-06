@@ -15,6 +15,7 @@ loadEnv(path.join(DASH, ".env.supabase")); loadEnv(path.join(DASH, ".env.local")
 const { createClient } = require(path.join(DASH, "node_modules/@supabase/supabase-js"));
 const { getCm29OutboundRows } = require("./cm29Outbound");
 const { getMusinsaGlobalRows } = require("./musinsaGlobalOutbound");
+const { getSmartstoreOutboundRows } = require("./smartstoreOutbound");
 const os = require("os");
 const { spawn } = require("child_process");
 const { closeMarketplaceBrowsers } = require("./marketplaceSync");
@@ -32,6 +33,34 @@ const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 function isPreorderProduct(prod){
   const s = String(prod || "");
   return /\[[^\]]*(예약|재입고|입고예정|출고예정)[^\]]*\]/.test(s);
+}
+
+/**
+ * 주문 옵션에 없는 각인 — 각인 옵션이 없는 상품은 고객이 **네이버 톡톡·웹챗·전화로** 각인을 요청한다.
+ * 그건 주문 데이터 어디에도 없어서, 그냥 두면 송장에 안 찍히고 **각인 없이 출고된다.**
+ * 사장님은 송장을 보고 각인 작업을 하기 때문이다(2026-09-03 조선몰 강한석 건과 같은 사고).
+ * kv `manual_engravings` = { "<주문번호>": "각인문구" } 를 읽어 품목명에 붙인다.
+ * 주문번호는 그 채널의 주문번호 그대로(카페24=20260906-0000071).
+ *
+ * ⚠️ **각인 대상 품목에만 붙인다.** 주문 단위로 그냥 붙이면 같은 주문의 밴드·조절도구·
+ *    사은품에까지 각인이 찍힌다(2026-09-03 조선몰 강한석 건이 정확히 이 실수였다).
+ *    각인은 시계 본체에만 한다 — 밴드·스트랩·도구·부자재는 제외.
+ */
+const NON_ENGRAVABLE = /밴드|스트랩|조절|도구|쇼핑백|케이스|보증서|파우치|공구|충전/;
+function engravable(productName){
+  return !NON_ENGRAVABLE.test(String(productName || ""));
+}
+const MANUAL_ENGRAVING_KEY = "manual_engravings";
+let _manualEng = null;
+async function manualEngravings(){
+  if(_manualEng) return _manualEng;
+  try{
+    const { createClient } = require(require("path").join(__dirname,"..","node_modules","@supabase/supabase-js"));
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await sb.from("kv_store").select("data").eq("key", MANUAL_ENGRAVING_KEY).maybeSingle();
+    _manualEng = (data && data.data) || {};
+  }catch(e){ console.log(`[buildPostOffice] 수기 각인 조회 실패(무시): ${e.message}`); _manualEng = {}; }
+  return _manualEng;
 }
 
 // 카페24 각인(추가 입력 옵션) 추출: additional_option_value="라벨=값" → 값. 비면 "".
@@ -72,12 +101,14 @@ async function cafe24Rows(m){
     const res=await fetch(`${base}/api/v2/admin/orders?${qs}`,{headers:{Authorization:`Bearer ${token}`}});
     const d=await res.json(); const b=d.orders??[]; all.push(...b); if(b.length<100)break; off+=100;}
   const rows=[];
+  const manual=await manualEngravings();
   for(const o of all){
     const r=(o.receivers??[])[0]; if(!r)continue;
     const ship=(o.items??[]).filter(it=>String(it.status_text||"")==="배송준비중");
     const mob=clean(r.cellphone||r.phone);
     for(const it of ship){
-      const eng=engravingOf(it);
+      // 옵션 각인이 우선, 없으면 수기 등록분(톡톡·웹챗으로 온 요청) — 단 각인 가능한 품목에만.
+      const eng=engravingOf(it) || (engravable(it.product_name) ? (manual[clean(o.order_id)] || "") : "");
       const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
       rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
@@ -241,7 +272,7 @@ function getMusinsaDomesticRowsIsolated(log){
 }
 
 async function collectOutboundRows(){
-  let cafe=[], cm=[], wc=[], mg=[], md=[];
+  let cafe=[], cm=[], wc=[], mg=[], md=[], ss=[];
   // 카페24 멀티몰: 폴바이스 + 해리엇(미설정 몰은 건너뜀). 각 몰 실패해도 나머지 진행.
   for(const m of CAFE24_MALLS){
     if(!m.mallId()){ continue; }
@@ -255,9 +286,11 @@ async function collectOutboundRows(){
   // 무신사 일반은 별도 프로세스 — 같은 프로필을 Chrome 두 개가 못 쓰므로 여기서 먼저 전부 닫는다.
   await closeMarketplaceBrowsers().catch(()=>{});
   try { md=await getMusinsaDomesticRowsIsolated(log); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); }
+  // 스마트스토어(해리엇 와치스) — 커머스 API. 브라우저 세션 불필요.
+  try { ss=await getSmartstoreOutboundRows(14); log(`스마트스토어 ${ss.length}행`); } catch(e){ log("스마트스토어 실패: "+e.message); }
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
-  const all=[...cafe,...cm,...wc,...mg,...md];
+  const all=[...cafe,...cm,...wc,...mg,...md,...ss];
   const done=await alreadyRegisteredKeys();
   const notDone=all.filter(r=>!done.has(`${r.seller}|${r.order}`));
   const skipped=all.length-notDone.length;
