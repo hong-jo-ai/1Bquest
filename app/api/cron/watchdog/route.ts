@@ -43,6 +43,9 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:marketplace-cs-scan", label: "무신사·29CM CS 점검(iMac·10/16시)", maxHours: 28, weekdaysOnly: true },
   // 조선몰 발주 접수(10:30). 회신 마감이 당일 17시라 하루만 놓쳐도 정산에서 빠진다.
   { key: "heartbeat:chosunmall-po-sync", label: "조선몰 발주 접수(iMac·10:30)", maxHours: 28, weekdaysOnly: true },
+  // 그 접수의 송장 회신 자동발송(15:00). 접수가 됐는데 이게 멈추면 회신만 빠져
+  // 정산에서 누락된다 — 접수 감시만으로는 안 잡히는 구간이라 따로 본다.
+  { key: "heartbeat:chosunmall-reply-send", label: "조선몰 송장 회신 발송(iMac·15:00)", maxHours: 28, weekdaysOnly: true },
   // 말일에만 발송하지만 하트비트는 매일 찍는다(스킵한 날도) — 그래야 감시가 촘촘하다.
   { key: "heartbeat:alba-payroll-reminder", label: "알바 급여 리마인더(iMac·매일 18시)", maxHours: 28 },
   // /today 보드의 "진행 중인 일" 원천. 안 돌면 보드가 옛날 세션을 계속 보여줘 조용히 틀려진다.
