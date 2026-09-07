@@ -127,7 +127,7 @@ const STATUS_STYLE: Record<CsStatus, string> = {
 
 const STATUS_LABEL: Record<CsStatus, string> = {
   unanswered: "미답변",
-  waiting: "대기중",
+  waiting: "도착 대기",
   resolved: "해결",
   archived: "보관",
 };
@@ -548,7 +548,8 @@ export default function InboxClient() {
     }
   };
 
-  // AS 접수 후: 해당 CS 건을 대기중으로 이동(물건 도착 대기).
+  // AS 접수 후: 해당 CS 건을 '도착 대기'로 이동(물건 도착 대기).
+  // ⚠️ 2026-09-07 부터 '도착 대기'는 **여기서만** 만들어진다 — 답장은 바로 '해결'로 닫힌다.
   // 반품/교환 카드는 스레드 상태가 클레임 상태에서 자동 계산되므로,
   // 클레임을 회수중(in_transit=대기중)으로 올려야 재동기화에도 대기중이 유지됨.
   // 일반 문의는 스레드 상태만 직접 대기중으로 PATCH.
@@ -685,7 +686,7 @@ export default function InboxClient() {
           {(
             [
               { key: "unanswered", label: "미답변", count: counts.unanswered, accent: "red" },
-              { key: "waiting", label: "대기중", count: counts.waiting, accent: "amber" },
+              { key: "waiting", label: "도착 대기", count: counts.waiting, accent: "amber" },
               { key: "resolved", label: "해결됨", count: counts.resolved, accent: "emerald" },
               { key: "all", label: "전체", count: counts.all, accent: "zinc" },
               { key: "archived", label: "보관", count: counts.archived, accent: "zinc" },
@@ -842,7 +843,7 @@ export default function InboxClient() {
           {(
             [
               { key: "unanswered", label: "미답변", count: counts.unanswered },
-              { key: "waiting", label: "대기중", count: counts.waiting },
+              { key: "waiting", label: "도착 대기", count: counts.waiting },
               { key: "resolved", label: "해결됨", count: counts.resolved },
               { key: "all", label: "전체", count: counts.all },
               { key: "archived", label: "보관", count: counts.archived },

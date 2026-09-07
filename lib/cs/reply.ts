@@ -109,7 +109,7 @@ async function sendWebchatReply(
   });
 
   const db = getCsSupabase();
-  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+  await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
 
   try {
     const notified = await notifyWebchatReply(threadId);
@@ -156,7 +156,7 @@ async function sendSixshopReply(
     raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
   });
   const db = getCsSupabase();
-  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+  await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
   return { ok: true };
 }
 
@@ -262,9 +262,10 @@ async function sendGmailReply(
     raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
   });
 
-  // 상태: 내가 답했으므로 waiting으로
+  // 상태: 답장했으면 그걸로 끝난 것으로 본다(resolved).
+  // 고객이 다시 말을 걸면 store.ts 가 자동으로 unanswered 로 되살린다.
   const db = getCsSupabase();
-  await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+  await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
 
   return { ok: true, externalMessageId: json.id };
 }
@@ -372,7 +373,7 @@ async function sendThreadsReply(
     const db = getCsSupabase();
     await db
       .from("cs_threads")
-      .update({ status: "waiting" })
+      .update({ status: "resolved" })
       .eq("id", threadId);
 
     return { ok: true, externalMessageId: published.id };
@@ -484,7 +485,7 @@ async function sendCafe24BoardReply(
   const db = getCsSupabase();
   await db
     .from("cs_threads")
-    .update({ status: "waiting" })
+    .update({ status: "resolved" })
     .eq("id", threadId);
 
   return { ok: true };
@@ -527,7 +528,7 @@ async function sendIgReply(
       raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
     });
     const db = getCsSupabase();
-    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+    await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
     return { ok: true, externalMessageId: result.message_id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -574,7 +575,7 @@ async function sendIgCommentReply(
       raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
     });
     const db = getCsSupabase();
-    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+    await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
     return { ok: true, externalMessageId: result.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -615,7 +616,7 @@ async function sendCrispReply(
     const db = getCsSupabase();
     await db
       .from("cs_threads")
-      .update({ status: "waiting" })
+      .update({ status: "resolved" })
       .eq("id", threadId);
 
     return { ok: true, externalMessageId: String(result.fingerprint) };
@@ -663,7 +664,7 @@ async function sendRedditReply(
     });
 
     const db = getCsSupabase();
-    await db.from("cs_threads").update({ status: "waiting" }).eq("id", threadId);
+    await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
 
     return { ok: true, externalMessageId: result.name };
   } catch (e) {

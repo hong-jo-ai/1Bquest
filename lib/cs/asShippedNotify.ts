@@ -268,7 +268,7 @@ export async function sendPreparedAsNotice(
       });
       if (!res.ok) { await revert(); return { ok: false, error: res.error ?? "답장 실패" }; }
       via = "thread";
-      // sendReply 는 답장 후 waiting 으로 되돌린다 — 발송완료 안내는 대화의 끝이므로 닫는다.
+      // sendReply 가 이미 resolved 로 닫지만, 발송완료 안내는 대화의 끝이므로 명시적으로 한 번 더 닫는다.
       await db.from("cs_threads").update({ status: "resolved", updated_at: new Date().toISOString() })
         .eq("id", pending.threadId);
     }

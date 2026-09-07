@@ -84,7 +84,7 @@ function lastAutoReplyWithin(messages: CsMessage[], windowMs: number): boolean {
  * 사장님이 직접 상담 중인 대화인가 — 최근 N분 안에 사람이 보낸 답장이 있으면 그렇다고 본다.
  *
  * 업무시간엔 mode=off_hours 가 이미 막지만, 업무외(밤·주말)에도 사장님이 직접 붙는 일이 잦다.
- * 그때 흐름은 이렇다: 사장님 답장(status=waiting) → 고객 재문의(status=unanswered)
+ * 그때 흐름은 이렇다: 사장님 답장(status=resolved) → 고객 재문의(status=unanswered)
  * → 상태 가드가 풀려 자동응답이 사장님 말 위에 끼어든다. 그걸 막는다.
  *
  * ⚠️ 모르는 sent_via 는 사람으로 친다. 잘못 침묵하면 사장님이 이어서 답하면 그만이지만,

@@ -36,7 +36,16 @@ function preview(text: string | undefined | null, max = 140): string | null {
  *      → archived / resolved 스레드의 상태가 재동기화로 덮어쓰이는 걸 방지.
  *   2. 새 메시지인 경우:
  *      - 스레드가 이미 있으면: last_message_* 만 갱신. status는
- *        archived/resolved 면 보존, 나머지는 방향에 따라 unanswered/waiting.
+ *        archived/resolved 면 보존, 나머지는 방향에 따라 unanswered/resolved.
+ *
+ * ⚠️ **답장했다고 '대기중'으로 보내지 않는다**(2026-09-07 변경).
+ *    문의 대부분은 답장으로 끝나는데 전부 대기중에 쌓여, 대기중이 "고객 답을
+ *    기다리는 곳"이 아니라 **끝났는데 아무도 안 치운 것들의 창고**가 됐다
+ *    (한 달 만에 98건). 답장 = resolved 로 닫고, 고객이 다시 말을 걸면
+ *    아래 isNewerInbound 가 unanswered 로 되살린다 — 놓칠 위험은 그 로직이 막는다.
+ *
+ *    '대기중'은 이제 **물건이 오기를 기다리는 건 전용**이다
+ *    (AS 접수 후 도착 대기 / 반품 회수중). 사람이 명시적으로 옮긴 것만 들어온다.
  *      - 새 스레드면: status는 방향에 따라 초기 설정.
  */
 export async function ingestMessage(payload: IngestPayload): Promise<{
@@ -84,7 +93,7 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
       ? existingThread.status
       : payload.direction === "in"
         ? "unanswered"
-        : "waiting";
+        : "resolved";
 
     // customer_handle/name/subject 는 값이 있을 때만 갱신 — null 로 덮어쓰지 않는다.
     // (인박스에서 답장 보낼 때 outgoing 메시지엔 고객 정보가 없어서, 덮어쓰면
@@ -116,7 +125,7 @@ export async function ingestMessage(payload: IngestPayload): Promise<{
         subject: payload.subject ?? null,
         last_message_at: payload.sentAt.toISOString(),
         last_message_preview: preview(bodyForPreview),
-        status: payload.direction === "in" ? "unanswered" : "waiting",
+        status: payload.direction === "in" ? "unanswered" : "resolved",
       })
       .select("id")
       .single();
