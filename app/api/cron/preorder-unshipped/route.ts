@@ -28,6 +28,20 @@ const PREORDER = /\[[^\]]*(예약|재입고|입고예정|출고예정)[^\]]*\]/;
 const DEAD = /취소|환불|반품/;
 const LOOKBACK_DAYS = 150;
 const ALERTED_KEY = "preorder_unshipped_alerted";
+/**
+ * 오탐 제외 목록 — `"<주문번호>|<정규화 상품명>"` 배열.
+ *
+ * ⚠️ 이 크론은 **접수 기록**만 보고 판정한다. 그런데 예약 품목이 접수 행에서 빠졌어도
+ *    포장할 때 재고가 있어 **함께 넣어 보낸 경우**가 있고, 그건 시스템에 아무 흔적이 없다.
+ *    2026-09-07 염경희 20260802-0000021 이 그랬다 — 미발송으로 잡아 사과 문자까지 보냈는데
+ *    고객이 "받았다"고 전화하셨다. (원 소포 우체국 요금이 2,100원으로 다른 건 1,700원보다
+ *    한 단계 비쌌던 게 단서였다 — 시계가 같이 들어 있었다는 뜻.)
+ *
+ * 그래서 이 목록은 **오탐을 영구히 잠재우는 장치**다. 여기 들어간 건은 다시 알리지 않는다.
+ * → 이 크론의 결과는 "확정"이 아니라 **의심 목록**이다. 고객에게 사과부터 하지 말고
+ *   반드시 실물·요금·고객 확인을 먼저 할 것.
+ */
+const IGNORE_KEY = "preorder_unshipped_ignore";
 
 const MALLS: Array<{ mall: MallId; label: string }> = [
   { mall: "paulvice", label: "폴바이스" },
@@ -110,6 +124,13 @@ async function run(): Promise<Response> {
       }
     }
   }
+
+  // 오탐으로 확인된 건은 통째로 뺀다(접수 기록엔 없지만 실제로는 나간 건).
+  const { data: ig } = await sb.from("kv_store").select("data").eq("key", IGNORE_KEY).maybeSingle();
+  const ignore = new Set<string>(((ig?.data as { orders?: string[] } | undefined)?.orders) ?? []);
+  const kept = suspects.filter((s) => !ignore.has(`${s.order}|${core(s.product)}`));
+  suspects.length = 0;
+  suspects.push(...kept);
 
   // 이미 알린 건은 다시 떠들지 않는다 — 새로 생긴 것만 알린다.
   const { data: prev } = await sb.from("kv_store").select("data").eq("key", ALERTED_KEY).maybeSingle();
