@@ -25,6 +25,7 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:wconcept-sync", label: "W컨셉 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:cm29-sync", label: "29CM 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:smartstore-sync", label: "스마트스토어 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
+  { key: "cron_last_ok:preorder-unshipped", label: "예약상품 미발송 감시", maxHours: 28 },
   // 식스샵 동기화 폐지(2026-07) — 해리엇 글로벌 카페24 영문몰(shop_no=2) 이전. launchd 잡도 언로드 필요.
   { key: "heartbeat:postoffice-outbound", label: "우체국 출고빌드(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:dispatch17", label: "송장입력 dispatch17(iMac)", maxHours: 28, weekdaysOnly: true },
