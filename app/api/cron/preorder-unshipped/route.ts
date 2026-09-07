@@ -51,10 +51,20 @@ function db() {
 
 async function run(): Promise<Response> {
   const sb = db();
-  const { data: ships } = await sb.from("pp_shipments").select("order_number,product_name,req_type");
+  // ⚠️ Supabase select 는 기본 1000행에서 잘린다(에러 없이). pp_shipments 는 이미 1,300행이 넘어서
+  //    그냥 읽으면 **최근 접수분이 통째로 빠지고**, 방금 재발송한 건까지 미발송으로 오탐한다.
+  //    2026-09-07 첫 실행에서 실제로 그랬다 → 반드시 페이지네이션.
+  const ships: Array<{ order_number: string; product_name: string; req_type: string }> = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("pp_shipments")
+      .select("order_number,product_name,req_type").range(from, from + 999);
+    if (error) throw new Error(`pp_shipments 조회 실패: ${error.message}`);
+    ships.push(...(data ?? []) as typeof ships);
+    if (!data || data.length < 1000) break;
+  }
   // 재발송(-MS/-EX…)도 같은 주문으로 묶어 본다 — 이미 보냈으면 미발송이 아니다.
   const shipped = new Map<string, string>();
-  for (const s of (ships ?? []) as Array<{ order_number: string; product_name: string; req_type: string }>) {
+  for (const s of ships) {
     if (s.req_type === "2") continue;                       // 반품 회수는 제외
     const base = String(s.order_number ?? "").replace(/-(EX\d*|MS|RT|AS)$/i, "");
     shipped.set(base, (shipped.get(base) ?? "") + "|" + core(s.product_name));
