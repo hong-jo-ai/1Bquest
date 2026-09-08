@@ -9,9 +9,12 @@
  *
  * 하루 3회(KST 09/14/21시). 오래 확인 안 된 건부터 돌아가며 갱신하고,
  * 배달완료된 건과 접수 30일 초과 건은 대상에서 빠진다.
+ *
+ * 갱신 뒤 회수(반품) 건이 조용히 실패했는지도 함께 본다 — returnPickupWatch 참고.
  */
 import { withCron } from "@/lib/cron/withCron";
 import { refreshShipmentTracking } from "@/lib/postParcel/refreshTracking";
+import { checkReturnPickups } from "@/lib/postParcel/returnPickupWatch";
 
 export const dynamic = "force-dynamic";
 // 400ms 스로틀 × 250건 + API 응답시간 → 여유 있게 300s.
@@ -22,7 +25,9 @@ async function run(): Promise<Response> {
     throw new Error("POSTPARCEL_TRACK_KEY env 누락 — 종추적 조회 불가");
   }
   const { checked, updated, delivered } = await refreshShipmentTracking({ limit: 250 });
-  return Response.json({ ok: true, checked, updated, delivered });
+  // 갱신 직후에 본다 — 회수 실패는 고객이 항의하지 않아 이 알림이 유일한 통로다.
+  const pickups = await checkReturnPickups();
+  return Response.json({ ok: true, checked, updated, delivered, pickups });
 }
 
 export const GET = withCron("parcel-track", run);
