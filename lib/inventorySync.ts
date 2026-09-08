@@ -160,19 +160,31 @@ async function updateVariantStock(token: string, productNo: number, quantity: nu
  *
  * v2: fetchAllOrders 로 페이징 (이전엔 limit=100 한 페이지만 → 누락 발생).
  */
-export async function fetchSalesBySku(token: string, startDate: string, mall: MallId = "paulvice"): Promise<Record<string, number>> {
+export async function fetchSalesBySku(
+  token: string,
+  startDate: string,
+  mall: MallId = "paulvice",
+  /** SKU별 실사일. 주문일이 그 이전이면 실사 수량에 이미 반영돼 있으므로 차감하지 않는다. */
+  sinceBySku?: Record<string, string>,
+): Promise<Record<string, number>> {
   const salesBySku: Record<string, number> = {};
   try {
     const endDate = new Date().toISOString().slice(0, 10);
+    // startDate 는 전 SKU 공통 최소 실사일이라 조회 범위일 뿐이다.
+    // SKU별 차감 여부는 sinceBySku 로 주문일을 다시 걸러야 한다 — 안 그러면
+    // 늦게 실사한 SKU가 실사 이전 판매까지 다시 빼먹는다.
     const orders = (await fetchAllOrders(token, startDate, endDate, true, mall)) as Array<{
+      order_date?: string;
       items?: Array<{ product_code?: string; quantity?: number }>;
     }>;
     for (const order of orders) {
+      const orderDay = String(order.order_date ?? "").slice(0, 10);
       for (const item of order.items ?? []) {
         const sku = item.product_code;
-        if (sku) {
-          salesBySku[sku] = (salesBySku[sku] ?? 0) + (item.quantity ?? 0);
-        }
+        if (!sku) continue;
+        const since = sinceBySku?.[sku];
+        if (since && orderDay && orderDay < since) continue;
+        salesBySku[sku] = (salesBySku[sku] ?? 0) + (item.quantity ?? 0);
       }
     }
   } catch (e) {
@@ -343,8 +355,19 @@ export function matchChannelItemToSku(
  *   - 값: `{ data: { topProducts: [{ sku, name, sold }, ...], ... }, meta: ... }`
  * 채널코드는 재고 SKU와 다르므로: ① channel_pricing:skumap:<채널>(채널코드→SKU) ② 상품명 매칭 으로 변환.
  */
-async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice"): Promise<Record<string, number>> {
+async function fetchOtherChannelsSales(
+  token: string,
+  mall: MallId = "paulvice",
+  /** SKU별 실사일(stockInDate). 그 이전에 끝난 업로드는 실사 수량에 이미 반영돼 있으므로 차감하지 않는다. */
+  sinceBySku?: Record<string, string>,
+): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
+  // 실사일 이전에 종료된 업로드분은 스킵 — 안 그러면 실사로 센 물건을 판매로 또 뺀다.
+  const add = (sku: string, qty: number, periodEnd?: string) => {
+    const since = sinceBySku?.[sku];
+    if (since && periodEnd && periodEnd <= since) return;
+    out[sku] = (out[sku] ?? 0) + qty;
+  };
   const supabase = getSupabase();
   if (!supabase) return out;
 
@@ -400,10 +423,11 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
         : (r as { data?: { topProducts?: Item[]; salesByOption?: Item[] } } | null)?.data
           ? [{ data: (r as { data: { topProducts?: Item[]; salesByOption?: Item[] } }).data }]
           : [];
-    const items: Item[] = [];
+    const items: Array<Item & { periodEnd?: string }> = [];
     for (const up of uploads) {
-      if (up.data?.salesByOption?.length) items.push(...up.data.salesByOption);
-      else for (const p of up.data?.topProducts ?? []) items.push(p);
+      const periodEnd = (up as { period?: { end?: string } }).period?.end;
+      const src = up.data?.salesByOption?.length ? up.data.salesByOption : (up.data?.topProducts ?? []);
+      for (const p of src) items.push({ ...p, periodEnd });
     }
     if (items.length === 0) continue;
     const isKakao = row.key === "channel_upload:kakao_gift";
@@ -417,6 +441,10 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     if (row.key === "channel_upload:chosunmall" && mall !== "harriot") continue;
     if (row.key === "channel_upload:direct_harriot" && mall !== "harriot") continue;
     if (row.key === "channel_upload:direct_paulvice" && mall !== "paulvice") continue;
+    // 🔴 면세점 정산(lotte_dutyfree·shinsegae_dutyfree)은 재고 차감 대상이 아니다.
+    // 면세점 매대에서 팔린 물건은 우리 창고에서 이미 나간 것 — 출고 시점에 dutyfreeOut 으로 뺐다.
+    // 여기서 또 빼면 이중차감(2026-09-08 실사 12종 중 10종이 시스템<실물로 어긋난 주원인).
+    if (/_dutyfree$/.test(row.key)) continue;
     const channelId = row.key.replace("channel_upload:", "");
     const smap = channelSkuMaps.get(channelId) ?? {};
     const omap = channelOptMaps.get(channelId);
@@ -434,14 +462,14 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
           const colors = colorRatios.get(`${shipLabel}|${normProductName(it.name)}`);
           const split = colors ? splitSoldByColor(it.sold, colors, om) : null;
           if (split) {
-            for (const s of split) out[s.sku] = (out[s.sku] ?? 0) + s.qty;
+            for (const s of split) add(s.sku, s.qty, it.periodEnd);
             continue;
           }
         }
         targetSku = matchChannelItemToSku(it, cafe24NameToCode, smap, omap);
       }
       if (!targetSku) continue; // 매칭 실패 시 차감 안 함(오차감 방지)
-      out[targetSku] = (out[targetSku] ?? 0) + it.sold;
+      add(targetSku, it.sold, it.periodEnd);
     }
   }
 
@@ -492,6 +520,17 @@ async function fetchOtherChannelsSales(token: string, mall: MallId = "paulvice")
     }
   }
 
+  return out;
+}
+
+/** SKU → 실사일(stockInDate). 유효한 과거 날짜만. 판매 차감을 실사 이후분으로 제한하는 데 쓴다. */
+function buildSinceBySku(entries: Record<string, InventoryEntry>, skus: string[]): Record<string, string> {
+  const today = new Date().toISOString().slice(0, 10);
+  const out: Record<string, string> = {};
+  for (const sku of skus) {
+    const d = entries[sku]?.stockInDate;
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today) out[sku] = d;
+  }
   return out;
 }
 
@@ -549,9 +588,10 @@ export async function computeInventoryLevels(token: string, mall: MallId = "paul
     .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
     .sort()[0];
   const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const sinceBySku = buildSinceBySku(entries, skus);
   const [cafe24SalesRaw, otherChannelsRaw, alias, liveStock] = await Promise.all([
-    fetchSalesBySku(token, startDate, mall),
-    fetchOtherChannelsSales(token, mall),
+    fetchSalesBySku(token, startDate, mall, sinceBySku),
+    fetchOtherChannelsSales(token, mall, sinceBySku),
     loadSkuAlias(mall),
     fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>)),
   ]);
@@ -607,11 +647,13 @@ export async function runInventorySync(
   const startDate = earliestStockDate ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
 
   // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
-  const [cafe24SalesRaw, otherChannelsRaw, productNoMap, alias] = await Promise.all([
-    fetchSalesBySku(token, startDate, mall),
-    fetchOtherChannelsSales(token, mall),
+  const sinceBySku = buildSinceBySku(entries, skus);
+  const [cafe24SalesRaw, otherChannelsRaw, productNoMap, alias, liveStock] = await Promise.all([
+    fetchSalesBySku(token, startDate, mall, sinceBySku),
+    fetchOtherChannelsSales(token, mall, sinceBySku),
     buildSkuProductNoMap(token, mall),
     loadSkuAlias(mall),
+    fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>)),
   ]);
   const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
   const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
@@ -622,7 +664,11 @@ export async function runInventorySync(
     const cafe24Sold = cafe24SalesBySku[sku] ?? 0;
     const otherSold = otherChannelsSales[sku] ?? 0;
     const totalSold = cafe24Sold + otherSold;
-    const currentStock = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold - (entry.dutyfreeOut ?? 0));
+    const computed = Math.max(0, entry.initialStock + entry.manualAdjustment - totalSold - (entry.dutyfreeOut ?? 0));
+    // 재고추적 ON 상품은 카페24가 판매마다 정확히 차감하므로 그 값이 진실 — 역산으로 덮어쓰지 않는다.
+    // (computeInventoryLevels 와 동일 규칙. 이 가드가 없어 표시값과 실제 push 값이 갈렸다.)
+    const live = liveStock[sku];
+    const currentStock = live?.tracked ? live.quantity : computed;
 
     const productNo = productNoMap.get(sku);
     if (!productNo) {
