@@ -143,7 +143,21 @@ async function downloadWconcept(page, startDate, endDate, acc, log) {
     page.locator('button:has-text("등록")').first().click({ timeout: 10000 }),
   ]);
   const fp = path.join(dir, `${Date.now()}-wconcept-${acc.key}-${dl.suggestedFilename()}`);
-  await dl.saveAs(fp);
+
+  // ⚠️ `download.saveAs()` 는 **다운로드를 시작한 페이지가 살아 있어야** 한다.
+  //    W컨셉은 사유 모달에서 '등록'을 누르면 목록을 다시 그리는데, 그 타이밍에 페이지가
+  //    갈아엎어지면 `Target page, context or browser has been closed` 로 죽는다
+  //    (2026-09-08 이틀 연속 같은 지점에서 실패. 그전까진 우연히 타이밍이 맞았을 뿐이다).
+  //    `download.path()` 는 브라우저 컨텍스트만 살아 있으면 되므로 페이지 재렌더와 무관하다.
+  //    saveAs 를 먼저 시도하고, 실패하면 path()+복사로 떨어진다.
+  try {
+    await dl.saveAs(fp);
+  } catch (e) {
+    const src = await dl.path().catch(() => null);
+    if (!src) throw new Error(`엑셀 저장 실패(saveAs·path 모두 불가): ${e.message}`);
+    fs.copyFileSync(src, fp);
+    log(`W컨셉 ${acc.key}번: saveAs 실패 → path() 로 저장 (${e.message.slice(0, 60)})`);
+  }
   log(`W컨셉 ${acc.key}번: 엑셀 다운로드 완료 (${fp})`);
   return fp;
 }
@@ -213,10 +227,22 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
       ignoreDefaultArgs: ["--enable-automation"],
     });
     try {
-      const page = ctx.pages()[0] || (await ctx.newPage());
+      let page = ctx.pages()[0] || (await ctx.newPage());
       const ok = await loginWconcept(ctx, page, acc, log);
       if (!ok) throw new Error(`W컨셉 ${acc.key}번 로그인/인증 실패`);
-      files.push(await downloadWconcept(page, startDate, endDate, acc, log));
+      // 다운로드는 목록 재렌더 타이밍을 타므로 한 번은 다시 시도한다(새 페이지로).
+      let file = null;
+      for (let attempt = 1; attempt <= 2 && !file; attempt++) {
+        try {
+          file = await downloadWconcept(page, startDate, endDate, acc, log);
+        } catch (e) {
+          if (attempt === 2) throw e;
+          log(`W컨셉 ${acc.key}번 다운로드 1차 실패 → 재시도: ${e.message.slice(0, 80)}`);
+          page = ctx.pages()[0] || (await ctx.newPage());
+          await sleep(3000);
+        }
+      }
+      files.push(file);
       // 같은 로그인 세션에서 송장입력까지(SMS 1회로 매출+송장). 실패해도 매출엔 영향 없게 guard.
       //
       // ⚠️ 송장입력은 **오후 실행(15시 이후)에서만** 한다 — 매출 동기화는 12:39·17:04 두 번 돌지만,
