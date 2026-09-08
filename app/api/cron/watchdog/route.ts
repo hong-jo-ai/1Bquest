@@ -57,6 +57,9 @@ const JOBS: JobSpec[] = [
   // 카톡 내보내기 UI 자동화. 화면 잠김·카톡 UI 변경에 취약해 감시가 특히 중요하다.
   { key: "heartbeat:kakao-export", label: "카톡 대화 내보내기(iMac·06:40)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
+  // ⚠️ cafe24-orders-notify 는 뺐다(2026-09-09). 8/28 크론 정리(41→30개) 때 vercel.json 에서
+  //    빠졌는데 이 목록엔 남아 **두 달째 헛경보**를 냈다. 라우트 파일은 아직 있으니 되살릴 땐
+  //    vercel.json 에 먼저 등록하고 여기도 같이 넣을 것.
   { key: "cron_last_ok:revenue-snapshot", label: "매출 스냅샷", maxHours: 26 },
   { key: "cron_last_ok:daily-summary", label: "데일리 서머리", maxHours: 26 },
   { key: "cron_last_ok:review-sms-kr", label: "리뷰요청 알림톡", maxHours: 26 },
@@ -68,7 +71,6 @@ const JOBS: JobSpec[] = [
   { key: "cron_last_ok:bank-deposit-retry", label: "입금확인 재시도", maxHours: 1 },
   { key: "cron_last_ok:parcel-track", label: "우체국 배송추적", maxHours: 14 },
   // 카페24 주문알림 비활성화(2026-07-11 사장님) — 잡을 꺼서 하트비트 미갱신 → 오탐 방지 위해 감시 제외. 재활성화 시 주석 해제.
-  // { key: "cron_last_ok:cafe24-orders-notify", label: "카페24 주문알림", maxHours: 2 },
   { key: "cron_last_ok:crm-cart-nudge", label: "장바구니 넛지", maxHours: 3 },
   // 2026-05 토큰 무효화가 두 달간 안 잡힌 곳. 매시 크론이라 3시간이면 충분히 여유롭다.
   { key: "cron_last_ok:cs-ingest-instagram", label: "인스타 DM·댓글 수집", maxHours: 3 },

@@ -89,11 +89,26 @@ async function all(table, cols, apply = (q) => q) {
   }
   if (!sess.length) L.push("   (오늘 스캔된 세션 없음 — claudeActivityScan 확인)");
 
-  // ⑤ 멈춘 자동화 — 조용히 죽는 게 제일 위험하다
-  const hb = await all("kv_store", "key,updated_at", q => q.like("key", "heartbeat:%"));
-  const stale = hb.filter(h => (Date.now() - new Date(h.updated_at).getTime()) > 30 * 3600e3);
-  L.push(`\n■ 30시간 넘게 안 돈 자동화 — ${stale.length}건`);
-  for (const h of stale.slice(0, 8)) L.push(`   🔴 ${h.key.replace("heartbeat:", "")} (마지막 ${String(h.updated_at).slice(0, 16)})`);
+  // ⑤ 멈춘 자동화 — 조용히 죽는 게 제일 위험하다.
+  //    ⚠️ 일괄 기준(예: 30시간)을 쓰면 주간 작업이 매번 오탐된다(2026-09-08 channel-review-scrape).
+  //    워치독이 잡별로 정해둔 maxHours 를 그대로 읽어 쓴다 — 기준이 두 군데로 갈라지면 둘 다 못 믿는다.
+  //    ⚠️ **주석 처리된 등록은 제외**한다. 안 그러면 이미 끈 잡을 살아있는 것으로 센다.
+  const src = fs.readFileSync(path.join(DASH, "app/api/cron/watchdog/route.ts"), "utf8")
+    .split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+  const jobs = [...src.matchAll(/\{\s*key:\s*"([^"]+)",\s*label:\s*"([^"]+)",\s*maxHours:\s*([\d*\s]+)/g)]
+    .map(m => ({ key: m[1], label: m[2], maxHours: Function(`return ${m[3]}`)() }));
+  const kv = await all("kv_store", "key,updated_at");
+  const seen = new Map(kv.map(r => [r.key, r.updated_at]));
+  const stale = [];
+  for (const j of jobs) {
+    const u = seen.get(j.key);
+    if (!u) { stale.push({ ...j, why: "기록 없음" }); continue; }
+    const h = (Date.now() - new Date(u).getTime()) / 3600e3;
+    if (h > j.maxHours) stale.push({ ...j, why: `${h.toFixed(0)}시간 (허용 ${j.maxHours})`, last: String(u).slice(0, 16) });
+  }
+  L.push(`\n■ 멈춘 자동화 — ${stale.length}건 / 감시 ${jobs.length}개`);
+  for (const j of stale) L.push(`   🔴 ${j.label} — ${j.why}${j.last ? ` · 마지막 ${j.last}` : ""}`);
+  if (!stale.length) L.push("   (모두 정상)");
 
   console.log(L.join("\n"));
 })().catch(e => { console.error("브리핑 실패:", e.message); process.exit(1); });
