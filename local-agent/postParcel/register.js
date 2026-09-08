@@ -188,6 +188,9 @@ async function registerSingle(order, opts = {}) {
     const fullAddr = row.addr || [row.addr1, row.addr2].filter(Boolean).join(" ");
     const z = await addrToZip(fullAddr);
     if (z) { row.zip = z; console.log(`[${new Date().toISOString()}] 우편번호 자동조회: ${z} ← ${fullAddr}`); }
+    // 자동조회 실패면 그대로 보내봐야 우체국이 ERR-311(recZip 누락)로 거절한다 —
+    // 원인이 드러나는 메시지로 먼저 끊어 사람이 주소를 고치게 한다.
+    else throw new Error(`우편번호 자동조회 실패 — 주소를 확인해 주세요: "${fullAddr}"`);
   }
   if (opts.skipExisting !== false) {
     const exists = await alreadyRegistered(client, row.order, channel, reqType);
