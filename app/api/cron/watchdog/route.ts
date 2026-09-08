@@ -52,10 +52,11 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:claude-activity-scan", label: "클로드 세션 스캔(iMac·매시)", maxHours: 3 },
   // 세션 발화를 "일" 단위로 쪼개는 요약. 이게 멈추면 보드가 옛 목록에 머문다.
   { key: "heartbeat:claude-work-digest", label: "클로드 작업 요약(iMac·매시)", maxHours: 4 },
-  // 카톡 요약. 멈추면 보드가 며칠 전 대화를 오늘 것처럼 보여준다.
-  { key: "heartbeat:kakao-digest", label: "카톡 대화 요약(iMac·매일)", maxHours: 28 },
+  // 카톡 요약·내보내기는 **감시 대상에서 뺐다(2026-09-09, 사장님 지시)**.
+  //    카톡 UI 자동화가 자꾸 막혀(8/28 이후 exported:0) 헛경보만 냈다.
+  //    이제 자동 실행하지 않고, 사장님이 대화 CSV 를 ~/KakaoExports 에 넣고 요청할 때만 돌린다.
+  //    → launchd com.paulvice.kakao-export 는 .disabled 로 내려둠(파일명만 되돌리면 복구).
   // 카톡 내보내기 UI 자동화. 화면 잠김·카톡 UI 변경에 취약해 감시가 특히 중요하다.
-  { key: "heartbeat:kakao-export", label: "카톡 대화 내보내기(iMac·06:40)", maxHours: 28 },
   // Vercel 크론 (cron_last_ok:*) — withCron 적용분 중 핵심
   // ⚠️ cafe24-orders-notify 는 뺐다(2026-09-09). 8/28 크론 정리(41→30개) 때 vercel.json 에서
   //    빠졌는데 이 목록엔 남아 **두 달째 헛경보**를 냈다. 라우트 파일은 아직 있으니 되살릴 땐
