@@ -152,16 +152,36 @@ export function buildEnHtml(landingUrl: string): string {
 </body></html>`;
 }
 
+/**
+ * 발신 계정 — 반드시 해리엇 주소로 나가야 한다.
+ *
+ * 2026-09-09 사고 직전에 잡았다: 예전 코드는 `accounts[0]` 을 썼는데 그 목록에 ORDER BY 가 없다.
+ * 실제로 첫 테스트가 **폴바이스 계정(plvekorea@gmail.com)** 으로 나갔다. harriotwatches.com 에서
+ * 신청한 사람에게 다른 브랜드 주소로 가면 피싱으로 읽히고, 순서가 보장되지 않으니 매번 달라질 수도 있다.
+ *
+ * gmail.com 주소를 쓰는 이유: harriotwatches.com 은 SPF 만 있고 **DKIM·DMARC 가 없다**(2026-09-09 확인).
+ * 한 번에 100통 넘게 보내는 발송이라 인증이 완비된 주소가 안전하다. DKIM/DMARC 를 붙인 뒤에
+ * 아래 주소만 shong@harriotwatches.com 으로 바꾸면 된다.
+ */
+const SENDER_EMAIL = "harriotwatches@gmail.com";
+const SENDER_NAME = "Harriot";
+
 async function sendOneEmail(to: string, subject: string, body: string, html?: string): Promise<boolean> {
   const accounts = await listGmailAccounts();
-  const account = accounts[0];
-  if (!account) throw new Error("Gmail 계정이 연결되어 있지 않습니다");
+  const account = accounts.find((a) => a.brand === "harriot" && a.displayName === SENDER_EMAIL);
+  if (!account) {
+    // 다른 브랜드 계정으로 대신 보내느니 실패하는 게 낫다.
+    throw new Error(
+      `발신 계정 ${SENDER_EMAIL} 이 연결되어 있지 않습니다 (연결된 계정: ${accounts.map((a) => `${a.brand}/${a.displayName}`).join(", ") || "없음"})`,
+    );
+  }
   const accessToken = await getGmailAccessToken(account);
 
   // 본문은 파트마다 base64 로 싣는다. 줄바꿈 길이·비ASCII(雪月, &middot;, &mdash;) 문제를 원천 차단한다.
   const b64 = (t: string) => Buffer.from(t, "utf-8").toString("base64").replace(/(.{76})/g, "$1\r\n");
 
   const head = [
+    `From: =?UTF-8?B?${Buffer.from(SENDER_NAME, "utf-8").toString("base64")}?= <${SENDER_EMAIL}>`,
     `To: ${to}`,
     `Subject: =?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`,
     "MIME-Version: 1.0",
