@@ -73,12 +73,26 @@ async function all(table, cols, apply = (q) => q) {
     L.push(`   · ${p.customerName || "?"} (알림 ${p.remindOn || "-"}) ${String(p.text).replace(/\s+/g, " ").slice(0, 55)}`);
 
   // ④ 다른 창에서 하던 일 — 이게 세션 간 단절을 메우는 핵심
+  // 스캔 launchd 는 1시간에 한 번이라 그냥 읽으면 최대 60분 묵은 걸 본다. 브리핑을 아침에
+  // 돌리면 방금 다른 창에서 한 일이 안 잡혀 "오늘 세션 없음"이 됐다(2026-09-09).
+  // 그래서 이 머신 몫은 여기서 다시 훑는다 — 비용 드는 일 단위 요약은 빼고 스캔만(2초).
+  // 다른 머신(맥북) 몫은 그쪽 launchd 가 올린 KV 를 그대로 쓴다.
+  let scanNote = "";
+  try {
+    require("child_process").execFileSync(process.execPath,
+      [`${__dirname}/claudeActivityScan.js`, "--days", "3", "--no-digest"],
+      { stdio: "ignore", timeout: 90_000 });
+  } catch {
+    scanNote = " ⚠️ 스캔 갱신 실패 — 아래는 마지막 적재분";
+  }
   const act = await all("kv_store", "key,data,updated_at", q => q.like("key", "today:cc_activity%"));
   const sess = [];
+  // touchedAt 은 UTC ISO 다. 그대로 잘라 비교하면 00~09시 KST 세션이 전날로 찍혀 통째로 빠진다
+  // (아침에 브리핑을 돌리면 "오늘 세션 없음"이 되던 원인 — 2026-09-09).
   for (const row of act) for (const s of (row.data?.sessions || []))
-    if (String(s.touchedAt || "").slice(0, 10) === today) sess.push(s);
+    if (s.touchedAt && kst(new Date(s.touchedAt)).toISOString().slice(0, 10) === today) sess.push(s);
   sess.sort((a, b) => String(b.touchedAt).localeCompare(String(a.touchedAt)));
-  L.push(`\n■ 오늘 세션에서 한 일 — ${sess.length}개 세션`);
+  L.push(`\n■ 오늘 세션에서 한 일 — ${sess.length}개 세션${scanNote}`);
   for (const s of sess.slice(0, 8)) {
     // 제목은 그 세션의 첫 지시라 무슨 일이었는지 가장 잘 드러난다.
     L.push(`   · [${hhmm(kst(new Date(s.touchedAt)).toISOString())}] ${String(s.title || "").replace(/\s+/g, " ").slice(0, 72)}`);

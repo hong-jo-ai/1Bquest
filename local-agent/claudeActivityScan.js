@@ -1,7 +1,7 @@
 /**
  * 클로드 코드 세션 스캐너 — /today 보드의 "진행 중인 일" 원천.
  *
- *   node claudeActivityScan.js [--days 21] [--dry]
+ *   node claudeActivityScan.js [--days 21] [--dry] [--no-digest]
  *
  * ~/.claude/projects/<프로젝트>/<세션>.jsonl 을 훑어 제목·시각과 함께 **사용자 발화 전체**를
  * 뽑아 kv_store(today:cc_activity:<host>)에 적재한다.
@@ -29,6 +29,9 @@ const ROOT = path.join(os.homedir(), ".claude", "projects");
 
 const args = process.argv.slice(2);
 const DRY  = args.includes("--dry");
+// 스캔(파일 읽기·적재)은 2초면 끝나지만 이어 도는 요약은 클로드를 불러 분·비용이 든다.
+// brief.js 처럼 "지금 최신 상태만" 필요한 호출자는 요약을 빼고 부른다.
+const NO_DIGEST = args.includes("--no-digest");
 const DAYS = Number((args[args.indexOf("--days") + 1] || "").replace(/\D/g, "")) || 21;
 
 /** ai-title 은 세션 내내 갱신되므로 마지막 것이 가장 정확하다. */
@@ -140,6 +143,8 @@ function scan() {
   await db.from("kv_store").delete().eq("key", LEGACY_KEY); // 구 키 정리(있을 때만)
   console.log(`적재 완료 → ${KEY}`);
   await beat("claude-activity-scan", { sessions: sessions.length, days: DAYS, host: HOST });
+
+  if (NO_DIGEST) { console.log("--no-digest: 일 단위 요약 생략"); return; }
 
   // 발화를 "일" 단위로 쪼개는 요약을 이어서 돌린다. 이쪽이 보드에 실제로 뜨는 내용이라
   // 스캔만 하고 멈추면 화면이 옛 상태로 남는다. 세션별 발화 수를 캐시해 바뀐 것만 부른다.
