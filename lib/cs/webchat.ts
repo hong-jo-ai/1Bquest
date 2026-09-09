@@ -453,7 +453,8 @@ export async function notifyWebchatReply(threadId: string): Promise<{
       `<p style="font-size:13px;color:#777">Or open this link: ${escapeHtml(link)}</p>` +
       `</div>`;
     try {
-      await sendGmailNotification(email!, subject, html);
+      // 발신 명의는 스레드 브랜드를 따른다 — 해리엇 문의는 shong@harriotwatches.com 으로.
+      await sendGmailNotification(email!, subject, html, { brand: thread.brand });
       sendOk = true;
     } catch (e) {
       sendError = e instanceof Error ? e.message : String(e);

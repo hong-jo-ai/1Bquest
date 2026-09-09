@@ -1,6 +1,6 @@
 import { getCsSupabase } from "./store";
-import { getGmailAccessToken, listGmailAccounts } from "./gmailClient";
-import { BRAND_LABEL, CHANNEL_LABEL, type CsThread } from "./types";
+import { getGmailAccessToken, listGmailAccounts, type GmailAccount } from "./gmailClient";
+import { BRAND_LABEL, CHANNEL_LABEL, type CsBrandId, type CsThread } from "./types";
 
 const LAST_NOTIFY_KEY = "cs_inbox_email_last_notify_at";
 
@@ -86,19 +86,48 @@ function buildDigestHtml(threads: CsThread[], inboxUrl: string): string {
 </body></html>`;
 }
 
+/**
+ * 브랜드별 대외 발신 명의. cs_accounts 에는 같은 브랜드로 여러 메일함이 붙어 있는데
+ * (해리엇 = shong@harriotwatches.com + harriotwatches@gmail.com), gmail.com 쪽은
+ * **수신함일 뿐 발신 명의로 쓰면 안 된다**. 고객에게 나가는 메일은 여기 적힌 주소로 보낸다.
+ */
+const OFFICIAL_SENDER: Partial<Record<CsBrandId, string>> = {
+  harriot: "shong@harriotwatches.com",
+};
+
+/**
+ * 발신 계정 선택. brand 를 주면 그 브랜드의 공식 명의를 우선한다.
+ * brand 가 없으면 종전대로 paulvice → 첫 계정 (사장님에게 가는 내부 알림용).
+ */
+function pickSender(accounts: GmailAccount[], brand?: CsBrandId): GmailAccount {
+  if (brand) {
+    const official = OFFICIAL_SENDER[brand];
+    if (official) {
+      const exact = accounts.find(
+        (a) => a.displayName.toLowerCase().includes(official.toLowerCase()),
+      );
+      if (exact) return exact;
+    }
+    const sameBrand = accounts.find((a) => a.brand === brand);
+    if (sameBrand) return sameBrand;
+  }
+  return accounts.find((a) => a.brand === "paulvice") ?? accounts[0];
+}
+
 export async function sendGmailNotification(
   to: string,
   subject: string,
-  html: string
+  html: string,
+  opts: { brand?: CsBrandId } = {},
 ): Promise<void> {
   // 발송에 쓸 Gmail 계정 결정: 첫 번째 등록된 Gmail 계정
   const accounts = await listGmailAccounts();
   if (accounts.length === 0) {
     throw new Error("Gmail 계정 미등록 — 이메일 발송 불가");
   }
-  // paulvice 계정을 우선 사용 (없으면 첫 번째)
-  const sender =
-    accounts.find((a) => a.brand === "paulvice") ?? accounts[0];
+  // ⚠️ 예전엔 brand 와 무관하게 항상 paulvice(plvekorea@gmail.com) 로 나갔다.
+  //    그래서 해리엇 영문몰 고객이 받는 답변 알림 발신자가 plvekorea@ 였다(2026-09-09 발견).
+  const sender = pickSender(accounts, opts.brand);
 
   const accessToken = await getGmailAccessToken(sender);
 
