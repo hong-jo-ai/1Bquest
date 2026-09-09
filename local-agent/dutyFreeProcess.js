@@ -87,11 +87,11 @@ async function applyDutyfreeOut(sb, items, log) {
   if (!items.length) return { applied: 0, skipped: 0 };
   const BASE = `https://${process.env.CAFE24_MALL_ID}.cafe24api.com`;
   let tk; try { tk = await cafe24Token(sb); } catch (e) { log("  cafe24 토큰 실패 — 완제품 재고차감 스킵: " + e.message); return { applied: 0, skipped: items.length, err: true }; }
-  const custom = new Map();
+  const custom = new Map(), productNo = new Map();
   for (let off = 0, p = 0; p < 30; p++, off += 100) {
-    const r = await fetch(`${BASE}/api/v2/admin/products?fields=product_code,custom_product_code&limit=100&offset=${off}`, { headers: { Authorization: `Bearer ${tk}` } });
+    const r = await fetch(`${BASE}/api/v2/admin/products?fields=product_no,product_code,custom_product_code&limit=100&offset=${off}`, { headers: { Authorization: `Bearer ${tk}` } });
     const b = (await r.json()).products || [];
-    for (const x of b) if (x.custom_product_code) custom.set(x.custom_product_code, x.product_code);
+    for (const x of b) { if (x.custom_product_code) custom.set(x.custom_product_code, x.product_code); productNo.set(x.product_code, x.product_no); }
     if (b.length < 100) break;
   }
   const inv = (await kvGet(sb, "paulvice_inventory_v1")) || {};
@@ -100,14 +100,43 @@ async function applyDutyfreeOut(sb, items, log) {
   const refMap = (await kvGet(sb, "dutyfree_ref_map")) || {};
   const byRef = {};
   for (const it of items) byRef[it.ref] = (byRef[it.ref] || 0) + it.qty;
-  let applied = 0; const skip = [];
+  let applied = 0; const skip = []; const toDeduct = [];
   for (const [ref, qty] of Object.entries(byRef)) {
     const pc = custom.get(ref) || refMap[ref];   // custom_code 우선, 없으면 override 맵
-    if (pc && inv[pc]) { inv[pc].dutyfreeOut = (inv[pc].dutyfreeOut || 0) + qty; applied++; }
+    if (pc && inv[pc]) { inv[pc].dutyfreeOut = (inv[pc].dutyfreeOut || 0) + qty; applied++; toDeduct.push([pc, qty]); }
     else skip.push(ref);
   }
   if (applied) await kvSet(sb, "paulvice_inventory_v1", inv);
   if (skip.length) log(`  ⚠️완제품 재고 미매핑(dutyfree_ref_map 에 추가 필요): ${skip.join(",")}`);
+
+  // 🔴 카페24 실재고도 같이 뺀다. 재고추적 ON 상품은 inventorySync 가 카페24 실재고를 진실로
+  // 쓰므로(2026-09-08 가드) KV dutyfreeOut 만 올려서는 카페24에 영원히 반영되지 않는다.
+  // 면세점 출고는 카페24 주문이 아니라 카페24가 스스로 알 수 없으니 출고 시점에 직접 차감.
+  // 호출부가 newStores(멱등) 기준이라 재실행해도 두 번 빠지지 않는다.
+  let pushed = 0;
+  for (const [pc, qty] of toDeduct) {
+    const no = productNo.get(pc);
+    if (!no) continue;
+    try {
+      const vr = await fetch(`${BASE}/api/v2/admin/products/${no}/variants`, { headers: { Authorization: `Bearer ${tk}` } });
+      const vs = (await vr.json()).variants || [];
+      if (!vs.length) continue;
+      // 추적OFF 다변형(에끌라 골드 등)은 변형마다 같은 수량을 물고 있어 합산하면 배수로 뻥튀기 → max 사용.
+      const tracked = vs.every((v) => v.use_inventory === "T");
+      const cur = tracked ? vs.reduce((a, v) => a + (Number(v.quantity) || 0), 0) : Math.max(...vs.map((v) => Number(v.quantity) || 0));
+      const next = Math.max(0, cur - qty);
+      for (const v of vs) {
+        await fetch(`${BASE}/api/v2/admin/products/${no}/variants/${v.variant_code}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ shop_no: 1, request: { quantity: next } }),
+        });
+        await new Promise((r) => setTimeout(r, 180));
+      }
+      pushed++;
+    } catch (e) { log(`  ⚠️카페24 재고차감 실패 ${pc}: ${e.message}`); }
+  }
+  if (pushed) log(`  카페24 실재고 차감 ${pushed}종`);
   return { applied, skipped: skip.length };
 }
 async function tg(msg) { await require("./telegramRelay").relayText(msg); }
