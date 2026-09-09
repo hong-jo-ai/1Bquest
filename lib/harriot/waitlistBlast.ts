@@ -85,9 +85,12 @@ export function buildEnBody(landingUrl: string): string {
     "You asked us to tell you when SEOLWOL arrived. It is here.",
     "",
     "The moon does not wane. What changes is where it sits above the eaves.",
-    "38mm · $350 · free engraving",
+    "38mm · $350 · free engraving · worldwide shipping included",
     "",
     landingUrl,
+    "",
+    // 관세 별도는 반드시 남긴다 — DDU 라 도착 후 관세 클레임이 나는 지점이다(2026-09-09).
+    "Import duties and taxes are charged by your country and are not included.",
     "",
     "— Harriot",
     "",
