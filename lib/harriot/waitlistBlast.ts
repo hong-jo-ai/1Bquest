@@ -99,21 +99,102 @@ export function buildEnBody(landingUrl: string): string {
   ].join("\n");
 }
 
-async function sendOneEmail(to: string, subject: string, body: string): Promise<boolean> {
+/**
+ * HTML 본문 — 사진 한 장 + 같은 카피.
+ *
+ * 메일 클라이언트는 원격 이미지를 기본 차단하는 곳이 많고, 텍스트만 읽는 클라이언트도 있다.
+ * 그래서 이 HTML 은 **덤**이다 — multipart/alternative 의 다른 쪽에 buildEnBody() 의
+ * 평문이 그대로 들어가고, 이미지가 안 떠도 alt 와 카피만으로 읽힌다.
+ * 웹폰트는 쓰지 않는다(대부분의 메일 클라이언트가 무시한다).
+ */
+export function buildEnHtml(landingUrl: string): string {
+  const img = "https://harriotwatches.com/seolwol/img/cut01-dial-hero.jpg";
+  return `<!doctype html>
+<html lang="en"><body style="margin:0;padding:0;background:#ffffff;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+<tr><td align="center" style="padding:24px 16px 40px;">
+<table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%;">
+
+<tr><td style="padding-bottom:26px;">
+  <a href="${landingUrl}" style="text-decoration:none;">
+    <img src="${img}" width="520" alt="SEOLWOL — a full moon resting above a hanok eave, seen through the dial window"
+         style="display:block;width:100%;max-width:520px;height:auto;border:0;outline:none;text-decoration:none;">
+  </a>
+</td></tr>
+
+<tr><td style="font-family:Georgia,'Times New Roman',serif;font-size:21px;line-height:1.45;color:#14181f;padding-bottom:14px;">
+  The moon does not wane.<br>What changes is where it sits above the eaves.
+</td></tr>
+
+<tr><td style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;color:#3c444f;padding-bottom:20px;">
+  You asked us to tell you when SEOLWOL arrived. It is here.
+</td></tr>
+
+<tr><td style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#6b7280;padding-bottom:26px;">
+  38mm &middot; $350 &middot; free engraving &middot; worldwide shipping included
+</td></tr>
+
+<tr><td style="padding-bottom:26px;">
+  <a href="${landingUrl}" style="display:inline-block;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
+     font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:#14181f;text-decoration:none;
+     border:1px solid #14181f;padding:13px 26px;">See SEOLWOL</a>
+</td></tr>
+
+<tr><td style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12.5px;line-height:1.7;color:#8a919c;
+    border-top:1px solid #e6e8ec;padding-top:18px;">
+  Import duties and taxes are charged by your country and are not included.<br><br>
+  &mdash; Harriot<br><br>
+  You are receiving this because you joined the SEOLWOL launch list at harriotwatches.com.
+  Reply to this email if you would like to be removed.
+</td></tr>
+
+</table></td></tr></table>
+</body></html>`;
+}
+
+async function sendOneEmail(to: string, subject: string, body: string, html?: string): Promise<boolean> {
   const accounts = await listGmailAccounts();
   const account = accounts[0];
   if (!account) throw new Error("Gmail 계정이 연결되어 있지 않습니다");
   const accessToken = await getGmailAccessToken(account);
 
-  const rfc822 =
-    [
-      `To: ${to}`,
-      `Subject: =?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`,
-      `Content-Type: text/plain; charset="UTF-8"`,
-      "MIME-Version: 1.0",
-    ].join("\r\n") +
-    "\r\n\r\n" +
-    body;
+  // 본문은 파트마다 base64 로 싣는다. 줄바꿈 길이·비ASCII(雪月, &middot;, &mdash;) 문제를 원천 차단한다.
+  const b64 = (t: string) => Buffer.from(t, "utf-8").toString("base64").replace(/(.{76})/g, "$1\r\n");
+
+  const head = [
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`,
+    "MIME-Version: 1.0",
+  ];
+
+  let rfc822: string;
+  if (html) {
+    // multipart/alternative — 평문이 먼저, HTML 이 나중. 클라이언트가 읽을 수 있는 쪽을 고른다.
+    // 이미지가 차단돼도, HTML 을 못 읽어도 평문이 남는다.
+    const bd = `hrt_${Date.now().toString(36)}`;
+    rfc822 =
+      [...head, `Content-Type: multipart/alternative; boundary="${bd}"`].join("\r\n") +
+      "\r\n\r\n" +
+      [
+        `--${bd}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        "Content-Transfer-Encoding: base64",
+        "",
+        b64(body),
+        `--${bd}`,
+        'Content-Type: text/html; charset="UTF-8"',
+        "Content-Transfer-Encoding: base64",
+        "",
+        b64(html),
+        `--${bd}--`,
+        "",
+      ].join("\r\n");
+  } else {
+    rfc822 =
+      [...head, 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64"].join("\r\n") +
+      "\r\n\r\n" +
+      b64(body);
+  }
 
   const raw = Buffer.from(rfc822, "utf-8")
     .toString("base64")
@@ -161,6 +242,7 @@ export async function runBlast(
   const krText = buildKrText(landing);
   const enSubject = buildEnSubject();
   const enBody = buildEnBody(input.landingUrl ?? "https://harriotwatches.com/product/detail.html?product_no=136");
+  const enHtml = buildEnHtml(input.landingUrl ?? "https://harriotwatches.com/product/detail.html?product_no=136");
 
   const test = input.testOnly;
   const krList = test
@@ -207,7 +289,7 @@ export async function runBlast(
   let enSuccess = 0;
   for (const to of enList) {
     try {
-      if (await sendOneEmail(to, enSubject, enBody)) enSuccess++;
+      if (await sendOneEmail(to, enSubject, enBody, enHtml)) enSuccess++;
     } catch {
       /* 한 건 실패가 전체를 멈추면 안 된다 */
     }
