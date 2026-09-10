@@ -17,6 +17,7 @@ require("dotenv").config({ override: true });
 const fs = require("fs"), path = require("path"), os = require("os");
 const { execFile } = require("child_process");
 const { DatabaseSync } = require("node:sqlite");
+const { messageBody, bodyLike } = require("./chatDbText");
 const { relayText } = require("./telegramRelay");
 const DASH = path.resolve(__dirname, "..");
 function le(p) { try { for (const l of fs.readFileSync(p, "utf8").split("\n")) { const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if (!m) continue; let v = m[2].trim().replace(/^["']|["']$/g, ""); if (!(m[1] in process.env)) process.env[m[1]] = v; } } catch {} }
@@ -44,12 +45,13 @@ function readNew(afterNs) {
   catch (e) { log(`chat.db 열기 실패(전체 디스크 접근 권한 확인): ${e && e.message}`); return null; }
   try {
     const rows = cdb.prepare(
-      "SELECT CAST(date AS TEXT) AS ns, text FROM message " +
-      "WHERE text IS NOT NULL AND is_from_me = 0 AND date > ? " +
-      "AND text LIKE '%우리%' AND text LIKE '%입금%' AND text LIKE '%원%' " +
+      // ⚠️ text 만 보면 안 된다 — macOS 가 본문을 attributedBody 로 옮겼다(chatDbText.js 참고).
+      "SELECT CAST(date AS TEXT) AS ns, text, attributedBody FROM message " +
+      "WHERE is_from_me = 0 AND date > ? " +
+      `AND ${bodyLike("우리")} AND ${bodyLike("입금")} AND ${bodyLike("원")} ` +
       "ORDER BY date ASC LIMIT 200"
     ).all(BigInt(afterNs));
-    return rows;
+    return rows.map((r) => ({ ns: r.ns, text: messageBody(r) })).filter((r) => r.text);
   } catch (e) { log(`chat.db 쿼리 오류: ${e && e.message}`); return null; }
   finally { try { cdb.close(); } catch {} }
 }

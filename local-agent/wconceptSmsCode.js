@@ -11,6 +11,7 @@
  *  - 가장 최근 1건에서 \b\d{6}\b 로 6자리 추출, 없으면 null
  */
 const { DatabaseSync } = require("node:sqlite");
+const { messageBody, bodyLike } = require("./chatDbText");
 const os = require("os");
 const path = require("path");
 
@@ -35,16 +36,17 @@ function readWconceptCode(windowSec = 60, sinceMs = 0) {
     const cutoffUnixMs = Math.max(Date.now() - windowSec * 1000, sinceMs);
     const minDateNs = BigInt(Math.round(cutoffUnixMs - APPLE_EPOCH_OFFSET * 1000)) * 1_000_000n;
     const row = db.prepare(`
-      SELECT text FROM message
+      -- ⚠️ text 만 보면 안 된다 — macOS 가 본문을 attributedBody 로 옮겼다(chatDbText.js 참고).
+      SELECT text, attributedBody FROM message
       WHERE date >= ?
-        AND text IS NOT NULL
-        AND ( text LIKE '%W컨셉%'
-              OR text LIKE '%더블유컨셉%'
+        AND ( ${bodyLike("W컨셉")}
+              OR ${bodyLike("더블유컨셉")}
               OR lower(text) LIKE '%wconcept%' )
-        AND text LIKE '%인증%'
+        AND ${bodyLike("인증")}
       ORDER BY date DESC
       LIMIT 1
     `).get(minDateNs);
+    if (row) row.text = messageBody(row);
     if (!row || !row.text) return null;
     const m = row.text.match(/\b\d{6}\b/);
     return m ? m[0] : null;
