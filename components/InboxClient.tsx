@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import AsIntakeForm from "@/components/AsIntakeForm";
 import PromiseForm from "@/components/PromiseForm";
+import InboxPromiseList from "@/components/InboxPromiseList";
 import type { CsPromise } from "@/lib/cs/promises";
 import type {
   CsThread,
@@ -301,27 +302,56 @@ export default function InboxClient() {
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const [asFormOpen, setAsFormOpen] = useState(false);
   const [promiseFormOpen, setPromiseFormOpen] = useState(false);
+  // 약속 모아보기 — 켜면 가운데 목록이 대화 대신 약속을 보여준다(상태 필터와 별개인 화면 전환).
+  const [promiseView, setPromiseView] = useState(false);
+  const [promises, setPromises] = useState<CsPromise[]>([]);
+  const [promisesLoading, setPromisesLoading] = useState(false);
+  const [promisesIncludeDone, setPromisesIncludeDone] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const completePromise = async (id: string) => {
+  const loadPromises = useCallback(async () => {
+    setPromisesLoading(true);
+    try {
+      const res = await fetch(`/api/cs/promises${promisesIncludeDone ? "?includeDone=1" : ""}`);
+      const json = await res.json();
+      if (json.ok) setPromises(json.promises ?? []);
+    } catch {
+      // 목록 실패는 치명적이지 않음 — 다음 틱에서 회복
+    } finally {
+      setPromisesLoading(false);
+    }
+  }, [promisesIncludeDone]);
+
+  const setPromiseStatus = async (id: string, status: "open" | "done") => {
     try {
       const res = await fetch("/api/cs/promises", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "done" }),
+        body: JSON.stringify({ id, status }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "처리 실패");
-      if (selectedId) await refreshDetail(selectedId);
-      showToast("약속을 완료 처리했습니다");
+      await Promise.all([loadPromises(), selectedId ? refreshDetail(selectedId) : null]);
+      showToast(status === "done" ? "약속을 완료 처리했습니다" : "약속을 다시 열었습니다");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "약속 처리 실패");
     }
   };
+  const completePromise = (id: string) => setPromiseStatus(id, "done");
+
+  const openStatus = (key: StatusFilter) => {
+    setPromiseView(false);
+    setStatusFilter(key);
+  };
+  const openPromiseView = () => {
+    setPromiseView(true);
+    loadPromises();
+  };
+  const openPromiseCount = promises.filter((p) => p.status !== "done").length;
 
   const loadCounts = useCallback(async () => {
     const params = new URLSearchParams();
@@ -385,6 +415,11 @@ export default function InboxClient() {
     loadThreads();
   }, [loadThreads]);
 
+  // 약속 개수 배지는 목록을 안 열어도 보여야 하므로 처음부터 불러둔다.
+  useEffect(() => {
+    loadPromises();
+  }, [loadPromises]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const threadId = params.get("thread");
@@ -401,7 +436,7 @@ export default function InboxClient() {
 
     const fastTick = async () => {
       if (document.hidden) return;
-      await loadThreads(); // ingest는 서버 cron과 webhook이 담당
+      await Promise.all([loadThreads(), loadPromises()]); // ingest는 서버 cron과 webhook이 담당
     };
 
     const id = setInterval(fastTick, FAST_INTERVAL_MS);
@@ -418,7 +453,7 @@ export default function InboxClient() {
       document.removeEventListener("visibilitychange", onVisible);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadThreads]);
+  }, [loadThreads, loadPromises]);
 
   // 열린 스레드 실시간 갱신 — 새 고객 메시지가 새로고침 없이 바로 보이도록 15초마다 폴링.
   useEffect(() => {
@@ -692,11 +727,11 @@ export default function InboxClient() {
               { key: "archived", label: "보관", count: counts.archived, accent: "zinc" },
             ] as { key: StatusFilter; label: string; count: number; accent: string }[]
           ).map(({ key, label, count }) => {
-            const active = statusFilter === key;
+            const active = !promiseView && statusFilter === key;
             return (
               <button
                 key={key}
-                onClick={() => setStatusFilter(key)}
+                onClick={() => openStatus(key)}
                 className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 h-9 rounded-full text-sm font-medium transition ${
                   active
                     ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
@@ -720,11 +755,42 @@ export default function InboxClient() {
               </button>
             );
           })}
+          <button
+            onClick={openPromiseView}
+            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 h-9 rounded-full text-sm font-medium transition ${
+              promiseView
+                ? "bg-amber-600 text-white"
+                : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300"
+            }`}
+          >
+            <CalendarClock size={14} />
+            약속
+            {openPromiseCount > 0 && (
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                  promiseView ? "bg-white/25 text-white" : "bg-amber-500 text-white"
+                }`}
+              >
+                {openPromiseCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* 스레드 카드 리스트 */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
-          {loading && threads.length === 0 ? (
+          {promiseView ? (
+            <InboxPromiseList
+              variant="mobile"
+              promises={promises}
+              loading={promisesLoading}
+              includeDone={promisesIncludeDone}
+              onToggleIncludeDone={() => setPromisesIncludeDone((v) => !v)}
+              selectedThreadId={selectedId}
+              onOpenThread={setSelectedId}
+              onSetStatus={setPromiseStatus}
+            />
+          ) : loading && threads.length === 0 ? (
             <div className="p-8 text-center text-sm text-zinc-400">로딩 중…</div>
           ) : threads.length === 0 ? (
             <div className="p-12 text-center">
@@ -851,9 +917,9 @@ export default function InboxClient() {
           ).map(({ key, label, count }) => (
             <button
               key={key}
-              onClick={() => setStatusFilter(key)}
+              onClick={() => openStatus(key)}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition ${
-                statusFilter === key
+                !promiseView && statusFilter === key
                   ? "bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium"
                   : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
               }`}
@@ -862,7 +928,7 @@ export default function InboxClient() {
               {count > 0 && (
                 <span
                   className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    key === "unanswered" && statusFilter !== key
+                    key === "unanswered" && (promiseView || statusFilter !== key)
                       ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                       : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                   }`}
@@ -872,6 +938,27 @@ export default function InboxClient() {
               )}
             </button>
           ))}
+          <div className="pt-1.5 mt-1.5 border-t border-zinc-100 dark:border-zinc-800">
+            <button
+              onClick={openPromiseView}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition ${
+                promiseView
+                  ? "bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 font-medium"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              }`}
+              title="모든 대화의 약속을 한곳에서 보고 완료 처리"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarClock size={13} className="text-amber-600 dark:text-amber-400" />
+                약속
+              </span>
+              {openPromiseCount > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  {openPromiseCount}
+                </span>
+              )}
+            </button>
+          </div>
         </nav>
 
         <div className="p-3 border-t border-zinc-100 dark:border-zinc-800">
@@ -942,6 +1029,19 @@ export default function InboxClient() {
 
       {/* ── 가운데: 대화 목록 ───────────────────────────────────── */}
       <section className="w-[340px] flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-900">
+        {promiseView ? (
+          <InboxPromiseList
+            variant="desktop"
+            promises={promises}
+            loading={promisesLoading}
+            includeDone={promisesIncludeDone}
+            onToggleIncludeDone={() => setPromisesIncludeDone((v) => !v)}
+            selectedThreadId={selectedId}
+            onOpenThread={setSelectedId}
+            onSetStatus={setPromiseStatus}
+          />
+        ) : (
+        <>
         <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 z-10">
           <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
             {statusFilter === "all"
@@ -977,6 +1077,8 @@ export default function InboxClient() {
               />
             ))}
           </div>
+        )}
+        </>
         )}
       </section>
 
@@ -1068,7 +1170,7 @@ export default function InboxClient() {
           onClose={() => setPromiseFormOpen(false)}
           onCreated={async (message) => {
             setPromiseFormOpen(false);
-            if (selectedId) await refreshDetail(selectedId);
+            await Promise.all([loadPromises(), selectedId ? refreshDetail(selectedId) : null]);
             showToast(message);
           }}
         />
