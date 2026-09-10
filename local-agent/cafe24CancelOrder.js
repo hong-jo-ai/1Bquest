@@ -29,15 +29,6 @@ const ADMIN_PW = BRAND === "harriot" ? (process.env.HARRIOT_CAFE24_ADMIN_PW || p
 const ADMIN_HOME = `https://${MALL}.cafe24.com/admin/`;
 const REASON_LABEL = { A: "고객변심", B: "배송지연", J: "배송오류", C: "배송불가지역", L: "수출/통관불가", D: "포장불량", E: "상품불만족", F: "상품정보상이", K: "상품불량", G: "서비스불만족", H: "품절", I: "기타" };
 
-function orderListUrl() {
-  const d = (off) => new Date(Date.now() + 9 * 3600e3 - off * 86400e3).toISOString().slice(0, 10);
-  const p = new URLSearchParams({
-    rows: "100", btnDate: "9999", date_type: "order_date", shop_no_order: "1",
-    start_date: d(21), end_date: d(0), start_time: "00:00", end_time: "23:59",
-  });
-  return `https://${MALL}.cafe24.com/admin/php/shop1/s/order_list.php?${p.toString()}`;
-}
-
 function isLoggedIn(url) {
   if (/eclogin\.cafe24\.com|\/Shop\/Login|member\/login|\/Login/i.test(url)) return false;
   return new RegExp(`${MALL}\\.cafe24\\.com\\/(disp\\/)?admin`, "i").test(url);
@@ -101,21 +92,18 @@ async function ensureLoggedIn(page) {
     if (!(await ensureLoggedIn(page))) throw new Error("로그인 실패");
     log("✅ 관리자 로그인 확인");
 
-    // 주문 상세 진입(목록에서 행 찾아 클릭)
-    await page.goto(orderListUrl(), { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    // 주문상세 직접 진입 — 목록 경유는 rows=100 이 안 먹고 20행 페이지네이션이라
+    // 최신 20건을 벗어난 주문이 "못 찾음"으로 떨어진다(설월 런칭일 주문 취소 때 확인 2026-09-11).
+    // cafe24RestoreOrder.js 와 동일한 경로.
+    const detail = page;
+    await detail.goto(`https://${MALL}.cafe24.com/admin/php/shop1/s_new/order_detail.php?order_id=${orderId}`, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
     await sleep(5000);
-    const row = page.locator("tr", { hasText: orderId }).first();
-    if (!(await row.count().catch(() => 0))) {
-      await page.screenshot({ path: "/tmp/cafe24_orderlist.png", fullPage: true }).catch(() => {});
-      throw new Error(`주문목록에서 ${orderId} 못 찾음(기간외?). 스샷 /tmp/cafe24_orderlist.png`);
-    }
-    const before = ctx.pages().length;
-    await row.getByText(orderId, { exact: false }).first().click({ timeout: 6000 }).catch(() => {});
-    await sleep(5000);
-    let detail = ctx.pages().length > before ? ctx.pages()[ctx.pages().length - 1] : page;
-    await detail.bringToFront().catch(() => {});
-    await sleep(1500);
     log("상세 URL: " + detail.url());
+    const bodyText = await detail.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => "");
+    if (!bodyText.includes(orderId) && !detail.url().includes("order_detail")) {
+      await detail.screenshot({ path: "/tmp/cafe24_cancel_detail0.png", fullPage: true }).catch(() => {});
+      throw new Error(`주문상세 진입 실패 ${orderId}. 스샷 /tmp/cafe24_cancel_detail0.png`);
+    }
 
     // 품목 체크(om_no[]) — 상품명 보이는 행 전부
     const checked = await detail.evaluate(() => {
