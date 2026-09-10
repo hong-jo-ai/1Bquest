@@ -11,6 +11,7 @@ const KEYS = {
   vatRate: "cost_settings:vat_rate",
   productCogs: "cost_settings:product_cogs",
   productNameAliases: "cost_settings:product_name_aliases",
+  usdToKrw: "cost_settings:usd_to_krw",
 } as const;
 
 export interface FixedCost {
@@ -24,6 +25,12 @@ export interface ProfitSettings {
   fixedCosts: FixedCost[];
   shippingPerOrder: number; // 원
   vatRate: number; // 퍼센트 (10 = 10%)
+  /**
+   * USD → KRW 환산 환율. 영문몰(shop_no=2) 매출·해외 카드결제를 원화로 통일할 때 쓴다.
+   * P&L 합산 목적상 **단일 기준 환율**이다 — 일별 실환율이 아니라서 과거 수치가 소급 변동하지 않는다.
+   * ⚠️ 파쇼 USD 지급액 환산은 이 값이 아니라 **당일 매매기준율**을 쓴다(별개 규칙).
+   */
+  usdToKrw: number;
 }
 
 export const DEFAULT_SETTINGS: ProfitSettings = {
@@ -46,6 +53,7 @@ export const DEFAULT_SETTINGS: ProfitSettings = {
   fixedCosts: [],
   shippingPerOrder: 2500,
   vatRate: 10,
+  usdToKrw: 1450,
 };
 
 function getDb() {
@@ -144,11 +152,12 @@ export async function updateProductNameAliases(
 }
 
 export async function getProfitSettings(): Promise<ProfitSettings> {
-  const [channelFees, fixedCosts, shipping, vat] = await Promise.all([
+  const [channelFees, fixedCosts, shipping, vat, usd] = await Promise.all([
     readKv(KEYS.channelFees, DEFAULT_SETTINGS.channelFees),
     readKv(KEYS.fixedCosts, DEFAULT_SETTINGS.fixedCosts),
     readKv(KEYS.shipping, { perOrder: DEFAULT_SETTINGS.shippingPerOrder }),
     readKv(KEYS.vatRate, DEFAULT_SETTINGS.vatRate),
+    readKv(KEYS.usdToKrw, DEFAULT_SETTINGS.usdToKrw),
   ]);
 
   return {
@@ -156,7 +165,18 @@ export async function getProfitSettings(): Promise<ProfitSettings> {
     fixedCosts,
     shippingPerOrder: (shipping as { perOrder: number }).perOrder ?? DEFAULT_SETTINGS.shippingPerOrder,
     vatRate: vat,
+    usdToKrw: Number(usd) > 0 ? Number(usd) : DEFAULT_SETTINGS.usdToKrw,
   };
+}
+
+/**
+ * USD→KRW 환율만 필요할 때. 설정이 없거나 이상값이면 기본값으로 폴백한다
+ * (환율이 0 이면 영문몰 매출이 통째로 0 원이 되므로 반드시 가드).
+ */
+export async function getUsdToKrw(): Promise<number> {
+  const v = await readKv<number>(KEYS.usdToKrw, DEFAULT_SETTINGS.usdToKrw);
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_SETTINGS.usdToKrw;
 }
 
 export async function saveProfitSettings(patch: Partial<ProfitSettings>): Promise<void> {
@@ -167,5 +187,6 @@ export async function saveProfitSettings(patch: Partial<ProfitSettings>): Promis
     tasks.push(writeKv(KEYS.shipping, { perOrder: patch.shippingPerOrder }));
   }
   if (patch.vatRate !== undefined) tasks.push(writeKv(KEYS.vatRate, patch.vatRate));
+  if (patch.usdToKrw !== undefined) tasks.push(writeKv(KEYS.usdToKrw, patch.usdToKrw));
   await Promise.all(tasks);
 }

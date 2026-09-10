@@ -895,6 +895,7 @@ function SettingsDrawer({
   );
   const [draftShipping, setDraftShipping] = useState(String(settings.shippingPerOrder));
   const [draftVat, setDraftVat] = useState(String(settings.vatRate));
+  const [draftUsd, setDraftUsd] = useState(String(settings.usdToKrw));
   const [draftFixed, setDraftFixed] = useState<FixedCost[]>(settings.fixedCosts);
   const [saving, setSaving] = useState(false);
 
@@ -922,6 +923,8 @@ function SettingsDrawer({
         fixedCosts: draftFixed.filter((c) => c.name.trim()),
         shippingPerOrder: parseInt(draftShipping, 10) || 0,
         vatRate: parseFloat(draftVat) || 0,
+        // 0 이면 영문몰 매출이 통째로 0 원이 되므로 빈값·0 은 저장하지 않는다.
+        ...(parseFloat(draftUsd) > 0 ? { usdToKrw: parseFloat(draftUsd) } : {}),
       });
       onClose();
     } finally {
@@ -974,6 +977,25 @@ function SettingsDrawer({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* USD 환율 */}
+          <div>
+            <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
+              USD 환율 (원)
+            </div>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              value={draftUsd}
+              onChange={(e) => setDraftUsd(e.target.value)}
+              className="w-full px-3 h-9 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-sm tabular-nums"
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+              영문몰(폴바이스·해리엇) 매출과 해외 카드결제를 원화로 환산할 때 쓰는 <b>단일 기준 환율</b>입니다.
+              일별 실환율이 아니라서 바꾸면 과거 수치도 이 환율로 다시 계산됩니다.
+            </p>
           </div>
 
           {/* 부가세 */}

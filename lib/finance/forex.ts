@@ -1,12 +1,19 @@
 /**
  * 외환 환율 — USD → KRW 변환.
- * 식스샵 글로벌처럼 결제 단위가 USD인 채널의 데이터를 KRW로 통일.
+ * 영문몰(shop_no=2)처럼 결제 단위가 USD인 채널의 데이터를 KRW로 통일.
  *
- * 환율은 일별 변동하지만 P&L 합산 목적상 단일 기준 환율 사용.
- * 추후 사용자가 ⚙에서 변경 원하면 profitSettings에 키 추가.
+ * 환율은 일별 변동하지만 P&L 합산 목적상 **단일 기준 환율**을 쓴다.
+ * 일별 실환율로 바꾸면 과거 매출 수치가 소급해서 흔들려 기준선 비교가 깨진다.
+ *
+ * 2026-09-10: 하드코딩 1450 → **비용 설정(⚙)에서 변경 가능**하게 바꿨다.
+ * 값을 읽을 땐 `getUsdToKrw()` 를 쓸 것. `USD_TO_KRW` 는 설정을 못 읽는
+ * 동기 문맥(순수 파서 등)에서만 쓰는 **폴백 기본값**이다.
+ * ⚠️ 파쇼 USD 지급액 환산은 여기가 아니라 **당일 매매기준율**을 쓴다(별개 규칙).
  */
 import type { MultiChannelData } from "@/lib/multiChannelData";
+export { getUsdToKrw } from "@/lib/profitSettings";
 
+/** 폴백 기본값. 실제 값은 getUsdToKrw() 로 읽는다. */
 export const USD_TO_KRW = 1450;
 
 /**

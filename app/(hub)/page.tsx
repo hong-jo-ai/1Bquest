@@ -1,7 +1,7 @@
 import { getDashboardData, getMallShopData } from "@/lib/cafe24Data";
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { readRefreshTokenFromStore } from "@/lib/cafe24TokenStore";
-import { USD_TO_KRW } from "@/lib/finance/forex";
+import { getUsdToKrw } from "@/lib/finance/forex";
 import AppHeader from "@/components/AppHeader";
 import DashboardClient from "@/components/DashboardClient";
 import type { Brand, MultiChannelData } from "@/lib/multiChannelData";
@@ -34,7 +34,7 @@ export default async function Dashboard({ searchParams }: PageProps) {
       }
       // 폴바이스 영문몰(shop_no=2, paulvice.kr) — 실패해도 국내몰/페이지에 영향 없음
       try {
-        paulviceGlobalData = await getMallShopData(token, "paulvice", 2, { usdToKrw: USD_TO_KRW });
+        paulviceGlobalData = await getMallShopData(token, "paulvice", 2, { usdToKrw: await getUsdToKrw() });
       } catch (ge) {
         console.warn("[dashboard] 폴바이스 글로벌(shop2) 로드 실패:", ge instanceof Error ? ge.message : ge);
       }
@@ -48,7 +48,7 @@ export default async function Dashboard({ searchParams }: PageProps) {
       if (hToken) {
         harriotData = await getDashboardData(hToken, "harriot");
         try {
-          harriotGlobalData = await getMallShopData(hToken, "harriot", 2, { usdToKrw: USD_TO_KRW });
+          harriotGlobalData = await getMallShopData(hToken, "harriot", 2, { usdToKrw: await getUsdToKrw() });
         } catch (ge) {
           console.warn("[dashboard] 해리엇 글로벌(shop2) 로드 실패:", ge instanceof Error ? ge.message : ge);
         }

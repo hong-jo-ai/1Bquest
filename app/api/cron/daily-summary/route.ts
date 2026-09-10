@@ -9,7 +9,7 @@
 import { getValidC24Token } from "@/lib/cafe24Auth";
 import { getAccessTokenFromStore } from "@/lib/cafe24TokenStore";
 import { getDashboardData, getMallShopData } from "@/lib/cafe24Data";
-import { USD_TO_KRW } from "@/lib/finance/forex";
+import { getUsdToKrw } from "@/lib/finance/forex";
 import { computeInventoryLevels } from "@/lib/inventorySync";
 import { cafe24Get } from "@/lib/cafe24Client";
 import { listPurchaseOrders, restockEta } from "@/lib/purchaseOrders";
@@ -74,7 +74,7 @@ async function run() {
       if (g && (g.revenue > 0 || g.orders > 0)) lines.push({ name: "공동구매", revenue: g.revenue, orders: g.orders });
       // 폴바이스 영문몰(shop_no=2)
       try {
-        const pg = (await getMallShopData(token, "paulvice", 2, { usdToKrw: USD_TO_KRW })).salesSummary.today;
+        const pg = (await getMallShopData(token, "paulvice", 2, { usdToKrw: await getUsdToKrw() })).salesSummary.today;
         if (pg.revenue > 0 || pg.orders > 0) lines.push({ name: "카페24(폴바이스 글로벌)", revenue: pg.revenue, orders: pg.orders });
       } catch { /* 폴바이스 글로벌 실패 무시 */ }
     }
@@ -84,7 +84,7 @@ async function run() {
       if (ht) {
         const h = (await getDashboardData(ht, "harriot")).salesSummary.today;
         if (h.revenue > 0 || h.orders > 0) lines.push({ name: "카페24(해리엇)", revenue: h.revenue, orders: h.orders });
-        const hg = (await getMallShopData(ht, "harriot", 2, { usdToKrw: USD_TO_KRW })).salesSummary.today;
+        const hg = (await getMallShopData(ht, "harriot", 2, { usdToKrw: await getUsdToKrw() })).salesSummary.today;
         if (hg.revenue > 0 || hg.orders > 0) lines.push({ name: "카페24(해리엇 글로벌)", revenue: hg.revenue, orders: hg.orders });
       }
     } catch { /* 해리엇 카페24 실패 무시 */ }

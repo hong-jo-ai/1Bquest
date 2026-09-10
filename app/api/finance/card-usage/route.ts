@@ -5,14 +5,14 @@ import { parseHyundaiCardExcel } from "@/lib/finance/hyundaiCardParser";
 import { parseKbCardExcel } from "@/lib/finance/kbCardParser";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { dedupeNpayCardRows } from "@/lib/finance/dedupeNpayCardRows";
-import { USD_TO_KRW } from "@/lib/finance/forex";
+import { getUsdToKrw } from "@/lib/finance/forex";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 해외(USD) 결제는 카드 엑셀에 원화 환산이 없어 amount=0 → forex 환율로 추정 환산.
-function krwAmount(amount: number, isForeign: boolean, usdAmount: number): number {
-  if (isForeign && amount === 0 && usdAmount > 0) return Math.round(usdAmount * USD_TO_KRW);
+// 해외(USD) 결제는 카드 엑셀에 원화 환산이 없어 amount=0 → 설정 환율로 추정 환산.
+function krwAmount(amount: number, isForeign: boolean, usdAmount: number, rate: number): number {
+  if (isForeign && amount === 0 && usdAmount > 0) return Math.round(usdAmount * rate);
   return amount;
 }
 
@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       }));
     } else if (source === "card_kb") {
       const parsed = parseKbCardExcel(buffer);
+      const usdRate = await getUsdToKrw();
       records = parsed.rows.map((r) => ({
         business_id: businessId,
         source: "card_kb",
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
         use_date: r.useDate.toISOString(),
         cancel_date: null,
         merchant: r.merchant,
-        amount: krwAmount(r.amount, r.isForeign, r.usdAmount),
+        amount: krwAmount(r.amount, r.isForeign, r.usdAmount, usdRate),
         cancel_amount: r.cancelAmount,
         supply_amount: null,
         tax_amount: null,

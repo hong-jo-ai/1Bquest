@@ -59,7 +59,12 @@ function inferYear(month: number, day: number, h: number, mi: number, baseMs?: n
 }
 
 /** 우리카드 승인/취소 SMS면 구조화, 아니면 null. */
-export function parseWooriCardSms(text: string, receivedAtMs?: number): ParsedWooriSms | null {
+export function parseWooriCardSms(
+  text: string,
+  receivedAtMs?: number,
+  /** USD→KRW 환율. 순수 파서라 설정을 못 읽으니 호출부가 getUsdToKrw() 값을 넣어준다. */
+  usdToKrw: number = USD_TO_KRW,
+): ParsedWooriSms | null {
   if (!text) return null;
   const isWoori = /우리\s*\(?\d{3,4}/.test(text) || /우리카드/.test(text);
   if (!isWoori) return null;
@@ -100,7 +105,7 @@ export function parseWooriCardSms(text: string, receivedAtMs?: number): ParsedWo
       if (fxM.length === 3) { foreignCurrency = fxM[1].toUpperCase().replace("US$", "USD"); foreignAmount = Number(fxM[2].replace(/,/g, "")); }
       else { foreignCurrency = "USD"; foreignAmount = Number(fxM[1].replace(/,/g, "")); }
       // 현재 환율상수는 USD만 보유 → USD만 자동환산. 그 외 통화는 외화금액만 보관(원화 0, 명세서/수동 보정).
-      if (foreignCurrency === "USD" && foreignAmount > 0) amount = Math.round(foreignAmount * USD_TO_KRW);
+      if (foreignCurrency === "USD" && foreignAmount > 0) amount = Math.round(foreignAmount * usdToKrw);
     }
   }
 

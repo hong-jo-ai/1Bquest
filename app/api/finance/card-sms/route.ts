@@ -7,6 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { parseWooriCardSms } from "@/lib/finance/wooriCardSmsParser";
+import { getUsdToKrw } from "@/lib/finance/forex";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { isPgMerchant, enqueueCardClassify } from "@/lib/finance/cardClassify";
 
@@ -63,12 +64,13 @@ export async function POST(req: NextRequest) {
   const businessId = biz?.id ?? null;
   if (!businessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
 
+  const usdRate = await getUsdToKrw();
   const records: Array<Record<string, unknown>> = [];
   const preview: Array<Record<string, unknown>> = [];
   let nonCard = 0;
   for (const m of messages) {
     if (!m?.text || !m?.id) continue;
-    const p = parseWooriCardSms(m.text, m.receivedAtMs);
+    const p = parseWooriCardSms(m.text, m.receivedAtMs, usdRate);
     if (!p || (p.amount <= 0 && !p.isCanceled)) { nonCard++; continue; }
     const category = categorizeMerchant(p.merchant);
     // 해외승인: 가맹점명에 외화 표기 덧붙임(원화는 환율 추정치임을 명확히). 분류는 원래 가맹점명 기준.

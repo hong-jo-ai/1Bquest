@@ -11,7 +11,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { getDashboardData, getMallShopData, type DailyData } from "@/lib/cafe24Data";
-import { USD_TO_KRW } from "@/lib/finance/forex";
+import { getUsdToKrw } from "@/lib/finance/forex";
 import { upsertRevenueDays } from "@/lib/finance/revenueHistory";
 import { BRAND_CHANNELS, type Brand, type ChannelId } from "@/lib/multiChannelData";
 import { loadCafe24Historical, mergeCafe24HistoricalDaily } from "@/lib/cafe24Historical";
@@ -93,7 +93,7 @@ export async function runRevenueSnapshot(
     }
     // 폴바이스 카페24 영문몰(shop_no=2, paulvice.kr) — USD→KRW 환산.
     try {
-      const gdata = await getMallShopData(cafe24Token, "paulvice", 2, { usdToKrw: USD_TO_KRW });
+      const gdata = await getMallShopData(cafe24Token, "paulvice", 2, { usdToKrw: await getUsdToKrw() });
       for (const d of gdata.dailyRevenue ?? [] as DailyData[]) {
         if (!d.date || !Number.isFinite(d.revenue)) continue;
         addEntry("paulvice", "cafe24_global", d.date, Math.round(d.revenue));
@@ -115,7 +115,7 @@ export async function runRevenueSnapshot(
     }
     // 해리엇 카페24 글로벌 영문몰(shop_no=2) — 식스샵 글로벌 대체. USD→KRW 환산.
     try {
-      const gdata = await getMallShopData(harriotToken, "harriot", 2, { usdToKrw: USD_TO_KRW });
+      const gdata = await getMallShopData(harriotToken, "harriot", 2, { usdToKrw: await getUsdToKrw() });
       for (const d of gdata.dailyRevenue ?? [] as DailyData[]) {
         if (!d.date || !Number.isFinite(d.revenue)) continue;
         addEntry("harriot", "cafe24_harriot_global", d.date, Math.round(d.revenue));
