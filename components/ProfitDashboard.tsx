@@ -79,6 +79,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
   const [wconceptAdsDaily, setWconceptAdsDaily] = useState<{ date: string; spend: number }[]>([]);
   const [categorySpend, setCategorySpend] = useState<Record<string, { amount: number; count: number }>>({});
   const [invoiceByCategory, setInvoiceByCategory] = useState<Record<string, { amount: number; count: number }>>({});
+  const [invoiceBrandAds, setInvoiceBrandAds] = useState<Record<string, { amount: number; count: number }>>({});
 
   // 설정 불러오기
   useEffect(() => {
@@ -145,6 +146,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
         if (j.ok) {
           setCategorySpend(j.perCategory ?? {});
           setInvoiceByCategory(j.invoiceByCategory ?? {});
+          setInvoiceBrandAds(j.invoiceBrandAds ?? {});
         }
       })
       .catch(() => { /* 재무 데이터 없으면 0 처리 */ });
@@ -276,6 +278,11 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
     if (invoiceAds > 0 && brand !== "harriot") {
       autoFixedItems.push({ cat: "광고비(세금계산서)", amount: invoiceAds, count: invoiceByCategory["광고비"]?.count ?? 0, share: channelShare, shared: false });
     }
+    // 해리엇이 직접 집행한 광고의 세금계산서(유튜버 유료광고 등) — lib/finance/invoiceBrandOverrides 로 지정된 건만.
+    const harriotInvoiceAds = invoiceBrandAds.harriot;
+    if (harriotInvoiceAds && harriotInvoiceAds.amount > 0 && brand !== "paulvice") {
+      autoFixedItems.push({ cat: "광고비(세금계산서·해리엇)", amount: harriotInvoiceAds.amount, count: harriotInvoiceAds.count, share: channelShare, shared: false });
+    }
     const autoFixedTotal = autoFixedItems.reduce((s, x) => s + x.amount, 0);
     const autoFixedAllocated = autoFixedItems.reduce((s, x) => s + x.amount * x.share, 0);
     // 매입 세금계산서(상품제작·원가) — COGS 판매시점 매칭 대기(상품 원가 미설정). 손익 차감 안 함, 표시만.
@@ -354,7 +361,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
       days,
       dailyRows,
     };
-  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend, invoiceByCategory, brand]);
+  }, [visibleChannels, settings, startDate, endDate, activeChannel, totalRevAllChannels, metaDaily, wconceptAdsDaily, categorySpend, invoiceByCategory, invoiceBrandAds, brand]);
 
   return (
     <section className="space-y-4 min-w-0">

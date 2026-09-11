@@ -13,6 +13,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
+import { findInvoiceBrandOverride, type OverrideBrand } from "@/lib/finance/invoiceBrandOverrides";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
     // 매입 전자세금계산서(현금이체 비용) — write_date 기준. 통장 미업로드분의 실비 보강.
     db
       .from("finance_tax_invoices")
-      .select("category, total_amount, write_date, partner_name")
+      .select("category, total_amount, write_date, partner_name, partner_reg_no")
       .eq("invoice_type", "purchase")
       .gte("write_date", since)
       .lte("write_date", until),
@@ -89,9 +90,18 @@ export async function GET(req: NextRequest) {
   // 세금계산서(매입)는 별도 버킷으로 — 추정치(수수료%·배송비)와 중복될 수 있어
   // 소비측(ProfitDashboard)이 카테고리별로 가산 여부를 결정한다.
   const invoiceByCategory: Record<string, { amount: number; count: number }> = {};
+  // 브랜드가 정해진 광고비 세금계산서 — 카테고리 버킷에 넣으면 폴바이스 전용 광고비나 매입으로 잡히므로 따로 모은다.
+  const invoiceBrandAds: Partial<Record<OverrideBrand, { amount: number; count: number }>> = {};
   for (const r of invRes.data ?? []) {
     const amt = Number(r.total_amount) || 0;
     if (amt <= 0) continue;
+    const override = findInvoiceBrandOverride(r.partner_reg_no as string | null, r.partner_name as string | null);
+    if (override) {
+      const bucket = (invoiceBrandAds[override.brand] ??= { amount: 0, count: 0 });
+      bucket.amount += amt;
+      bucket.count += 1;
+      continue;
+    }
     const c = (r.category as string | null) || "기타";
     // W컨셉 광고비 세금계산서는 ad_spend:wconcept(Moloco)에서 이미 집계 → 광고비 버킷에서 제외(이중계상 방지).
     // (메타 광고는 메타 API로 별도 집계, 세금계산서엔 안 옴)
@@ -105,6 +115,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     perCategory,
     invoiceByCategory,
+    invoiceBrandAds,
     since,
     until,
     bankCount: bankRes.data?.length ?? 0,
