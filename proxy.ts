@@ -23,6 +23,7 @@ const ALLOW_PREFIX = [
   "/api/cs/webchat/",  // PAULVICE 웹사이트 자체 상담 위젯 (익명 고객 접근)
   "/cs",               // AS·문의 짧은 링크 → 자사몰 상담창으로 302 (외부 채널 안내문에 인쇄)
   "/api/finance/card-sms", // 우리카드 SMS 자동수집 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN)
+  "/api/finance/bank-sms", // 우리은행 입출금 SMS 자동수집 에이전트 (x-agent-token = PAULWISE_MCP_TOKEN) — 2026-09-12
   "/api/finance/enrich-npay", // 네이버페이 메일 카드내역 보강 에이전트 (x-agent-token / CRON_SECRET)
   "/api/cs/notify",    // CS 알림 cron (텔레그램/이메일/stale) — CRON_SECRET 헤더로 인증
   "/api/alba/",        // 알바 출퇴근 질문/급여명세서 cron — CRON_SECRET 헤더로 인증
