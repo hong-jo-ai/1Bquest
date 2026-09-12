@@ -21,6 +21,13 @@ import type { ParsedWooriSms } from "./wooriCardSmsParser";
 
 export type ParsedCardSms = Omit<ParsedWooriSms, "cardCompany"> & { cardCompany: "우리" | "현대" };
 
+/**
+ * 통장 출금 문자만으로 만든 현대카드 행의 가맹점명(bank-sms 라우트가 생성).
+ * 승인 문자가 오면 card-sms 라우트가 이 접두어로 그 행을 찾아 실제 가맹점으로 채운다 — 결제 1건이 두 행이 되지 않게.
+ * (라우트 파일은 핸들러 외 export 가 금지라 상수를 여기 둔다.)
+ */
+export const HYUNDAI_STUB_MERCHANT = "현대카드 결제 (가맹점 미상)";
+
 const DT_RE = /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/;
 const AMT_RE = /([\d,]+)\s*원(?:\s*(일시불|\d+\s*개월))?/;
 const KST_MS = 9 * 3600 * 1000;

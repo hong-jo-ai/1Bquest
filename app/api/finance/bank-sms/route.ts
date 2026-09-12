@@ -21,6 +21,7 @@ import { type NextRequest } from "next/server";
 import { parseWooriBankSms, type ParsedWooriBankSms } from "@/lib/finance/wooriBankSmsParser";
 import { categorizeTx } from "@/lib/finance/categorize";
 import { enqueueCardClassify } from "@/lib/finance/cardClassify";
+import { HYUNDAI_STUB_MERCHANT } from "@/lib/finance/hyundaiCardSmsParser";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -59,6 +60,27 @@ async function hasWooriCardTwin(db: SupabaseClient, p: ParsedWooriBankSms): Prom
     .eq(col, p.amount)
     .gte("use_date", lo)
     .lte("use_date", hi)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+/**
+ * 같은 금액의 **실제** 현대카드 승인행(가맹점 있는 것, ±10분)이 이미 있는가.
+ * 승인 문자 알림을 켠 뒤(2026-09-12)엔 결제 1건에 승인 문자 + 통장 출금 문자가 둘 다 오므로,
+ * 승인행이 먼저 들어와 있으면 "가맹점 미상" 행을 또 만들면 안 된다. (반대 순서는 card-sms 라우트가 병합)
+ */
+async function hasHyundaiApprovalTwin(db: SupabaseClient, p: ParsedWooriBankSms): Promise<boolean> {
+  const lo = new Date(p.txDate.getTime() - 10 * 60_000).toISOString();
+  const hi = new Date(p.txDate.getTime() + 10 * 60_000).toISOString();
+  const col = p.kind === "출금취소" ? "cancel_amount" : "amount";
+  const { data } = await db
+    .from("finance_card_usage")
+    .select("id")
+    .eq("source", "card_hyundai_sms")
+    .eq(col, p.amount)
+    .gte("use_date", lo)
+    .lte("use_date", hi)
+    .not("merchant", "like", `${HYUNDAI_STUB_MERCHANT}%`)
     .limit(1);
   return (data?.length ?? 0) > 0;
 }
@@ -103,7 +125,7 @@ export async function POST(req: NextRequest) {
     if (isHyundai && p.kind !== "입금") {
       // 현대 체크카드 결제(또는 그 취소) — 카드 사용내역 쪽에서 비용으로 잡고 통장행은 제외.
       category = "카드결제"; categorySource = "rule-dup"; description = "체크현대";
-      hyundaiCardRecords.push({
+      if (!(await hasHyundaiApprovalTwin(db, p))) hyundaiCardRecords.push({
         business_id: businessId,
         source: "card_hyundai_sms",
         card_company: "현대",
@@ -111,7 +133,7 @@ export async function POST(req: NextRequest) {
         approval_no: `sms-${m.id}`,
         use_date: p.txDate.toISOString(),
         cancel_date: p.kind === "출금취소" ? p.txDate.toISOString() : null,
-        merchant: "현대카드 결제 (가맹점 미상)",
+        merchant: HYUNDAI_STUB_MERCHANT,
         amount: p.kind === "출금취소" ? 0 : p.amount,
         cancel_amount: p.kind === "출금취소" ? p.amount : 0,
         supply_amount: null, tax_amount: null,

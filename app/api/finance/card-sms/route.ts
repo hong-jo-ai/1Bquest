@@ -7,7 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { parseWooriCardSms } from "@/lib/finance/wooriCardSmsParser";
-import { parseHyundaiCardSms, type ParsedCardSms } from "@/lib/finance/hyundaiCardSmsParser";
+import { parseHyundaiCardSms, HYUNDAI_STUB_MERCHANT, type ParsedCardSms } from "@/lib/finance/hyundaiCardSmsParser";
 import { getUsdToKrw } from "@/lib/finance/forex";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { isPgMerchant, enqueueCardClassify } from "@/lib/finance/cardClassify";
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
   const records: Array<Record<string, unknown>> = [];
   const preview: Array<Record<string, unknown>> = [];
   let nonCard = 0;
+  let merged = 0; // 현대카드 "가맹점 미상" 행을 실제 승인으로 채운 건수
   for (const m of messages) {
     if (!m?.text || !m?.id) continue;
     // 우리카드 형식이 아니면 현대카드 형식으로 시도(2026-09-12 — 현대카드 승인 문자를 켜면 여기로 들어온다).
@@ -77,6 +78,37 @@ export async function POST(req: NextRequest) {
     const category = categorizeMerchant(p.merchant);
     // 해외승인: 가맹점명에 외화 표기 덧붙임(원화는 환율 추정치임을 명확히). 분류는 원래 가맹점명 기준.
     const fx = p.isForeign && p.foreignAmount > 0 ? ` (${p.foreignCurrency} ${p.foreignAmount})` : "";
+    const installment = [p.cardKind, p.installment, p.isForeign ? "해외(추정환산)" : ""].filter(Boolean).join("/");
+    // 현대카드: 통장 출금 문자(bank-sms)가 먼저 와서 "가맹점 미상" 행을 만들어 뒀으면 새 행 대신 그 행을 채운다.
+    // (현대카드는 체크카드라 결제 1건에 승인 문자 + 통장 출금 문자가 둘 다 온다 — 2026-09-12)
+    if (p.cardCompany === "현대") {
+      const lo = new Date(p.useDate.getTime() - 10 * 60_000).toISOString();
+      const hi = new Date(p.useDate.getTime() + 10 * 60_000).toISOString();
+      const { data: stub } = await db
+        .from("finance_card_usage")
+        .select("id, raw")
+        .eq("source", "card_hyundai_sms")
+        .like("merchant", `${HYUNDAI_STUB_MERCHANT}%`)
+        .eq(p.isCanceled ? "cancel_amount" : "amount", p.amount)
+        .gte("use_date", lo)
+        .lte("use_date", hi)
+        .limit(1);
+      const s = stub?.[0] as { id: string; raw: Record<string, unknown> | null } | undefined;
+      if (s) {
+        await db.from("finance_card_usage").update({
+          merchant: p.merchant + fx,
+          card_number: p.cardNumber,
+          installment,
+          category,
+          category_source: "rule",
+          raw: { ...(s.raw ?? {}), approvalSms: { ...p, useDate: p.useDate.toISOString() } },
+        }).eq("id", s.id);
+        await db.from("kv_store").delete().eq("key", `card_classify:${s.id}`); // "어디서 쓰셨나요?" 문의는 더 이상 필요 없다
+        merged++;
+        preview.push({ merchant: p.merchant, amount: p.amount, category, cancel: p.isCanceled, merged: true });
+        continue;
+      }
+    }
     records.push({
       business_id: businessId,
       source: p.cardCompany === "현대" ? "card_hyundai_sms" : "card_woori_sms",
@@ -90,7 +122,7 @@ export async function POST(req: NextRequest) {
       cancel_amount: p.isCanceled ? p.amount : 0,
       supply_amount: null,
       tax_amount: null,
-      installment: [p.cardKind, p.installment, p.isForeign ? "해외(추정환산)" : ""].filter(Boolean).join("/"),
+      installment,
       category,
       category_source: "rule",
       raw: { ...p, useDate: p.useDate.toISOString() },
@@ -99,7 +131,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!records.length) {
-    return Response.json({ ok: true, received: messages.length, parsed: 0, inserted: 0, nonCard });
+    return Response.json({ ok: true, received: messages.length, parsed: 0, inserted: 0, merged, nonCard, preview });
   }
 
   const { data, error } = await db
@@ -122,6 +154,7 @@ export async function POST(req: NextRequest) {
 
   return Response.json({
     asked,
+    merged,
     ok: true,
     received: messages.length,
     parsed: records.length,
