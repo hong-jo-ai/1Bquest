@@ -44,7 +44,8 @@ function readNew(afterNs) {
       // ⚠️ text 만 보면 안 된다 — macOS 가 본문을 attributedBody 로 옮겼다(chatDbText.js 참고).
       "SELECT CAST(date AS TEXT) AS ns, text, attributedBody FROM message " +
       "WHERE date > ? " +
-      `AND (${bodyLike("우리(")} OR ${bodyLike("우리카드")}) ` +
+      // 현대카드 승인 문자도 같은 라우트가 처리한다(2026-09-12). 안내 문자는 서버 파서가 null 로 걸러 nonCard.
+      `AND (${bodyLike("우리(")} OR ${bodyLike("우리카드")} OR ${bodyLike("현대카드")}) ` +
       `AND (${bodyLike("승인")} OR ${bodyLike("취소")}) ` +
       "ORDER BY date ASC LIMIT 200"
     ).all(BigInt(afterNs));
@@ -93,6 +94,8 @@ async function main() {
   } catch (e) { log(`전송 실패: ${e && e.message}`); return; }
 
   await setCursor(db, maxNs);
+  // 적재한 회차에도 하트비트를 찍는다 — 전엔 "새 문자 없음" 회차에만 찍어, 문자가 계속 오는 동안은 감시가 눈을 감았다.
+  await require("./heartbeat").beat("woori-card-sms", { collected: messages.length, inserted: res.inserted ?? 0 });
   log(`수집 ${messages.length}건 → 적재 ${res.inserted ?? 0} / 중복 ${res.skipped ?? 0} / 비카드 ${res.nonCard ?? 0}`);
   if (res.preview && res.preview.length) {
     for (const p of res.preview.slice(0, 10)) log(`  · ${p.merchant} ${Number(p.amount).toLocaleString()}원 [${p.category}]${p.cancel ? " (취소)" : ""}`);

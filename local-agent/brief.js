@@ -109,12 +109,17 @@ async function all(table, cols, apply = (q) => q) {
   //    ⚠️ **주석 처리된 등록은 제외**한다. 안 그러면 이미 끈 잡을 살아있는 것으로 센다.
   const src = fs.readFileSync(path.join(DASH, "app/api/cron/watchdog/route.ts"), "utf8")
     .split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
-  const jobs = [...src.matchAll(/\{\s*key:\s*"([^"]+)",\s*label:\s*"([^"]+)",\s*maxHours:\s*([\d*\s]+)/g)]
-    .map(m => ({ key: m[1], label: m[2], maxHours: Function(`return ${m[3]}`)() }));
+  //    ⚠️ 워치독처럼 `weekdaysOnly` 잡은 주말엔 안 본다 — 평일 10:30 잡을 토요일에 "32시간 멈춤"으로
+  //    잘못 올린 적이 있다(2026-09-12 조선몰). 실행 자체가 없는 날의 침묵은 장애가 아니다.
+  const jobs = [...src.matchAll(/\{\s*key:\s*"([^"]+)",\s*label:\s*"([^"]+)",\s*maxHours:\s*([\d*\s]+)(,\s*weekdaysOnly:\s*true)?/g)]
+    .map(m => ({ key: m[1], label: m[2], maxHours: Function(`return ${m[3]}`)(), weekdaysOnly: !!m[4] }));
+  const kstDay = new Date(Date.now() + 9 * 3600e3).getUTCDay();
+  const isWeekend = kstDay === 0 || kstDay === 6;
   const kv = await all("kv_store", "key,updated_at");
   const seen = new Map(kv.map(r => [r.key, r.updated_at]));
   const stale = [];
   for (const j of jobs) {
+    if (j.weekdaysOnly && isWeekend) continue;
     const u = seen.get(j.key);
     if (!u) { stale.push({ ...j, why: "기록 없음" }); continue; }
     const h = (Date.now() - new Date(u).getTime()) / 3600e3;

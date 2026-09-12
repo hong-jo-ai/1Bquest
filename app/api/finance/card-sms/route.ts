@@ -7,6 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { parseWooriCardSms } from "@/lib/finance/wooriCardSmsParser";
+import { parseHyundaiCardSms, type ParsedCardSms } from "@/lib/finance/hyundaiCardSmsParser";
 import { getUsdToKrw } from "@/lib/finance/forex";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { isPgMerchant, enqueueCardClassify } from "@/lib/finance/cardClassify";
@@ -70,14 +71,15 @@ export async function POST(req: NextRequest) {
   let nonCard = 0;
   for (const m of messages) {
     if (!m?.text || !m?.id) continue;
-    const p = parseWooriCardSms(m.text, m.receivedAtMs, usdRate);
+    // 우리카드 형식이 아니면 현대카드 형식으로 시도(2026-09-12 — 현대카드 승인 문자를 켜면 여기로 들어온다).
+    const p: ParsedCardSms | null = parseWooriCardSms(m.text, m.receivedAtMs, usdRate) ?? parseHyundaiCardSms(m.text, m.receivedAtMs);
     if (!p || (p.amount <= 0 && !p.isCanceled)) { nonCard++; continue; }
     const category = categorizeMerchant(p.merchant);
     // 해외승인: 가맹점명에 외화 표기 덧붙임(원화는 환율 추정치임을 명확히). 분류는 원래 가맹점명 기준.
     const fx = p.isForeign && p.foreignAmount > 0 ? ` (${p.foreignCurrency} ${p.foreignAmount})` : "";
     records.push({
       business_id: businessId,
-      source: "card_woori_sms",
+      source: p.cardCompany === "현대" ? "card_hyundai_sms" : "card_woori_sms",
       card_company: p.cardCompany,
       card_number: p.cardNumber,
       approval_no: `sms-${m.id}`,

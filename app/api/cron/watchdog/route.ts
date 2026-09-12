@@ -31,6 +31,9 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:dispatch17", label: "송장입력 dispatch17(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:register-queue-worker", label: "우체국 접수큐 워커(iMac·상주)", maxHours: 2 },
   { key: "heartbeat:cs-action-worker", label: "CS 액션 워커(iMac·상주)", maxHours: 2 },
+  // 재무 문자 수집(5분). 통장은 2026-09-12 신설 — 엑셀 업로드 대체. 카드는 그전까지 감시 누락이었다.
+  { key: "heartbeat:woori-card-sms", label: "우리카드 문자 수집(iMac·5분)", maxHours: 2 },
+  { key: "heartbeat:woori-bank-sms", label: "우리은행 문자 수집(iMac·5분)", maxHours: 2 },
   { key: "heartbeat:channel-review-scrape", label: "채널리뷰 수집(주간)", maxHours: 8 * 24 },
   { key: "heartbeat:hrt-scarce-sync", label: "해리엇 품절임박 배지 동기화(iMac)", maxHours: 28 },
   { key: "heartbeat:jed-mail-watch", label: "제드아이티씨 메일 감시(iMac·10분)", maxHours: 2 },
