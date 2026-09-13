@@ -51,6 +51,7 @@ const ALLOW_PREFIX = [
   "/pv-hesitate.js",      // 망설임 팝업 스크립트 (공개 정적파일)
   "/api/storefront/",     // 스토어프론트 팝업 설정·이벤트 (익명 공개, 교차출처 CORS)
   "/api/harriot/waitlist", // 설월 출시 대기명단 수집 (인트로 페이지, 익명 · 교차출처 CORS)
+  "/api/harriot/unsubscribe", // 마케팅 메일 수신거부 링크·원클릭 (고객이 메일에서 누름, 익명) — 2026-09-13
   "/api/app-icons/",   // 홈화면/PWA 아이콘은 로그인 전에도 브라우저가 가져갈 수 있어야 함
   "/_next/",
   "/manifest-",
