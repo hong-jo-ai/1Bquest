@@ -26,7 +26,10 @@ const HS_WATCH = "910219";          // 손목시계(기타) HS
 const COO = "KR";                   // 원산지
 const DEFAULT_KG = 0.6;             // 시계 1개 기본 중량(박스 포함)
 // 서비스: 미국=Priority, 그 외=Connect Plus
-const serviceFor = (cc) => (cc === "US" ? "FEDEX_INTERNATIONAL_PRIORITY" : "INTERNATIONAL_CONNECT_PLUS");
+// ⚠️ Connect Plus 의 정식 enum 은 FEDEX_ 접두어가 붙는다. 접두어 없이 보내면 400
+// REQUESTEDSHIPMENT.SERVICETYPE.NOTSUPPORTED 로 떨어진다(2026-09-13 실측 — 접두어를 붙이니 200·라벨 발급).
+// 프로덕션 Rate 응답도 FEDEX_INTERNATIONAL_CONNECT_PLUS 로 온다. INTERNATIONAL_ECONOMY 는 접두어 없는 게 맞다.
+const serviceFor = (cc) => (cc === "US" ? "FEDEX_INTERNATIONAL_PRIORITY" : "FEDEX_INTERNATIONAL_CONNECT_PLUS");
 
 const log = (m) => console.log(`[${new Date().toISOString()}] [fedex] ${m}`);
 
