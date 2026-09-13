@@ -21,6 +21,11 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 export interface Campaign {
   id: string;
   name: string;
+  /**
+   * 어느 몰의 주문과 대조할지. 귀속 라우트가 이 값으로 카페24 토큰·몰을 고른다(2026-09-13).
+   * 없으면 폴바이스 — 그전까지 해리엇 캠페인(설월)이 폴바이스 주문만 뒤져 전환 0으로 나왔다.
+   */
+  brand?: "paulvice" | "harriot";
   productNo?: number | null;
   couponCode?: string | null;
   landingUrl: string;
@@ -233,6 +238,19 @@ export async function enrollTargets(
   return out;
 }
 
+/**
+ * 발송 결과 기록 — 홀드아웃이 아닌 대상 전원의 sent_at/send_status 를 한 번에 채운다.
+ * 대기명단 일괄발송처럼 "명단 전체에 같은 시각에 보낸" 경우용(개별 결과가 없을 때).
+ */
+export async function markSentAll(campaignId: string, sentAt: string, status = "ok"): Promise<number> {
+  const sb = db(); if (!sb) return 0;
+  const { data, error } = await sb.from("crm_campaign_targets")
+    .update({ sent_at: sentAt, send_status: status })
+    .eq("campaign_id", campaignId).eq("holdout", false).is("sent_at", null).select("id");
+  if (error) throw new Error(`발송 기록 실패: ${error.message}`);
+  return data?.length ?? 0;
+}
+
 export async function getTargetByCode(code: string): Promise<CampaignTarget | null> {
   const sb = db(); if (!sb) return null;
   const { data } = await sb.from("crm_campaign_targets").select("*").eq("code", code).maybeSingle();
@@ -260,11 +278,11 @@ export async function markCart(code: string): Promise<void> {
   await sb.from("crm_campaign_targets").update({ cart_at: new Date().toISOString() }).eq("code", code);
 }
 
-/** 구매 귀속 — 쿠폰 사용분이 정본, 없으면 전화번호 매칭(폴백) */
+/** 구매 귀속 — 쿠폰 사용분이 정본, 없으면 전화번호·이메일 매칭(폴백. 이메일은 영문몰 대상용) */
 export async function markPurchase(
   code: string | null,
   phone: string | null,
-  info: { orderId: string; revenue: number; attribution: "coupon" | "phone" | "click" },
+  info: { orderId: string; revenue: number; attribution: "coupon" | "phone" | "email" | "click" },
 ): Promise<boolean> {
   const sb = db(); if (!sb) return false;
   let q = sb.from("crm_campaign_targets").update({
