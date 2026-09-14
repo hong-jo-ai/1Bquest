@@ -90,8 +90,15 @@
       ".pv-rv-card .ph img{width:84px!important;height:84px!important;max-width:84px!important;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid "+LINE+";margin:0!important;display:block!important}",
       ".pv-rv-more{display:block;width:100%;margin:22px 0 4px;padding:14px;font:inherit;font-size:13px;letter-spacing:.06em;background:#fff;border:1px solid "+INK+";color:"+INK+";border-radius:2px;cursor:pointer}",
       ".pv-rv-empty{padding:30px 0;text-align:center;color:"+SUB+";font-size:13px}",
-      ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.93);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out}",
-      ".pv-rv-lb img{max-width:92vw;max-height:88vh;border-radius:6px}",
+      ".pv-rv-lb{position:fixed;inset:0;background:rgba(20,18,15,.93);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;touch-action:pan-y}",
+      ".pv-rv-lb img{max-width:92vw;max-height:88vh;border-radius:6px;cursor:default;-webkit-user-select:none;user-select:none}",
+      ".pv-rv-lb .nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:27px;line-height:1;padding:0 0 3px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}",
+      ".pv-rv-lb .nav:hover{background:rgba(255,255,255,.26)}",
+      ".pv-rv-lb .prev{left:14px}",
+      ".pv-rv-lb .next{right:14px}",
+      ".pv-rv-lb .cnt{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);color:#fff;font-size:12px;letter-spacing:.1em;opacity:.8}",
+      ".pv-rv-lb .x{position:absolute;top:12px;right:14px;width:38px;height:38px;border:0;background:none;color:#fff;font-size:26px;line-height:1;cursor:pointer}",
+      "@media(max-width:480px){.pv-rv-lb .nav{width:36px;height:36px;font-size:21px;background:rgba(255,255,255,.1)}.pv-rv-lb .prev{left:5px}.pv-rv-lb .next{right:5px}}",
       "@media(max-width:480px){.pv-rv-sum{gap:16px;padding:18px}.pv-rv-big{min-width:88px;padding-right:16px}.pv-rv-big .num{font-size:38px}}",
       // 모바일 좌우 여백 (양옆 딱붙음 방지) — 위젯 루트(리스트/포토top/스트립) 공통
       "@media(max-width:767px){.pv-rv{padding-left:16px!important;padding-right:16px!important}}"
@@ -99,13 +106,61 @@
     document.head.appendChild(c);
   }
 
-  function lightbox(src){var o=document.createElement("div");o.className="pv-rv-lb";o.innerHTML='<img src="'+esc(src)+'">';o.onclick=function(){o.remove();};document.body.appendChild(o);}
-  function bindImgs(root){var ig=root.querySelectorAll("img[data-full]");for(var i=0;i<ig.length;i++){ig[i].addEventListener("click",function(){lightbox(this.getAttribute("data-full"));});}}
+  /* 포토 라이트박스 — 같은 묶음 사진을 좌우로 넘겨봄(화살표·스와이프·키보드).
+     묶음 = 클릭한 이미지의 가장 가까운 [data-gal] (카드=그 리뷰 사진 / 스트립·그리드=목록 전체). */
+  function lightbox(list,start){
+    var n=list.length; if(!n)return;
+    var i=Math.min(Math.max(start||0,0),n-1);
+    var o=document.createElement("div");o.className="pv-rv-lb";
+    o.innerHTML='<button class="nav prev" type="button" aria-label="이전 사진">‹</button>'+
+                '<img alt="">'+
+                '<button class="nav next" type="button" aria-label="다음 사진">›</button>'+
+                '<span class="cnt"></span><button class="x" type="button" aria-label="닫기">×</button>';
+    var img=o.querySelector("img"),cnt=o.querySelector(".cnt"),pv=o.querySelector(".prev"),nx=o.querySelector(".next");
+    function draw(){
+      img.src=list[i];cnt.textContent=(i+1)+" / "+n;
+      var multi=n>1;pv.style.display=nx.style.display=multi?"flex":"none";cnt.style.display=multi?"block":"none";
+      if(multi){new Image().src=list[(i+1)%n];new Image().src=list[(i-1+n)%n];} // 다음·이전 미리 받아 끊김 방지
+    }
+    function go(d,e){if(e)e.stopPropagation();i=(i+d+n)%n;draw();}
+    function close(){document.removeEventListener("keydown",key);o.remove();}
+    function key(e){
+      if(e.key==="Escape")close();
+      else if(e.key==="ArrowLeft")go(-1);
+      else if(e.key==="ArrowRight")go(1);
+      else return;
+      e.preventDefault();
+    }
+    pv.addEventListener("click",function(e){go(-1,e);});
+    nx.addEventListener("click",function(e){go(1,e);});
+    img.addEventListener("click",function(e){e.stopPropagation();}); // 사진 자체는 눌러도 안 닫힘
+    o.addEventListener("click",close);
+    document.addEventListener("keydown",key);
+    var sx=null,sy=null;
+    o.addEventListener("touchstart",function(e){var t=e.changedTouches[0];sx=t.clientX;sy=t.clientY;},{passive:true});
+    o.addEventListener("touchend",function(e){
+      if(sx==null)return;var t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;sx=null;
+      if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)){go(dx<0?1:-1);} // 가로 스와이프만 넘김(세로 스크롤 오인 방지)
+    },{passive:true});
+    draw();
+    document.body.appendChild(o);
+  }
+  function bindImgs(root){
+    var ig=root.querySelectorAll("img[data-full]");
+    for(var i=0;i<ig.length;i++)(function(im){
+      im.addEventListener("click",function(){
+        var scope=(im.closest&&im.closest("[data-gal]"))||root;
+        var sib=scope.querySelectorAll("img[data-full]"),list=[],idx=0;
+        for(var k=0;k<sib.length;k++){if(sib[k]===im)idx=list.length;list.push(sib[k].getAttribute("data-full"));}
+        lightbox(list,idx);
+      });
+    })(ig[i]);
+  }
   function allPhotos(data){var ph=[];data.reviews.forEach(function(r){r.photos.forEach(function(u){ph.push(u);});});return ph;}
 
   function renderStrip(el,data){
     var ph=allPhotos(data);if(!ph.length){el.style.display="none";return;}
-    el.className="pv-rv pv-rv-strip";
+    el.className="pv-rv pv-rv-strip";el.setAttribute("data-gal","1");
     el.innerHTML=ph.slice(0,20).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("");
     bindImgs(el);
   }
@@ -116,7 +171,7 @@
     el.className="pv-rv pv-rv-top";
     var head='<div class="pv-rv-tophead"><div class="pv-rv-tl"><span class="sc">'+(s.avg||0).toFixed(1)+'</span>'+stars(s.avg,14)+'<span class="ct">'+L.reviews(s.count||0)+(s.photoCount?L.photo+L.photoN(s.photoCount):'')+'</span></div><span class="pv-rv-all" data-gotolist="1">'+L.viewAll+'</span></div>';
     var title='<div class="pv-rv-toptitle">'+L.photoTitle+'</div>';
-    var grid='<div class="pv-rv-topgrid">'+photos.slice(0,8).map(function(p){return '<div class="pv-rv-cell"><img src="'+esc(p.u)+'" data-full="'+esc(p.u)+'" loading="lazy"><span class="pv-rv-badge"><b>★</b> '+p.rating+'</span></div>';}).join("")+'</div>';
+    var grid='<div class="pv-rv-topgrid" data-gal="1">'+photos.slice(0,8).map(function(p){return '<div class="pv-rv-cell"><img src="'+esc(p.u)+'" data-full="'+esc(p.u)+'" loading="lazy"><span class="pv-rv-badge"><b>★</b> '+p.rating+'</span></div>';}).join("")+'</div>';
     el.innerHTML=head+title+grid;
     var go=el.querySelector('[data-gotolist]');if(go)go.addEventListener("click",function(){var t=document.getElementById("pv-review-list");if(t)t.scrollIntoView({behavior:"smooth",block:"start"});});
     bindImgs(el);
@@ -138,7 +193,7 @@
       if(!ph.length)return"";
       var imgs=ph.slice(0,12).map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("");
       var more=ph.length>12?'<span class="more" data-photofilter="1">+'+(ph.length-12)+'</span>':"";
-      return '<div class="pv-rv-strip">'+imgs+more+'</div>';
+      return '<div class="pv-rv-strip" data-gal="1">'+imgs+more+'</div>';
     }
     function card(r,idx){
       var long=(r.content||"").length>140, exp=state.expanded[r.id];
@@ -146,7 +201,7 @@
       var badge=r.source?'<span class="src">'+esc(r.source)+'</span>':'<span class="vb">'+L.verified+'</span>';
       return '<div class="pv-rv-card"><div class="meta">'+stars(r.rating,13)+'<span class="au">'+esc(r.author)+'</span><span class="dt">'+esc(r.date)+'</span>'+badge+'</div>'+
         (body?'<div class="body">'+body+'</div>':'')+
-        (r.photos.length?'<div class="ph">'+r.photos.map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>':'')+
+        (r.photos.length?'<div class="ph" data-gal="1">'+r.photos.map(function(u){return '<img src="'+esc(u)+'" data-full="'+esc(u)+'" loading="lazy">';}).join("")+'</div>':'')+
         '</div>';
     }
     function draw(){
