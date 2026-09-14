@@ -17,7 +17,10 @@
 const fs = require("fs"), path = require("path");
 const DASH = path.resolve(__dirname, "..");
 function loadEnv(p){ try{ for(const l of fs.readFileSync(p,"utf8").split("\n")){ const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/); if(!m)continue; const v=m[2].trim().replace(/^["']|["']$/g,""); if(!(m[1] in process.env)) process.env[m[1]]=v; } }catch{} }
-loadEnv(path.join(DASH,".env.local")); loadEnv(path.join(__dirname,".env"));
+// ⚠️ .env.supabase 를 빼먹으면 SUPABASE_URL 이 안 잡혀 각인 오버라이드 조회가 통째로 죽는다.
+// loadEngravingOverrides 는 실패를 삼키고 {} 를 반환하므로 **에러도 안 나고 각인만 조용히 사라진다**
+// (2026-09-14 실측: "각인 오버라이드 조회 실패(무시): supabaseUrl is required").
+loadEnv(path.join(DASH,".env.local")); loadEnv(path.join(DASH,".env.supabase")); loadEnv(path.join(__dirname,".env"));
 const bcrypt = require(path.join(DASH,"node_modules","bcryptjs"));
 
 const API = "https://api.commerce.naver.com/external/v1";
