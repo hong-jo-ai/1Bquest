@@ -221,6 +221,19 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   for (const acc of ACCOUNTS) {
     const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
     fs.mkdirSync(profileDir, { recursive: true });
+    // ⚠️ 이전 실행이 남긴 유령 Chrome / Singleton 락을 먼저 치운다.
+    //    미정리 시 launchPersistentContext 가 "기존 세션에서 여는 중"으로 기존 인스턴스에
+    //    넘기고 즉시 종료돼, 다운로드 시점에 "Target page, context or browser has been closed"
+    //    로 죽는다. 2026-09-12~14 4연속 실패가 이것 — wconcept_1 에 죽은 PID(48414)의
+    //    SingletonLock 이 9/14 17:04 부터 남아 있었다.
+    //    무신사·29CM 은 2026-07-14 부터 marketplaceSync 에서 같은 보호를 받아 왔고
+    //    W컨셉만 이 경로가 빠져 있었다. 구현을 복제하지 않고 그 export 를 그대로 쓴다.
+    //    best-effort — 정리에 실패해도 동기화는 계속한다(페일오픈).
+    try {
+      require("./marketplaceSync").cleanupProfileLock(profileDir, log);
+    } catch (e) {
+      log(`W컨셉 ${acc.key}번 프로필 락 정리 건너뜀: ${e.message.slice(0, 60)}`);
+    }
     const ctx = await chromium.launchPersistentContext(profileDir, {
       headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
       args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"],
@@ -236,6 +249,16 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
         try {
           file = await downloadWconcept(page, startDate, endDate, acc, log);
         } catch (e) {
+          // ⚠️ 컨텍스트/브라우저 자체가 닫힌 경우엔 재시도가 구조적으로 무의미하다 —
+          //    죽은 ctx 로 newPage() 를 부르면 같은 에러로 또 죽는다(로그 4회 전부 이 모양).
+          //    재실행으로 살리려면 브라우저를 다시 띄워야 하는데 W컨셉 2FA 세션은 브라우저
+          //    재실행 시 유지되지 않아 SMS 재발송이 필요하고, 그건 계정 잠금 위험이 있다.
+          //    → 원인을 적어 즉시 실패시키고, 근본 원인(유령 락)은 위 cleanupProfileLock 이 막는다.
+          if (/(context|browser) has been closed|Target page/i.test(e.message)) {
+            throw new Error(
+              `W컨셉 ${acc.key}번: 브라우저 컨텍스트가 닫혀 재시도 불가 — 프로필 유령 락/잔여 Chrome 확인 (${e.message.slice(0, 80)})`,
+            );
+          }
           if (attempt === 2) throw e;
           log(`W컨셉 ${acc.key}번 다운로드 1차 실패 → 재시도: ${e.message.slice(0, 80)}`);
           page = ctx.pages()[0] || (await ctx.newPage());
