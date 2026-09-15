@@ -42,8 +42,15 @@ export function evaluateTrust(
 ): TrustEvaluation {
   const o = { ...DEFAULT_OPTS, ...opts };
 
+  // ⚠️ 오늘(KST)은 창에서 뺀다. 오늘 행은 지출만 쌓이고 매출(어트리뷰션)은 아직 안 잡힌 반나절짜리라,
+  //    낮에 동기화할 때마다 7일 ROAS 가 눌려 '적자 확정 → 종료' 가 튀어나왔다
+  //    (2026-09-15 실버 OOTD: 어제까지 7일 ROAS 3.02 인데 오늘 포함 창은 1.49 로 임계 미달 판정).
+  //    창은 항상 "어제까지 7일"로 고정해야 아침 사이클과 낮 수동 동기화가 같은 답을 낸다.
+  const todayKst = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
   // metrics는 오름차순(과거→최신)이라고 가정. 최근 7일 / 그 이전 7일 분리.
-  const sorted = [...metrics].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...metrics]
+    .filter((m) => m.date < todayKst)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const last7  = sorted.slice(-7);
   const prev7  = sorted.slice(-14, -7);
   const last3  = sorted.slice(-3);
