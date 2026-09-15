@@ -25,6 +25,11 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:wconcept-sync", label: "W컨셉 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:cm29-sync", label: "29CM 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
   { key: "heartbeat:smartstore-sync", label: "스마트스토어 동기화(iMac)", maxHours: 28, weekdaysOnly: true },
+  // CS 문의 수집(매시 15·45분). 주말에도 문의가 오므로 weekdaysOnly 를 두지 않는다.
+  // ⚠️ 2026-09-15 등록 — 그 전까지 감시가 없어서, 적재 라우트가 미배포(404)라
+  //    매 30분 실패하는 동안 알림이 한 번도 오지 않았다. 문의가 인박스에 안 들어오는
+  //    상태가 조용히 이어졌다. 새 launchd 잡은 beat() + 이 목록 등록이 함께여야 한다.
+  { key: "heartbeat:smartstore-cs-scan", label: "스마트스토어 CS 수집(iMac·30분)", maxHours: 2 },
   { key: "cron_last_ok:preorder-unshipped", label: "예약상품 미발송 감시", maxHours: 28 },
   // 식스샵 동기화 폐지(2026-07) — 해리엇 글로벌 카페24 영문몰(shop_no=2) 이전. launchd 잡도 언로드 필요.
   { key: "heartbeat:postoffice-outbound", label: "우체국 출고빌드(iMac)", maxHours: 28, weekdaysOnly: true },
