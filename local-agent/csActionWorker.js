@@ -147,6 +147,20 @@ async function doWconceptClaim(page, p) {
   return { done: true };
 }
 
+/**
+ * 스마트스토어 1:1 문의 답변 — 브라우저가 필요 없다. 커머스 API 로 바로 보낸다.
+ * 여기(로컬)에서 보내는 이유는 그 API 가 IP 화이트리스트라 Vercel 에서 막히기 때문이다.
+ * ⚠️ 네이버는 한 문의에 답변 1회만 받는다 → 이미 답변된 건은 에러로 떨어지고,
+ *    대시보드는 그 경우 out 메시지를 남기지 않는다.
+ */
+async function doSmartstoreReply(p) {
+  if (!p || !p.inquiryNo) throw new Error("inquiryNo 없음");
+  if (!p.body || !String(p.body).trim()) throw new Error("답변 본문이 비어 있음");
+  const { answerInquiry } = require("./smartstoreCs");
+  const res = await answerInquiry(Number(p.inquiryNo), String(p.body));
+  return { answered: true, inquiryNo: Number(p.inquiryNo), response: res ?? null };
+}
+
 const SIXSHOP_HANDLERS = {
   sixshop_reply: doSixshopReply,
   sixshop_claim: doSixshopClaim,
@@ -207,6 +221,24 @@ async function processWconcept(jobs) {
   });
 }
 
+/** API 전용 그룹 — 브라우저 없이 잡을 바로 처리한다. */
+async function processSmartstore(jobs) {
+  const handlers = { smartstore_reply: doSmartstoreReply };
+  for (const job of jobs) {
+    log(`CS 액션 [${job.kind}] ${job.id}`);
+    try {
+      const handler = handlers[job.kind];
+      if (!handler) throw new Error(`미지원 kind: ${job.kind}`);
+      const result = await handler(job.payload || {});
+      await writeJob(job, { status: "done", result, error: null });
+      log(`  ✅ done ${job.id}`);
+    } catch (e) {
+      await writeJob(job, { status: "error", error: e && e.message ? e.message : String(e) });
+      log(`  ❌ error ${job.id}: ${e && e.message}`);
+    }
+  }
+}
+
 async function tick() {
   const { data, error } = await sb.from("kv_store").select("key,data").like("key", PREFIX + "%");
   if (error) { log("kv 조회 실패: " + error.message); return; }
@@ -216,7 +248,12 @@ async function tick() {
     const claimed = [];
     for (const job of pending) { claimed.push(await writeJob(job, { status: "processing" })); }
     const wc = claimed.filter((j) => String(j.kind).startsWith("wconcept_"));
-    const ss = claimed.filter((j) => !String(j.kind).startsWith("wconcept_"));
+    // 스마트스토어는 API 라 브라우저를 안 띄운다 — 식스샵 그룹에 섞이면 크롬만 뜨고 미지원 kind 로 실패한다.
+    const ns = claimed.filter((j) => String(j.kind).startsWith("smartstore_"));
+    const ss = claimed.filter(
+      (j) => !String(j.kind).startsWith("wconcept_") && !String(j.kind).startsWith("smartstore_"),
+    );
+    if (ns.length) await processSmartstore(ns);
     if (ss.length) await processSixshop(ss);
     if (wc.length) await processWconcept(wc);
   }
