@@ -14,6 +14,7 @@
  */
 (function () {
   var GA4_ID = "G-XM3HDPEVWY";       // 국문몰과 동일 속성 — hostName 으로 분리 집계
+  var LOADER_ID = "AW-17364588868";  // 🔑 실제로 내려받아지는 유일한 gtag 컨테이너 (아래 참조)
   var PIXEL_ID = "7740091496041900"; // 폴바이스 메타 픽셀
 
   function has(selector) {
@@ -21,14 +22,18 @@
   }
 
   // ── GA4 ─────────────────────────────────────────────
-  // 카페24 연동이 나중에 켜져 같은 측정ID 가 이미 들어와 있으면 우리가 또 넣지 않는다(이중 집계 방지).
-  if (!has('script[src*="gtag/js?id=' + GA4_ID + '"]')) {
-    // ⚠️ head.appendChild 로 넣었더니 gtag.js 가 **net::ERR_BLOCKED_BY_ORB** 로 차단됐다(2026-09-15 실측).
-    //    같은 페이지에서 픽셀 로더는 insertBefore 로 넣어 정상 통과했다 → 픽셀과 동일한 방식으로 맞춘다.
-    //    (국문몰은 HTML 에 정적 <script> 로 박혀 있어 이 문제가 없다.)
+  // 🔴 ORB 차단의 진짜 원인 (2026-09-15 확정):
+  //    `gtag/js?id=G-XM3HDPEVWY` 는 **404 text/html** 을 돌려준다. 남의 사이트 G- ID 3개는 전부 200 이므로
+  //    내 네트워크 문제가 아니라 **우리 계정 구조** 때문이다 — 우리 GA4 스트림(G-XM3HDPEVWY·G-QHBGSSBV3W)은
+  //    독립 컨테이너가 아니라 **구글애즈 태그 AW-17364588868 의 목적지(destination)** 로 만들어졌다.
+  //    실제로 AW 컨테이너(572KB) 안에 두 G- ID 가 모두 들어 있다.
+  //    → 브라우저는 text/html 404 를 script 로 읽으려다 ORB 로 차단한다(net::ERR_BLOCKED_BY_ORB).
+  //    삽입 방식(appendChild/insertBefore/정적)은 처음부터 무관했다. **URL 이 문제였다.**
+  //    그래서 로더는 AW 로 받고, 국문몰과 똑같이 config 를 AW·G- 둘 다 호출한다.
+  if (!has('script[src*="gtag/js?id=' + LOADER_ID + '"]')) {
     var s = document.createElement("script");
     s.async = true;
-    s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA4_ID;
+    s.src = "https://www.googletagmanager.com/gtag/js?id=" + LOADER_ID;
     var first = document.getElementsByTagName("script")[0];
     if (first && first.parentNode) first.parentNode.insertBefore(s, first);
     else (document.head || document.documentElement).appendChild(s);
@@ -38,6 +43,7 @@
       window.gtag = function () { window.dataLayer.push(arguments); };
     }
     window.gtag("js", new Date());
+    window.gtag("config", LOADER_ID); // 컨테이너 초기화 — 이게 있어야 목적지 GA4 가 붙는다
     window.gtag("config", GA4_ID);
   }
 
