@@ -25,9 +25,12 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** 카페24 주문 조회는 **한 번에 6개월까지**(422). 1년을 두 창으로 나눠 본다. */
-const WINDOW_DAYS = 180;
-const LOOKBACK_WINDOWS = 2;
+/**
+ * 카페24 주문 조회 기간 상한 — 필터 없이는 6개월이지만 **buyer_cellphone 등 검색 조건이 붙으면 3개월**(422, 2026-09-15 실측).
+ * 첫 배포는 180일로 잡아 verified 가 전부 false 로 떨어졌다. 90일×4창 = 1년.
+ */
+const WINDOW_DAYS = 90;
+const LOOKBACK_WINDOWS = 4;
 
 /**
  * 연락처로 이 상품을 산 주문을 찾는다. 취소/반품(C·R)만 걸러내고 결제된 주문은 배송 단계와 무관하게 인정한다
