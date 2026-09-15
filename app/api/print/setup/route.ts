@@ -69,12 +69,17 @@ Write-Host ("   선택: " + $Printer)
 Write-Host "3/4 에이전트 스크립트 저장 + 로그인 시 자동 시작 등록"
 $Agent = Join-Path $Dir "print-agent.ps1"
 Invoke-WebRequest -Uri ("$Base/api/print/setup?k=" + $Token + "&agent=1") -OutFile $Agent
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $Agent + '"')
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-Register-ScheduledTask -TaskName "PaulvicePrintAgent" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
-Start-ScheduledTask -TaskName "PaulvicePrintAgent"
-Write-Host "4/4 설치 완료. 에이전트가 백그라운드에서 20초마다 인쇄 대기열을 확인합니다."
+# 관리자 권한 없이도 되게: 시작프로그램 폴더에 창 없이 띄우는 실행기(.vbs)를 둔다.
+# (예약작업 Register-ScheduledTask 는 이 노트북에서 '액세스 거부' — 2026-09-15 실측)
+$Launcher = Join-Path $Dir "start-agent.vbs"
+$vbs = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """' + $Agent + '""", 0, False'
+Set-Content -Path $Launcher -Value $vbs -Encoding ASCII
+$Startup = [Environment]::GetFolderPath("Startup")
+Copy-Item $Launcher (Join-Path $Startup "PaulvicePrintAgent.vbs") -Force
+# 이미 돌고 있는 에이전트가 있으면 정리하고 새로 시작
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Process -FilePath "wscript.exe" -ArgumentList ('"' + $Launcher + '"')
+Write-Host "4/4 설치 완료. 에이전트가 백그라운드에서 20초마다 인쇄 대기열을 확인합니다(로그인 시 자동 시작)."
 Write-Host ("로그: " + (Join-Path $Dir "agent.log"))
 `;
 }
@@ -85,6 +90,6 @@ export async function GET(req: Request) {
   const base = (process.env.PRINT_AGENT_BASE_URL || `${url.protocol}//${url.host}`).replace(/\/$/, "");
   const token = printAgentToken();
   const body = url.searchParams.get("agent") ? agentScript(base, token) : setupScript(base, token);
-  // UTF-8 BOM — 한글이 들어간 PowerShell 스크립트를 Windows 가 올바로 읽게
-  return new Response("﻿" + body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+  // BOM 을 넣으면 `irm | iex` 가 첫 줄을 "﻿#…" 명령으로 오인해 CommandNotFound 를 낸다(실측). charset 헤더로 충분.
+  return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 }
