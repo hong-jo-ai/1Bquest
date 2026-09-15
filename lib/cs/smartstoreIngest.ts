@@ -93,13 +93,20 @@ export async function ingestSmartstoreInquiries(
     }
 
     // 이미 스토어에서 답변한 건은 out 메시지로 같이 넣어야 인박스가 "미답변"으로 오해하지 않는다.
-    if (q.answered && q.answerContent) {
+    //
+    // ⚠️ `answerContent` 가 없어도 `answered:true` 면 답변된 것으로 본다.
+    //    네이버는 답변 직후 조회에서 **answered:true / answerContent:null** 을 돌려주는 경우가 있다
+    //    (2026-09-15 손*원 문의 325836634 — 우리가 10:27 에 보낸 답변이 answered 로만 반영됨).
+    //    본문이 있을 때만 적재하면 그 건은 인박스에 영원히 '미답변'으로 남고, 그걸 보고
+    //    **또 답장을 보내게 된다**(실제로 그날 중복 발송이 났다). 네이버는 문의당 답변 1회뿐이라
+    //    중복 시도는 실패로 끝나지만, 응대 판단 자체가 오염된다.
+    if (q.answered) {
       const answered = await ingestMessage({
         brand: BRAND,
         channel: "smartstore",
         externalThreadId,
         externalMessageId: `${externalThreadId}_a`,
-        bodyText: q.answerContent.trim(),
+        bodyText: q.answerContent?.trim() || "(스토어에서 답변함 — 본문 미제공)",
         sentAt: toDate(q.answerRegistrationDateTime),
         direction: "out",
         raw: { source: "smartstore", sent_via: "smartstore_admin" },
