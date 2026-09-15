@@ -76,6 +76,13 @@ export default async function ReviewPage({ token }: { token: string | null }) {
   // 브랜드 정액을 그대로 띄우면 실제 지급액과 달라 고객이 덜 받았다고 느낀다.
   const paid = await paidAmountForReview(mall, tok.orderRef, tok.productNo);
 
+  // 구매 미확인 진입(verified:false)은 적립금 안내를 아예 띄우지 않는다 — 없는 보상을 약속하면 안 된다.
+  const reward = tok.verified === false ? null : {
+    text:  money(mall, rewardFor(mall, "none",  paid)),
+    photo: money(mall, rewardFor(mall, "photo", paid)),
+    video: money(mall, rewardFor(mall, "video", paid)),
+  };
+
   return (
     <ReviewForm
       token={token}
@@ -84,11 +91,7 @@ export default async function ReviewPage({ token }: { token: string | null }) {
       lang={lang}
       homeUrl={home}
       brand={brand}
-      reward={{
-        text:  money(mall, rewardFor(mall, "none",  paid)),
-        photo: money(mall, rewardFor(mall, "photo", paid)),
-        video: money(mall, rewardFor(mall, "video", paid)),
-      }}
+      reward={reward}
     />
   );
 }

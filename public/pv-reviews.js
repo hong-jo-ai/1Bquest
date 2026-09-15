@@ -247,12 +247,27 @@
     if(c){var cm=(c.href||"").match(/\/product\/[^\/?]+\/(\d+)(?:[\/?]|$)/);if(cm)return cm[1];}
     return null;
   }
+  // 해리엇 "리뷰 작성하기" → 우리 리뷰 페이지(사진·동영상·적립금). 카페24 후기 폼은 첨부 없음+캡차(2026-09-15 사장님 결정).
+  // 스킨 파일은 안 건드리고 링크만 바꾼다 — 이 스크립트가 실패하면 원래 카페24 폼이 그대로 남는다(페일오픈).
+  var WRITE_BASE="https://review.harriotwatches.co.kr/write";
+  function rewriteWriteLinks(pno){
+    if(MALL!=="harriot")return;
+    var mall=EN?"harriot_global":"harriot_kr";
+    var url=WRITE_BASE+"?mall="+mall+"&product_no="+encodeURIComponent(pno);
+    var as=document.querySelectorAll('a[href*="/board/product/write.html"]');
+    for(var i=0;i<as.length;i++){
+      var h=as[i].getAttribute("href")||"";
+      if(!/board_no=4(?:&|$)/.test(h))continue; // 4=상품 사용후기. Q&A(6) 등은 그대로
+      as[i].setAttribute("href",url);as[i].setAttribute("data-pv-write","1");
+    }
+  }
   function init(){
     injectCss();
     var targets=[["pv-review-photostrip",renderStrip],["pv-review-phototop",renderTop],["pv-review-list",renderList]];
     var els=[],pno=null;
     targets.forEach(function(t){var e=document.getElementById(t[0]);if(e){els.push([e,t[1]]);if(!pno)pno=getProductNo(e);var dm=e.getAttribute("data-mall");if(dm)MALL=dm;var dl=e.getAttribute("data-lang");if(dl){EN=/^en/i.test(dl);L=EN?L_EN:L_KO;}}});
     if(!els.length||!pno||!/^\d+$/.test(pno))return;
+    try{rewriteWriteLinks(pno);}catch(e){}
     load(pno,function(data){
       els.forEach(function(p){try{p[1](p[0],data);}catch(e){}});
       // 상세 탭의 리뷰 개수 뱃지 채우기(.pv-rv-count) — 그룹 합산 개수

@@ -144,6 +144,11 @@ export interface ReviewToken {
   name?: string;
   email?: string;
   phone?: string; // 국내 SMS 리뷰의 적립금 회원매칭 키(카페24는 cellphone으로 회원 조회)
+  /**
+   * 구매 확인 여부. 알림톡 링크(주문에서 만든 토큰)는 생략 = 확인됨.
+   * 상품페이지 진입(lib/reviews/entry.ts)에서 주문을 못 찾으면 **false** — 작성은 허용하되 적립금 0.
+   */
+  verified?: boolean;
   exp: number; // epoch sec
 }
 

@@ -35,6 +35,8 @@ const ALLOW_PREFIX = [
   "/api/meta/webhook", // Meta webhook
   "/review/",          // 고객 리뷰 작성 페이지 (토큰링크, 익명 접근)
   "/r/",               // 리뷰 짧은 링크 (/r/<code> → 리뷰 작성, 익명 접근)
+  "/write",            // 상품페이지 "리뷰 작성하기" 진입 (연락처로 주문 찾아 토큰 발급, 익명) — 2026-09-15
+  "/api/reviews/entry", // 위 진입 페이지의 토큰 발급 API (익명)
   "/c/",               // 캠페인 짧은 링크 (/c/<code> → 클릭기록 후 상품페이지 리다이렉트, 익명)
   "/care",             // PAULVICE CARE 구매자 케어 등록 (동봉 카드 QR → 고객 직접 접근)
   "/api/care/",        // CARE 등록 API (본인확인·제품목록·등록, 익명 공개)

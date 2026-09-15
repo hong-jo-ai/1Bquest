@@ -40,7 +40,9 @@ export async function POST(req: NextRequest) {
 
   const media: MediaItem[] = Array.isArray(body.media) ? body.media.filter((m) => m && (m.type === "image" || m.type === "video") && typeof m.url === "string").slice(0, 10) : [];
   const mediaType: MediaType = media.some((m) => m.type === "video") ? "video" : media.some((m) => m.type === "image") ? "photo" : "none";
-  const writer = (body.name || tok.name || "Verified Buyer").toString().slice(0, 40);
+  // 구매 미확인(상품페이지 진입에서 주문을 못 찾은 경우)은 적립금 없이 받는다 — 사장님 결정 2026-09-15.
+  const unverified = tok.verified === false;
+  const writer = (body.name || tok.name || (unverified ? (mall.currency === "KRW" ? "고객" : "Customer") : "Verified Buyer")).toString().slice(0, 40);
   const content = (body.content || "").toString().slice(0, 4000);
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "0.0.0.0";
 
@@ -66,8 +68,10 @@ export async function POST(req: NextRequest) {
     mall: mall.id, cafe24_shop_no: mall.shopNo, product_no: tok.productNo, product_name: tok.productName,
     order_ref: tok.orderRef || null, customer_name: writer, customer_email: tok.email || null,
     customer_phone: tok.phone || null,
-    rating, content, media, media_type: mediaType, reward_points: rewardFor(mall, mediaType, paid),
-    status: "published", reward_status: "pending", source: "review_app", ip,
+    rating, content, media, media_type: mediaType,
+    reward_points: unverified ? 0 : rewardFor(mall, mediaType, paid),
+    status: "published", reward_status: unverified ? "skipped" : "pending",
+    source: unverified ? "review_app_unverified" : "review_app", ip,
   };
   const { data: inserted, error } = await sb.from("reviews").insert(row).select("id").single();
   if (error) return Response.json({ error: "save failed: " + error.message }, { status: 500 });

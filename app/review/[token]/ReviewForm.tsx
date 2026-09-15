@@ -32,6 +32,8 @@ const STR = {
     errNetwork: "네트워크 오류. 다시 시도해 주세요.",
     thanks: "감사합니다!",
     thanksBody: (product: string, reward: string) => `<b>${product}</b> 후기가 등록되었습니다.<br/>적립금 <b style="color:${GOLD}">${reward}</b>을 곧 지급해 드릴게요.`,
+    thanksBodyNoReward: (product: string) => `<b>${product}</b> 후기가 등록되었습니다.<br/>소중한 후기 감사합니다.`,
+    submitNoReward: "후기 등록하기",
     back: (b: string) => `${b} 홈으로 →`,
   },
   en: {
@@ -59,13 +61,16 @@ const STR = {
     errNetwork: "Network error. Please try again.",
     thanks: "Thank you!",
     thanksBody: (product: string, reward: string) => `Your review for <b>${product}</b> has been received.<br/>We&apos;ll send your <b style="color:${GOLD}">${reward} reward</b> shortly.`,
+    thanksBodyNoReward: (product: string) => `Your review for <b>${product}</b> has been received.<br/>Thank you for sharing.`,
+    submitNoReward: "Submit review",
     back: (b: string) => `Back to ${b} →`,
   },
 } as const;
 
+/** reward=null 이면 구매 미확인 진입 — 적립금 문구를 어디에도 띄우지 않는다. */
 export default function ReviewForm({ token, productName, name: initialName, reward, lang = "en", homeUrl = "https://harriotwatches.com", brand = "HARRIOT" }: {
   token: string; productName: string; name: string;
-  reward: { text: string; photo: string; video: string };
+  reward: { text: string; photo: string; video: string } | null;
   lang?: Lang; homeUrl?: string; brand?: string;
 }) {
   const t = STR[lang];
@@ -83,7 +88,7 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
 
   const hasVideo = media.some((m) => m.type === "video");
   const hasPhoto = media.some((m) => m.type === "image");
-  const tier = hasVideo ? reward.video : hasPhoto ? reward.photo : reward.text;
+  const tier = reward ? (hasVideo ? reward.video : hasPhoto ? reward.photo : reward.text) : "";
 
   function addAspect(a: string) {
     setContent((c) => (c.trim() ? c.replace(/\s+$/, "") + " " : "") + a + " ");
@@ -150,7 +155,7 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
       <main style={wrap}><div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 32 }}>
         <div style={{ fontSize: 48 }}>🙏</div>
         <h1 style={{ fontSize: 22, margin: "16px 0 8px" }}>{t.thanks}</h1>
-        <p style={{ color: "#666", lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: t.thanksBody(productName, done.reward) }} />
+        <p style={{ color: "#666", lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: reward ? t.thanksBody(productName, done.reward) : t.thanksBodyNoReward(productName) }} />
         <a href={homeUrl} style={{ marginTop: 24, color: GOLD, textDecoration: "underline", fontSize: 14 }}>{t.back(brand)}</a>
       </div></main>
     );
@@ -165,9 +170,11 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
         <div style={{ fontSize: 19, fontWeight: 600 }}>{productName}</div>
       </div>
 
-      <div style={{ background: "#faf6ee", borderBottom: "1px solid #eee", padding: "12px 24px", fontSize: 13, color: "#7a6a44", textAlign: "center" }}>
-        {t.rewardBanner(reward)}
-      </div>
+      {reward && (
+        <div style={{ background: "#faf6ee", borderBottom: "1px solid #eee", padding: "12px 24px", fontSize: 13, color: "#7a6a44", textAlign: "center" }}>
+          {t.rewardBanner(reward)}
+        </div>
+      )}
 
       <div style={{ padding: 24 }}>
         {/* 별점 — 큼직하게 먼저, 선택 시 한마디 표시 */}
@@ -199,7 +206,7 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
 
         {/* 미디어 — capture 미지정: 모바일에서 카메라/앨범 선택 가능 */}
         <div style={{ marginTop: 16 }}>
-          <label style={{ fontSize: 14, fontWeight: 600 }}>{t.mediaLabel} <span style={{ color: GOLD, fontWeight: 600, fontSize: 12 }}>{t.mediaMore}</span></label>
+          <label style={{ fontSize: 14, fontWeight: 600 }}>{t.mediaLabel} {reward && <span style={{ color: GOLD, fontWeight: 600, fontSize: 12 }}>{t.mediaMore}</span>}</label>
           <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={(e) => onFiles(e.target.files)} style={{ display: "none" }} />
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || media.length >= 10}
             style={{ marginTop: 8, width: "100%", padding: "14px", border: `1.5px dashed ${GOLD}`, background: "#fffdf8", color: "#7a6a44", borderRadius: 8, fontSize: 14, cursor: "pointer" }}>
@@ -232,7 +239,7 @@ export default function ReviewForm({ token, productName, name: initialName, rewa
 
         <button type="button" onClick={submit} disabled={submitting || uploading}
           style={{ marginTop: 22, width: "100%", padding: 16, background: DARK, color: "#fff", border: 0, borderRadius: 8, fontSize: 15, fontWeight: 600, letterSpacing: .5, cursor: "pointer", opacity: submitting ? .6 : 1 }}>
-          {submitting ? t.submitting : t.submit}
+          {submitting ? t.submitting : reward ? t.submit : t.submitNoReward}
         </button>
         <p style={{ fontSize: 11, color: "#aaa", textAlign: "center", marginTop: 12 }}>{t.footer}</p>
       </div>
