@@ -1,5 +1,6 @@
 /**
- * 우리은행 입출금 알림 SMS 적재 — iMac 에이전트(wooriBankSms.js)가 chat.db에서 읽어 POST.
+ * 은행 입출금 알림 SMS 적재 — iMac 에이전트(wooriBankSms.js)가 chat.db에서 읽어 POST.
+ * 우리은행 + KB국민은행 두 은행을 받는다(KB 는 2026-09-16 추가).
  *
  * 왜: 통장(finance_bank_tx)은 엑셀 업로드 전용이라 사장님이 안 올리면 공백이 났다(2026-08-18 이후 0건).
  *     알림 문자는 계속 오니 그걸로 자동 적재해 엑셀 업로드를 없앤다(2026-09-12).
@@ -19,6 +20,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { parseWooriBankSms, type ParsedWooriBankSms } from "@/lib/finance/wooriBankSmsParser";
+import { parseKbBankSms, type ParsedKbBankSms } from "@/lib/finance/kbBankSmsParser";
 import { categorizeTx } from "@/lib/finance/categorize";
 import { enqueueCardClassify } from "@/lib/finance/cardClassify";
 import { HYUNDAI_STUB_MERCHANT } from "@/lib/finance/hyundaiCardSmsParser";
@@ -27,6 +29,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 interface SmsIn { text: string; id: string; receivedAtMs?: number }
+
+type ParsedBankSms = ParsedWooriBankSms | ParsedKbBankSms;
 
 function getDb(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -99,25 +103,44 @@ export async function POST(req: NextRequest) {
   const askHyundai = body.ask !== false;
   if (!messages.length) return Response.json({ ok: true, received: 0, parsed: 0, inserted: 0 });
 
-  const { data: biz } = await db.from("finance_businesses").select("id").eq("is_default", true).maybeSingle();
-  const businessId = biz?.id ?? null;
-  if (!businessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
+  // ⚠️ 계좌마다 장부 사업자가 다르다. 우리 = 기본 사업자(해리엇와치스), KB 511301 = 제이에이치.
+  // 예전엔 전부 기본 사업자로 넣었는데, KB 를 그렇게 넣으면 면세점 입금이 엉뚱한 장부에 쌓인다.
+  const { data: bizRows } = await db
+    .from("finance_businesses")
+    .select("id, registration_number, is_default");
+  const defaultBusinessId = (bizRows ?? []).find((b) => b.is_default)?.id ?? null;
+  const businessByRegNo = new Map<string, string>();
+  for (const b of bizRows ?? []) {
+    if (b.registration_number) businessByRegNo.set(String(b.registration_number), String(b.id));
+  }
+  if (!defaultBusinessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
 
   const bankRecords: Array<Record<string, unknown>> = [];
   const hyundaiCardRecords: Array<Record<string, unknown>> = [];
   const preview: Array<Record<string, unknown>> = [];
-  const latestBalance = new Map<string, { balance: number; at: Date; counterparty: string }>();
+  const latestBalance = new Map<string, { balance: number; at: Date; counterparty: string; bank: string }>();
   let nonBank = 0;
+  // 사업자를 못 찾은 계좌는 적재하지 않는다 — 틀린 장부에 넣는 것보다 비는 편이 낫다.
+  const unmapped: string[] = [];
 
   for (const m of messages) {
     if (!m?.text || !m?.id) continue;
-    const p = parseWooriBankSms(m.text, m.receivedAtMs);
+    const p: ParsedBankSms | null =
+      parseWooriBankSms(m.text, m.receivedAtMs) ?? parseKbBankSms(m.text, m.receivedAtMs);
     if (!p) { nonBank++; continue; }
+
+    let businessId = defaultBusinessId;
+    if (p.bank === "KB") {
+      const mapped = p.businessRegNo ? businessByRegNo.get(p.businessRegNo) : undefined;
+      if (!mapped) { unmapped.push(p.accountTail); continue; }
+      businessId = mapped;
+    }
 
     const isOut = p.kind === "출금" || p.kind === "입금취소";
     const withdrawal = isOut ? p.amount : 0;
     const deposit = isOut ? 0 : p.amount;
-    const isHyundai = /현대카드/.test(p.counterparty);
+    // 현대 체크카드는 우리 계좌에 물려 있다 — KB 문자엔 이 로직을 태우지 않는다.
+    const isHyundai = p.bank === "Woori" && /현대카드/.test(p.counterparty);
 
     let category: string;
     let categorySource: string;
@@ -142,7 +165,7 @@ export async function POST(req: NextRequest) {
         category_source: "rule",
         raw: { fromBankSms: true, ns: m.id, sms: m.text },
       });
-    } else if (p.kind !== "입금" && (await hasWooriCardTwin(db, p))) {
+    } else if (p.bank === "Woori" && p.kind !== "입금" && (await hasWooriCardTwin(db, p))) {
       category = "카드결제"; categorySource = "rule-dup"; description = "체크우리";
     } else {
       // 출금취소는 "돈이 돌아온 것"이라 입금으로 적되, 카테고리는 원래 지출 성격을 따른다.
@@ -176,11 +199,11 @@ export async function POST(req: NextRequest) {
 
     if (p.balance != null) {
       const cur = latestBalance.get(p.accountNumber);
-      if (!cur || p.txDate > cur.at) latestBalance.set(p.accountNumber, { balance: p.balance, at: p.txDate, counterparty: p.counterparty });
+      if (!cur || p.txDate > cur.at) latestBalance.set(p.accountNumber, { balance: p.balance, at: p.txDate, counterparty: p.counterparty, bank: p.bank });
     }
   }
 
-  if (!bankRecords.length) return Response.json({ ok: true, received: messages.length, parsed: 0, inserted: 0, nonBank });
+  if (!bankRecords.length) return Response.json({ ok: true, received: messages.length, parsed: 0, inserted: 0, nonBank, unmapped });
 
   // 엑셀 업로드분과 같은 unique(사업자·시각·출금·입금·잔액) → 겹치는 구간을 다시 보내도 중복이 안 쌓인다.
   const { data, error } = await db
@@ -213,7 +236,7 @@ export async function POST(req: NextRequest) {
     const curAt = (cur?.data as { at?: string } | null)?.at;
     if (curAt && new Date(curAt) >= v.at) continue;
     await db.from("kv_store").upsert(
-      { key, data: { balance: v.balance, at: v.at.toISOString(), counterparty: v.counterparty, source: "woori_sms" }, updated_at: new Date().toISOString() },
+      { key, data: { balance: v.balance, at: v.at.toISOString(), counterparty: v.counterparty, source: v.bank === "KB" ? "kb_sms" : "woori_sms" }, updated_at: new Date().toISOString() },
       { onConflict: "key" },
     );
   }
@@ -227,6 +250,7 @@ export async function POST(req: NextRequest) {
     hyundaiCards: hyundaiCardRecords.length,
     asked,
     nonBank,
+    unmapped,
     preview: preview.slice(0, 20),
   });
 }

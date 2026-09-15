@@ -39,7 +39,7 @@ const ACCOUNT_MAP: Record<string, { full: string; personal: boolean }> = {
 
 const KST_MS = 9 * 3600 * 1000;
 
-function inferYear(month: number, day: number, h: number, mi: number, baseMs?: number): Date {
+export function inferYear(month: number, day: number, h: number, mi: number, baseMs?: number): Date {
   const base = baseMs ? new Date(baseMs) : new Date();
   const baseKstYear = new Date(base.getTime() + KST_MS).getUTCFullYear();
   let d = new Date(Date.UTC(baseKstYear, month - 1, day, h, mi, 0, 0) - KST_MS);
