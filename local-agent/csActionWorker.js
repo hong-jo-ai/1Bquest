@@ -154,9 +154,14 @@ async function doWconceptClaim(page, p) {
  *    대시보드는 그 경우 out 메시지를 남기지 않는다.
  */
 async function doSmartstoreReply(p) {
-  if (!p || !p.inquiryNo) throw new Error("inquiryNo 없음");
+  if (!p || (!p.inquiryNo && !p.questionId)) throw new Error("inquiryNo/questionId 없음");
   if (!p.body || !String(p.body).trim()) throw new Error("답변 본문이 비어 있음");
-  const { answerInquiry } = require("./smartstoreCs");
+  const { answerInquiry, answerQna } = require("./smartstoreCs");
+  // 상품 Q&A(questionId)는 1:1 고객문의(inquiryNo)와 다른 API 로 나간다.
+  if (p.questionId) {
+    const res = await answerQna(Number(p.questionId), String(p.body));
+    return { answered: true, questionId: Number(p.questionId), response: res ?? null };
+  }
   const res = await answerInquiry(Number(p.inquiryNo), String(p.body));
   return { answered: true, inquiryNo: Number(p.inquiryNo), response: res ?? null };
 }

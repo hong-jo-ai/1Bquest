@@ -118,8 +118,8 @@ function signalTexts(thread: Pick<CsThread, "subject">, messages: CsMessage[]): 
   for (const m of messages) {
     if (m.direction !== "in") continue;
     const raw = (m.raw ?? {}) as Record<string, unknown>;
-    const inquiry = (raw.inquiry ?? {}) as Record<string, unknown>;
-    // 스마트스토어: raw.inquiry.productName 이 가장 정확한 상품 단서
+    const inquiry = (raw.inquiry ?? raw.qna ?? {}) as Record<string, unknown>;
+    // 스마트스토어: raw.inquiry(1:1)·raw.qna(상품 Q&A).productName 이 가장 정확한 상품 단서
     if (typeof inquiry.productName === "string") productTexts.push(inquiry.productName);
     // 웹챗: 문의한 페이지 URL 의 slug(/product/harriot-kiwon-jade/122/)
     if (typeof raw.page_url === "string") productTexts.push(raw.page_url);

@@ -117,3 +117,73 @@ export async function ingestSmartstoreInquiries(
 
   return out;
 }
+
+// ── 상품 Q&A ───────────────────────────────────────────────
+// 고객문의(1:1)와 **다른 API**(`GET /v1/contents/qnas`, 답변 `PUT /v1/contents/qnas/:questionId`).
+// 2026-09-15: 1:1 만 수집하다 상품 Q&A 두 건(9/12·9/14)이 인박스에 안 올라온 사고로 추가.
+
+/** local-agent 가 `/v1/contents/qnas` 에서 읽어 넘겨주는 상품 문의 1건. */
+export interface SmartstoreQna {
+  questionId: number;
+  question?: string;
+  createDate?: string;
+  answered?: boolean;
+  answer?: string;
+  answers?: { answer?: string; createDate?: string }[];
+  productId?: number;
+  productName?: string;
+  maskedWriterId?: string;
+}
+
+export function smartstoreQnaThreadId(questionId: number): string {
+  return `smartstore_qna_${questionId}`;
+}
+
+export async function ingestSmartstoreQnas(qnas: SmartstoreQna[]): Promise<SmartstoreIngestResult> {
+  const out: SmartstoreIngestResult = { scanned: 0, inserted: 0, newInboundThreadIds: [] };
+
+  for (const q of qnas) {
+    if (!q || typeof q.questionId !== "number") continue;
+    out.scanned++;
+    const externalThreadId = smartstoreQnaThreadId(q.questionId);
+
+    const lines = [(q.question ?? "").trim()];
+    if (q.productName) lines.push("", `— 상품: ${q.productName}`);
+
+    const inbound = await ingestMessage({
+      brand: BRAND,
+      channel: "smartstore",
+      externalThreadId,
+      externalMessageId: `${externalThreadId}_q`,
+      customerName: q.maskedWriterId ?? undefined,
+      customerHandle: q.maskedWriterId ?? undefined,
+      subject: q.productName ? `상품 Q&A · ${q.productName}` : "스마트스토어 상품 Q&A",
+      bodyText: lines.join("\n"),
+      sentAt: toDate(q.createDate),
+      direction: "in",
+      raw: { source: "smartstore", kind: "qna", qna: q },
+    });
+    if (inbound.inserted) {
+      out.inserted++;
+      out.newInboundThreadIds.push(inbound.threadId);
+    }
+
+    // 1:1 과 같은 이유로 `answered` 만 보고 out 을 만든다(본문이 비어 와도 답변된 건은 답변된 것).
+    if (q.answered) {
+      const last = q.answers?.length ? q.answers[q.answers.length - 1] : undefined;
+      const answered = await ingestMessage({
+        brand: BRAND,
+        channel: "smartstore",
+        externalThreadId,
+        externalMessageId: `${externalThreadId}_a`,
+        bodyText: (last?.answer ?? q.answer)?.trim() || "(스토어에서 답변함 — 본문 미제공)",
+        sentAt: toDate(last?.createDate),
+        direction: "out",
+        raw: { source: "smartstore", sent_via: "smartstore_admin" },
+      });
+      if (answered.inserted) out.inserted++;
+    }
+  }
+
+  return out;
+}

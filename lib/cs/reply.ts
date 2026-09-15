@@ -116,13 +116,16 @@ async function sendSmartstoreReply(
   if (!data) return { ok: false, error: "thread not found" };
   const { thread } = data;
 
-  const m = /^smartstore_inquiry_(\d+)$/.exec(thread.external_thread_id);
+  // 1:1 고객문의(inquiryNo)와 상품 Q&A(questionId)는 네이버에서 답변 API 가 다르다 — 워커가 payload 로 가른다.
+  const m = /^smartstore_(inquiry|qna)_(\d+)$/.exec(thread.external_thread_id);
   if (!m) {
     return { ok: false, error: `스마트스토어 문의번호를 읽을 수 없습니다: ${thread.external_thread_id}` };
   }
-  const inquiryNo = Number(m[1]);
+  const payload = m[1] === "qna"
+    ? { threadId, questionId: Number(m[2]), body }
+    : { threadId, inquiryNo: Number(m[2]), body };
 
-  const jobId = await enqueueCsAction("smartstore_reply", { threadId, inquiryNo, body });
+  const jobId = await enqueueCsAction("smartstore_reply", payload);
   const job = await waitCsAction(jobId);
   if (!job || job.status !== "done") {
     return {

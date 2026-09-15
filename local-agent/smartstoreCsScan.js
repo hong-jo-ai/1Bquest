@@ -10,17 +10,20 @@
  * 실행: node smartstoreCsScan.js          (최근 14일)
  *       node smartstoreCsScan.js 90       (90일 백필)
  */
-const { collectInquiries } = require("./smartstoreCs");
+const { collectInquiries, collectQnas } = require("./smartstoreCs");
 
 const DASHBOARD = process.env.PAULWISE_DASHBOARD_URL || "https://paulvice-dashboard.vercel.app";
 const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
 
 (async () => {
   const days = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 14;
+  // 고객문의(1:1)와 상품 Q&A 는 별개 API — 둘 다 모아야 인박스가 스토어와 같아진다.
   const inquiries = await collectInquiries(days);
-  log(`문의 ${inquiries.length}건 조회 (최근 ${days}일)`);
-  if (inquiries.length === 0) {
+  const qnas = await collectQnas(days);
+  log(`고객문의 ${inquiries.length}건 · 상품 Q&A ${qnas.length}건 조회 (최근 ${days}일)`);
+  if (inquiries.length === 0 && qnas.length === 0) {
     log("적재할 문의 없음 — 종료.");
+    try { await require("./heartbeat").beat("smartstore-cs-scan"); } catch {}
     return;
   }
 
@@ -30,11 +33,12 @@ const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}
   const res = await fetch(`${DASHBOARD}/api/cs/ingest/smartstore`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-agent-token": token },
-    body: JSON.stringify({ inquiries }),
+    body: JSON.stringify({ inquiries, qnas }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json.ok) throw new Error(`적재 실패 ${res.status} ${JSON.stringify(json).slice(0, 200)}`);
   log(`적재 완료 — 스캔 ${json.scanned} / 신규 ${json.inserted} / 새 문의 스레드 ${json.newInboundThreadIds?.length ?? 0}`);
+  if (json.qnaSkipped) log(`⚠️ 상품 Q&A ${json.qnaSkipped}건은 서버가 아직 모른다(구버전 배포) — 배포 후 다시 적재됨`);
 
   try { await require("./heartbeat").beat("smartstore-cs-scan"); } catch {}
 })().catch((e) => {

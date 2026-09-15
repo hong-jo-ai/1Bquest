@@ -91,4 +91,34 @@ async function collectInquiries(days = 14) {
   return out;
 }
 
-module.exports = { token, api, listInquiries, answerInquiry, collectInquiries, API };
+/**
+ * 상품 Q&A(상품 상세의 "문의") 목록 — 고객문의(1:1)와 **완전히 다른 API** 다.
+ * 2026-09-15: 1:1 만 수집하다 9/12·9/14 상품 Q&A 두 건이 인박스에 안 올라온 사고로 추가.
+ * 응답 항목: questionId·question·answered·answer·answers[]·productId·productName·maskedWriterId·createDate
+ */
+async function listQnas({ days = 14, page = 1, size = 50 } = {}) {
+  const now = new Date(), from = new Date(now.getTime() - days * 864e5);
+  const q = new URLSearchParams({
+    fromDate: from.toISOString(), toDate: now.toISOString(),
+    page: String(page), size: String(Math.max(10, size)),
+  });
+  return api("GET", `/v1/contents/qnas?${q}`);
+}
+
+/** 상품 Q&A 답변 등록(PUT — 네이버는 등록·수정을 같은 경로로 받는다). */
+async function answerQna(questionId, content) {
+  return api("PUT", `/v1/contents/qnas/${questionId}`, { commentContent: content });
+}
+
+async function collectQnas(days = 14) {
+  const out = [];
+  for (let page = 1; page <= 20; page++) {
+    const res = await listQnas({ days, page });
+    const items = res?.contents ?? [];
+    out.push(...items);
+    if (items.length === 0 || page >= (res?.totalPages ?? 1)) break;
+  }
+  return out;
+}
+
+module.exports = { token, api, listInquiries, answerInquiry, collectInquiries, listQnas, answerQna, collectQnas, API };
