@@ -72,13 +72,17 @@ Invoke-WebRequest -Uri ("$Base/api/print/setup?k=" + $Token + "&agent=1") -OutFi
 # 관리자 권한 없이도 되게: 시작프로그램 폴더에 창 없이 띄우는 실행기(.vbs)를 둔다.
 # (예약작업 Register-ScheduledTask 는 이 노트북에서 '액세스 거부' — 2026-09-15 실측)
 $Launcher = Join-Path $Dir "start-agent.vbs"
-$vbs = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """' + $Agent + '""", 0, False'
+# VBScript 문자열 안의 따옴표는 "" 로 이스케이프 — 첫 배포는 """ 로 써서 구문오류 → 에이전트가 아예 안 떴다(2026-09-15)
+$vbs = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""' + $Agent + '""", 0, False'
 Set-Content -Path $Launcher -Value $vbs -Encoding ASCII
 $Startup = [Environment]::GetFolderPath("Startup")
 Copy-Item $Launcher (Join-Path $Startup "PaulvicePrintAgent.vbs") -Force
-# 이미 돌고 있는 에이전트가 있으면 정리하고 새로 시작
+# 이미 돌고 있는 에이전트가 있으면 정리하고 지금 바로 시작(런처를 거치지 않고 직접 — 런처는 로그인 시 자동시작용)
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Process -FilePath "wscript.exe" -ArgumentList ('"' + $Launcher + '"')
+Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", ('"' + $Agent + '"')) -WindowStyle Hidden
+Start-Sleep -Seconds 3
+$running = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" }
+if ($running) { Write-Host "   에이전트 실행 중 (PID $($running.ProcessId))" } else { Write-Host "   ⚠️ 에이전트가 바로 종료됨 — agent.log 확인 필요" }
 Write-Host "4/4 설치 완료. 에이전트가 백그라운드에서 20초마다 인쇄 대기열을 확인합니다(로그인 시 자동 시작)."
 Write-Host ("로그: " + (Join-Path $Dir "agent.log"))
 `;
