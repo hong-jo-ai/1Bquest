@@ -29,6 +29,7 @@ const CHANNEL_ICON: Record<CsChannel, React.ElementType> = {
   sixshop: ShoppingBag,
   wconcept: ShoppingBag,
   musinsa: ShoppingBag,
+  smartstore: ShoppingBag,
 };
 
 const BRAND_COLOR: Record<CsBrandId, string> = {
