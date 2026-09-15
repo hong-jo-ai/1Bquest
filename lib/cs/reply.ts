@@ -13,7 +13,7 @@ import {
   replyToIgComment,
   sendIgMessage,
 } from "./instagramClient";
-import { notifyWebchatReply } from "./webchat";
+import { notifyWebchatReply, type WebchatAttachment } from "./webchat";
 import { cafe24Post, cafe24Put, type MallId } from "../cafe24Client";
 import { getAccessTokenFromStore as getCafe24AccessToken } from "../cafe24TokenStore";
 import { addReplyExample } from "./replyExamples";
@@ -29,6 +29,14 @@ export interface ReplyResult {
 export interface ReplyOptions {
   sentVia?: string;
   rawExtra?: Record<string, unknown>;
+  /**
+   * 답장에 붙일 첨부(이미지). `/api/cs/attach` 가 올린 공개 URL 을 그대로 받는다.
+   * 형태는 인박스 AttachmentStrip·웹챗 위젯이 **이미 읽고 있는** {url,name,isImage} 규약 그대로다.
+   * - 웹챗: raw.attachments 로 저장만 하면 listWebchatMessages→위젯이 렌더한다(추가 작업 없음).
+   * - gmail: multipart/mixed 로 실제 파일을 붙인다.
+   * - 그 외 채널: 아직 첨부를 지원하지 않는다(무시되므로 UI 에서 막는다).
+   */
+  attachments?: WebchatAttachment[];
 }
 
 export async function sendReply(
@@ -55,6 +63,7 @@ export async function sendReply(
     ig_comment: sendIgCommentReply,
     cafe24_board: sendCafe24BoardReply,
     sixshop: sendSixshopReply,
+    smartstore: sendSmartstoreReply,
   };
 
   const fn = dispatchers[thread.channel];
@@ -88,6 +97,61 @@ export async function sendReply(
   return result;
 }
 
+/**
+ * 스마트스토어 1:1 고객문의 답변.
+ *
+ * 다른 마켓과 달리 브라우저 자동화가 아니라 **커머스 API** 로 답변이 나간다. 다만 그 API 가
+ * IP 화이트리스트라 Vercel 에서 직접 못 부른다(`GW.IP_NOT_ALLOWED`) → 식스샵과 같은
+ * 액션 큐에 실어 **로컬 워커**(`csActionWorker.js`)가 대신 보낸다.
+ *
+ * ⚠️ 네이버는 **한 문의에 답변 1회**만 받는다. 이미 답변된 건은 워커가 에러를 돌려주고,
+ * 그때는 out 메시지를 남기지 않는다(보내지도 않았는데 보낸 것처럼 보이면 안 된다).
+ */
+async function sendSmartstoreReply(
+  threadId: string,
+  body: string,
+  options: ReplyOptions = {}
+): Promise<ReplyResult> {
+  const data = await getThread(threadId);
+  if (!data) return { ok: false, error: "thread not found" };
+  const { thread } = data;
+
+  const m = /^smartstore_inquiry_(\d+)$/.exec(thread.external_thread_id);
+  if (!m) {
+    return { ok: false, error: `스마트스토어 문의번호를 읽을 수 없습니다: ${thread.external_thread_id}` };
+  }
+  const inquiryNo = Number(m[1]);
+
+  const jobId = await enqueueCsAction("smartstore_reply", { threadId, inquiryNo, body });
+  const job = await waitCsAction(jobId);
+  if (!job || job.status !== "done") {
+    return {
+      ok: false,
+      error: job?.error || "답변 전송 시간초과 — 잠시 후 다시 확인해 주세요(로컬 워커 처리 중일 수 있음)",
+    };
+  }
+
+  const externalMessageId = `${thread.external_thread_id}_a`;
+  await ingestMessage({
+    brand: thread.brand as CsBrandId,
+    channel: "smartstore",
+    externalThreadId: thread.external_thread_id,
+    externalMessageId,
+    bodyText: body,
+    sentAt: new Date(),
+    direction: "out",
+    raw: {
+      sent_via: options.sentVia ?? "inbox_ui",
+      smartstore_job: job.id,
+      ...(options.rawExtra ?? {}),
+    },
+  });
+
+  const db = getCsSupabase();
+  await db.from("cs_threads").update({ status: "resolved" }).eq("id", threadId);
+  return { ok: true, externalMessageId };
+}
+
 async function sendWebchatReply(
   threadId: string,
   body: string,
@@ -105,7 +169,13 @@ async function sendWebchatReply(
     bodyText: body,
     sentAt: new Date(),
     direction: "out",
-    raw: { sent_via: options.sentVia ?? "inbox_ui", ...(options.rawExtra ?? {}) },
+    raw: {
+      sent_via: options.sentVia ?? "inbox_ui",
+      // 위젯(listWebchatMessages→widget)이 방향 구분 없이 raw.attachments 를 읽으므로
+      // 여기 저장만 하면 고객 채팅창에 사진이 그대로 뜬다. 추가 작업 없음.
+      ...(options.attachments?.length ? { attachments: options.attachments } : {}),
+      ...(options.rawExtra ?? {}),
+    },
   });
 
   const db = getCsSupabase();
@@ -212,10 +282,15 @@ async function sendGmailReply(
   // (threadId/In-Reply-To/References)를 붙이면 발송 계정에서 실패한다 → 고객에게 새 메일로 발송.
   const isWebform = ((last.raw ?? {}) as Record<string, unknown>).source === "webform";
 
+  // 첨부가 있으면 multipart/mixed 로 만든다. 없으면 기존 평문 그대로(동작 변화 없음).
+  const atts = options.attachments ?? [];
+  const boundary = `----pw_${crypto.randomUUID()}`;
   const headerLines = [
     `To: ${toAddress}`,
     `Subject: ${encodeMimeHeader(subject)}`,
-    `Content-Type: text/plain; charset="UTF-8"`,
+    atts.length
+      ? `Content-Type: multipart/mixed; boundary="${boundary}"`
+      : `Content-Type: text/plain; charset="UTF-8"`,
     `MIME-Version: 1.0`,
   ];
   if (!isWebform && messageId) headerLines.push(`In-Reply-To: ${messageId}`);
@@ -224,7 +299,43 @@ async function sendGmailReply(
     headerLines.push(`References: ${refs}`);
   }
 
-  const rfc822 = headerLines.join("\r\n") + "\r\n\r\n" + body;
+  let rfc822: string;
+  if (!atts.length) {
+    rfc822 = headerLines.join("\r\n") + "\r\n\r\n" + body;
+  } else {
+    const parts: string[] = [
+      `--${boundary}`,
+      `Content-Type: text/plain; charset="UTF-8"`,
+      `MIME-Version: 1.0`,
+      "",
+      body,
+      "",
+    ];
+    for (const a of atts) {
+      // ⚠️ 첨부를 못 읽으면 **본문만 조용히 보내지 않는다**. 사진을 붙인 줄 알고 보낸 답장이
+      //    글자만 나가는 게 가장 나쁜 실패다(고객은 사진을 기다린다) → 전송 자체를 중단한다.
+      const fetched = await fetch(a.url).catch(() => null);
+      if (!fetched || !fetched.ok) {
+        return { ok: false, error: `첨부를 불러오지 못해 전송을 중단했습니다: ${a.name ?? a.url}` };
+      }
+      const ct = fetched.headers.get("content-type") || "application/octet-stream";
+      const b64 = Buffer.from(await fetched.arrayBuffer())
+        .toString("base64")
+        .replace(/(.{76})/g, "$1\r\n"); // RFC 2045 줄길이 제한
+      const fname = a.name || a.url.split("/").pop() || "attachment";
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${ct}`,
+        `Content-Transfer-Encoding: base64`,
+        `Content-Disposition: attachment; filename="${encodeMimeHeader(fname)}"`,
+        "",
+        b64,
+        "",
+      );
+    }
+    parts.push(`--${boundary}--`, "");
+    rfc822 = headerLines.join("\r\n") + "\r\n\r\n" + parts.join("\r\n");
+  }
   const raw = Buffer.from(rfc822, "utf-8")
     .toString("base64")
     .replace(/\+/g, "-")

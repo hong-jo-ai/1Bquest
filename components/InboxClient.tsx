@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Wrench,
   CalendarClock,
+  Paperclip,
 } from "lucide-react";
 import AsIntakeForm from "@/components/AsIntakeForm";
 import PromiseForm from "@/components/PromiseForm";
@@ -117,6 +118,12 @@ const CHANNEL_STYLE: Record<
     color: "text-zinc-900 dark:text-zinc-100",
     bg: "bg-zinc-200/70 dark:bg-zinc-700/40 border-zinc-400 dark:border-zinc-600",
   },
+  // 스마트스토어는 인박스에서 답장까지 되는 유일한 마켓 채널이라 네이버 초록으로 구분한다.
+  smartstore: {
+    icon: ShoppingBag,
+    color: "text-green-700 dark:text-green-400",
+    bg: "bg-green-50 dark:bg-green-950/40 border-green-300 dark:border-green-800",
+  },
 };
 
 const STATUS_STYLE: Record<CsStatus, string> = {
@@ -140,6 +147,12 @@ const BRAND_COLOR: Record<CsBrandId, string> = {
 
 type BrandFilter = CsBrandId | "all";
 type StatusFilter = CsStatus | "all";
+
+/** 답장 첨부 — /api/cs/attach 응답 형태이자 인박스·웹챗 위젯이 읽는 규약({url,name,isImage}). */
+type ReplyAttachment = { url: string; name?: string; isImage: boolean };
+
+/** 첨부를 실제로 고객에게 전달할 수 있는 채널만 버튼을 보여준다(나머지는 조용히 유실되므로 막는다). */
+const ATTACH_CHANNELS: ReadonlySet<string> = new Set(["webchat", "gmail"]);
 
 /**
  * 인스타 댓글이 **어느 게시물에 달렸는지** 보여주는 카드.
@@ -295,6 +308,9 @@ export default function InboxClient() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftNote, setDraftNote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // 답장에 붙일 첨부(이미지). /api/cs/attach 로 먼저 올리고 URL 만 들고 있다가 전송 때 같이 보낸다.
+  const [replyAttachments, setReplyAttachments] = useState<ReplyAttachment[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -554,18 +570,50 @@ export default function InboxClient() {
     }
   };
 
+  /** 첨부 업로드 — 올려서 URL 만 확보한다(메시지는 만들지 않는다). 실패는 토스트로 알린다. */
+  const attachFiles = async (files: FileList | null) => {
+    if (!files?.length || !selectedId) return;
+    setAttachBusy(true);
+    try {
+      for (const file of Array.from(files).slice(0, 5)) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("threadId", selectedId);
+        const res = await fetch("/api/cs/attach", { method: "POST", body: form });
+        const json = await res.json().catch(() => ({ ok: false, error: "응답을 읽지 못했습니다" }));
+        if (!json.ok) {
+          showToast(`첨부 실패: ${json.error ?? "알 수 없는 오류"}`);
+          continue;
+        }
+        setReplyAttachments((prev) =>
+          prev.length >= 5 ? prev : [...prev, { url: json.url, name: json.name, isImage: true }],
+        );
+      }
+    } catch (e) {
+      showToast(`첨부 실패: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setAttachBusy(false);
+    }
+  };
+
   const sendReply = async () => {
-    if (!selectedId || !replyText.trim()) return;
+    // 사진만 보내는 경우도 있다(예: "교환품 날짜창 사진 보내주세요") → 첨부만 있어도 전송 허용.
+    if (!selectedId || (!replyText.trim() && !replyAttachments.length)) return;
     setSending(true);
     try {
       const res = await fetch("/api/cs/reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: selectedId, body: replyText }),
+        body: JSON.stringify({
+          threadId: selectedId,
+          body: replyText.trim() || "[사진]",
+          ...(replyAttachments.length ? { attachments: replyAttachments } : {}),
+        }),
       });
       const json = await res.json();
       if (json.ok) {
         setReplyText("");
+        setReplyAttachments([]);
         setOperatorNotes("");
         setDraftNote(null);
         await loadDetail(selectedId);
@@ -848,6 +896,10 @@ export default function InboxClient() {
               onCreateAs={() => setAsFormOpen(true)}
               onCreatePromise={() => setPromiseFormOpen(true)}
               onPromiseDone={completePromise}
+              attachments={replyAttachments}
+              onAttach={attachFiles}
+              onRemoveAttach={(url) => setReplyAttachments((p) => p.filter((a) => a.url !== url))}
+              attachBusy={attachBusy}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-zinc-400">
@@ -1106,6 +1158,10 @@ export default function InboxClient() {
             onCreateAs={() => setAsFormOpen(true)}
             onCreatePromise={() => setPromiseFormOpen(true)}
             onPromiseDone={completePromise}
+            attachments={replyAttachments}
+            onAttach={attachFiles}
+            onRemoveAttach={(url) => setReplyAttachments((p) => p.filter((a) => a.url !== url))}
+            attachBusy={attachBusy}
             returnBusy={returnBusy}
             onReturnAction={onReturnAction}
           />
@@ -1311,6 +1367,10 @@ function ThreadDetailView({
   onPromiseDone,
   returnBusy,
   onReturnAction,
+  attachments,
+  onAttach,
+  onRemoveAttach,
+  attachBusy,
 }: {
   detail: ThreadDetail;
   context: ContextData | null;
@@ -1332,8 +1392,13 @@ function ThreadDetailView({
   onPromiseDone: (id: string) => void;
   returnBusy?: string | null;
   onReturnAction?: (action: string) => void;
+  attachments?: ReplyAttachment[];
+  onAttach?: (files: FileList | null) => void;
+  onRemoveAttach?: (url: string) => void;
+  attachBusy?: boolean;
 }) {
   const { thread, messages, csReturn } = detail;
+  const attachSupported = ATTACH_CHANNELS.has(thread.channel);
   const openPromises = (detail.csPromises ?? []).filter((p) => p.status !== "done");
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
@@ -1574,13 +1639,44 @@ function ThreadDetailView({
             rows={5}
             className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
           />
+          {!!attachments?.length && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {attachments.map((a) => (
+                <div key={a.url} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={a.url} alt={a.name ?? ""} className="w-16 h-16 object-cover rounded-md border border-zinc-200 dark:border-zinc-700" />
+                  <button
+                    onClick={() => onRemoveAttach?.(a.url)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-zinc-900/80 text-white text-xs leading-none flex items-center justify-center"
+                    aria-label="첨부 제거"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex justify-between items-center mt-2">
-            <span className="text-[11px] text-zinc-400">
-              {replyText.length > 0 && `${replyText.length}자`}
-            </span>
+            <div className="flex items-center gap-2">
+              {attachSupported && (
+                <label className="cursor-pointer text-zinc-400 hover:text-violet-600" title="사진 첨부">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { onAttach?.(e.target.files); e.currentTarget.value = ""; }}
+                  />
+                  <Paperclip size={15} className={attachBusy ? "animate-pulse text-violet-600" : ""} />
+                </label>
+              )}
+              <span className="text-[11px] text-zinc-400">
+                {replyText.length > 0 && `${replyText.length}자`}
+              </span>
+            </div>
             <button
               onClick={onSend}
-              disabled={sending || !replyText.trim()}
+              disabled={sending || (!replyText.trim() && !attachments?.length)}
               className="px-5 py-2 rounded-md text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1.5"
             >
               <Send size={13} />
@@ -2346,6 +2442,10 @@ function MobileThreadDetailView({
   onCreateAs,
   onCreatePromise,
   onPromiseDone,
+  attachments,
+  onAttach,
+  onRemoveAttach,
+  attachBusy,
 }: {
   detail: ThreadDetail;
   context: ContextData | null;
@@ -2368,8 +2468,13 @@ function MobileThreadDetailView({
   onCreateAs: () => void;
   onCreatePromise: () => void;
   onPromiseDone: (id: string) => void;
+  attachments?: ReplyAttachment[];
+  onAttach?: (files: FileList | null) => void;
+  onRemoveAttach?: (url: string) => void;
+  attachBusy?: boolean;
 }) {
   const { thread, messages } = detail;
+  const attachSupported = ATTACH_CHANNELS.has(thread.channel);
   const openPromises = (detail.csPromises ?? []).filter((p) => p.status !== "done");
   const ChannelIcon = CHANNEL_STYLE[thread.channel].icon;
   const channelStyle = CHANNEL_STYLE[thread.channel];
@@ -2576,7 +2681,39 @@ function MobileThreadDetailView({
           </div>
         </div>
         <div className="p-3">
+          {!!attachments?.length && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((a) => (
+                <div key={a.url} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={a.url} alt={a.name ?? ""} className="w-16 h-16 object-cover rounded-md border border-zinc-200 dark:border-zinc-700" />
+                  <button
+                    onClick={() => onRemoveAttach?.(a.url)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-zinc-900/80 text-white text-xs leading-none flex items-center justify-center"
+                    aria-label="첨부 제거"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            {attachSupported && (
+              <label
+                className="flex-shrink-0 w-11 h-11 rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-500 flex items-center justify-center cursor-pointer active:scale-95 transition"
+                title="사진 첨부"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => { onAttach?.(e.target.files); e.currentTarget.value = ""; }}
+                />
+                <Paperclip size={16} className={attachBusy ? "animate-pulse text-violet-600" : ""} />
+              </label>
+            )}
             <textarea
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
@@ -2605,7 +2742,7 @@ function MobileThreadDetailView({
             />
             <button
               onClick={onSend}
-              disabled={sending || !replyText.trim()}
+              disabled={sending || (!replyText.trim() && !attachments?.length)}
               className="flex-shrink-0 w-11 h-11 rounded-full bg-violet-600 text-white disabled:opacity-40 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 flex items-center justify-center active:scale-95 transition"
               aria-label="전송"
             >

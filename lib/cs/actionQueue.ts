@@ -11,7 +11,8 @@ import { createClient } from "@supabase/supabase-js";
 export type CsActionKind =
   | "sixshop_reply"    // 식스샵 문의 게시판 댓글 답변
   | "sixshop_claim"    // 식스샵 반품/교환/취소 클레임 처리(주문목록 체크박스→툴바 버튼)
-  | "wconcept_claim";  // W컨셉 반품 회수완료(교환/반품 접수내역 체크→회수완료)
+  | "wconcept_claim"   // W컨셉 반품 회수완료(교환/반품 접수내역 체크→회수완료)
+  | "smartstore_reply"; // 스마트스토어 1:1 문의 답변 — 커머스 API 가 IP 화이트리스트라 로컬에서만 나간다
 
 export type CsActionStatus = "pending" | "processing" | "done" | "error";
 
