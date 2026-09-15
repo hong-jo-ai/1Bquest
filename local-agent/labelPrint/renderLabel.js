@@ -28,7 +28,10 @@ const FONT_FALLBACK = "/System/Library/Fonts/Supplemental/AppleGothic.ttf";
 const W_MM = Number(process.env.LABEL_WIDTH_MM || 111);   // 급지 방향(세로) 폭
 const H_MM = Number(process.env.LABEL_HEIGHT_MM || 171);  // 급지 방향 길이
 const SAFE_L = Number(process.env.LABEL_SAFE_LEFT_MM || 2.2);
-const SAFE_R = Number(process.env.LABEL_SAFE_RIGHT_MM || 166.5);
+// 🔴 오른쪽 끝 x≈154~171mm 은 **떼어내는 절취칸**(우체국 출력본은 거기 세로 바코드만 있고 내용은 안 찍는다).
+//    게다가 실제 출력이 의도보다 ~3% 크게 나가 오른쪽으로 밀린다(2026-09-15 실측: 의도 166.5 → 실제 169.5).
+//    → 안전선을 146 으로 크게 당긴다(실제 약 150mm, 절취칸 앞).
+const SAFE_R = Number(process.env.LABEL_SAFE_RIGHT_MM || 146.0);
 const mm = (v) => (v * 72) / 25.4;
 
 // 공급지(보내는분) — 우체국에 등록된 값. 다른 채널 건도 이 값이 찍힌다(공급지 기준).
@@ -80,7 +83,10 @@ function renderLabel(s) {
   const vTel = xmlTag(xml, "vTelNo");
   const regi = String(s.regi_no || "").replace(/\D/g, "");
   const zip = String(s.recipient_zip || "").replace(/\D/g, "");
-  const recTel = vTel ? vTel.replace(/^(\d{4})(\d{4})(\d{4})$/, "$1-$2-$3") : (s.recipient_mobile || s.recipient_tel || "");
+  // 안심번호는 11자리(0504-729-3352)·12자리(0503-5845-7201) 둘 다 온다. 11자리를 안 다뤄 하이픈 없이 찍혔다(2026-09-15).
+  const recTel = vTel
+    ? vTel.replace(/^(\d{4})(\d{4})(\d{4})$/, "$1-$2-$3").replace(/^(\d{4})(\d{3})(\d{4})$/, "$1-$2-$3")
+    : (s.recipient_mobile || s.recipient_tel || "");
   const engrave = engravingOf(s, raw);
   const date = ymd(s.registered_at);
 
@@ -149,9 +155,10 @@ function renderLabel(s) {
     T("(1/1)", 52, 51.2, 7.5);
     if (zip) { bar(zip, 4.5, 46.5, 32, 12.5); H(zip, 13.5, 59.8, 10.5); }
 
-    // 상품명(최대 3줄) + 각인 — 세로 분할선(66.7) 을 넘지 않게
-    block(s.product_name, SAFE_L, 67.0, 62, 8.5, 15.5);
-    if (engrave) T(engrave.startsWith("[") ? engrave : `[각인] ${engrave}`, SAFE_L, 103.2, 9.5);
+    // 상품명(최대 3줄) + 각인 — 세로 분할선을 넘지 않게. 수량은 우체국 출력본과 같게 뒤에 붙인다.
+    block(`${s.product_name || ""}${s.qty ? `, 수량:${s.qty}` : ""}`, SAFE_L, 67.0, 58, 8.5, 15.5);
+    // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음"
+    T(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 9.5);
 
     // QR(종적조회) — 좌측칸 우상단
     try {
@@ -170,8 +177,8 @@ function renderLabel(s) {
     HR(`${area.a} ${area.b}`, SAFE_R, 6.2, 21);
 
     // ── 보내는분 (세로 라벨 "보/낸/분" 은 미리 인쇄돼 있다) ─────
-    block(SENDER.addr, 71.5, 23.4, 58, 8, 9, 0.3);
-    R(SENDER.zip, 153, 24.6, 9);
+    block(SENDER.addr, 71.5, 23.4, 54, 8, 9, 0.3);
+    R(SENDER.zip, 138, 24.6, 9);
     H(SENDER.name, 71.5, 33.4, 11.5);
     R(`M: ${SENDER.mobile}`, SAFE_R, 34.8, 9);
 
@@ -185,8 +192,8 @@ function renderLabel(s) {
 
     // ── 등기 바코드 ──────────────────────────────────────────
     if (regi) bar(regi, 70, 85.5, 58, 17.5);
-    H(course || "", 130, 100.4, 17);
-    T("000", 141.5, 102.8, 9);
+    H(course || "", 127.5, 100.4, 17);
+    T("000", 139, 102.8, 9);
 
     doc.restore();
     doc.end();
