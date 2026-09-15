@@ -154,6 +154,39 @@ type ReplyAttachment = { url: string; name?: string; isImage: boolean };
 /** 첨부를 실제로 고객에게 전달할 수 있는 채널만 버튼을 보여준다(나머지는 조용히 유실되므로 막는다). */
 const ATTACH_CHANNELS: ReadonlySet<string> = new Set(["webchat", "gmail"]);
 
+/** 같은 고객으로 묶인 근거 라벨 (lib/cs/threadLinks LinkReason) */
+const LINK_LABEL: Record<string, string> = {
+  order: "주문번호",
+  phone: "연락처",
+  email: "이메일",
+  name_product: "이름+상품",
+};
+
+/**
+ * 답장 전 경고 — 다른 채널에 이미 답이 나갔거나 미답변이 따로 있으면 띄운다.
+ * 2026-09-15 손정원 건: 웹챗에 답한 걸 모르고 스마트스토어로 또 답했다. 이 배너가 있었으면 막혔다.
+ */
+function CrossChannelBanner({ cross }: { cross?: ContextData["crossChannel"] }) {
+  if (!cross) return null;
+  const answered = cross.answeredElsewhere ?? [];
+  const unanswered = cross.unansweredElsewhere ?? [];
+  if (!answered.length && !unanswered.length) return null;
+  return (
+    <div className="mb-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+      {answered.map((h) => (
+        <div key={"a" + h.id}>
+          ⚠️ 이 고객은 <b>{CHANNEL_LABEL[h.channel]}</b>에서 {formatTime(h.at)}에 <b>이미 답변받았습니다</b> — 같은 내용을 또 보내지 않도록 확인하세요.
+        </div>
+      ))}
+      {unanswered.map((h) => (
+        <div key={"u" + h.id}>
+          ⚠️ 같은 고객의 <b>미답변</b> 대화가 <b>{CHANNEL_LABEL[h.channel]}</b>에 따로 있습니다({formatTime(h.at)}).
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * 인스타 댓글이 **어느 게시물에 달렸는지** 보여주는 카드.
  * 그전엔 제목 자리에 permalink URL 만 있어서 눌러서 인스타로 나가기 전엔 알 수 없었다
@@ -223,7 +256,14 @@ interface ContextData {
     last_message_at: string;
     status: CsStatus;
     last_message_preview: string | null;
+    /** 어떤 근거로 같은 고객으로 묶였는지 — order·phone·email·name_product */
+    matchedBy?: string[];
   }>;
+  /** 답장 전에 봐야 할 것 — 다른 대화에 이미 답이 나갔거나(중복 응대 위험), 미답변이 따로 있거나 */
+  crossChannel?: {
+    answeredElsewhere: Array<{ id: string; channel: CsChannel; at: string }>;
+    unansweredElsewhere: Array<{ id: string; channel: CsChannel; at: string }>;
+  };
   totalThreads: number;
   firstContact: string;
   orderHistory?: {
@@ -311,6 +351,8 @@ export default function InboxClient() {
   // 답장에 붙일 첨부(이미지). /api/cs/attach 로 먼저 올리고 URL 만 들고 있다가 전송 때 같이 보낸다.
   const [replyAttachments, setReplyAttachments] = useState<ReplyAttachment[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
+  // 다른 채널에 이미 답변된 고객이면 첫 전송 클릭은 경고만 띄우고, 두 번째 클릭에 보낸다.
+  const [crossAck, setCrossAck] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -410,6 +452,7 @@ export default function InboxClient() {
     setContext(c);
     setReplyText("");
     setDraftNote(null);
+    setCrossAck(false);
   }, []);
 
   // 열린 스레드를 주기적으로 새로고침해 새 고객 메시지를 바로 보여준다.
@@ -599,6 +642,14 @@ export default function InboxClient() {
   const sendReply = async () => {
     // 사진만 보내는 경우도 있다(예: "교환품 날짜창 사진 보내주세요") → 첨부만 있어도 전송 허용.
     if (!selectedId || (!replyText.trim() && !replyAttachments.length)) return;
+    // 다른 채널에서 최근 답변된 고객이면 한 번 멈춘다 — 브라우저 confirm 대신 두 번 누르기.
+    const answeredElsewhere = context?.crossChannel?.answeredElsewhere ?? [];
+    if (answeredElsewhere.length && !crossAck) {
+      setCrossAck(true);
+      const h = answeredElsewhere[0];
+      showToast(`${CHANNEL_LABEL[h.channel]}에서 ${formatTime(h.at)}에 이미 답변된 고객입니다 — 그래도 보내려면 전송을 한 번 더 누르세요`);
+      return;
+    }
     setSending(true);
     try {
       const res = await fetch("/api/cs/reply", {
@@ -614,6 +665,7 @@ export default function InboxClient() {
       if (json.ok) {
         setReplyText("");
         setReplyAttachments([]);
+        setCrossAck(false);
         setOperatorNotes("");
         setDraftNote(null);
         await loadDetail(selectedId);
@@ -1619,6 +1671,7 @@ function ThreadDetailView({
           </div>
         </div>
         <div className="p-4">
+          <CrossChannelBanner cross={context?.crossChannel} />
           <textarea
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
@@ -1996,6 +2049,19 @@ function ContextPanel({
                     <span className="text-[10px] text-zinc-500">
                       {CHANNEL_LABEL[r.channel]}
                     </span>
+                    {(r.matchedBy ?? []).map((m) => (
+                      <span
+                        key={m}
+                        title="같은 고객으로 묶인 근거"
+                        className={`text-[9px] px-1 py-px rounded border ${
+                          m === "name_product"
+                            ? "border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                            : "border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        {LINK_LABEL[m] ?? m}
+                      </span>
+                    ))}
                     <span className="text-[10px] text-zinc-400 ml-auto">
                       {formatTime(r.last_message_at)}
                     </span>
@@ -2698,6 +2764,7 @@ function MobileThreadDetailView({
               ))}
             </div>
           )}
+          <CrossChannelBanner cross={context?.crossChannel} />
           <div className="flex items-end gap-2">
             {attachSupported && (
               <label
@@ -2805,6 +2872,11 @@ function MobileContextSummary({
                   className="text-xs flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 truncate"
                 >
                   <RI size={10} className={CHANNEL_STYLE[r.channel].color} />
+                  {(r.matchedBy ?? []).map((m) => (
+                    <span key={m} className="text-[9px] px-1 rounded border border-zinc-300 dark:border-zinc-700 flex-shrink-0">
+                      {LINK_LABEL[m] ?? m}
+                    </span>
+                  ))}
                   <span className="truncate">{r.subject || "(제목 없음)"}</span>
                   <span className="text-zinc-400 ml-auto flex-shrink-0">
                     {formatTime(r.last_message_at)}

@@ -1,5 +1,6 @@
-import { getCsSupabase, getThread } from "@/lib/cs/store";
+import { getThread } from "@/lib/cs/store";
 import { getCustomerOrderHistory } from "@/lib/cs/customerOrders";
+import { findLinkedThreads, type CrossChannelSummary, type LinkedThread } from "@/lib/cs/threadLinks";
 import { careContextFor } from "@/lib/cs/careContext";
 
 export const dynamic = "force-dynamic";
@@ -18,35 +19,25 @@ export async function GET(
     if (!data) return Response.json({ error: "not found" }, { status: 404 });
     const { thread } = data;
 
-    const db = getCsSupabase();
-    let related: unknown[] = [];
+    // 같은 고객의 다른 대화 — customer_handle 일치만으로는 채널을 못 넘는다(웹챗=전화,
+    // 스마트스토어=마스킹, 메일=이메일). 주문번호·연락처·이름+상품으로 가로질러 묶는다.
+    // 2026-09-15 손정원 건(웹챗↔스마트스토어 중복 응대) 이후 threadLinks 로 교체.
+    let related: LinkedThread[] = [];
     let totalThreads = 1;
     let firstContact = thread.created_at;
-
-    if (thread.customer_handle) {
-      const { data: rows } = await db
-        .from("cs_threads")
-        .select("id, brand, channel, subject, last_message_at, status, last_message_preview, created_at")
-        .eq("customer_handle", thread.customer_handle)
-        .neq("id", id)
-        .order("last_message_at", { ascending: false })
-        .limit(10);
-      related = rows ?? [];
-
-      const { count } = await db
-        .from("cs_threads")
-        .select("id", { count: "exact", head: true })
-        .eq("customer_handle", thread.customer_handle);
-      totalThreads = count ?? 1;
-
-      const { data: firstRow } = await db
-        .from("cs_threads")
-        .select("created_at")
-        .eq("customer_handle", thread.customer_handle)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (firstRow?.created_at) firstContact = firstRow.created_at;
+    let crossChannel: CrossChannelSummary = { answeredElsewhere: [], unansweredElsewhere: [] };
+    try {
+      const links = await findLinkedThreads(id);
+      related = links.related;
+      crossChannel = links.crossChannel;
+      totalThreads = 1 + related.length;
+      const earliest = [thread.created_at, ...related.map((r) => r.created_at)]
+        .filter(Boolean)
+        .sort()[0];
+      if (earliest) firstContact = earliest;
+    } catch (e) {
+      // 묶기 실패가 컨텍스트 전체를 막으면 안 된다 — 빈 목록으로 진행.
+      console.warn("[cs/context] 관련 대화 매칭 실패:", e instanceof Error ? e.message : e);
     }
 
     // 문의 고객 ↔ 과거 주문(pp_shipments) 매칭 — 전화번호/이름 기준. 실패해도 컨텍스트는 반환.
@@ -75,6 +66,7 @@ export async function GET(
 
     return Response.json({
       related,
+      crossChannel,
       totalThreads,
       firstContact,
       orderHistory,
