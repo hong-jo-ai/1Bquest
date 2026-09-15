@@ -12,8 +12,9 @@ const PDFDocument = require("/Users/mac/sungjo_ai/paulwise-dashboard/node_module
 const { code128Modules } = require("./code128");
 
 const FONT = process.env.LABEL_FONT || "/System/Library/Fonts/Supplemental/AppleGothic.ttf";
-const LABEL_W_MM = Number(process.env.LABEL_WIDTH_MM || 100);
-const LABEL_H_MM = Number(process.env.LABEL_HEIGHT_MM || 150);
+// 우체국 전용라벨 C형(2026.01) = 111 × 171 mm (±5). 사장님이 쓰는 스티커. 첫 테스트는 100×150 으로 찍혀 하단이 비었다.
+const LABEL_W_MM = Number(process.env.LABEL_WIDTH_MM || 111);
+const LABEL_H_MM = Number(process.env.LABEL_HEIGHT_MM || 171);
 const mm = (v) => (v * 72) / 25.4;
 
 /** 접수 응답 XML(raw.resp)에서 태그값 추출 */

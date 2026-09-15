@@ -21,22 +21,41 @@ $Log = Join-Path $Dir "agent.log"
 function L($m) { $line = "[" + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "] " + $m; Add-Content -Path $Log -Value $line -Encoding UTF8; Write-Host $line }
 $conf = Get-Content $Cfg -Raw | ConvertFrom-Json
 $Printer = $conf.printer
-L "에이전트 시작 · 프린터=$Printer"
+$AgentVer = "2"
+$H = @{ "x-print-token" = $Token }
+function Ack($id, $body) { try { Invoke-RestMethod -Method Post -Uri "$Base/api/print/jobs/$id/ack" -Headers $H -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 4))) -TimeoutSec 30 | Out-Null } catch { L "ack 실패 $id : $($_.Exception.Message)" } }
+L "에이전트 v$AgentVer 시작 · 프린터=$Printer"
 while ($true) {
   try {
-    $r = Invoke-RestMethod -Uri "$Base/api/print/jobs" -Headers @{ "x-print-token" = $Token } -TimeoutSec 30
+    $r = Invoke-RestMethod -Uri "$Base/api/print/jobs?v=$AgentVer&host=$env:COMPUTERNAME" -Headers $H -TimeoutSec 30
+    # 원격 제어: 재시작 요청이면 최신 스크립트를 받아 새 프로세스로 띄우고 종료
+    if ($r.control -and $r.control.restart) {
+      L "재시작 요청 수신 → 스크립트 갱신 후 재기동"
+      $me = $MyInvocation.MyCommand.Path
+      try { Invoke-WebRequest -Uri "$Base/api/print/setup?k=$Token&agent=1" -OutFile ($me + ".new") -TimeoutSec 60; Move-Item ($me + ".new") $me -Force } catch { L "갱신 실패: $($_.Exception.Message)" }
+      Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass","-WindowStyle","Hidden","-File",('"' + $me + '"')) -WindowStyle Hidden
+      exit 0
+    }
     foreach ($j in $r.jobs) {
+      if ($j.kind -eq "cmd") {
+        # 원격 명령(진단·설정용). 출력은 ack 로 돌려보낸다.
+        try { $out = (Invoke-Expression $j.cmd 2>&1 | Out-String); Ack $j.id @{ status = "printed"; output = $out.Substring(0, [Math]::Min($out.Length, 20000)) }; L "cmd 완료 $($j.id)" }
+        catch { Ack $j.id @{ status = "error"; error = $_.Exception.Message }; L "cmd 실패 $($j.id): $($_.Exception.Message)" }
+        continue
+      }
       $target = if ($j.printer) { $j.printer } else { $Printer }
       $pdf = Join-Path $Dir ("job_" + $j.id + ".pdf")
       try {
         Invoke-WebRequest -Uri $j.url -OutFile $pdf -TimeoutSec 60
-        $p = Start-Process -FilePath $Sumatra -ArgumentList @("-print-to", ('"' + $target + '"'), "-silent", "-print-settings", '"noscale"', ('"' + $pdf + '"')) -PassThru -Wait -WindowStyle Hidden
+        # -exit-when-done 이 없으면 SumatraPDF 가 인쇄 후 떠 있어 -Wait 가 영원히 멈춘다(2026-09-15 첫 테스트에서 정지).
+        $p = Start-Process -FilePath $Sumatra -ArgumentList @("-print-to", ('"' + $target + '"'), "-silent", "-exit-when-done", "-print-settings", '"noscale"', ('"' + $pdf + '"')) -PassThru -WindowStyle Hidden
+        if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; throw "SumatraPDF 120초 초과 — 강제 종료" }
         if ($p.ExitCode -ne 0) { throw "SumatraPDF exit $($p.ExitCode)" }
-        Invoke-RestMethod -Method Post -Uri "$Base/api/print/jobs/$($j.id)/ack" -Headers @{ "x-print-token" = $Token } -ContentType "application/json" -Body (@{ status = "printed"; printer = $target } | ConvertTo-Json) | Out-Null
+        Ack $j.id @{ status = "printed"; printer = $target }
         L "인쇄 완료 $($j.id) $($j.label) → $target"
       } catch {
         $msg = $_.Exception.Message
-        Invoke-RestMethod -Method Post -Uri "$Base/api/print/jobs/$($j.id)/ack" -Headers @{ "x-print-token" = $Token } -ContentType "application/json" -Body (@{ status = "error"; error = $msg; printer = $target } | ConvertTo-Json) | Out-Null
+        Ack $j.id @{ status = "error"; error = $msg; printer = $target }
         L "인쇄 실패 $($j.id): $msg"
       } finally { Remove-Item $pdf -ErrorAction SilentlyContinue }
     }
@@ -79,6 +98,7 @@ $Startup = [Environment]::GetFolderPath("Startup")
 Copy-Item $Launcher (Join-Path $Startup "PaulvicePrintAgent.vbs") -Force
 # 이미 돌고 있는 에이전트가 있으면 정리하고 지금 바로 시작(런처를 거치지 않고 직접 — 런처는 로그인 시 자동시작용)
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-Process -Name "SumatraPDF" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", ('"' + $Agent + '"')) -WindowStyle Hidden
 Start-Sleep -Seconds 3
 $running = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" }
