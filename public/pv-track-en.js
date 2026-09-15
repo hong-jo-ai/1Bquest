@@ -23,10 +23,15 @@
   // ── GA4 ─────────────────────────────────────────────
   // 카페24 연동이 나중에 켜져 같은 측정ID 가 이미 들어와 있으면 우리가 또 넣지 않는다(이중 집계 방지).
   if (!has('script[src*="gtag/js?id=' + GA4_ID + '"]')) {
+    // ⚠️ head.appendChild 로 넣었더니 gtag.js 가 **net::ERR_BLOCKED_BY_ORB** 로 차단됐다(2026-09-15 실측).
+    //    같은 페이지에서 픽셀 로더는 insertBefore 로 넣어 정상 통과했다 → 픽셀과 동일한 방식으로 맞춘다.
+    //    (국문몰은 HTML 에 정적 <script> 로 박혀 있어 이 문제가 없다.)
     var s = document.createElement("script");
     s.async = true;
     s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA4_ID;
-    (document.head || document.documentElement).appendChild(s);
+    var first = document.getElementsByTagName("script")[0];
+    if (first && first.parentNode) first.parentNode.insertBefore(s, first);
+    else (document.head || document.documentElement).appendChild(s);
 
     window.dataLayer = window.dataLayer || [];
     if (typeof window.gtag !== "function") {
