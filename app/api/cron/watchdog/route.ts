@@ -57,6 +57,9 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:chosunmall-reply-send", label: "조선몰 송장 회신 발송(iMac·15:00)", maxHours: 28, weekdaysOnly: true },
   // 말일에만 발송하지만 하트비트는 매일 찍는다(스킵한 날도) — 그래야 감시가 촘촘하다.
   { key: "heartbeat:alba-payroll-reminder", label: "알바 급여 리마인더(iMac·매일 18시)", maxHours: 28 },
+  // 면세점 상환 입금일(매월 15일) 점검. 같은 이유로 **매일 돌고 15·18일에만 알린다** —
+  // 월 1회 잡을 그대로 올리면 나머지 29일이 전부 오탐이 된다.
+  { key: "heartbeat:dutyfree-repayment-check", label: "면세점 상환 입금 점검(iMac·매일 09:40)", maxHours: 28 },
   // /today 보드의 "진행 중인 일" 원천. 안 돌면 보드가 옛날 세션을 계속 보여줘 조용히 틀려진다.
   { key: "heartbeat:claude-activity-scan", label: "클로드 세션 스캔(iMac·매시)", maxHours: 3 },
   // 세션 발화를 "일" 단위로 쪼개는 요약. 이게 멈추면 보드가 옛 목록에 머문다.
