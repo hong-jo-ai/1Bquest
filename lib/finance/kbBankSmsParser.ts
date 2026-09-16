@@ -12,6 +12,11 @@
  * 문자 형식(줄바꿈은 공백으로 무너뜨려 본다. '원'·공백은 표기가 흔들려 전부 선택):
  *   [Web발신] KB국민은행 08/31 12:47 511301**828 입금 1,967,411 주식회사제드아이티 잔액 3,456,789
  *   [Web발신] KB국민 09/15 10:02 511301**828 출금 330,000원 박계순(박계순세무회 잔액 4,677,940원
+ *   [Web발신] KB스타뱅킹 09/15 14:23 511301**828 입금 500,000 (주)제드아이티씨      ← 잔액 없음
+ *
+ * ⚠️ **잔액은 선택이다.** KB 는 알림 설정에 따라 잔액을 빼고 보낸다. 우리은행 문자를 본떠
+ * 잔액을 필수로 뒀더니 수집 단계에서 통째로 걸러졌다(2026-09-16 실측: KB 수집 0건).
+ * 은행 식별어도 "국민"이 아니라 "KB"만 오는 경우가 있어 둘 다 본다.
  */
 import { type BankSmsKind, inferYear } from "./wooriBankSmsParser";
 
@@ -60,8 +65,12 @@ function digitsMatch(tail: string, full: string): boolean {
   return foot ? fullDigits.endsWith(foot) : true;
 }
 
-const RE =
+/** 잔액이 붙는 형식 — 거래처는 금액과 '잔액' 사이. */
+const RE_WITH_BALANCE =
   /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+([\d][\d*]{3,})\s*(출금취소|입금취소|출금|입금)\s*([\d,]+)\s*원?\s*(.*?)\s*잔액\s*([\d,]+)\s*원?/;
+/** 잔액이 없는 형식 — 금액 뒤 나머지가 거래처. */
+const RE_NO_BALANCE =
+  /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+([\d][\d*]{3,})\s*(출금취소|입금취소|출금|입금)\s*([\d,]+)\s*원?\s*(.*)$/;
 
 /** KB국민은행 입출금 알림이면 구조화, 아니면 null (카드 승인·광고·인증번호 등은 null). */
 export function parseKbBankSms(text: string, receivedAtMs?: number): ParsedKbBankSms | null {
@@ -72,7 +81,8 @@ export function parseKbBankSms(text: string, receivedAtMs?: number): ParsedKbBan
   // 카드 승인 문자는 통장 문자가 아니다 — 카드 파이프라인에서 따로 잡으므로 여기서 걸러야 이중 적재가 안 난다.
   if (/체크승인|일시불|할부|승인취소|카드\s*승인|승인\s*카드/.test(flat)) return null;
 
-  const m = flat.match(RE);
+  // 잔액 있는 형식을 먼저 — 없는 형식 정규식은 잔액까지 거래처로 삼켜버린다.
+  const m = flat.match(RE_WITH_BALANCE) ?? flat.match(RE_NO_BALANCE);
   if (!m) return null;
 
   const [, mo, dd, hh, mi, tail, kind, amt, cp, bal] = m;
@@ -89,7 +99,7 @@ export function parseKbBankSms(text: string, receivedAtMs?: number): ParsedKbBan
     businessRegNo: acct?.regNo ?? null,
     kind: kind as BankSmsKind,
     amount,
-    counterparty: cp.trim(),
+    counterparty: cp.trim().slice(0, 100),
     balance: bal ? Number(bal.replace(/,/g, "")) : null,
     txDate: inferYear(Number(mo), Number(dd), Number(hh), Number(mi), receivedAtMs),
     raw: text,

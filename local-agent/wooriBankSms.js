@@ -67,9 +67,11 @@ function readNew(afterNs) {
       // ⚠️ text 만 보면 안 된다 — macOS 가 본문을 attributedBody 로 옮겼다(chatDbText.js 참고).
       "SELECT CAST(date AS TEXT) AS ns, text, attributedBody FROM message " +
       "WHERE date > ? " +
-      // 은행 식별어 → 잔액 → 입출금. KB 는 "KB국민은행"·"국민은행" 등 표기가 흔들려 둘 다 본다.
+      // 은행 식별어 + 입출금. KB 는 "KB국민은행"·"KB스타뱅킹" 등 표기가 흔들려 "KB"·"국민" 둘 다 본다.
+      // ⚠️ 잔액은 조건에서 뺐다 — KB 는 알림 설정에 따라 잔액 없이 보내는데, 우리은행을 본떠
+      //    잔액을 필수로 뒀더니 KB 문자가 수집 단계에서 통째로 걸러졌다(2026-09-16).
+      //    대신 은행 아닌 "입금했어요" 같은 문자가 좀 섞여 들어오는데, 파서가 null 로 떨궈 nonBank 로만 센다.
       `AND (${bodyLike("우리 ")} OR ${bodyLike("국민")} OR ${bodyLike("KB")}) ` +
-      `AND ${bodyLike("잔액")} ` +
       `AND (${bodyLike("출금")} OR ${bodyLike("입금")}) ` +
       `ORDER BY date ASC LIMIT ${PAGE}`
     ).all(BigInt(afterNs));
