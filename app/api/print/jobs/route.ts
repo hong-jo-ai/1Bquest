@@ -33,7 +33,11 @@ export async function GET(req: Request) {
     const j = row.data as { id: string; kind?: string; cmd?: string; path?: string; printer?: string; recipient_name?: string; order_number?: string };
     if (j.kind === "cmd") { jobs.push({ id: j.id, kind: "cmd", cmd: j.cmd ?? "" }); continue; }
     if (!j.path) continue;
-    const { data: signed } = await sb.storage.from("labels").createSignedUrl(j.path, 900);
+    // ⚠️ 유효기간을 넉넉히 준다. 한 번 폴링에서 내려보낸 잡들의 URL 이 **전부 같은 시각에 만료**되는데
+    //    에이전트는 이걸 순차 처리하고 실측 건당 4~8분이 걸린다. 900초(15분)였을 때
+    //    2026-09-16 첫 실전 배치(4건)에서 4번째 건이 만료 69초 뒤에 내려받기를 시도해 400 으로 실패했다
+    //    (앞 3건은 통과). 배치가 커질수록 뒷건부터 무조건 깨지는 구조였다.
+    const { data: signed } = await sb.storage.from("labels").createSignedUrl(j.path, 3600);
     if (!signed?.signedUrl) continue;
     jobs.push({ id: j.id, kind: "print", url: signed.signedUrl, printer: j.printer || "", label: `${j.recipient_name ?? ""} ${j.order_number ?? ""}`.trim() });
   }
