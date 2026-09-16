@@ -2,7 +2,7 @@
  * FedEx 국제배송 예약 모듈 — 식스샵 글로벌 해외주문 라벨 자동발급.
  *   token()            : OAuth(client_credentials) 토큰 캐시
  *   resolveRecipient() : 식스샵 뭉친 해외주소 → FedEx 구조화(주소검증으로 city/state 보완, street 원본보존)
- *   createShipment()   : 국제 라벨+통관(commodities) 생성 → {trackingNumber, labelPath, service, cost}
+ *   createShipment()   : 국제 라벨+통관(commodities) 생성 → {trackingNumber, labelPath(.zpl), invoicePath(.pdf), service, cost}
  *   voidShipment()     : 접수 취소(픽업 전, 과금 방지)
  *
  * CLI 테스트:  node fedexShip.js test     ← 독일 샘플 주문으로 라벨 생성 후 즉시 void
@@ -92,7 +92,11 @@ async function createShipment(order, opts = {}) {
       pickupType: "USE_SCHEDULED_PICKUP",
       blockInsightVisibility: false,
       shippingChargesPayment: { paymentType: "SENDER" },
-      labelSpecification: { imageType: "PDF", labelStockType: "PAPER_4X6" },
+      // 라벨 인증(2026-09-14 반려 사유): 열전사 프린터(Xprinter XP-D4604B)엔 ZPL 을 그대로 쏴야 한다.
+      // PDF 를 열전사에 찍으면 바코드가 흐려져 불합격. ZPL 은 이미지로 변환·가공 금지, raw 출력만.
+      labelSpecification: { imageType: "ZPLII", labelStockType: "STOCK_4X6" },
+      // ETD 는 shippingDocumentSpecification 없이 보내면 400 SHIPPING.DOCUMENT.REQUIRED (2026-09-16 샌드박스 실측)
+      shippingDocumentSpecification: { shippingDocumentTypes: ["COMMERCIAL_INVOICE"], commercialInvoiceDetail: { documentFormat: { stockType: "PAPER_LETTER", docType: "PDF" } } },
       customsClearanceDetail: {
         dutiesPayment: { paymentType: "RECIPIENT" },
         isDocumentOnly: false,
@@ -120,10 +124,13 @@ async function createShipment(order, opts = {}) {
   const pkg = out.pieceResponses[0];
   const trackingNumber = pkg.trackingNumber || out.masterTrackingNumber;
   const labelB64 = pkg.packageDocuments && pkg.packageDocuments[0] && pkg.packageDocuments[0].encodedLabel;
-  let labelPath = "";
-  if (labelB64) { const dir = path.join(os.tmpdir(), "fedex-labels"); fs.mkdirSync(dir, { recursive: true }); labelPath = path.join(dir, `${order.orderNo || trackingNumber}.pdf`); fs.writeFileSync(labelPath, Buffer.from(labelB64, "base64")); }
+  let labelPath = "", invoicePath = "";
+  const dir = path.join(os.tmpdir(), "fedex-labels"); fs.mkdirSync(dir, { recursive: true });
+  if (labelB64) { labelPath = path.join(dir, `${order.orderNo || trackingNumber}.zpl`); fs.writeFileSync(labelPath, Buffer.from(labelB64, "base64")); }
+  const inv = (out.shipmentDocuments || []).find((d) => d.contentType === "COMMERCIAL_INVOICE" && d.encodedLabel);
+  if (inv) { invoicePath = path.join(dir, `${order.orderNo || trackingNumber}_invoice.pdf`); fs.writeFileSync(invoicePath, Buffer.from(inv.encodedLabel, "base64")); }
   const rated = out.completedShipmentDetail && out.completedShipmentDetail.shipmentRating && out.completedShipmentDetail.shipmentRating.shipmentRateDetails && out.completedShipmentDetail.shipmentRating.shipmentRateDetails[0];
-  return { trackingNumber, labelPath, service, recipient: rec, cost: rated ? `${rated.totalNetCharge} ${rated.currency}` : "?" };
+  return { trackingNumber, labelPath, invoicePath, service, recipient: rec, cost: rated ? `${rated.totalNetCharge} ${rated.currency}` : "?" };
 }
 
 async function voidShipment(trackingNumber) {
