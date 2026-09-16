@@ -72,6 +72,21 @@ const RE_WITH_BALANCE =
 const RE_NO_BALANCE =
   /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+([\d][\d*]{3,})\s*(출금취소|입금취소|출금|입금)\s*([\d,]+)\s*원?\s*(.*)$/;
 
+/**
+ * 🔴 **거래처가 입출금 *앞*에 오는 형식** — 실제로 오는 문자는 이쪽이다(2026-09-16 실측).
+ *   [Web발신] [KB]09/16 13:44 511301**828 주식회사제드아이티 입금 1,219,478 잔액2,592,694
+ * 위 RE_WITH_BALANCE/RE_NO_BALANCE 는 계좌 바로 뒤에 입금/출금이 오기를 기대해서
+ * chat.db 의 KB 문자 **84건 전부(6~9월)가 매칭 0건**이었다 → 통째로 nonBank 로 버려졌다.
+ * 은행 식별어("[KB]")가 날짜와 붙어 있어도 날짜부터 매칭하므로 무관하고,
+ * "잔액2,592,694" 처럼 공백이 없어도 `잔액\s*` 가 흡수한다.
+ * ⚠️ 거래처는 non-greedy 로 잡되 숫자로 시작하는 금액을 삼키지 않도록 입출금 키워드에서 끊는다.
+ */
+const RE_CP_FIRST_WITH_BALANCE =
+  /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+([\d][\d*]{3,})\s+(.*?)\s*(출금취소|입금취소|출금|입금)\s*([\d,]+)\s*원?\s*잔액\s*([\d,]+)\s*원?/;
+/** 같은 순서, 잔액 없음(KB 는 알림 설정에 따라 잔액을 뺀다). */
+const RE_CP_FIRST_NO_BALANCE =
+  /(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+([\d][\d*]{3,})\s+(.*?)\s*(출금취소|입금취소|출금|입금)\s*([\d,]+)\s*원?\s*$/;
+
 /** KB국민은행 입출금 알림이면 구조화, 아니면 null (카드 승인·광고·인증번호 등은 null). */
 export function parseKbBankSms(text: string, receivedAtMs?: number): ParsedKbBankSms | null {
   if (!text) return null;
@@ -82,10 +97,18 @@ export function parseKbBankSms(text: string, receivedAtMs?: number): ParsedKbBan
   if (/체크승인|일시불|할부|승인취소|카드\s*승인|승인\s*카드/.test(flat)) return null;
 
   // 잔액 있는 형식을 먼저 — 없는 형식 정규식은 잔액까지 거래처로 삼켜버린다.
-  const m = flat.match(RE_WITH_BALANCE) ?? flat.match(RE_NO_BALANCE);
-  if (!m) return null;
+  // ⚠️ 두 계열은 **캡처 순서가 다르다**(거래처와 입출금의 위치가 뒤바뀐다) → 분해도 따로 한다.
+  let mo: string, dd: string, hh: string, mi: string;
+  let tail: string, kind: string, amt: string, cp: string, bal: string | undefined;
 
-  const [, mo, dd, hh, mi, tail, kind, amt, cp, bal] = m;
+  const mLegacy = flat.match(RE_WITH_BALANCE) ?? flat.match(RE_NO_BALANCE);
+  if (mLegacy) {
+    [, mo, dd, hh, mi, tail, kind, amt, cp, bal] = mLegacy;
+  } else {
+    const mCp = flat.match(RE_CP_FIRST_WITH_BALANCE) ?? flat.match(RE_CP_FIRST_NO_BALANCE);
+    if (!mCp) return null;
+    [, mo, dd, hh, mi, tail, cp, kind, amt, bal] = mCp;
+  }
   const amount = Number(amt.replace(/,/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) return null;
 
