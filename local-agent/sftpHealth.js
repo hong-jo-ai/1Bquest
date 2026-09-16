@@ -12,6 +12,7 @@
 require("dotenv").config({ override: true });
 const Client = require("ssh2-sftp-client");
 const { beat } = require("./heartbeat");
+const { relayText } = require("./telegramRelay");
 
 const TARGETS = [
   { name: "폴바이스", host: "ecimg-ftp-c01.cafe24img.com", port: 8007, user: "icaruse2000",
@@ -34,13 +35,15 @@ async function check(t) {
   } finally { await s.end().catch(() => {}); }
 }
 
+// ⚠️ 직결(api.telegram.org)로 보내지 말 것 — 아이맥에서 자주 ETIMEDOUT 된다.
+//    2026-09-16 실측: 같은 장비에서 curl 과 코어 https(family:4) 는 302 로 붙는데
+//    전역 fetch(undici)만 100% 실패했다. 그래서 공용 헬퍼 relayText 를 쓴다
+//    (직결 1회 → 실패 시 Vercel 릴레이 폴백).
+//    이 함수가 직결이었던 탓에 9/14~9/16 해리엇 SFTP 비번 만료 알림이 조용히 사라졌다.
+//    감지 자체는 정상이었다(실패 시 하트비트를 안 찍어 워치독이 브리핑에 띄웠다) — 푸시만 못 갔다.
 async function notify(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chat) return console.log("(텔레그램 미설정)");
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML" }),
-  }).catch((e) => console.log("텔레그램 실패:", e.message));
+  const ok = await relayText(text);
+  if (!ok) console.log("텔레그램 전송 실패 — 직결·릴레이 모두 실패");
 }
 
 (async () => {
@@ -50,7 +53,7 @@ async function notify(text) {
   rs.forEach((r) => { if (verbose || !r.ok) console.log(`${r.ok ? "✅" : "❌"} ${r.name}${r.ok ? "" : " — " + r.error}`); });
   const bad = rs.filter((r) => !r.ok);
   if (bad.length) {
-    await notify(`⚠️ <b>카페24 SFTP 점검 실패</b>\n\n` +
+    await notify(`⚠️ 카페24 SFTP 점검 실패\n\n` +
       bad.map((b) => `· ${b.name}: ${b.error}`).join("\n") +
       `\n\n웹사이트 자동 배포가 막힙니다. 인증 실패면 ①몇 분 뒤 재시도(IP 차단) ②그래도 실패면 FTP 사용기간 만료 — 카페24 관리자에서 재활성화 필요.`);
     process.exit(1);
