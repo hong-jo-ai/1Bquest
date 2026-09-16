@@ -52,6 +52,7 @@ const ALLOW_PREFIX = [
   "/api/crm/cart-event",  // 장바구니 담기 이벤트 수집 (자사몰 스크립트, 교차출처 CORS)
   "/pv-cart.js",          // 장바구니 이탈 추적 스크립트 (공개 정적파일)
   "/pv-hesitate.js",      // 망설임 팝업 스크립트 (공개 정적파일)
+  "/pv-notice.js",        // 상단 띠배너 스크립트 (두 몰 스킨에 주입, 공개 정적파일) — 2026-09-16
   "/pv-track-en.js",      // 영문몰 GA4+메타픽셀 계측 (카페24 스크립트태그로 주입, 공개 정적파일) — 2026-09-15
   "/api/storefront/",     // 스토어프론트 팝업 설정·이벤트 (익명 공개, 교차출처 CORS)
   "/api/harriot/waitlist", // 설월 출시 대기명단 수집 (인트로 페이지, 익명 · 교차출처 CORS)
