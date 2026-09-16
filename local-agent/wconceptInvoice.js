@@ -55,7 +55,7 @@ async function dispatchInvoicesOnPage(page, log=console.log){
   // ⚠️ 다상품 주문 = 상품(행)별로 모두 채워야 함(한 주문이 N개 상품행). 한 주문의 첫 행만 채우면
   //    나머지 상품이 미출고로 남음(2026-07-01 버그수정, 29CM와 동일). seen 스킵 제거 — 같은 주문의
   //    모든 상품행에 같은 송장을 채운다. 배달완료 가드만 주문당 1회 체크(중복 API 방지).
-  let filled=0; const filledRows=[]; const checkedDelivery=new Set(); const deliveredOrders=new Set(); const skipped=[];
+  let filled=0; const filledRows=[]; const checkedDelivery=new Set(); const deliveredOrders=new Set(); const skipped=[]; const allowedDelivered=[];
   for(let i=0;i<n;i++){
     const row=rows.nth(i);
     const orderNo=((await row.innerText().catch(()=>"")).match(/Z\d{6,}/)||[])[0]||"";
@@ -63,9 +63,22 @@ async function dispatchInvoicesOnPage(page, log=console.log){
     if(!t) continue;
     if(deliveredOrders.has(orderNo)) continue; // 배달완료 판정된 주문의 다른 상품행도 스킵
     // 가드: 이미 배달완료된 송장이면 입력 차단(교환 재배송 의심). 주문당 1회만 체크.
+    //
+    // ⚠️ 이 가드는 "입력이 늦어 그 사이 배송이 끝난 건"도 똑같이 막는다(자동화가 며칠 죽으면 발생).
+    //    그러면 고객은 이미 받았는데 W컨셉엔 영영 상품준비중으로 남는다(2026-09-16: 9/13~9/16
+    //    엑셀 다운로드 실패로 송장입력이 멈춘 사이 5건이 이 상태가 됐다).
+    //    사람이 "교환 재배송이 아니라 입력 지연"임을 확인했을 때만 WC_ALLOW_DELIVERED=1 로 통과시킨다.
+    //    기본값은 계속 차단 — 자동 실행(launchd)에는 이 변수를 주지 말 것.
     if(!checkedDelivery.has(orderNo)){
       checkedDelivery.add(orderNo);
-      if(await isDelivered(t)){ deliveredOrders.add(orderNo); skipped.push({orderNo,t}); log(`  ⚠️ ${orderNo}: 송장 ${t} 이미 배달완료 → 재입력 차단(교환 재배송 의심, 새 송장 수동 확인 필요)`); continue; }
+      if(await isDelivered(t)){
+        if(process.env.WC_ALLOW_DELIVERED==="1"){
+          allowedDelivered.push({orderNo,t});
+          log(`  ↪︎ ${orderNo}: 송장 ${t} 배달완료지만 WC_ALLOW_DELIVERED=1 로 입력 진행(입력 지연 건으로 수동 확인됨)`);
+        } else {
+          deliveredOrders.add(orderNo); skipped.push({orderNo,t}); log(`  ⚠️ ${orderNo}: 송장 ${t} 이미 배달완료 → 재입력 차단(교환 재배송 의심, 새 송장 수동 확인 필요)`); continue;
+        }
+      }
     }
     const sel=row.locator('select').first();
     await sel.selectOption({label:/우체국택배/}).catch(async()=>{ await sel.selectOption({label:"우체국택배"}).catch(()=>{}); });
@@ -75,6 +88,12 @@ async function dispatchInvoicesOnPage(page, log=console.log){
     const v=await inputEl.inputValue().catch(()=>"");
     if(v===t){ filled++; filledRows.push(i); log(`  ${orderNo}: 우체국택배 + 송장 ${t} (행 ${i+1})`); }
     await sleep(250);
+  }
+  // 가드를 푼 건은 조용히 넘어가면 안 된다 — 잘못 풀었을 때 되짚을 수 있게 기록을 남긴다.
+  if(allowedDelivered.length){
+    const msg=`↪︎ W컨셉 송장 입력(배달완료 가드 해제, WC_ALLOW_DELIVERED=1) ${allowedDelivered.length}건\n`+allowedDelivered.map(s=>`- ${s.orderNo}: ${s.t}`).join("\n")+`\n→ 입력 지연 건으로 수동 확인 후 진행했습니다.`;
+    log(msg);
+    try{ await require("./telegramRelay").relayText(msg); }catch{}
   }
   if(skipped.length){
     const msg=`⚠️ W컨셉 송장 재입력 차단 ${skipped.length}건 (이미 배달완료 = 교환 재배송 의심)\n`+skipped.map(s=>`- ${s.orderNo}: ${s.t}`).join("\n")+`\n→ 새 송장 발급/입력을 수동 확인하세요.`;
