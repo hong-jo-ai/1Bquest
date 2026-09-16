@@ -175,6 +175,25 @@ export async function generateDraft(
     console.warn("[cs/draft] CARE 조회 실패:", e instanceof Error ? e.message : e);
   }
 
+  // 명절 배송 안내 — 문의가 몰리는 기간에 답변이 제각각이면 안 된다.
+  // ⚠️ **날짜로 가둔다.** 기간이 지나면 저절로 빠지므로 지우는 걸 잊어도 10월에 추석 안내가 나가지 않는다.
+  //    집하 휴무일 자체는 local-agent/parcelHolidays.js 가 따로 관리한다(그쪽이 접수를 막는 실체).
+  let noticeBlock = "";
+  {
+    const todayKst = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    if (todayKst >= "2026-09-16" && todayKst <= "2026-09-28") {
+      noticeBlock = `
+
+## 추석 연휴 배송 안내 (2026, 기간 한정)
+
+배송·출고·도착일 문의면 아래 사실을 반영해 답한다. **묻지 않았는데 먼저 꺼내지는 말 것.**
+- **9/24(목)~9/27(일) 택배 집하 없음** → 그 기간에는 출고가 나가지 않는다.
+- 연휴 전 수령을 원하면 **9/22(화)까지 주문**하도록 안내한다.
+- **9/23 이후 출고분은 9/28 이후 도착**한다.
+- 명절 물량으로 평소보다 하루이틀 늦어질 수 있다. **"지연될 수 있다"로 말하고 도착일을 단정하지 말 것.**`;
+    }
+  }
+
   const systemPrompt = `${skill}${crispBlock}${examplesBlock}
 
 ---
@@ -186,7 +205,7 @@ export async function generateDraft(
 - 채널 유형: ${isIgComment ? "인스타 공개 댓글 (한두 문장·위트 있게·@멘션으로 시작)" : isWebWidget ? "웹 채팅 (서명·이모지 없이 짧은 이메일 톤)" : chatMode ? "채팅 (간결한 답변)" : "이메일/게시판 (풀 답변)"}
 - 고객 이름: ${thread.customer_name ?? "(알 수 없음)"}
 - 고객 연락처: ${thread.customer_handle ?? "(알 수 없음)"}
-- 제목: ${thread.subject ?? "(없음)"}${careBlock}
+- 제목: ${thread.subject ?? "(없음)"}${careBlock}${noticeBlock}
 
 이 메타데이터를 바탕으로 스킬의 규칙에 따라 답변 초안을 생성한다. 브랜드는 이미 확정돼 있으므로 재질문하지 말 것.${operatorBlock}${outputOverride}`;
 
