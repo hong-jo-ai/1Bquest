@@ -211,6 +211,41 @@ async function ingestCombined(filePath, log) {
   return json;
 }
 
+/**
+ * 같은 로그인 세션에서 송장입력(SMS 1회로 매출+송장). 실패해도 매출 동기화엔 영향 없게 guard.
+ *
+ * ⚠️ 송장입력은 **오후 실행(15시 이후)에서만** 한다 — 매출 동기화는 12:39·17:04 두 번 돌지만,
+ * 점심에 송장을 넣어버리면 오후에 품절·출고불가를 발견해도 이미 "출고완료"라 되돌릴 수 없다.
+ * (2026-07-27 사고: 에끌라 오벌 골드 품절인데 12:39 실행이 전량 출고처리 → 대응 불가)
+ * 다른 채널 송장입력(dispatch17, 17:10)과 시점을 맞춰 오후에 문제 대응할 시간을 확보한다.
+ * 강제 실행 = WC_DISPATCH_INVOICES=1, 강제 차단 = 0.
+ */
+async function dispatchInvoicesIfWindow(ctx, acc, log) {
+  const forceDispatch = process.env.WC_DISPATCH_INVOICES;
+  const hourKst = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", hour: "2-digit", hour12: false }).format(new Date()),
+  );
+  const dispatchWindow = forceDispatch === "1" || (forceDispatch !== "0" && hourKst >= 15);
+  if (!dispatchWindow) {
+    log(`W컨셉 ${acc.key}번 송장입력 스킵 — 오후(15시 이후) 실행에서만 처리 (현재 ${hourKst}시)`);
+    return;
+  }
+  // 전용 탭에서 돌린다 — dispatchInvoicesOnPage 는 page 에 dialog 자동수락 핸들러를 붙이는데,
+  // 그 페이지를 그대로 두면 뒤따르는 엑셀 다운로드의 확인창까지 말없이 수락해 버린다.
+  // 탭을 닫으면 핸들러도 같이 사라진다. 로그인은 컨텍스트(쿠키) 단위라 새 탭도 로그인 상태다.
+  let page = null;
+  try {
+    page = await ctx.newPage();
+    const { dispatchInvoicesOnPage } = require("./wconceptInvoice");
+    const r = await dispatchInvoicesOnPage(page, log);
+    log(`W컨셉 ${acc.key}번 송장입력: ${r.filled}건${r.saved ? " 저장" : ""}`);
+  } catch (e) {
+    log(`W컨셉 ${acc.key}번 송장입력 실패(매출엔 영향 없음): ${e.message}`);
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+}
+
 async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   for (const a of ACCOUNTS) {
     if (!a.id || !a.pw) throw new Error(`W컨셉 ${a.key}번 계정 ID/PW 미설정`);
@@ -243,6 +278,15 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
       let page = ctx.pages()[0] || (await ctx.newPage());
       const ok = await loginWconcept(ctx, page, acc, log);
       if (!ok) throw new Error(`W컨셉 ${acc.key}번 로그인/인증 실패`);
+
+      // ⚠️ 송장입력을 매출 다운로드보다 **먼저** 한다. 예전엔 다운로드 → 송장 순이라
+      //    다운로드가 죽으면(컨텍스트 사망) 송장입력까지 같이 날아갔다. 2026-09-13~16 에
+      //    그 일이 실제로 벌어져 5건이 배송 완료될 때까지 W컨셉에 상품준비중으로 남았고,
+      //    그 다음엔 배달완료 가드에 막혀 자동으로는 넣을 수도 없었다.
+      //    송장입력은 로그인 세션만 있으면 되고 엑셀과 무관하다 — 둘을 분리한다.
+      //    매출 숫자는 다음 실행에서 따라잡히지만, 송장은 늦으면 늦을수록 되돌리기 어렵다.
+      await dispatchInvoicesIfWindow(ctx, acc, log);
+
       // 다운로드는 목록 재렌더 타이밍을 타므로 한 번은 다시 시도한다(새 페이지로).
       let file = null;
       for (let attempt = 1; attempt <= 2 && !file; attempt++) {
@@ -266,26 +310,6 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
         }
       }
       files.push(file);
-      // 같은 로그인 세션에서 송장입력까지(SMS 1회로 매출+송장). 실패해도 매출엔 영향 없게 guard.
-      //
-      // ⚠️ 송장입력은 **오후 실행(15시 이후)에서만** 한다 — 매출 동기화는 12:39·17:04 두 번 돌지만,
-      // 점심에 송장을 넣어버리면 오후에 품절·출고불가를 발견해도 이미 "출고완료"라 되돌릴 수 없다.
-      // (2026-07-27 사고: 에끌라 오벌 골드 품절인데 12:39 실행이 전량 출고처리 → 대응 불가)
-      // 다른 채널 송장입력(dispatch17, 17:10)과 시점을 맞춰 오후에 문제 대응할 시간을 확보한다.
-      // 강제 실행 = WC_DISPATCH_INVOICES=1, 강제 차단 = 0.
-      const forceDispatch = process.env.WC_DISPATCH_INVOICES;
-      const hourKst = Number(
-        new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", hour: "2-digit", hour12: false }).format(new Date()),
-      );
-      const dispatchWindow = forceDispatch === "1" || (forceDispatch !== "0" && hourKst >= 15);
-      if (!dispatchWindow) log(`W컨셉 ${acc.key}번 송장입력 스킵 — 오후(15시 이후) 실행에서만 처리 (현재 ${hourKst}시)`);
-      if (dispatchWindow) {
-        try {
-          const { dispatchInvoicesOnPage } = require("./wconceptInvoice");
-          const r = await dispatchInvoicesOnPage(page, log);
-          log(`W컨셉 ${acc.key}번 송장입력: ${r.filled}건${r.saved ? " 저장" : ""}`);
-        } catch (e) { log(`W컨셉 ${acc.key}번 송장입력 실패(매출엔 영향 없음): ${e.message}`); }
-      }
     } finally {
       await ctx.close().catch(() => {});
     }
