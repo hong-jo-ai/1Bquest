@@ -94,7 +94,9 @@ async function createShipment(order, opts = {}) {
       shippingChargesPayment: { paymentType: "SENDER" },
       // 라벨 인증(2026-09-14 반려 사유): 열전사 프린터(Xprinter XP-D4604B)엔 ZPL 을 그대로 쏴야 한다.
       // PDF 를 열전사에 찍으면 바코드가 흐려져 불합격. ZPL 은 이미지로 변환·가공 금지, raw 출력만.
-      labelSpecification: { imageType: "ZPLII", labelStockType: "STOCK_4X6" },
+      // 용지 = 페덱스 열전사 라벨 Part #156148-434 (4x6.75, 상단 doc tab). STOCK_4X6 으로 보내면
+      // 본문이 doc tab 위로 올라가 인증 반려된다(2026-09-16 2차 반려 사유). enum 은 소수점 없는 표기.
+      labelSpecification: { imageType: "ZPLII", labelStockType: "STOCK_4X675_LEADING_DOC_TAB" },
       // ETD 는 shippingDocumentSpecification 없이 보내면 400 SHIPPING.DOCUMENT.REQUIRED (2026-09-16 샌드박스 실측)
       shippingDocumentSpecification: { shippingDocumentTypes: ["COMMERCIAL_INVOICE"], commercialInvoiceDetail: { documentFormat: { stockType: "PAPER_LETTER", docType: "PDF" } } },
       customsClearanceDetail: {
