@@ -16,6 +16,9 @@
  *        node wooriBankSms.js --since 2026-08-18T11:08:00+09:00   ← 그 시각 이후 되채우기(커서 이동)
  *        node wooriBankSms.js --reset                 ← 커서 초기화(전체 재스캔)
  *        node wooriBankSms.js --scan                  ← 보내지 않고 매칭된 문자 원문만 출력(형식 확인용)
+ *        node wooriBankSms.js --scan 국민              ← **진단용**: 은행 필터 무시하고 전체 기간에서
+ *                                                        그 단어가 든 문자를 최근순으로 본다.
+ *                                                        (KB 문자가 chat.db 에 오긴 오는지, 어떤 형식인지 확인)
  *
  * ⚠️ KB 를 추가하기 전 문자는 **커서 뒤에 있어 자동으로 안 들어온다.** 되채우려면:
  *        node wooriBankSms.js --since 2026-04-24T00:00:00+09:00 --no-ask
@@ -75,6 +78,26 @@ function readNew(afterNs) {
   finally { try { cdb.close(); } catch {} }
 }
 
+/** 진단용 — 은행 필터 없이 단어 하나로 전체 기간을 훑는다(보내지 않음). */
+function readRaw(term, limit = 40) {
+  let cdb;
+  try { cdb = new DatabaseSync(CHAT_DB, { readOnly: true }); }
+  catch (e) { log(`chat.db 열기 실패(전체 디스크 접근 권한 확인): ${e && e.message}`); return null; }
+  try {
+    return cdb.prepare(
+      "SELECT CAST(date AS TEXT) AS ns, text, attributedBody FROM message " +
+      `WHERE ${bodyLike(term)} ORDER BY date DESC LIMIT ${Number(limit) || 40}`
+    ).all().map((r) => ({ ns: r.ns, text: messageBody(r) })).filter((r) => r.text);
+  } catch (e) { log(`chat.db 쿼리 오류: ${e && e.message}`); return null; }
+  finally { try { cdb.close(); } catch {} }
+}
+
+/** Apple ns → 사람이 읽는 KST */
+function nsToKst(ns) {
+  const ms = Number(BigInt(ns) / 1000000n) + APPLE_EPOCH_MS;
+  return new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+}
+
 async function send(messages) {
   const r = await fetch(`${base()}/api/finance/bank-sms`, {
     method: "POST",
@@ -95,11 +118,22 @@ async function main() {
   if (sinceIdx > 0) { const ns = isoToNs(process.argv[sinceIdx + 1]); await setCursor(db, ns); log(`커서를 ${process.argv[sinceIdx + 1]} (ns ${ns}) 로 이동 — 이후 문자부터 수집`); }
 
   // --scan: 보내지 않고 원문만 본다. KB 문자 형식을 눈으로 확인할 때 쓴다(파서 정규식 튜닝용).
-  if (process.argv.includes("--scan")) {
+  const scanIdx = process.argv.indexOf("--scan");
+  if (scanIdx > 0) {
+    const term = process.argv[scanIdx + 1] && !process.argv[scanIdx + 1].startsWith("--")
+      ? process.argv[scanIdx + 1] : null;
+    if (term) {
+      // 진단 모드: 은행 필터·커서 무시. "KB 문자가 오긴 오나?" 를 먼저 확인할 때.
+      const rows = readRaw(term);
+      if (rows === null) return;
+      log(`'${term}' 포함 문자 ${rows.length}건 (전체 기간, 최근순, 전송 안 함)`);
+      for (const r of rows) log(`  · [${nsToKst(r.ns)}] ${r.text.replace(/\s+/g, " ").slice(0, 160)}`);
+      return;
+    }
     const rows = readNew(await getCursor(db));
     if (rows === null) return;
     log(`매칭 ${rows.length}건 (커서 이후, 전송 안 함)`);
-    for (const r of rows.slice(0, 40)) log(`  · ${r.text.replace(/\s+/g, " ").slice(0, 160)}`);
+    for (const r of rows.slice(0, 40)) log(`  · [${nsToKst(r.ns)}] ${r.text.replace(/\s+/g, " ").slice(0, 160)}`);
     return;
   }
 
