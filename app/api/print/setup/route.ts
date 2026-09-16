@@ -102,7 +102,20 @@ Get-Process -Name "SumatraPDF" -ErrorAction SilentlyContinue | Stop-Process -For
 Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", ('"' + $Agent + '"')) -WindowStyle Hidden
 Start-Sleep -Seconds 3
 $running = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like "*print-agent.ps1*" }
-if ($running) { Write-Host "   에이전트 실행 중 (PID $($running.ProcessId))" } else { Write-Host "   ⚠️ 에이전트가 바로 종료됨 — agent.log 확인 필요" }
+if ($running) { Write-Host "   에이전트 실행 중 (PID $($running.ProcessId))" } else {
+  Write-Host "   에이전트가 바로 종료됨 — 원인을 확인합니다..."
+  # ⚠️ 문법 오류면 스크립트가 한 줄도 실행되지 않아 agent.log 에 아무것도 안 남는다.
+  #    2026-09-16 에 인코딩 깨짐(BOM 없음 → CP949 해석)으로 정확히 이 상태가 됐는데,
+  #    "바로 종료됨" 한 줄뿐이라 원인을 찾는 데 오래 걸렸다. 저장 직후 파싱해서 바로 알려준다.
+  $perr = $null
+  try { [void][System.Management.Automation.Language.Parser]::ParseFile($Agent, [ref]$null, [ref]$perr) } catch {}
+  if ($perr -and $perr.Count -gt 0) {
+    Write-Host ("   [문법 오류] " + $perr[0].Message)
+    Write-Host ("   위치: " + $perr[0].Extent.StartLineNumber + "행 — 스크립트 인코딩 문제일 수 있습니다(설치를 다시 실행해 보세요).")
+  } else {
+    Write-Host "   문법은 정상입니다 — agent.log 를 확인하세요."
+  }
+}
 Write-Host "4/4 설치 완료. 에이전트가 백그라운드에서 20초마다 인쇄 대기열을 확인합니다(로그인 시 자동 시작)."
 Write-Host ("로그: " + (Join-Path $Dir "agent.log"))
 `;
@@ -113,7 +126,18 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const base = (process.env.PRINT_AGENT_BASE_URL || `${url.protocol}//${url.host}`).replace(/\/$/, "");
   const token = printAgentToken();
-  const body = url.searchParams.get("agent") ? agentScript(base, token) : setupScript(base, token);
-  // BOM 을 넣으면 `irm | iex` 가 첫 줄을 "﻿#…" 명령으로 오인해 CommandNotFound 를 낸다(실측). charset 헤더로 충분.
-  return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+  const isAgent = !!url.searchParams.get("agent");
+  const body = isAgent ? agentScript(base, token) : setupScript(base, token);
+  // 🔴 두 응답의 BOM 요구가 **정반대**다. 하나로 통일하면 반드시 한쪽이 깨진다.
+  //  · 설치 스크립트: `irm | iex` 로 **파이프 실행**된다. BOM 이 있으면 첫 줄을 (U+FEFF 가 앞에 붙은) "#…" 명령으로
+  //    오인해 CommandNotFound 를 낸다(2026-09-15 실측) → BOM 금지. (U+FEFF 가 첫 글자로 붙는 탓)
+  //  · 에이전트 스크립트: `-OutFile` 로 **파일 저장 후 -File 로 실행**된다. BOM 이 없으면
+  //    Windows PowerShell 5.1 이 .ps1 을 시스템 코드페이지(한국어=CP949)로 읽어 UTF-8 한글이
+  //    깨지고, 깨진 바이트가 따옴표 짝을 무너뜨려 **ParserError 로 아예 뜨지 못한다** → BOM 필수.
+  //    2026-09-16 실측: `AmpersandNotAllowed` — 50행 `L "폴링 오류: …"` 의 한글이 깨져 문자열이
+  //    안 닫히자 23행 URL 의 `&agent=1` 이 문자열 밖으로 노출됐다. 시작 로그조차 없어 진단이 오래 걸렸다.
+  //    (어제까지 멀쩡했던 건 그 버전에 재시작 블록이 없어 우연히 파싱이 통과했기 때문이다.)
+  // ⚠️ 리터럴 BOM 을 소스에 박지 말 것 — 눈에 안 보여서 편집·복사 중 조용히 사라진다(이번 버그와 같은 계열).
+  const payload = isAgent ? String.fromCharCode(0xfeff) + body : body;
+  return new Response(payload, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 }
