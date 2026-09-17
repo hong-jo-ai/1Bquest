@@ -176,7 +176,15 @@ async function getMusinsaDomesticRows(_opts, log = console.log) {
     // 필요한 invoice 팝업까지 잡창으로 오판해 닫아 엑셀 다운로드가 전멸했다(8/7~8/18).
     // 잡창이 남아 있어도 다운로드에 지장이 없으므로 아무것도 닫지 않는다.
   });
-  if (!(await ensureMusinsa(page, log))) { log("무신사 로그인 실패"); return []; }
+  // 🔴 세션 만료는 이 스크립트에서 가장 흔한 실패인데 여기만 경보가 빠져 있었다(2026-09-17 수정).
+  //    iframe 실패·그리드 실패는 alert() 를 부르는데 이 경로만 조용히 []를 반환해서,
+  //    9/16 12:31·14:32 두 배치가 말없이 무신사를 흘렸고 주문 1건(452809264)이 하루 밀렸다.
+  //    사장님이 받은 건 매출 sync 실패 알림뿐이라 "출고가 멈췄다"는 사실이 전달되지 않았다.
+  if (!(await ensureMusinsa(page, log))) {
+    log("무신사 로그인 실패");
+    await alert("무신사 로그인 세션이 만료돼 출고목록을 읽지 못했습니다. 신규 주문이 있어도 이번 배치에서 통째로 빠집니다 — 상시 크롬 창(CDP 9333)에서 로그인해 주세요. 로그인 후 다음 배치(12:30/14:30/15:10/17:10)에 자동 재개됩니다.", log);
+    return [];
+  }
 
   // 1) 배송출고요청: 검색 → 전체선택 → 상품준비중 변경(go_delivery)
   const req = await loadFrameSearch(page, REQ, log);
