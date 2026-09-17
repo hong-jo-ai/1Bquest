@@ -7,7 +7,7 @@
  * 기본값(사용자 확정):
  *   contCd  = 025 (의류/패션잡화 — 시계·주얼리)
  *   payType = 1   (출고/선불) · 반품은 12(후납) — mapReturn() 참고
- *   printYn = N   (biz.epost 운송장출력 메뉴에서 인쇄)
+ *   printYn = Y   (라벨은 labelPrintQueue 가 직접 인쇄 — biz.epost 미출력 목록을 비워 둔다)
  *   reqType = 1   (일반소포). 반품은 mapReturn() 으로 reqType=2.
  *   testYn  = POSTPARCEL_TEST_YN (기본 'Y' — 실제 채번 전 안전 테스트)
  */
@@ -75,7 +75,11 @@ function mapOutbound(row) {
     goodsColor: row.color || "",
     qty: row.qty || "1",
     delivMsg: row.msg || "",
-    printYn: "N", // biz.epost 에서 인쇄
+    // Y = 접수와 동시에 '출력완료' 로 표시. 라벨은 우리가 직접 뽑으므로(labelPrintQueue)
+    // biz.epost 의 '미출력' 목록은 우리 기준에선 의미가 없고, 오히려 출고한 건과
+    // 안 한 건을 구분할 수 없게 만든다(사장님 2026-09-17).
+    // 뒤집어도 안전한 이유: 문제가 생기면 biz.epost 운송장출력 메뉴에서 재출력이 된다.
+    printYn: "Y",
     testYn: DEFAULTS.testYn(),
   };
 }
