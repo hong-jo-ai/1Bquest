@@ -41,8 +41,11 @@ async function token() {
   _tok = { v: j.access_token, exp: Date.now() + (j.expires_in || 3599) * 1000 };
   return _tok.v;
 }
-async function api(p, body, tok) {
-  const r = await fetch(BASE + p, { method: "POST", headers: { Authorization: "Bearer " + (tok || await token()), "Content-Type": "application/json", "X-locale": "en_US" }, body: JSON.stringify(body) });
+// ⚠️ 메서드는 엔드포인트마다 다르다. 취소(/ship/v1/shipments/cancel)는 PUT 이고,
+// POST 로 보내면 200 이 아니라 METHOD.NOT.ALLOWED.ERROR 로 떨어진다 — 그런데 이 실패가
+// "라벨은 발급됐는데 취소가 안 된 상태"로 남아 과금 위험이 된다(2026-09-18 실측).
+async function api(p, body, tok, method = "POST") {
+  const r = await fetch(BASE + p, { method, headers: { Authorization: "Bearer " + (tok || await token()), "Content-Type": "application/json", "X-locale": "en_US" }, body: JSON.stringify(body) });
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { raw: t }; }
   return { status: r.status, j };
 }
@@ -136,7 +139,7 @@ async function createShipment(order, opts = {}) {
 }
 
 async function voidShipment(trackingNumber) {
-  const { status, j } = await api("/ship/v1/shipments/cancel", { accountNumber: { value: ACCOUNT }, trackingNumber, deletionControl: "DELETE_ALL_PACKAGES" });
+  const { status, j } = await api("/ship/v1/shipments/cancel", { accountNumber: { value: ACCOUNT }, trackingNumber, deletionControl: "DELETE_ALL_PACKAGES" }, null, "PUT");
   return { ok: status === 200 && j.output && j.output.cancelledShipment, status, j };
 }
 
