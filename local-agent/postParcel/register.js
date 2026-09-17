@@ -105,6 +105,36 @@ function groupByRecipient(rows) {
   });
 }
 
+/**
+ * 같은 주문의 여러 품목을 한 행으로 묶는다.
+ *
+ * 🔴 왜 필요한가(2026-09-17 사장님 발견): `pp_shipments` 는 `(order_number, channel, req_type)` 로
+ * upsert 된다. 한 주문에 품목이 여럿이면 members 가 **전부 같은 키**라서 저장이 서로를 덮어쓰고
+ * **마지막 품목 하나만 남았다.** 우체국 접수(goodsNm)는 group 결합값이라 정상이었는데,
+ * 자체 인쇄 라벨은 이 행의 `product_name` 을 그대로 찍으므로(renderLabel) 나머지 품목이 통째로 빠졌다.
+ * 박효선·김나현 건에서 2품목 중 1개만 인쇄돼 드러났다.
+ * biz.epost 출력본에는 goodsNm 이 찍혀 안 보이던 버그가 자체 인쇄로 전환하며 드러난 것.
+ *
+ * 행 수 = 주문 수를 유지하므로 채널 송장 역입력(주문별)은 그대로 동작한다.
+ */
+function mergeMembersByOrder(members) {
+  const map = new Map();
+  for (const m of members) {
+    const key = `${m.order}|${m.seller}`;
+    if (!map.has(key)) map.set(key, { ...m, _prods: [], _qty: 0 });
+    const g = map.get(key);
+    const p = String(m.prod || "").trim();
+    if (p && !g._prods.includes(p)) g._prods.push(p);
+    g._qty += Number(String(m.qty).replace(/\D/g, "")) || 1;
+  }
+  return [...map.values()].map((g) => {
+    let prod = g._prods.join(" / ");
+    if (prod.length > 400) prod = prod.slice(0, 397) + "...";
+    const { _prods, _qty, ...rest } = g;
+    return { ...rest, prod, qty: String(g._qty || 1) };
+  });
+}
+
 /** 이미 수집된 행 배열을 접수 (12:30 빌더가 집계한 rows 재사용). opts: { skipExisting=true } */
 async function registerRows(rows, opts = {}) {
   const client = sb();
@@ -123,10 +153,13 @@ async function registerRows(rows, opts = {}) {
   for (const group of grouped) {
     const members = group.members || [group];
     if (!group.order) { log("주문번호 없는 행 스킵"); continue; }
+    // 저장은 주문 단위로 — 같은 주문의 품목이 서로를 덮어쓰지 않게(mergeMembersByOrder 주석 참고).
+    // 접수(mapOutbound(group))는 그대로 수취인 단위 결합이다. 건드리지 않는다.
+    const orderRows = mergeMembersByOrder(members);
     try {
       // 멤버별 기존 접수 상태 조회. 이미 접수된 멤버가 있으면 그 송장번호 재사용(InsertOrder 생략).
       const status = [];
-      for (const m of members) {
+      for (const m of orderRows) {
         status.push(opts.skipExisting !== false ? await alreadyRegistered(client, m.order, m.seller, "1") : null);
       }
       const existing = status.find((s) => s && s.regi_no);
@@ -140,22 +173,23 @@ async function registerRows(rows, opts = {}) {
       } else {
         result = await insertOrder(params);
         results.push({ order: group.order, channel: group.seller, regiNo: result.regiNo, price: result.price, members: members.length, test: params.testYn === "Y" });
-        log(`접수 OK ${group.seller}/${members.map((m) => m.order).join("+")} → ${result.regiNo} (상품 ${members.length})`);
+        // 주문번호는 중복 없이(전에는 한 주문 2품목이 "A+A" 로 찍혀 오해를 샀다), 품목 수는 별도 표기.
+        log(`접수 OK ${group.seller}/${orderRows.map((m) => m.order).join("+")} → ${result.regiNo} (주문 ${orderRows.length}·품목 ${members.length})`);
       }
       // 묶음의 각 원본 주문을 같은 송장번호로 저장(주문별 product_name/qty 유지 → 역입력은 주문별).
-      for (let i = 0; i < members.length; i++) {
-        if (existing && status[i] && status[i].regi_no) continue; // 이미 저장된 멤버는 건드리지 않음
-        const m = members[i];
+      for (let i = 0; i < orderRows.length; i++) {
+        if (existing && status[i] && status[i].regi_no) continue; // 이미 저장된 주문은 건드리지 않음
+        const m = orderRows[i];
         await persist(client, shipmentRecord(m, { ...params, orderNo: m.order, goodsNm: m.prod, qty: m.qty }, result));
       }
     } catch (e) {
       const code = e instanceof PostParcelError ? e.code : "ERR";
       const params = (() => { try { return mapOutbound(group); } catch { return { reqType: "1", testYn: isTestMode() ? "Y" : "N" }; } })();
-      for (const m of members) {
+      for (const m of orderRows) {
         await persist(client, shipmentRecord(m, { ...params, orderNo: m.order, goodsNm: m.prod, qty: m.qty }, null, { status: "error", error_code: code, error_message: e.message }));
       }
       results.push({ order: group.order, channel: group.seller, error: e.message, code });
-      log(`접수 실패 ${group.seller}/${members.map((m) => m.order).join("+")}: ${e.message}`);
+      log(`접수 실패 ${group.seller}/${orderRows.map((m) => m.order).join("+")}: ${e.message}`);
     }
   }
   const ok = results.filter((r) => r.regiNo && !r.skipped).length;
