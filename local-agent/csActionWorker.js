@@ -273,7 +273,10 @@ async function tick() {
 (async () => {
   log("CS 액션 워커 시작 (poll " + POLL_MS + "ms)");
   let failStreak = 0, lastBeat = 0;
+  // 코드가 바뀌면 스스로 내려가 새 코드로 다시 뜬다(9/17 옛 코드로 Q&A 답변이 실패한 사고).
+  const exitIfCodeChanged = require("./codeReload").makeCodeReloadCheck(log);
   for (;;) {
+    exitIfCodeChanged(); // 작업을 잡기 전에만 — 처리 도중 끊기지 않게
     try { await tick(); failStreak = 0; }
     catch (e) {
       log("tick 예외: " + (e && e.message));
