@@ -249,7 +249,7 @@ async function alreadyRegisteredKeys(){
  * (8/18~8/24 연속 실패 → 접수 누락 7건). 같은 스크립트를 단독 실행하면 정상이었다.
  * 프로필 잠금 때문에 Chrome 두 개가 같은 프로필을 못 쓰므로 **호출 전에 브라우저를 모두 닫는다.**
  */
-function getMusinsaDomesticRowsIsolated(log){
+function getMusinsaDomesticRowsIsolated(log, onFail){
   return new Promise((resolve)=>{
     const out = path.join(os.tmpdir(), `musinsa-dom-rows-${Date.now()}.json`);
     const child = spawn(process.execPath, [path.join(__dirname,"musinsaDomesticOutbound.js"), "--json", out],
@@ -263,7 +263,9 @@ function getMusinsaDomesticRowsIsolated(log){
       clearTimeout(timer);
       let rows = [];
       try { rows = JSON.parse(fs.readFileSync(out,"utf8")); }
-      catch { log(`무신사일반: 결과 파일 없음 (exit=${code}) — 접수 누락 위험, 수동 확인 필요`); }
+      // 🔴 여기는 예외를 던지지 않으므로 호출부의 catch 가 안 탄다 — 조용한 0행이 된다.
+      //    그래서 실패를 콜백으로 올려 알림 요약에 싣는다(2026-09-17).
+      catch { log(`무신사일반: 결과 파일 없음 (exit=${code}) — 접수 누락 위험, 수동 확인 필요`); try{ onFail && onFail(); }catch{} }
       try { fs.unlinkSync(out); } catch {}
       resolve(rows);
     });
@@ -273,21 +275,27 @@ function getMusinsaDomesticRowsIsolated(log){
 
 async function collectOutboundRows(){
   let cafe=[], cm=[], wc=[], mg=[], md=[], ss=[];
+  // 🔴 채널 실패를 여기 모은다(2026-09-17). 그 전에는 실패가 로그에만 남고 알림엔 "무신사 0" 으로만 보여서
+  //    "주문이 없어서 0" 과 "세션이 죽어서 못 읽은 0" 이 구분되지 않았다.
+  //    9/16 무신사가 두 배치 연속 조용히 빠져 주문 452809264 가 하루 밀렸고,
+  //    사장님은 무신사 파트너센터의 발송지연 경고를 보고서야 아셨다.
+  const failed=[];
   // 카페24 멀티몰: 폴바이스 + 해리엇(미설정 몰은 건너뜀). 각 몰 실패해도 나머지 진행.
   for(const m of CAFE24_MALLS){
     if(!m.mallId()){ continue; }
     try { const r=await cafe24Rows(m); cafe.push(...r); log(`${m.seller} ${r.length}행`); }
-    catch(e){ log(`${m.seller} 실패: `+e.message); }
+    catch(e){ log(`${m.seller} 실패: `+e.message); failed.push(m.seller); }
   }
-  try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); }
-  try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); }
+  try { cm=await getCm29OutboundRows({}, log); log(`29CM ${cm.length}행`); } catch(e){ log("29CM 실패: "+e.message); failed.push("29CM"); }
+  try { wc=wconceptRows(); log(`W컨셉 ${wc.length}행(캐시)`); } catch(e){ log("W컨셉 실패: "+e.message); failed.push("W컨셉"); }
   // 무신사: 글로벌·일반 모두 국내 우체국 발송. 일반은 상품준비중 변경 후 배송출고처리 엑셀에서 주소 수집.
-  try { mg=await getMusinsaGlobalRows({}, log); log(`무신사글로벌 ${mg.length}행`); } catch(e){ log("무신사글로벌 실패: "+e.message); }
+  try { mg=await getMusinsaGlobalRows({}, log); log(`무신사글로벌 ${mg.length}행`); } catch(e){ log("무신사글로벌 실패: "+e.message); failed.push("무신사글로벌"); }
   // 무신사 일반은 별도 프로세스 — 같은 프로필을 Chrome 두 개가 못 쓰므로 여기서 먼저 전부 닫는다.
   await closeMarketplaceBrowsers().catch(()=>{});
-  try { md=await getMusinsaDomesticRowsIsolated(log); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); }
+  // ⚠️ 이 헬퍼는 실패해도 예외를 안 던지고 빈 배열을 준다 → catch 로는 못 잡는다. 콜백으로 받는다.
+  try { md=await getMusinsaDomesticRowsIsolated(log, ()=>failed.push("무신사")); log(`무신사일반 ${md.length}행`); } catch(e){ log("무신사일반 실패: "+e.message); failed.push("무신사"); }
   // 스마트스토어(해리엇 와치스) — 커머스 API. 브라우저 세션 불필요.
-  try { ss=await getSmartstoreOutboundRows(14); log(`스마트스토어 ${ss.length}행`); } catch(e){ log("스마트스토어 실패: "+e.message); }
+  try { ss=await getSmartstoreOutboundRows(14); log(`스마트스토어 ${ss.length}행`); } catch(e){ log("스마트스토어 실패: "+e.message); failed.push("스마트스토어"); }
 
   // 이미 접수된 건 제외 (캐시·export 가 발송완료분을 재탕하는 문제 차단)
   const all=[...cafe,...cm,...wc,...mg,...md,...ss];
@@ -312,7 +320,8 @@ async function collectOutboundRows(){
   const promiseRows=rows.filter(r=>r.promise);
   if(promiseRows.length) log(`⚠️ 약속 있는 주문 ${promiseRows.length}행 — 포장 시 확인 필요`);
   const cnt=(s)=>rows.filter(r=>r.seller===s).length;
-  return { rows, heldCount, promiseRows, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
+  // failed 는 "추가"다 — 기존 호출자의 구조분해를 깨지 않는다.
+  return { rows, heldCount, promiseRows, failed, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient };
@@ -321,14 +330,14 @@ module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipie
 async function main(){
   const today = new Date();
   const date = process.env.PO_DATE || `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}${String(today.getDate()).padStart(2,"0")}`;
-  const { rows, counts, heldCount, promiseRows } = await collectOutboundRows();
+  const { rows, counts, heldCount, promiseRows, failed } = await collectOutboundRows();
   // 합배송: 동일 수취인의 여러 주문/상품을 송장 1장(엑셀 1행)으로. 접수도 register.js 가 수취인별로 묶음.
   const ex = mergeByRecipient(rows);
   const aoa=[HEADER, ...ex.map(r=>[r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.color,r.qty,r.msg,r.order,r.seller])];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"sheet1");
   const out=`/tmp/우체국송장양식_${date}_1.xlsx`; XLSX.writeFile(wb,out);
   const merged = rows.length - ex.length;
-  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})${heldCount?`\n⏸ 발송보류 ${heldCount}행 제외 (품절·예약판매 대기)`:""}${promiseRows&&promiseRows.length?`\n⚠️ 약속 있는 주문 ${promiseRows.length}건 — 포장 시 확인:\n${promiseRows.map(r=>`  · ${r.name}(${r.order}): ${r.promise}`).join("\n")}`:""}`;
+  const summary=`총 ${ex.length}건 / ${rows.length}행${merged>0?` (합배송 ${merged}행 묶음)`:""} (카페24 ${counts.cafe}, 해리엇 ${counts.har}, 29CM ${counts.cm}, W컨셉 ${counts.wc}, 무신사 ${counts.mu})${heldCount?`\n⏸ 발송보류 ${heldCount}행 제외 (품절·예약판매 대기)`:""}${promiseRows&&promiseRows.length?`\n⚠️ 약속 있는 주문 ${promiseRows.length}건 — 포장 시 확인:\n${promiseRows.map(r=>`  · ${r.name}(${r.order}): ${r.promise}`).join("\n")}`:""}${failed&&failed.length?`\n🔴 못 읽은 채널: ${failed.join(", ")} — 0건이 아니라 "확인 못 함"입니다. 신규 주문이 있어도 이번 배치에서 빠지니 해당 채널 로그인 확인 후 재실행하세요.`:""}`;
   log(`생성: ${out} — ${summary}`);
   console.log("\n" + JSON.stringify(HEADER));
   ex.forEach(r=>console.log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
