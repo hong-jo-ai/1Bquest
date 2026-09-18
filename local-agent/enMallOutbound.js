@@ -12,7 +12,9 @@
  * 라벨은 사람이 보고 `--label <주문번호>` 로 지시할 때만 만든다.
  *
  * 실행:
- *   node local-agent/enMallOutbound.js                  수집·검증·보고 (launchd 11시)
+ *   node local-agent/enMallOutbound.js                  수집·검증·보고 (launchd 11·13·15·17시)
+ *        11시 = 발송 대기 전체 보고. 그 외 회차 = **새로 들어온 주문만** 알림(없으면 조용히).
+ *   node local-agent/enMallOutbound.js --full           시각과 무관하게 전체 보고
  *   node local-agent/enMallOutbound.js --all            발송완료 건까지 포함(점검용)
  *   node local-agent/enMallOutbound.js --quiet          텔레그램 안 보냄
  *   node local-agent/enMallOutbound.js --label 20260915-0000016   ← 실제 라벨 발급(운임 발생)
@@ -34,6 +36,12 @@ const ARGV = process.argv.slice(2);
 const ALL = ARGV.includes("--all");
 const QUIET = ARGV.includes("--quiet");
 const LABEL_FOR = ARGV.includes("--label") ? ARGV[ARGV.indexOf("--label") + 1] : "";
+// 11시 한 번만 돌면 그 뒤에 들어온 주문은 **다음 날 11시**(주말이면 더 뒤)에야 보인다.
+// 2026-09-18 12:04 각인 주문(Neil Pandya)이 그래서 텔레그램에 안 떴다. 하루 네 번 돌리되,
+// 11시만 전체 보고이고 나머지 회차는 처음 보는 주문만 알린다 — 같은 목록을 네 번 받지 않게.
+const kstHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", hour: "numeric", hour12: false }).format(new Date())) % 24;
+const FULL = ARGV.includes("--full") || kstHour === 11;
+const REPORTED_KEY = "en_mall_reported:v1";   // { 주문번호: 처음 알린 시각 }
 
 const log = (m) => console.log(`[${new Date().toISOString()}] [en-mall] ${m}`);
 
@@ -151,6 +159,21 @@ function toShipment(o, brand, manual = {}) {
   };
 }
 
+/** 각인 블록 — 보고와 라벨 발급 알림이 같은 모양을 쓴다. */
+function engravingLines(t) {
+  const out = [];
+  for (const e of t.engravings) out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}`);
+  if (t.msgLooksEngraving) out.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
+  return out;
+}
+
+async function loadReported(db) {
+  try {
+    const { data } = await db.from("kv_store").select("data").eq("key", REPORTED_KEY).maybeSingle();
+    return (data && data.data) || {};
+  } catch { return null; }   // 조회 실패 = 모름 → 전부 새 주문으로 취급(알림 누락보다 중복이 낫다)
+}
+
 async function main() {
   const db = sb();
   const manual = await manualEngravings(db);
@@ -184,23 +207,33 @@ async function main() {
     });
     log(`✅ tracking=${r.trackingNumber} · ${r.service} · 운임 ${r.cost}`);
     log(`   라벨 ${r.labelPath}`);
-    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}`).catch(() => {});
+    const eng = (t.engravings.length || t.msgLooksEngraving) ? `\n\n✍️ 각인 — 새긴 뒤 인계\n${engravingLines(t).join("\n")}` : "";
+    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}${eng}`).catch(() => {});
     return;
   }
 
   // ── 보고 ──
-  const ready = all.filter((x) => !x.blockers.length);
-  const held  = all.filter((x) => x.blockers.length);
-  const engraved = all.filter((x) => x.engravings.length || x.msgLooksEngraving);
-  const lines = [`🌍 영문몰 주문 — 발송 대기 ${all.length}건` + (engraved.length ? ` · ✍️ 각인 ${engraved.length}건` : "")];
+  // 11시(FULL) 외 회차는 처음 보는 주문만. --all(점검용)은 항상 전체.
+  const reported = ALL ? {} : await loadReported(db);
+  const fresh = all.filter((x) => !reported || !reported[x.orderNo]);
+  const scope = FULL || ALL ? all : fresh;
+  if (!scope.length) {
+    log(`새 주문 없음(대기 ${all.length}건은 이미 보고됨) — 알림 생략`);
+    if (!ALL) await beat("en-mall-outbound", { pending: all.length, ready: all.filter((x) => !x.blockers.length).length, held: all.filter((x) => x.blockers.length).length });
+    return;
+  }
+  const ready = scope.filter((x) => !x.blockers.length);
+  const held  = scope.filter((x) => x.blockers.length);
+  const engraved = scope.filter((x) => x.engravings.length || x.msgLooksEngraving);
+  const head = FULL || ALL ? `🌍 영문몰 주문 — 발송 대기 ${all.length}건` : `🆕 영문몰 새 주문 ${scope.length}건 (전체 대기 ${all.length})`;
+  const lines = [head + (engraved.length ? ` · ✍️ 각인 ${engraved.length}건` : "")];
 
   // 각인을 맨 위에 따로 모아 보여준다 — 주문 목록에 섞이면 묻힌다.
   if (engraved.length) {
     lines.push(`\n━━━ ✍️ 각인 있는 주문 ━━━`);
     for (const t of engraved) {
       lines.push(`\n✍️ ${t.brand} ${t.orderNo} · ${t.name}`);
-      for (const e of t.engravings) lines.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}`);
-      if (t.msgLooksEngraving) lines.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
+      lines.push(...engravingLines(t));
     }
     lines.push(`\n━━━━━━━━━━━━━━━━`);
   }
@@ -219,7 +252,20 @@ async function main() {
 
   const msg = lines.join("\n");
   console.log(msg);
-  if (!QUIET && all.length) await relayText(msg).catch((e) => log(`텔레그램 실패: ${e.message}`));
+  let sent = false;
+  if (!QUIET && scope.length) sent = (await relayText(msg).catch(() => false)) === true;
+  if (scope.length && !QUIET && !sent) log("텔레그램 실패 — 보고기록 안 남김(다음 회차에 다시 알림)");
+  // 알린 주문 기록 — 실제로 보냈을 때만(실패했는데 기록하면 다음 회차에서도 영영 안 뜬다).
+  if (sent && !ALL && reported) {
+    const now = new Date().toISOString();
+    const next = { ...reported };
+    for (const t of scope) if (!next[t.orderNo]) next[t.orderNo] = now;
+    // 45일 지난 기록은 정리 — 주문 조회 범위(30일)보다 길게 둔다.
+    const cutoff = Date.now() - 45 * 86400000;
+    for (const [k, v] of Object.entries(next)) if (Date.parse(v) < cutoff) delete next[k];
+    await db.from("kv_store").upsert({ key: REPORTED_KEY, data: next, updated_at: now }, { onConflict: "key" })
+      .then(({ error }) => error && log(`보고기록 저장 실패: ${error.message}`));
+  }
   // 하트비트는 **정규 실행(11시)만** 찍는다. --all 은 발송완료 건까지 훑는 점검용이라
   // 그대로 두면 사람이 확인차 한 번 돌릴 때마다 관제 수치가 실제와 다르게 덮인다
   // (2026-09-18: 11시 실제 pending 0 이었는데 점검 실행이 23 으로 덮어썼다).
