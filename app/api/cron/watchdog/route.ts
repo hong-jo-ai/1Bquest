@@ -47,6 +47,10 @@ const JOBS: JobSpec[] = [
   // 영문몰(shop_no=2) 주문 수집 — 11시. 이 잡이 멈추면 **해외 주문이 통째로 안 보인다**:
   // 국문몰과 달리 우체국 출고목록에도 pp_shipments 에도 안 들어와서 다른 감시에 걸리지 않는다.
   { key: "heartbeat:en-mall-outbound", label: "영문몰 주문 수집(iMac·11시)", maxHours: 28 },
+  // 텔레그램 webhook 점검(09:10). allowed_updates 에서 callback_query 가 빠지면 **확인카드 버튼이
+  // 전부 죽는데**(나비스트 입고·파쇼·광고·AS발송·배포승인) 눌러도 무반응이라 아무도 모른다.
+  // 2026-09-18 실제로 그 상태였고, 사장님이 입고 버튼을 두 번 누른 뒤에야 드러났다.
+  { key: "heartbeat:telegram-webhook-guard", label: "텔레그램 webhook 점검(iMac·09:10)", maxHours: 28 },
   { key: "heartbeat:skin-deploy-worker", label: "웹사이트 배포 워커(iMac·5분)", maxHours: 2 },
   { key: "heartbeat:sftp-health", label: "카페24 SFTP 점검(iMac·매일)", maxHours: 28 },
   // W컨셉 CS(반품·교환 클레임) 수집 — 10시·16시. 2026-08-25 등록: 그전까진 관제 사각지대였다.
