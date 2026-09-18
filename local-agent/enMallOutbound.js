@@ -44,6 +44,33 @@ const MALLS = [
 
 const sb = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+// ── 각인 ────────────────────────────────────────────────
+// 영문몰 상품에도 각인 옵션("Engraving message")이 정상 등록돼 있고 값이 실제로 들어온다
+// (2026-09-18 실측: 최근 30일 해리엇 shop2 주문 중 9건에 각인). 그동안 안 읽힌 건 옵션이
+// 없어서가 아니라 buildPostOffice 가 shop2 를 아예 안 봐서 **아무도 읽지 않았기** 때문이다.
+// 각인은 새기면 되돌릴 수 없고 재판매도 못 한다(2026-09-01 강한석 건 2점 폐기) — 출고 전에 보여야 한다.
+const NON_ENGRAVABLE = /밴드|스트랩|strap|band|조절|도구|tool|쇼핑백|케이스|case|보증서|파우치|pouch|공구|충전/i;
+const engravable = (name) => !NON_ENGRAVABLE.test(String(name || ""));
+
+/** 카페24 각인(추가 입력 옵션) 추출: additional_option_value="라벨=값" → 값. 비면 "". */
+function engravingOf(it) {
+  let raw = String(it.additional_option_value || "").trim();
+  if (!raw && Array.isArray(it.additional_option_values)) {
+    const a = it.additional_option_values.find((x) => x && x.value);
+    if (a) raw = (a.name ? `${a.name}=` : "") + a.value;
+  }
+  if (!raw) return "";
+  return raw.includes("=") ? raw.split("=").slice(1).join("=").trim() : raw.trim();
+}
+
+/** 웹챗·메일로 따로 받아 수기 등록한 각인(kv manual_engravings). 주문번호 → 문구. */
+async function manualEngravings(db) {
+  try {
+    const { data } = await db.from("kv_store").select("data").eq("key", "manual_engravings").maybeSingle();
+    return (data && data.data) || {};
+  } catch (e) { log(`수기 각인 조회 실패(무시): ${e.message}`); return {}; }
+}
+
 /** 카페24 토큰 — 유효하면 그대로 쓰고, 만료면 refresh 후 KV 갱신.
  *  ⚠️ 프로덕션과 동시에 refresh 하면 refresh_token 을 잃는다. 유효 토큰을 먼저 확인하는 게 가드다. */
 async function token(db, m) {
@@ -86,9 +113,19 @@ async function fetchOrders(db, m) {
 }
 
 /** 카페24 주문 → 페덱스에 넘길 형태로. 검증 결과(blockers)도 함께 돌려준다. */
-function toShipment(o, brand) {
+function toShipment(o, brand, manual = {}) {
   const r = (o.receivers || [])[0] || {};
   const items = (o.items || []).map((it) => ({ name: it.product_name, qty: Number(it.quantity) || 1 }));
+
+  // 주문서 각인이 우선, 없으면 수기 등록분(웹챗·메일로 따로 받은 것) — 각인 가능한 품목에만.
+  const engravings = [];
+  for (const it of (o.items || [])) {
+    const v = engravingOf(it) || (engravable(it.product_name) ? (manual[String(o.order_id)] || "") : "");
+    if (v) engravings.push({ product: it.product_name, text: v });
+  }
+  // 배송메시지에 각인을 적어 보내는 고객이 있다(2026-09-18 김영주 건: 각인칸은 비고 메시지에만 있었다).
+  const msg = String(r.shipping_message || "").trim();
+  const msgLooksEngraving = /engrav|각인/i.test(msg);
   const pending = (o.items || []).filter((it) => String(it.status_text || "") === "배송준비중");
   // 전화는 국가번호가 "1-9095038383" 처럼 붙어 온다 — 페덱스는 숫자만 받는다.
   const phone = String(r.cellphone || r.phone || "").replace(/[^\d]/g, "");
@@ -109,19 +146,21 @@ function toShipment(o, brand) {
     items, qty: items.reduce((a, b) => a + b.qty, 0),
     prod: items.map((i) => i.name).join(" + ").slice(0, 60),
     pendingCount: pending.length,
+    engravings, shippingMessage: msg, msgLooksEngraving,
     box, blockers,
   };
 }
 
 async function main() {
   const db = sb();
+  const manual = await manualEngravings(db);
   const all = [];
   for (const m of MALLS) {
     if (!m.mallId()) { log(`${m.brand} 몰 미설정 — 스킵`); continue; }
     try {
       const orders = await fetchOrders(db, m);
       for (const o of orders) {
-        const s = toShipment(o, m.brand);
+        const s = toShipment(o, m.brand, manual);
         if (!ALL && !s.pendingCount) continue;     // 기본은 '배송준비중'만
         all.push(s);
       }
@@ -152,10 +191,24 @@ async function main() {
   // ── 보고 ──
   const ready = all.filter((x) => !x.blockers.length);
   const held  = all.filter((x) => x.blockers.length);
-  const lines = [`🌍 영문몰 주문 — 발송 대기 ${all.length}건`];
+  const engraved = all.filter((x) => x.engravings.length || x.msgLooksEngraving);
+  const lines = [`🌍 영문몰 주문 — 발송 대기 ${all.length}건` + (engraved.length ? ` · ✍️ 각인 ${engraved.length}건` : "")];
+
+  // 각인을 맨 위에 따로 모아 보여준다 — 주문 목록에 섞이면 묻힌다.
+  if (engraved.length) {
+    lines.push(`\n━━━ ✍️ 각인 있는 주문 ━━━`);
+    for (const t of engraved) {
+      lines.push(`\n✍️ ${t.brand} ${t.orderNo} · ${t.name}`);
+      for (const e of t.engravings) lines.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}`);
+      if (t.msgLooksEngraving) lines.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
+    }
+    lines.push(`\n━━━━━━━━━━━━━━━━`);
+  }
+
   for (const t of ready) {
     lines.push(`\n✅ ${t.brand} ${t.orderNo} · ${t.name} (${t.addrParts.countryCode})`);
     lines.push(`   ${t.prod} · $${t.amountUSD}`);
+    if (t.engravings.length) lines.push(`   ✍️ 각인: ${t.engravings.map((e) => `「${e.text}」`).join(" ")}`);
     lines.push(`   ${t.box.boxId} ${t.box.lengthCm}×${t.box.widthCm}×${t.box.heightCm}cm · 청구 ${t.box.billableKg}kg`);
   }
   for (const t of held) {
