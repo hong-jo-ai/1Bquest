@@ -69,6 +69,7 @@
 | `-EX` | 교환 재발송 |
 | `-AS` | AS 수리 완료 반송 (seller=`AS`) |
 | `-RT` | 중복발송 회수 (reqType 2) |
+| `PSN-YYYYMMDD-NN` | 판매 아닌 개인 발송(seller `개인`) — 매출·재고 무관 |
 - 접미사로 보내면 **채널 어드민의 교환 클레임은 열린 채로 남는다** → 물리 처리가 끝나면 채널에서 직접 닫는다.
 - **무신사 교환은 반대 함정**: 무신사가 재출고를 새 주문번호로 내려보내면 자동 파이프라인이 한 번 더 보낸다. 수동 재발송 전 무신사 배송요청 큐부터 확인.
 - 단건 접수 `registerSingle` 은 hold·예약 가드를 **일부러 안 탄다**(escape hatch) — 쓸 땐 내가 직접 확인한다.
@@ -90,6 +91,7 @@
 (smartstore-dispatch-cancel-window · kakao-gift-channel-economics · postoffice-outbound · harriot-en-mall-outbound-gap · boxspec-shipping-dimensions · fedex-customs-and-label-certification · cafe24-delivery-complete-auto)
 
 ## 7. 라벨 인쇄·운영 함정
+- 단건을 바로 뽑아야 하면 `launchctl kickstart gui/$(id -u)/com.paulvice.label-print-queue` — 5분 기다리지 않는다.
 - 큐는 5분 주기, 노트북은 20초 폴링이라 **나눠 나온다.** "N장밖에 안 나왔다"면 `print_job` 에 `queued` 가 남았는지부터.
 - 라벨은 우체국 값이 아니라 **우리 DB 값을 찍는다** — DB 가 틀리면 라벨도 틀린다.
 - **local-agent 코드를 고쳤으면 그 코드를 쓰는 상시 워커(register-queue 등)를 재시작**. 안 하면 옛 코드로 계속 돈다(8/4~8/28 선불 반품 사고).
