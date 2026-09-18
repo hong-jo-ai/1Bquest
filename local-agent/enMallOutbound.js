@@ -18,6 +18,9 @@
  *   node local-agent/enMallOutbound.js --all            발송완료 건까지 포함(점검용)
  *   node local-agent/enMallOutbound.js --quiet          텔레그램 안 보냄
  *   node local-agent/enMallOutbound.js --label 20260915-0000016   ← 실제 라벨 발급(운임 발생)
+ *        발급 → 공유드라이브 사본 → Xprinter 인쇄 → **카페24 송장번호 입력**까지 한 번에(사장님 9/18:
+ *        "송장 라벨 인쇄하면 송장번호는 바로 입력해줘"). 인쇄 생략은 --no-print.
+ *   node local-agent/enMallOutbound.js --tracking <주문번호> <송장번호>   ← 이미 뽑은 라벨의 송장만 입력
  */
 const fs = require("fs"), path = require("path"), os = require("os");
 const DASH = path.resolve(__dirname, "..");
@@ -36,6 +39,13 @@ const ARGV = process.argv.slice(2);
 const ALL = ARGV.includes("--all");
 const QUIET = ARGV.includes("--quiet");
 const LABEL_FOR = ARGV.includes("--label") ? ARGV[ARGV.indexOf("--label") + 1] : "";
+const NO_PRINT = ARGV.includes("--no-print");
+const TRACK_FOR = ARGV.includes("--tracking") ? [ARGV[ARGV.indexOf("--tracking") + 1], ARGV[ARGV.indexOf("--tracking") + 2]] : null;
+// 카페24 택배사 코드 — 페덱스 = "0027". 두 몰 영문몰 모두 기존 수기 입력분이 이 값이었다(2026-09-18 실측 6건).
+// (carriers API 는 토큰 스코프가 없어 403 — 코드표를 조회할 수 없어 실측값으로 고정)
+const FEDEX_CARRIER = "0027";
+// 라벨 사본 — 원본은 os.tmpdir() 라 재부팅·정리 때 사라진다. 재출력용으로 공유드라이브에 둔다.
+const LABEL_ARCHIVE = "/Users/mac/Library/CloudStorage/GoogleDrive-shong@harriotwatches.com/공유 드라이브/다운로드/페덱스라벨";
 // 11시 한 번만 돌면 그 뒤에 들어온 주문은 **다음 날 11시**(주말이면 더 뒤)에야 보인다.
 // 2026-09-18 12:04 각인 주문(Neil Pandya)이 그래서 텔레그램에 안 떴다. 하루 네 번 돌리되,
 // 11시만 전체 보고이고 나머지 회차는 처음 보는 주문만 알린다 — 같은 목록을 네 번 받지 않게.
@@ -154,6 +164,7 @@ function toShipment(o, brand, manual = {}) {
     items, qty: items.reduce((a, b) => a + b.qty, 0),
     prod: items.map((i) => i.name).join(" + ").slice(0, 60),
     pendingCount: pending.length,
+    itemCodes: pending.map((it) => it.order_item_code).filter(Boolean),
     engravings, shippingMessage: msg, msgLooksEngraving,
     box, blockers,
   };
@@ -168,6 +179,46 @@ function engravingLines(t) {
     out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}${font}`);
   }
   if (t.msgLooksEngraving) out.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
+  return out;
+}
+
+/** 카페24 영문몰 주문에 송장 입력(→ 배송중). 이미 같은 송장이 있으면 건너뛴다(재실행 안전). */
+async function registerTracking(db, m, orderNo, trackingNo, itemCodes) {
+  const tk = await token(db, m);
+  const base = `https://${m.mallId()}.cafe24api.com/api/v2/admin/orders/${orderNo}`;
+  const cur = await (await fetch(`${base}/shipments?shop_no=2`, { headers: { Authorization: `Bearer ${tk}` } })).json();
+  if ((cur.shipments || []).some((x) => String(x.tracking_no) === String(trackingNo))) return { ok: true, skipped: true };
+  let codes = itemCodes;
+  if (!codes || !codes.length) {
+    const o = await (await fetch(`${base}?shop_no=2&embed=items`, { headers: { Authorization: `Bearer ${tk}` } })).json();
+    codes = ((o.order && o.order.items) || []).filter((it) => it.status_text === "배송준비중").map((it) => it.order_item_code);
+  }
+  if (!codes.length) throw new Error("배송준비중 품목이 없음 — 이미 처리됐거나 취소됨");
+  const r = await fetch(`${base}/shipments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ shop_no: 2, request: { tracking_no: String(trackingNo), shipping_company_code: FEDEX_CARRIER, order_item_code: codes, status: "shipping" } }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`송장입력 실패(${r.status}): ${JSON.stringify(j.error || j).slice(0, 200)}`);
+  return { ok: true, skipped: false };
+}
+
+/** 라벨 사본 저장 + Xprinter 인쇄(ZPL raw). 실패해도 발급·송장입력은 계속한다 — 결과만 돌려준다. */
+function archiveAndPrint(t, r) {
+  const { execFileSync } = require("child_process");
+  const out = { archived: "", printed: false, printErr: "" };
+  try {
+    fs.mkdirSync(LABEL_ARCHIVE, { recursive: true });
+    const stem = `${t.orderNo}_${String(t.name || "").replace(/[^\w가-힣]/g, "")}_${r.trackingNumber}`;
+    if (r.labelPath) fs.copyFileSync(r.labelPath, path.join(LABEL_ARCHIVE, `${stem}.zpl`));
+    if (r.invoicePath) fs.copyFileSync(r.invoicePath, path.join(LABEL_ARCHIVE, `${stem}_invoice.pdf`));
+    out.archived = LABEL_ARCHIVE;
+  } catch (e) { log(`⚠️ 라벨 사본 저장 실패: ${e.message}`); }
+  if (!NO_PRINT && r.labelPath) {
+    try { execFileSync("lpr", ["-P", "Xprinter_ZPL", "-o", "raw", r.labelPath]); out.printed = true; }
+    catch (e) { out.printErr = e.message; }
+  }
   return out;
 }
 
@@ -198,6 +249,16 @@ async function main() {
     }
   }
 
+  // ── 송장번호만 입력(라벨은 이미 뽑은 경우) ──
+  if (TRACK_FOR) {
+    const [orderNo, trackingNo] = TRACK_FOR;
+    const t = all.find((x) => x.orderNo === orderNo);
+    if (!t || !trackingNo) { log(`✗ ${orderNo} — 배송준비중 대상에 없거나 송장번호 없음`); process.exit(1); }
+    const tr = await registerTracking(db, MALLS.find((x) => x.brand === t.brand), orderNo, trackingNo, t.itemCodes);
+    log(tr.skipped ? `= ${orderNo} 이미 ${trackingNo} 입력됨` : `✅ ${orderNo} 카페24 송장입력 ${trackingNo} (배송중)`);
+    return;
+  }
+
   // ── 라벨 발급(명시 지시가 있을 때만) ──
   if (LABEL_FOR) {
     const t = all.find((x) => x.orderNo === LABEL_FOR) || null;
@@ -211,8 +272,17 @@ async function main() {
     });
     log(`✅ tracking=${r.trackingNumber} · ${r.service} · 운임 ${r.cost}`);
     log(`   라벨 ${r.labelPath}`);
+    const pr = archiveAndPrint(t, r);
+    log(pr.printed ? "🖨️ Xprinter 인쇄 전송" : NO_PRINT ? "인쇄 생략(--no-print)" : `⚠️ 인쇄 실패: ${pr.printErr}`);
+    let trackMsg;
+    try {
+      const m = MALLS.find((x) => x.brand === t.brand);
+      const tr = await registerTracking(db, m, t.orderNo, r.trackingNumber, t.itemCodes);
+      trackMsg = tr.skipped ? "카페24 송장 이미 입력됨" : "카페24 송장입력 완료(배송중)";
+    } catch (e) { trackMsg = `⚠️ 카페24 송장입력 실패 — ${e.message}`; }
+    log(trackMsg);
     const eng = (t.engravings.length || t.msgLooksEngraving) ? `\n\n✍️ 각인 — 새긴 뒤 인계\n${engravingLines(t).join("\n")}` : "";
-    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}${eng}`).catch(() => {});
+    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}\n${pr.printed ? "🖨️ 인쇄 전송" : "인쇄 안 함"} · ${trackMsg}${eng}\n⚠️ 픽업은 따로 예약해야 한다`).catch(() => {});
     return;
   }
 
