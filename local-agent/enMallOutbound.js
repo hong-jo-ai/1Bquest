@@ -162,7 +162,11 @@ function toShipment(o, brand, manual = {}) {
 /** 각인 블록 — 보고와 라벨 발급 알림이 같은 모양을 쓴다. */
 function engravingLines(t) {
   const out = [];
-  for (const e of t.engravings) out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}`);
+  for (const e of t.engravings) {
+    // 설월은 기본 서체가 정해져 있다(사장님 2026-09-18) — 서체를 물을 필요가 없다는 걸 보고에 같이 적는다.
+    const font = /설월|seolwol/i.test(String(e.product)) ? " · 서체 Times New Roman(설월 기본)" : "";
+    out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}${font}`);
+  }
   if (t.msgLooksEngraving) out.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
   return out;
 }
