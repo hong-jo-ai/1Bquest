@@ -220,7 +220,10 @@ async function main() {
   const msg = lines.join("\n");
   console.log(msg);
   if (!QUIET && all.length) await relayText(msg).catch((e) => log(`텔레그램 실패: ${e.message}`));
-  await beat("en-mall-outbound", { pending: all.length, ready: ready.length, held: held.length });
+  // 하트비트는 **정규 실행(11시)만** 찍는다. --all 은 발송완료 건까지 훑는 점검용이라
+  // 그대로 두면 사람이 확인차 한 번 돌릴 때마다 관제 수치가 실제와 다르게 덮인다
+  // (2026-09-18: 11시 실제 pending 0 이었는데 점검 실행이 23 으로 덮어썼다).
+  if (!ALL) await beat("en-mall-outbound", { pending: all.length, ready: ready.length, held: held.length });
 }
 
 main().catch(async (e) => {
