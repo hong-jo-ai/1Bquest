@@ -176,6 +176,39 @@ async function voidShipment(trackingNumber) {
 }
 
 /**
+ * 픽업 예약 — **라벨 발급과 별개다.** createShipment 의 pickupType=USE_SCHEDULED_PICKUP 은 기사를 부르지 않는다
+ * (2026-09-18 첫 영문몰 발송 때 라벨만 뽑고 픽업이 안 잡혀 있었다).
+ * 당일 픽업은 마감(대개 15:30) 전에, readyTime 은 가용성 조회가 주는 선택지 중 하나여야 한다.
+ * @param {{date:string, readyTime?:string, closeTime?:string, packageCount?:number, weightKg?:number, trackingNumbers?:string[], remarks?:string}} o
+ *   date = YYYY-MM-DD(KST). readyTime "15:00:00", closeTime "18:00:00".
+ */
+async function createPickup(o) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+  const body = {
+    associatedAccountNumber: { value: ACCOUNT },
+    originDetail: {
+      pickupLocation: { contact: SHIPPER.contact, address: { streetLines: SHIPPER.address.streetLines, city: SHIPPER.address.city, postalCode: SHIPPER.address.postalCode, countryCode: "KR" } },
+      readyDateTimestamp: `${o.date}T${o.readyTime || "15:00:00"}`,
+      customerCloseTime: o.closeTime || "18:00:00",
+      pickupDateType: o.date === today ? "SAME_DAY" : "FUTURE_DAY",
+      packageLocation: "FRONT",
+    },
+    totalWeight: { units: "KG", value: o.weightKg || 0.5 },
+    packageCount: o.packageCount || 1,
+    carrierCode: "FDXE",
+    countryRelationships: "INTERNATIONAL",
+    remarks: o.remarks || "",
+    ...(o.trackingNumbers && o.trackingNumbers.length ? { trackingNumber: o.trackingNumbers[0] } : {}),
+  };
+  const { status, j } = await api("/pickup/v1/pickups", body);
+  if (status !== 200 || !j.output) {
+    const errs = (j.errors || []).map((e) => `${e.code}:${e.message}`).join(" | ");
+    throw new Error(`Pickup 실패(${status}): ${errs || JSON.stringify(j).slice(0, 300)}`);
+  }
+  return { confirmation: j.output.pickupConfirmationCode, location: j.output.location, raw: j.output };
+}
+
+/**
  * 이미 분해된 주소(카페24 영문몰)를 페덱스 구조로. street/city/zip 은 그대로 쓰고
  * **주 코드만** 검증으로 얻는다 — 검증이 실패해도 원본으로 진행한다(주소 자체는 고객이 쓴 값이 맞다).
  * @param {{street:string, city:string, zip:string, countryCode:string}} p
@@ -201,7 +234,7 @@ async function resolveStructured(p) {
   return { streetLines: [street], city: outCity, stateOrProvinceCode: state, postalCode: outZip, countryCode };
 }
 
-module.exports = { cooFor, describe, HS_WATCH, token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
+module.exports = { createPickup, cooFor, describe, HS_WATCH, token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
 
 // ── CLI 테스트 ──
 if (require.main === module) {
