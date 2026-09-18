@@ -20,8 +20,8 @@ const { resolveRecipient } = require("./fedexShip");
 const { relayDocument, relayText } = require("./telegramRelay");
 const log = (m) => console.log(`[${new Date().toISOString()}] [fedex-xlsx] ${m}`);
 
-const HS_WATCH = "910219";     // 손목시계(기타)
-const COO = "KR";              // 원산지
+const HS_WATCH = "910211";     // 쿼츠 손목시계·바늘 표시(9102.11). fedexShip.js 와 같은 값
+// 원산지는 무브먼트 기준 — fedexShip.cooFor 를 쓴다(2026-09-18)
 const KG_PER_UNIT = 0.6;       // 시계 1개 기본 중량(박스 포함)
 const serviceLabel = (cc) => (cc === "US" ? "FedEx International Priority" : "FedEx International Connect Plus");
 
@@ -101,7 +101,7 @@ async function buildRow(o){
   return [
     o.order, o.date, o.name, o.phone, o.email,
     line1, line2, city, state, postal, cc,
-    o.items.join(" / "), HS_WATCH, COO,
+    o.items.join(" / "), HS_WATCH, require("./fedexShip").cooFor(o.items.join(" ")),
     o.qty, o.valueUSD.toFixed(2), "USD", (KG_PER_UNIT * o.qty).toFixed(1), serviceLabel(cc),
     "받는분(RECIPIENT)", o.rawAddr,
   ];

@@ -23,8 +23,23 @@ const SHIPPER = {
   contact: { personName: "SUNGJO HONG", companyName: "HARRIOT WATCHES", phoneNumber: "827045714944" },
   address: { streetLines: ["184, Jungbu-daero, Giheung-gu", "717-2"], city: "Yongin-si", stateOrProvinceCode: "Gyeonggi-do", postalCode: "17095", countryCode: "KR" },
 };
-const HS_WATCH = "910219";          // 손목시계(기타) HS
-const COO = "KR";                   // 원산지
+// HS 9102.11 = 전자식(쿼츠) 손목시계 중 **바늘 표시만** 있는 것. 우리 시계는 전부 아날로그 쿼츠다.
+// 예전 값 910219 는 "전자식·기타"(디지털 겸용 등)라 맞지 않았다(2026-09-18 정정).
+const HS_WATCH = "910211";
+// 원산지 — 미국 CBP 는 시계(스트랩 제외)의 원산지를 **무브먼트가 조립된 국가**로 본다.
+// 한국에서 디자인·조립해도 원산지는 바뀌지 않는다(사장님 방침 2026-09-15, 메모리 origin-claim-policy).
+// 설월·기원 = RONDA(스위스). 무브먼트를 모르는 라인은 예전 값(KR)으로 두되 새 라인이 나오면 여기에 추가할 것.
+const COO_DEFAULT = "KR";
+const COO_BY_MOVEMENT = [
+  { re: /설월|seolwol|기원|ki:?won/i, coo: "CH" },   // RONDA 708 / RONDA
+];
+const cooFor = (prod) => (COO_BY_MOVEMENT.find((x) => x.re.test(String(prod || ""))) || {}).coo || COO_DEFAULT;
+// 세관 품목설명은 상품명만으로는 무엇인지 모른다("SEOLWOL") — 품목 종류를 앞에 붙인다.
+const describe = (prod) => {
+  const p = String(prod || "").trim();
+  if (/밴드|스트랩|strap|band/i.test(p) && !/watch|시계|seolwol|설월/i.test(p)) return `Watch strap - ${p}`.slice(0, 50);
+  return `Quartz wrist watch - ${p || "watch"}`.slice(0, 50);
+};
 const DEFAULT_KG = 0.6;             // 시계 1개 기본 중량(박스 포함)
 // 서비스: 미국=Priority, 그 외=Connect Plus
 // ⚠️ Connect Plus 의 정식 enum 은 FEDEX_ 접두어가 붙는다. 접두어 없이 보내면 400
@@ -117,8 +132,8 @@ async function createShipment(order, opts = {}) {
         dutiesPayment: { paymentType: "RECIPIENT" },
         isDocumentOnly: false,
         commodities: [{
-          description: String(order.prod || "Wrist watch").slice(0, 50),
-          countryOfManufacture: COO,
+          description: describe(order.prod),
+          countryOfManufacture: cooFor(order.prod),
           quantity: qty, quantityUnits: "PCS",
           unitPrice: { amount: qty ? +(value / qty).toFixed(2) : value, currency: "USD" },
           customsValue: { amount: value, currency: "USD" },
@@ -186,7 +201,7 @@ async function resolveStructured(p) {
   return { streetLines: [street], city: outCity, stateOrProvinceCode: state, postalCode: outZip, countryCode };
 }
 
-module.exports = { token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
+module.exports = { cooFor, describe, HS_WATCH, token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
 
 // ── CLI 테스트 ──
 if (require.main === module) {
