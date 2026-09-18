@@ -16,6 +16,7 @@ le(path.join(__dirname, ".env"));
 
 const BASE = "https://apis.fedex.com";
 const ACCOUNT = process.env.FEDEX_ACCOUNT;
+const { pickBox } = require("./boxSpec");
 
 // ── 발송인(폴바이스/HARRIOT WATCHES 출고지) ──
 const SHIPPER = {
@@ -73,10 +74,20 @@ async function resolveRecipient(rawAddr, zip) {
 
 // order = {name, phone, email, rawAddr, zip, prod, qty, amountUSD, orderNo}
 async function createShipment(order, opts = {}) {
-  const rec = await resolveRecipient(order.rawAddr, order.zip);
-  if (!rec.countryCode) throw new Error("수취 국가코드 파싱 실패: " + order.rawAddr);
+  // 주소는 두 갈래다.
+  //  ① order.addrParts — 카페24 영문몰처럼 **이미 구조화된** 주소(street/city/zip/countryCode).
+  //     주(state)만 페덱스 주소검증으로 2자리 코드를 받는다. 카페24는 "California" 처럼 풀네임을
+  //     주는데 페덱스는 "CA" 를 요구하기 때문(2026-09-18 실측: CA·TX·BC 모두 정확히 반환).
+  //  ② order.rawAddr — 식스샵처럼 주소가 한 덩어리인 경우. 예전 경로(파싱 + 검증).
+  const rec = order.addrParts
+    ? await resolveStructured(order.addrParts)
+    : await resolveRecipient(order.rawAddr, order.zip);
+  if (!rec.countryCode) throw new Error("수취 국가코드 파싱 실패: " + (order.rawAddr || JSON.stringify(order.addrParts)));
   const qty = Math.max(1, Number(order.qty) || 1);
-  const kg = +(DEFAULT_KG * qty).toFixed(2);
+  // 박스 규격: 실중량과 **치수를 함께** 보낸다. 치수를 빼면 페덱스가 직접 재서 차액을 청구한다.
+  // order.items(품목 배열)를 주면 그걸로 박스를 고르고, 없으면 상품명·수량으로 추정한다(구 호출부 호환).
+  const box = pickBox(order.items || [{ name: order.prod, qty }]);
+  const kg = box.weightKg;
   const value = Number(order.amountUSD) || 0;
   const service = opts.service || serviceFor(rec.countryCode);
   const phone = String(order.phone || "").replace(/[^\d+]/g, "") || "0000000000";
@@ -117,7 +128,13 @@ async function createShipment(order, opts = {}) {
         }],
       },
       shipmentSpecialServices: { specialServiceTypes: ["ELECTRONIC_TRADE_DOCUMENTS"], etdDetail: { requestedDocumentTypes: ["COMMERCIAL_INVOICE"] } },
-      requestedPackageLineItems: [{ weight: { units: "KG", value: kg }, customerReferences: [{ customerReferenceType: "CUSTOMER_REFERENCE", value: String(order.orderNo || "") }] }],
+      requestedPackageLineItems: [{
+        weight: { units: "KG", value: kg },
+        // 부피무게(가로×세로×높이÷5000)가 실중량보다 크면 그쪽으로 청구된다. 우리 박스 3종은
+        // 모두 부피무게가 이기므로, 이 치수가 사실상 운임을 결정한다.
+        dimensions: { length: box.lengthCm, width: box.widthCm, height: box.heightCm, units: "CM" },
+        customerReferences: [{ customerReferenceType: "CUSTOMER_REFERENCE", value: String(order.orderNo || "") }],
+      }],
     },
   };
   const { status, j } = await api("/ship/v1/shipments", body);
@@ -143,7 +160,33 @@ async function voidShipment(trackingNumber) {
   return { ok: status === 200 && j.output && j.output.cancelledShipment, status, j };
 }
 
-module.exports = { token, resolveRecipient, createShipment, voidShipment, serviceFor, SHIPPER };
+/**
+ * 이미 분해된 주소(카페24 영문몰)를 페덱스 구조로. street/city/zip 은 그대로 쓰고
+ * **주 코드만** 검증으로 얻는다 — 검증이 실패해도 원본으로 진행한다(주소 자체는 고객이 쓴 값이 맞다).
+ * @param {{street:string, city:string, zip:string, countryCode:string}} p
+ */
+async function resolveStructured(p) {
+  const street = String(p.street || "").trim();
+  const city = String(p.city || "").trim();
+  const zip = String(p.zip || "").trim();
+  const countryCode = String(p.countryCode || "").trim().toUpperCase();
+  let state = "", outCity = city, outZip = zip;
+  try {
+    const { j } = await api("/address/v1/addresses/resolve", {
+      addressesToValidate: [{ address: { streetLines: [street], city, postalCode: zip, countryCode } }],
+    });
+    const r = j.output && j.output.resolvedAddresses && j.output.resolvedAddresses[0];
+    if (r) {
+      state = r.stateOrProvinceCode || "";
+      if (r.city) outCity = r.city;
+      // 미국은 ZIP+4 로 보정돼 온다 — 그대로 쓰면 배송 정확도가 올라간다.
+      if (r.postalCode) outZip = r.postalCode;
+    }
+  } catch { /* 검증 실패해도 원본으로 진행 */ }
+  return { streetLines: [street], city: outCity, stateOrProvinceCode: state, postalCode: outZip, countryCode };
+}
+
+module.exports = { token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
 
 // ── CLI 테스트 ──
 if (require.main === module) {

@@ -44,6 +44,9 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:hrt-scarce-sync", label: "해리엇 품절임박 배지 동기화(iMac)", maxHours: 28 },
   { key: "heartbeat:jed-mail-watch", label: "제드아이티씨 메일 감시(iMac·10분)", maxHours: 2 },
   { key: "heartbeat:fedex-label-watch", label: "페덱스 라벨 인증 메일 감시(iMac·1시간)", maxHours: 3 },
+  // 영문몰(shop_no=2) 주문 수집 — 11시. 이 잡이 멈추면 **해외 주문이 통째로 안 보인다**:
+  // 국문몰과 달리 우체국 출고목록에도 pp_shipments 에도 안 들어와서 다른 감시에 걸리지 않는다.
+  { key: "heartbeat:en-mall-outbound", label: "영문몰 주문 수집(iMac·11시)", maxHours: 28 },
   { key: "heartbeat:skin-deploy-worker", label: "웹사이트 배포 워커(iMac·5분)", maxHours: 2 },
   { key: "heartbeat:sftp-health", label: "카페24 SFTP 점검(iMac·매일)", maxHours: 28 },
   // W컨셉 CS(반품·교환 클레임) 수집 — 10시·16시. 2026-08-25 등록: 그전까진 관제 사각지대였다.
