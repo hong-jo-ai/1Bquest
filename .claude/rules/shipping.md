@@ -81,6 +81,7 @@
 - **무신사**: "신규 0건"을 믿지 말고 배송출고처리 그리드 행수를 본다. AG-Grid 우클릭 엑셀은 마스킹 → 접수에 사용 금지.
 - **조선몰**: 우체국 파이프라인 밖(10:30 단독).
 - **영문몰(shop2)**: 국제배송 = **페덱스뿐**. 라벨은 `enMallOutbound.js --label <주문번호>` 로 사람이 지시할 때만(호출 즉시 운임 발생). 치수가 곧 운임(박스 3종, 밴드는 박스 계산 제외).
+  발급 전 **Rate API 로 무료 운임 조회** 가능. 통관 신고 원산지 = **무브먼트국**(설월·기원=CH, `fedexShip.cooFor`), HS 910211. 라벨 원본은 tmp 라 공유드라이브 `다운로드/페덱스라벨/` 에 복사.
   통관 정보요청 메일은 **harriotwatches@gmail.com** 으로 오고, 첨부 **watch worksheet** 양식을 채워야 한다.
 - **카페24 배송완료 전환**은 크론이 한다. 네이버페이 주문은 API 불가 → 7일 넘게 정체되면 판매자센터 수동.
 (smartstore-dispatch-cancel-window · kakao-gift-channel-economics · postoffice-outbound · harriot-en-mall-outbound-gap · boxspec-shipping-dimensions · fedex-customs-and-label-certification · cafe24-delivery-complete-auto)
