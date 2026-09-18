@@ -6,6 +6,7 @@ import { parseKbCardExcel } from "@/lib/finance/kbCardParser";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { dedupeNpayCardRows } from "@/lib/finance/dedupeNpayCardRows";
 import { getUsdToKrw } from "@/lib/finance/forex";
+import { makeCardBusinessResolver } from "@/lib/finance/cardBusiness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
 
   const businessId = await getDefaultBusinessId();
   if (!businessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
+  // 귀속은 적재 시점(기본 사업자)이 아니라 카드 명의로 정한다.
+  const bizOf = await makeCardBusinessResolver(db, businessId);
 
   let records: Array<Record<string, unknown>> = [];
   try {
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (source === "npay") {
       const parsed = parseNpayReceiptExcel(buffer);
       records = parsed.rows.map((r) => ({
-        business_id: businessId,
+        business_id: bizOf(r.cardCompany),
         source: "npay",
         card_company: r.cardCompany,
         card_number: r.cardNumber,
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
     } else if (source === "card_hyundai") {
       const parsed = parseHyundaiCardExcel(buffer);
       records = parsed.rows.map((r) => ({
-        business_id: businessId,
+        business_id: bizOf(r.cardCompany),
         source: "card_hyundai",
         card_company: r.cardCompany,
         card_number: r.cardNumber,
@@ -104,7 +107,7 @@ export async function POST(req: NextRequest) {
       const parsed = parseKbCardExcel(buffer);
       const usdRate = await getUsdToKrw();
       records = parsed.rows.map((r) => ({
-        business_id: businessId,
+        business_id: bizOf(r.cardCompany),
         source: "card_kb",
         card_company: r.cardCompany,
         card_number: r.cardNumber,

@@ -24,6 +24,7 @@ import { parseKbBankSms, type ParsedKbBankSms } from "@/lib/finance/kbBankSmsPar
 import { categorizeTx } from "@/lib/finance/categorize";
 import { enqueueCardClassify } from "@/lib/finance/cardClassify";
 import { HYUNDAI_STUB_MERCHANT } from "@/lib/finance/hyundaiCardSmsParser";
+import { makeCardBusinessResolver } from "@/lib/finance/cardBusiness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -114,6 +115,8 @@ export async function POST(req: NextRequest) {
     if (b.registration_number) businessByRegNo.set(String(b.registration_number), String(b.id));
   }
   if (!defaultBusinessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
+  // 카드행은 통장 사업자가 아니라 **카드 명의** 기준으로 넣는다(현대 체크카드 = 홍성조 → 해리엇와치스).
+  const bizOfCard = await makeCardBusinessResolver(db, defaultBusinessId);
 
   const bankRecords: Array<Record<string, unknown>> = [];
   const hyundaiCardRecords: Array<Record<string, unknown>> = [];
@@ -149,7 +152,7 @@ export async function POST(req: NextRequest) {
       // 현대 체크카드 결제(또는 그 취소) — 카드 사용내역 쪽에서 비용으로 잡고 통장행은 제외.
       category = "카드결제"; categorySource = "rule-dup"; description = "체크현대";
       if (!(await hasHyundaiApprovalTwin(db, p))) hyundaiCardRecords.push({
-        business_id: businessId,
+        business_id: bizOfCard("현대"),
         source: "card_hyundai_sms",
         card_company: "현대",
         card_number: "",

@@ -11,6 +11,7 @@ import { parseHyundaiCardSms, HYUNDAI_STUB_MERCHANT, type ParsedCardSms } from "
 import { getUsdToKrw } from "@/lib/finance/forex";
 import { categorizeMerchant } from "@/lib/finance/categorize";
 import { isPgMerchant, enqueueCardClassify } from "@/lib/finance/cardClassify";
+import { makeCardBusinessResolver } from "@/lib/finance/cardBusiness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   const businessId = biz?.id ?? null;
   if (!businessId) return Response.json({ error: "기본 사업자가 없습니다" }, { status: 500 });
+  // 귀속은 카드 명의 기준([[lib/finance/cardBusiness]]).
+  const bizOf = await makeCardBusinessResolver(db, businessId);
 
   const usdRate = await getUsdToKrw();
   const records: Array<Record<string, unknown>> = [];
@@ -110,7 +113,7 @@ export async function POST(req: NextRequest) {
       }
     }
     records.push({
-      business_id: businessId,
+      business_id: bizOf(p.cardCompany),
       source: p.cardCompany === "현대" ? "card_hyundai_sms" : "card_woori_sms",
       card_company: p.cardCompany,
       card_number: p.cardNumber,
