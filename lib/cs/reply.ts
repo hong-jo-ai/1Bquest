@@ -528,10 +528,13 @@ async function sendCafe24BoardReply(
   // 1:1 맞춤상담 board 9는 use_comment="F"라 실패할 수 있음).
   const password =
     process.env.CAFE24_COMMENT_PASSWORD ?? "paulviceAdmin1!";
+  // ⚠️ 카페24 코멘트 API 는 태그를 제거한다 — <br/> 도 같이 사라져 문장이 그대로 붙어버린다
+  // (2026-09-21 실측: 기원 백색 답변이 "해리엇와치스입니다.기원 백색은…" 으로 올라갔다).
+  // 그래서 줄바꿈은 공백으로 합친다. 문단이 필요한 답변은 게시판 말고 다른 채널로.
   const payload = {
     shop_no: 1,
     request: {
-      content: body.replace(/\n/g, "<br/>"),
+      content: body.replace(/\s*\n+\s*/g, " ").trim(),
       writer: "관리자",
       password,
     },
