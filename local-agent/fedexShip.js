@@ -115,7 +115,8 @@ async function createShipment(order, opts = {}) {
     requestedShipment: {
       shipper: SHIPPER,
       recipients: [{ contact: { personName: name, phoneNumber: phone }, address: { streetLines: rec.streetLines, city: rec.city, stateOrProvinceCode: rec.stateOrProvinceCode || undefined, postalCode: rec.postalCode, countryCode: rec.countryCode } }],
-      shipDatestamp: today,
+      // 발송일. 내일 픽업이면 내일 날짜로 찍어야 픽업 예약과 어긋나지 않는다(opts.shipDate="YYYY-MM-DD").
+      shipDatestamp: opts.shipDate || today,
       serviceType: service,
       packagingType: "YOUR_PACKAGING",
       pickupType: "USE_SCHEDULED_PICKUP",
@@ -129,10 +130,16 @@ async function createShipment(order, opts = {}) {
       // ETD 는 shippingDocumentSpecification 없이 보내면 400 SHIPPING.DOCUMENT.REQUIRED (2026-09-16 샌드박스 실측)
       shippingDocumentSpecification: { shippingDocumentTypes: ["COMMERCIAL_INVOICE"], commercialInvoiceDetail: { documentFormat: { stockType: "PAPER_LETTER", docType: "PDF" } } },
       customsClearanceDetail: {
-        dutiesPayment: { paymentType: "RECIPIENT" },
+        // 기본은 RECIPIENT(DDU) — 글로벌 판매가 $350 이 DDU 전제로 정해져 있어, 판매 건의 관세를
+        // 우리가 떠안으면 마진이 무너진다. **협찬·시딩만 opts.ddp 로 SENDER(DDP)** 로 보낸다:
+        // 받는 사람이 관세를 내야 하는 선물은 선물이 아니라 청구서다. 실제로 2025 년 인도네시아
+        // 협찬(@trpksa)이 관세 ≈$141 때문에 기한 내 미납으로 **반송·협업 무산**됐다.
+        dutiesPayment: { paymentType: opts.ddp ? "SENDER" : "RECIPIENT" },
         isDocumentOnly: false,
         commodities: [{
-          description: describe(order.prod),
+          // 협찬·시딩은 판매가 아니다 — 거래가격이 없으므로 신고가는 소매가가 아니라 **취득원가**를 쓰고,
+          // 품명에도 샘플임을 밝힌다(사실 그대로라 문제되지 않고, 세관 문의 시 파쇼 인보이스로 증빙된다).
+          description: opts.sample ? "Watch sample - not for resale" : describe(order.prod),
           countryOfManufacture: cooFor(order.prod),
           quantity: qty, quantityUnits: "PCS",
           unitPrice: { amount: qty ? +(value / qty).toFixed(2) : value, currency: "USD" },
@@ -231,7 +238,9 @@ async function resolveStructured(p) {
       if (r.postalCode) outZip = r.postalCode;
     }
   } catch { /* 검증 실패해도 원본으로 진행 */ }
-  return { streetLines: [street], city: outCity, stateOrProvinceCode: state, postalCode: outZip, countryCode };
+  // 2번째 줄(동·구 등)은 검증에 넣지 않고 그대로 싣는다 — 인도네시아처럼 거리 아래 행정구역이
+  // 여러 겹인 주소는 한 줄에 우겨넣으면 35자에서 단어가 잘린다.
+  return { streetLines: [street, ...(p.street2 ? [String(p.street2).trim()] : [])], city: outCity, stateOrProvinceCode: state, postalCode: outZip, countryCode };
 }
 
 module.exports = { createPickup, cooFor, describe, HS_WATCH, token, resolveRecipient, resolveStructured, createShipment, voidShipment, serviceFor, SHIPPER };
