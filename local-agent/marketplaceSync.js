@@ -214,8 +214,14 @@ async function cdpConnect(port) {
 async function pickLivePage(context, label, log) {
   for (const p of context.pages()) {
     if (p.isClosed()) continue;
-    try { await p.evaluate(() => 1); return p; }          // 살아 있으면 그대로 쓴다
-    catch (e) { log(`${label} 상시 창의 탭이 응답하지 않아 새 탭을 엽니다 (${String(e.message).slice(0, 60)})`); }
+    // ⚠️ 죽은 탭에서는 evaluate 가 **예외를 던지지 않고 그대로 멈춘다**(2026-09-22 실측: 접수 배치가
+    //    20분 넘게 이 자리에서 대기하다 상위 12분 상한에 잘렸다). 그래서 반드시 시간 제한을 건다.
+    const alive = await Promise.race([
+      p.evaluate(() => 1).then(() => true).catch(() => false),
+      new Promise((r) => setTimeout(() => r(false), 5000)),
+    ]);
+    if (alive) return p;
+    log(`${label} 상시 창의 탭이 응답하지 않아 새 탭을 엽니다`);
   }
   return context.newPage();
 }
