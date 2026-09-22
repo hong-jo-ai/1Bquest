@@ -167,9 +167,16 @@ function renderLabel(s) {
     // (includes 로 검사하면 "골드&실버"가 "골드"를 품어 정작 필요한 표시를 지워버린다).
     // 중복 판정은 **각인 표기를 떼어낸 상품명**으로 한다. 조선몰처럼 "… - 로즈골드 (각인:문구)" 로
     // 끝나면 각인 괄호 때문에 끝-일치가 뚫려 "(로즈골드)" 가 한 번 더 붙는다(2026-09-18 검증에서 발견).
+    // 🔴 끝-일치만으로는 부족하다: "…- 골드&실버".endsWith("실버") 가 true 라 **실버 주문의 색상이
+    //    통째로 지워졌다**(골드는 끝이 아니라 살아남아 한쪽만 찍히는 걸 사장님이 2026-09-22 발견.
+    //    9/21 안주원·9/22 권주하 두 건이 색상 없이 나갔다). 색상 통합 상품명이라 정확히 이 형태다.
+    //    "이미 상품명에 있다"고 볼 수 있는 건 색상이 **이름 끝에 단독으로** 붙은 경우뿐이다
+    //    (예: "… - 로즈골드"). 앞 글자가 &·/·+·, 처럼 나열 기호면 통합 표기이므로 색상을 찍는다.
     const opt = String(s.color || "").trim();
     const nameBase = String(s.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/g, "").trim();
-    const optText = opt && opt !== "NONE" && !nameBase.endsWith(opt) ? ` (${opt})` : "";
+    const head = nameBase.slice(0, nameBase.length - opt.length);
+    const already = opt && nameBase.endsWith(opt) && (head === "" || /[\s\-–—:]$/.test(head));
+    const optText = opt && opt !== "NONE" && !already ? ` (${opt})` : "";
     block(`${s.product_name || ""}${optText}${s.qty ? `, 수량:${s.qty}` : ""}`, SAFE_L, 67.0, 58, 8.5, 15.5);
     // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음"
     T(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 9.5);
