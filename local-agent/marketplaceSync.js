@@ -204,6 +204,22 @@ async function cdpConnect(port) {
 }
 
 /** 상시 창에 붙거나(이미 떠 있으면) 새로 띄운 뒤 붙는다. */
+/**
+ * 상시 창에서 **살아 있는** 탭 고르기.
+ * `isClosed()` 만 보면 안 된다 — 탭이 detached(렌더러가 죽었거나 타깃이 끊긴 상태)여도 false 다.
+ * 그 탭을 잡으면 goto 가 "Frame has been detached" 로 떨어지고, 프레임 목록이 비어
+ * **iframe 을 못 찾아 그 채널 수집이 통째로 0건**이 된다(2026-09-22 무신사 12:30·14:30 두 배치).
+ * 로그인 세션은 프로필(쿠키)에 있으므로 새 탭을 열어도 재로그인은 필요 없다.
+ */
+async function pickLivePage(context, label, log) {
+  for (const p of context.pages()) {
+    if (p.isClosed()) continue;
+    try { await p.evaluate(() => 1); return p; }          // 살아 있으면 그대로 쓴다
+    catch (e) { log(`${label} 상시 창의 탭이 응답하지 않아 새 탭을 엽니다 (${String(e.message).slice(0, 60)})`); }
+  }
+  return context.newPage();
+}
+
 async function attachKeepAlive(channel, log) {
   const port = cdpPort(channel);
   const label = CHANNELS[channel]?.label || channel;
@@ -230,7 +246,7 @@ async function attachKeepAlive(channel, log) {
     if (!browser) throw new Error(`${label} Chrome CDP(${port}) 연결 실패 — 창을 닫지 않았으니 직접 확인해주세요`);
   }
   const context = browser.contexts()[0] || (await browser.newContext());
-  const page = context.pages().find((p) => !p.isClosed()) || (await context.newPage());
+  const page = await pickLivePage(context, label, log);
   await page.setExtraHTTPHeaders({ "Accept-Language": "ko-KR,ko;q=0.9" }).catch(() => {});
   const opened = { context, page, browser, keepAlive: true };
   contexts.set(channel, opened);
