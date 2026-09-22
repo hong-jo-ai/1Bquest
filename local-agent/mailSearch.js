@@ -30,7 +30,8 @@ const { createClient } = require(`${DASH}/node_modules/@supabase/supabase-js`);
 
 const argv = process.argv.slice(2);
 const FULL = argv.includes("--full");
-const MAX = Number((argv[argv.indexOf("--max") + 1]) || 12);
+// ⚠️ indexOf 가 -1 이면 argv[0](=검색어)을 숫자로 읽어 NaN 이 된다 → Gmail 400 → 예전엔 "(없음)"으로 찍혔다(2026-09-22).
+const MAX = argv.includes("--max") ? Math.max(1, Math.min(500, Number(argv[argv.indexOf("--max") + 1]) || 12)) : 12;
 const ONLY = argv.includes("--account") ? argv[argv.indexOf("--account") + 1] : "";
 const QUERY = argv.filter((a, i) =>
   !a.startsWith("--") && argv[i - 1] !== "--max" && argv[i - 1] !== "--account").join(" ");
@@ -105,6 +106,8 @@ function bodyText(payload) {
         `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(QUERY)}&maxResults=${MAX}`,
         { headers: AT, signal: AbortSignal.timeout(20000) });
       const j = await r.json();
+      // 오류 응답을 "결과 없음"으로 삼키지 않는다 — 없다고 믿고 잘못 판단하는 게 가장 나쁘다.
+      if (!r.ok || j.error) throw new Error(`HTTP ${r.status} ${JSON.stringify(j.error || j).slice(0, 160)}`);
       ids = (j.messages || []).map((m) => m.id);
     } catch (e) { console.log(`── ${name}: ⚠️ 검색 실패 ${e.message}\n`); continue; }
 
