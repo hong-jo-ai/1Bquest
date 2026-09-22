@@ -21,6 +21,7 @@
  *        발급 → 공유드라이브 사본 → Xprinter 인쇄 → **카페24 송장번호 입력**까지 한 번에(사장님 9/18:
  *        "송장 라벨 인쇄하면 송장번호는 바로 입력해줘"). 인쇄 생략은 --no-print.
  *   node local-agent/enMallOutbound.js --tracking <주문번호> <송장번호>   ← 이미 뽑은 라벨의 송장만 입력
+ *        주소가 부실하면 발급할 때만 덮어쓴다: --street/--street2/--city/--zip (예: 도시칸 공란인 대만 주문)
  */
 const fs = require("fs"), path = require("path"), os = require("os");
 const DASH = path.resolve(__dirname, "..");
@@ -149,16 +150,24 @@ function toShipment(o, brand, manual = {}) {
   const phone = String(r.cellphone || r.phone || "").replace(/[^\d]/g, "");
   const box = pickBox(items);
 
+  // 주소 2행: 고객이 번지를 address2 에만 적는 경우가 있다(2026-09-22 대만 20260922-0000025 —
+  // address_street 엔 "臺北市 信義區"(시·구)만, 번지는 address2). 안 실으면 번지 없는 라벨이 나간다.
+  // 대부분의 주문은 address2 가 비었거나 street 와 같은 값이라, 다를 때만 2행으로 싣는다.
+  const street2 = String(r.address2 || "").trim();
+  const street2Use = street2 && street2 !== String(r.address_street || "").trim() ? street2 : "";
+
   const blockers = [];
   if (!phone) blockers.push("수취인 전화번호 없음(페덱스 필수)");
   if (!r.country_code) blockers.push("국가코드 없음");
   if (!r.zipcode) blockers.push("우편번호 없음");
   if (!String(r.address_street || "").trim()) blockers.push("상세주소 없음");
+  // 도시칸이 비면 페덱스가 400 CITY.EMPTY 로 거절한다 — 라벨 발급 때가 아니라 수집 때 드러나야 한다.
+  if (!String(r.address_city || "").trim()) blockers.push("도시 없음(--city 로 지정)");
 
   return {
     brand, orderNo: o.order_id, orderDate: String(o.order_date || "").slice(0, 16),
     name: r.name_en || r.name, phone,
-    addrParts: { street: r.address_street, city: r.address_city, zip: r.zipcode, countryCode: r.country_code },
+    addrParts: { street: r.address_street, street2: street2Use, city: r.address_city, zip: r.zipcode, countryCode: r.country_code },
     addrText: `${r.address_street || ""}, ${r.address_city || ""} ${r.address_state || ""} ${r.zipcode || ""} ${r.country_code || ""}`.replace(/\s+/g, " ").trim(),
     amountUSD: Number(o.payment_amount) || 0,
     items, qty: items.reduce((a, b) => a + b.qty, 0),
@@ -263,6 +272,16 @@ async function main() {
   if (LABEL_FOR) {
     const t = all.find((x) => x.orderNo === LABEL_FOR) || null;
     if (!t) { log(`✗ ${LABEL_FOR} — 대상에 없음(--all 로 확인)`); process.exit(1); }
+    // 주소 보정 — 고객이 카페24 칸을 제각각 채워 페덱스가 거절하는 경우가 있다(도시칸 공란 등).
+    // 주문서를 고치는 대신 발급할 때만 덮어쓴다. 원본 주소는 로그에 남겨 무엇을 바꿨는지 보이게 한다.
+    for (const [flag, key] of [["--street", "street"], ["--street2", "street2"], ["--city", "city"], ["--zip", "zip"]]) {
+      const i = ARGV.indexOf(flag);
+      if (i >= 0 && ARGV[i + 1]) {
+        log(`주소 보정 ${key}: ${JSON.stringify(t.addrParts[key] || "")} → ${JSON.stringify(ARGV[i + 1])}`);
+        t.addrParts[key] = ARGV[i + 1];
+        t.blockers = t.blockers.filter((b) => !(key === "city" && b.startsWith("도시 없음")));
+      }
+    }
     if (t.blockers.length) { log(`✗ ${LABEL_FOR} — 미비: ${t.blockers.join(", ")}`); process.exit(1); }
     const { createShipment } = require("./fedexShip");
     log(`라벨 발급 시작 — ${t.orderNo} ${t.name} ${t.addrParts.countryCode} · ${t.box.boxId} ${t.box.lengthCm}×${t.box.widthCm}×${t.box.heightCm}cm`);

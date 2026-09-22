@@ -50,6 +50,23 @@ const NON_ENGRAVABLE = /밴드|스트랩|조절|도구|쇼핑백|케이스|보�
 function engravable(productName){
   return !NON_ENGRAVABLE.test(String(productName || ""));
 }
+/**
+ * 배송메시지에 적힌 각인 — 각인 옵션칸을 못 찾은 고객이 배송메시지에 적어 보낸다
+ * (2026-09-22 해리엇 배상아 20260921-0000043: "각인은 Joy Bae 로 부탁드립니다." → 송장은 빈칸으로 나갔다).
+ * 각인은 새기면 되돌릴 수 없으므로 **문구를 못 뽑아내도 메시지 원문을 송장에 올린다** — 사장님이 보고 판단한다.
+ * 뽑아낸 문구도 원문을 함께 남긴다(자동 추출을 믿고 잘못 새기는 것보다 눈으로 확인하는 편이 싸다).
+ */
+function engravingFromMessage(msg){
+  const s = String(msg || "").trim();
+  if(!s || !/각인|engrav/i.test(s)) return "";
+  const pats = [
+    /(?:각인|engrav\w*)\s*(?:문구|은|는|:|：)?\s*[""']([^""']{1,40})[""']/i,   // 각인 "Joy Bae"
+    /(?:각인|engrav\w*)\s*(?:문구)?\s*[:：]\s*([^\n,.]{1,40})/i,              // 각인: Joy Bae / engraving: My Love
+    /(?:각인|engrav\w*)\s*(?:문구)?\s*(?:은|는)?\s*([A-Za-z0-9가-힣 .&'-]{2,40}?)\s*(?:로|으로)\s*(?:부탁|해|해서|새겨)/i, // 각인은 민준&서연 으로 부탁
+  ];
+  for(const re of pats){ const m = re.exec(s); if(m && m[1].trim()) return `${m[1].trim()} ※배송메시지: ${s.slice(0,40)}`; }
+  return `확인요 ※배송메시지: ${s.slice(0, 50)}`;
+}
 const MANUAL_ENGRAVING_KEY = "manual_engravings";
 let _manualEng = null;
 async function manualEngravings(){
@@ -107,8 +124,10 @@ async function cafe24Rows(m){
     const ship=(o.items??[]).filter(it=>String(it.status_text||"")==="배송준비중");
     const mob=clean(r.cellphone||r.phone);
     for(const it of ship){
-      // 옵션 각인이 우선, 없으면 수기 등록분(톡톡·웹챗으로 온 요청) — 단 각인 가능한 품목에만.
-      const eng=engravingOf(it) || (engravable(it.product_name) ? (manual[clean(o.order_id)] || "") : "");
+      // 옵션 각인이 우선, 없으면 수기 등록분(톡톡·웹챗으로 온 요청), 그 다음이 배송메시지 —
+      // 단 각인 가능한 품목에만.
+      const eng=engravingOf(it) || (engravable(it.product_name)
+        ? (manual[clean(o.order_id)] || engravingFromMessage(r.shipping_message)) : "");
       const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
       rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
