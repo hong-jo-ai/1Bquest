@@ -78,6 +78,26 @@ async function persist(client, record) {
 }
 
 /**
+ * 접수가 끝나면 라벨 인쇄 큐를 **바로** 깨운다.
+ * 인쇄 잡은 launchd `com.paulvice.label-print-queue` 가 5분 주기로 올리기 때문에, 접수 직후
+ * 포장하려 해도 라벨이 최대 5분 늦게 나왔다(사장님 2026-09-23: "항상 시간이 걸리네").
+ * kickstart 는 그 잡을 즉시 한 번 더 돌릴 뿐이라 주기 실행과 겹쳐도 안전하다
+ * (labelPrintQueue 는 이미 큐에 올린 건을 건너뛴다). 실패해도 5분 뒤 정규 실행이 받으므로 전부 삼킨다.
+ * 한 번의 접수 배치에서 여러 번 불리지 않게 30초 디바운스.
+ * ⚠️ 라벨이 손에 오는 시각은 여기서 더해 **노트북 폴링 20초**가 붙는다 — 즉시라 해도 20초쯤 걸린다.
+ */
+let _lastKick = 0;
+function kickLabelQueue() {
+  if (Date.now() - _lastKick < 30000) return;
+  _lastKick = Date.now();
+  try {
+    const { execFile } = require("child_process");
+    execFile("launchctl", ["kickstart", `gui/${process.getuid()}/com.paulvice.label-print-queue`],
+      { timeout: 15000 }, (err) => { if (err) log(`라벨 인쇄 큐 깨우기 실패(5분 뒤 정규 실행으로 처리됨): ${err.message}`); });
+  } catch (e) { log(`라벨 인쇄 큐 깨우기 예외(무시): ${e.message}`); }
+}
+
+/**
  * 합배송 — 동일 수취인(판매처+이름+연락처+우편번호+주소)의 여러 주문/상품을 송장 1건으로 묶음.
  * 한 사람=한 박스=운송장 1개. **goodsNm 에 주문한 모든 상품명(+각인)을 결합**해
  * 송장에 전부 인쇄되게 함(포장 기준이 송장이므로 필수). 수량은 합산.
@@ -195,6 +215,7 @@ async function registerRows(rows, opts = {}) {
   const ok = results.filter((r) => r.regiNo && !r.skipped).length;
   const skipped = results.filter((r) => r.skipped).length;
   const failed = results.filter((r) => r.error).length;
+  if (ok > 0) kickLabelQueue();          // 접수됐으면 라벨을 5분 기다리지 않는다
   return { total: grouped.length, rows: rows.length, ok, skipped, failed, results };
 }
 
@@ -235,6 +256,7 @@ async function registerSingle(order, opts = {}) {
   const params = reqType === "2" ? mapReturn(row) : mapOutbound(row);
   const result = await insertOrder(params);
   await persist(client, shipmentRecord(row, params, result));
+  kickLabelQueue();                      // 단건 접수(폰·대시보드)도 즉시 인쇄
   return {
     order: row.order,
     regiNo: result.regiNo,
