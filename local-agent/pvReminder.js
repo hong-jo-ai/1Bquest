@@ -9,7 +9,7 @@
  *    ③ 재무장 한도까지 소진하면 notifyFail 로 "못 보냈다"는 사실이라도 경보)
  */
 const fs = require("fs");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const DASH = "/Users/mac/sungjo_ai/paulwise-dashboard";
 function le(p){try{for(const l of fs.readFileSync(p,"utf8").split("\n")){const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);if(!m)continue;let v=m[2].trim().replace(/^["']|["']$/g,"");if(!(m[1] in process.env))process.env[m[1]]=v;}}catch{}}
 le(DASH+"/local-agent/.env"); le(DASH+"/.env.local"); le(DASH+"/.env.supabase");
@@ -29,11 +29,14 @@ const msg = msgs[label] || ("리마인더: "+label);
 const readAttempts = () => { try { return parseInt(fs.readFileSync(ATTEMPTS,"utf8"),10) || 0; } catch { return 0; } };
 const bootout = () => { try { execFileSync("launchctl",["bootout",`gui/${process.getuid()}/${JOB}`],{stdio:"ignore"}); } catch {} };
 
-/** launchd 잡·상태파일 제거 (전송 성공 또는 최종 포기 시). */
+/** launchd 잡·상태파일 제거 (전송 성공 또는 최종 포기 시).
+ *  ⚠️ bootout 은 이 프로세스 자신을 죽인다(launchd 가 잡의 프로세스를 함께 내린다).
+ *  그래서 파일을 먼저 지우고 bootout 은 맨 마지막에 — 2026-09-23 까지 순서가 반대라 plist 가 남았고,
+ *  재부팅 때 다시 올라와 매년 같은 날 재발송될 잡이 21개 쌓여 있었다. */
 function cleanup() {
-  bootout();
   try { fs.unlinkSync(PLIST); } catch {}
   try { fs.unlinkSync(ATTEMPTS); } catch {}
+  bootout();
 }
 
 /** +REARM_DELAY_MIN 분 뒤 한 번 더 뜨도록 plist 를 다시 쓴다. Month 까지 박아 다음 달 오발송을 막는다. */
@@ -51,10 +54,12 @@ function rearm(n) {
 <key>RunAtLoad</key><false/>
 </dict></plist>`;
   fs.writeFileSync(ATTEMPTS, String(n));
-  bootout();
   fs.writeFileSync(PLIST, plist);
-  execFileSync("launchctl", ["bootstrap", `gui/${process.getuid()}`, PLIST], { stdio: "ignore" });
   console.log(`재무장 ${n}/${MAX_REARM}: ${at.toLocaleString("ko-KR",{timeZone:"Asia/Seoul"})} 재시도 예약`);
+  // bootout 이 자기 자신을 죽이므로, 내린 뒤 다시 올리는 일은 분리된 자식 셸에 맡긴다.
+  const uid = process.getuid();
+  spawn("/bin/sh", ["-c", `sleep 1; launchctl bootout gui/${uid}/${JOB}; launchctl bootstrap gui/${uid} "${PLIST}"`],
+    { detached: true, stdio: "ignore" }).unref();
 }
 
 (async () => {
