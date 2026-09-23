@@ -1,6 +1,6 @@
 /**
  * 씨티와치 위탁 구모델(성산·서해·가양·광안·일구·도보·카리) 판매 수량 집계.
- * 2026-09-23 합의: 총액 29,443,289 에 8/13 이후 판매 75개까지 포함, 초과분은 팔리는 대로 개당 20,000원 지급.
+ * 2026-09-23 합의: 총액 29,443,289 에 8/13 이후 판매 75개까지 포함, 초과분은 개당 20,000원을 잔액에 더한다(월 100만 고정, 기간만 늘어남).
  * 사용: node local-agent/citywatchSoldCount.js [start=2026-08-13] [end=오늘]
  *
  * 소스 ①카페24 API 양샵(shop_no 1·2, 취소 제외) ②pp_shipments 조선몰·b2b_harriot·직거래(교환/회수/-EX 제외).
@@ -60,5 +60,5 @@ const ALLOW = 75, UNIT = 20000;
   console.log(`  카페24 모델별:`, Object.entries(byModel).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", "));
   if (skipped.length) console.log(`  제외(교환/회수): ${skipped.length}건 — ${skipped.join(" / ")}`);
   const over = Math.max(0, total - ALLOW);
-  console.log(`  총액 포함분 ${ALLOW}개 → 초과 ${over}개 × ${UNIT.toLocaleString()} = ${(over * UNIT).toLocaleString()}원 추가 지급 대상`);
+  console.log(`  총액 포함분 ${ALLOW}개 → 초과 ${over}개 × ${UNIT.toLocaleString()} = ${(over * UNIT).toLocaleString()}원 → 잔액에 가산(월 100만 고정, 기간만 늘어남)`);
 })().catch(e => { console.error("ERR", e.message); process.exit(1); });
