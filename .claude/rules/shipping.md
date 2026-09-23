@@ -82,7 +82,7 @@
 - **카카오선물**: 우리 쪽 주문 테이블이 없다. 취소 = 송장 `cancelShipment` / 기록 자동 / **재고는 PO 에서 수동 제거** / 피오르드(song@fjord.kr)에 통보.
 - **W컨셉**: 수집 0건이면 `runPostOffice.js` 또는 `wconceptOutbound.js`(주문확인 포함). `wconceptReadyExtract.js` 는 읽기전용이라 0건이 정상 → 오진 주의. 배달완료 가드 해제(`WC_ALLOW_DELIVERED=1`)는 사장님 승인 후 수동으로만.
 - **무신사**: "신규 0건"을 믿지 말고 배송출고처리 그리드 행수를 본다. AG-Grid 우클릭 엑셀은 마스킹 → 접수에 사용 금지.
-- **조선몰**: 우체국 파이프라인 밖(10:30 단독).
+- **조선몰**: 우체국 파이프라인 밖(10:30 단독). 처리한 발주서 메일 id 를 kv `chosunmall_po_seen` 에 남긴다 — **새 발주서가 없는 날 어제 것을 다시 처리하지 않게**(2026-09-23 중복 텔레그램·중복 회신초안 사고).
 - **영문몰(shop2)**: 국제배송 = **페덱스뿐**. 라벨은 `enMallOutbound.js --label <주문번호>` 로 사람이 지시할 때만(호출 즉시 운임 발생).
   `--label` 한 번에 **발급 → 공유드라이브 사본 → Xprinter 인쇄 → 카페24 송장입력(페덱스 코드 `0027`)** 까지 간다(사장님 9/18: 인쇄하면 송장은 바로 입력). 이미 뽑은 라벨은 `--tracking <주문> <송장>`. 치수가 곧 운임(박스 3종, 밴드는 박스 계산 제외).
   🔴 **라벨 발급 ≠ 픽업 예약.** `pickupType=USE_SCHEDULED_PICKUP` 은 정기 픽업이 있다는 뜻일 뿐 기사를 부르지 않는다 — 픽업은 따로 잡는다(당일 마감 15:30·토 13:00).
@@ -92,7 +92,7 @@
 (smartstore-dispatch-cancel-window · kakao-gift-channel-economics · postoffice-outbound · harriot-en-mall-outbound-gap · boxspec-shipping-dimensions · fedex-customs-and-label-certification · cafe24-delivery-complete-auto)
 
 ## 7. 라벨 인쇄·운영 함정
-- 단건을 바로 뽑아야 하면 `launchctl kickstart gui/$(id -u)/com.paulvice.label-print-queue` — 5분 기다리지 않는다.
+- **접수하면 인쇄 큐가 자동으로 깨어난다**(2026-09-23, `register.js kickLabelQueue`). 체감 지연은 노트북 폴링 20초뿐. 그래도 손으로 깨우려면 `launchctl kickstart gui/$(id -u)/com.paulvice.label-print-queue`.
 - 큐는 5분 주기, 노트북은 20초 폴링이라 **나눠 나온다.** "N장밖에 안 나왔다"면 `print_job` 에 `queued` 가 남았는지부터.
 - 라벨은 우체국 값이 아니라 **우리 DB 값을 찍는다** — DB 가 틀리면 라벨도 틀린다.
 - 무신사·조선몰은 색상이 상품명이 아니라 **별도 `color` 컬럼**으로 온다. 색상 통합 상품(`…- 골드&실버`)에서 한쪽 색만 찍히면 라벨의 중복 판정 버그다(2026-09-22 수정).
