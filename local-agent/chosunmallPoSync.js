@@ -48,8 +48,10 @@ const COL = {
   buyer: 14, buyerMobile: 15, msg: 16,
 };
 
+const sbClient = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 async function gmailToken() {
-  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const sb = sbClient();
   const { data } = await sb.from("kv_store").select("data").eq("key", "google_refresh_token").maybeSingle();
   const rt = typeof data.data === "string" ? data.data : (data.data.refresh_token || data.data);
   const j = await (await fetch("https://oauth2.googleapis.com/token", {
@@ -323,6 +325,21 @@ async function createReplyDraft(H, po, results, buffer) {
   if (!po) { log("발주서 메일 없음 — 종료"); await beat("chosunmall-po-sync", { orders: 0 }); return; }
   log(`발주서: ${po.subject} (${po.fileName}, ${po.date.toISOString().slice(0, 10)})`);
 
+  // 새 발주서가 없으면 **어제 것을 다시 처리하지 않는다.**
+  // 이 잡은 최근 3일치에서 최신 발주서를 집어오기 때문에, 새 발주서가 없는 날에도 어제 것을 다시 읽어
+  // 접수(dedup 로 스킵)·회신 초안·텔레그램을 또 만들었다 — 이미 출고한 건이 다시 알림으로 와서
+  // 사장님이 "완료처리 안 됐냐"고 물었다(2026-09-23). 처리한 메일 id 를 kv 에 남겨 건너뛴다.
+  const SEEN_KEY = "chosunmall_po_seen";
+  const seen = await (async () => {
+    try { const { data } = await sbClient().from("kv_store").select("data").eq("key", SEEN_KEY).maybeSingle(); return (data && data.data) || {}; }
+    catch (e) { log(`처리이력 조회 실패(무시하고 진행): ${e.message}`); return null; }   // 조회 실패 = 모름 → 평소대로 진행
+  })();
+  if (seen && seen[po.messageId] && send) {
+    log(`이미 처리한 발주서(${po.messageId}, ${seen[po.messageId]}) — 새 발주서 없음. 종료`);
+    await beat("chosunmall-po-sync", { orders: 0, skipped: "already-processed" });
+    return;
+  }
+
   const parsed = parsePo(po.buffer);
   log(`발주 ${parsed.orders.length}건 (dry=${!send})`);
   const engraved = parsed.orders.filter((o) => o.engraving);
@@ -376,6 +393,13 @@ async function createReplyDraft(H, po, results, buffer) {
     } catch (e) {
       log(`⚠️ 매출 적재 실패(접수는 정상): ${e.message.slice(0, 120)}`);
     }
+  }
+
+  // 처리 표시는 **접수까지 끝난 뒤에만** 남긴다 — 중간에 실패하면 다음 회차가 다시 시도해야 한다.
+  if (send && results.length && seen) {
+    try {
+      await sbClient().from("kv_store").upsert({ key: SEEN_KEY, data: { ...seen, [po.messageId]: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    } catch (e) { log(`처리이력 저장 실패(다음 회차에 중복 알림 가능): ${e.message}`); }
   }
 
   await beat("chosunmall-po-sync", { orders: parsed.orders.length, registered: results.length });
