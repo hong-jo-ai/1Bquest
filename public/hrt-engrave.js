@@ -124,11 +124,17 @@
         out.style.fontSize = (pt * pxPerPt()) + "px";
         document.getElementById("hrtEngPt").innerHTML = pt.toFixed(1) + "<span>pt</span>";
         document.getElementById("hrtEngMm").textContent = "≈ " + (pt * 0.3528).toFixed(1) + "mm";
-        var over = out.scrollHeight > zone.clientHeight + 1 || out.scrollWidth > zone.clientWidth + 1;
+        var over = out.scrollHeight > zone.clientHeight + 1;
         document.getElementById("hrtEngWarn").className = (over && t.trim() !== "") ? "on" : "";
       } catch (e) {}
     }
-    function open() { css(); build(); document.getElementById("hrtEngWrap").classList.add("on"); render(); }
+    function open() {
+      css(); build();
+      document.getElementById("hrtEngWrap").classList.add("on");
+      render();
+      try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(render); } catch (e) {}
+      setTimeout(render, 400);
+    }
     function close() { var w = document.getElementById("hrtEngWrap"); if (w) w.classList.remove("on"); }
     function apply() {
       try {
