@@ -40,7 +40,7 @@
         '#hrtEngScroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}' +
         '#hrtEngBox .sb{color:#6e7479;font-size:12.5px;margin:0 0 12px;line-height:1.6;flex:none}' +
         '#hrtEngX{position:absolute;top:12px;right:14px;border:0;background:none;font-size:22px;color:#6e7479;cursor:pointer;line-height:1}' +
-        '#hrtEngStage{position:relative;width:100%;max-width:206px;margin:0 auto 4px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
+        '#hrtEngStage{position:relative;width:100%;max-width:184px;margin:0 auto 4px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
         '#hrtEngStage img{display:block;width:100%;height:auto}' +
         '#hrtEngZone{position:absolute;left:50.3%;top:50%;transform:translate(-50%,-50%);width:26.5%;height:21%;' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
@@ -57,8 +57,9 @@
         '#hrtEngMm{font-size:11px;color:#6e7479}' +
         '#hrtEngSize{width:100%;accent-color:#111}' +
         '#hrtEngWarn{margin:8px 0 0;font-size:12px;color:#a8552a;display:none}#hrtEngWarn.on{display:block}' +
-        '#hrtEngNote{font-size:11px;color:#6e7479;margin:11px 0 0;padding-top:10px;border-top:1px solid #dcdcd8;line-height:1.5}' +
-        '#hrtEngApply{width:100%;flex:none;margin-top:12px;padding:14px;border:0;border-radius:7px;background:#111;color:#fff;font-size:14px;font-weight:600;cursor:pointer}';
+        '#hrtEngNote{flex:none;font-size:10.5px;color:#6e7479;margin:9px 0 0;padding-top:9px;border-top:1px solid #dcdcd8;line-height:1.45}' +
+        '#hrtEngNote b{color:#14161a}' +
+        '#hrtEngApply{width:100%;flex:none;margin-top:9px;padding:14px;border:0;border-radius:7px;background:#111;color:#fff;font-size:14px;font-weight:600;cursor:pointer}';
       document.head.appendChild(s);
       if (!document.getElementById("hrtEngFont")) {
         var l = document.createElement("link");
@@ -87,8 +88,8 @@
         '<div><span id="hrtEngPt">7.0<span>pt</span></span> <span id="hrtEngMm">≈ 2.5mm</span></div></div>' +
         '<input type="range" id="hrtEngSize" min="3" max="14" value="7" step="0.5" aria-label="글자 크기 기준">' +
         '<p id="hrtEngWarn">⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.</p>' +
-        '<p id="hrtEngNote"><b>화면은 참고용입니다.</b> 실제 각인은 굵기·자간·줄 간격이 다를 수 있고 크기도 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
         '</div>' +
+        '<p id="hrtEngNote"><b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
         '<button id="hrtEngApply" type="button">이 문구로 신청하기</button></div>';
       document.body.appendChild(w);
 
