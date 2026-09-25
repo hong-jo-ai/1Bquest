@@ -378,6 +378,15 @@ export async function fetchArticleComments(
   }
 }
 
+export async function cafe24Delete(path: string, accessToken: string, mall: MallId = DEFAULT_MALL) {
+  const res = await cafe24Fetch(path, accessToken, { method: "DELETE" }, mall);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cafe24 DELETE [${res.status}]: ${text}`);
+  }
+  return res.json();
+}
+
 export async function cafe24Put(path: string, accessToken: string, body: unknown, mall: MallId = DEFAULT_MALL) {
   const res = await cafe24Fetch(path, accessToken, {
     method: "PUT",

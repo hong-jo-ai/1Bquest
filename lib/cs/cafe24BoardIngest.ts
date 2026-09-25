@@ -10,6 +10,7 @@ import {
   type Cafe24Product,
   type Cafe24AttachFile,
   type MallId,
+  cafe24Delete,
 } from "../cafe24Client";
 import { getAccessTokenFromStore } from "../cafe24TokenStore";
 import { ingestMessage, patchMessageRaw, refreshThreadCustomer } from "./store";
@@ -172,6 +173,27 @@ function commentIsCustomer(c: Cafe24Comment, article: Cafe24Article, operatorId:
   return false;
 }
 
+/**
+ * 게시판 광고 스팸 판별 — 2026-09-23~25 에 도박·대출·대포통장 광고가 하루 두 차례씩 올라왔다.
+ * 상품 Q&A 는 회원만 쓰기(권한 I)인데도 일회용 메일(moakt.cc)로 가입해 쓴다.
+ *
+ * ⚠️ 오탐 = 고객 글 삭제다. 그래서 단어 하나로는 판정하지 않고 **두 신호가 같이** 있을 때만 스팸으로 본다:
+ *   ① 연락 미끼(텔레그램 핸들 · 【010-…】 · xyz/top 도메인)  ② 업종어(카드깡·대포통장·작업대출·토토…)
+ * "통장으로 입금하나요?" 같은 진짜 문의는 ①이 없어 통과한다.
+ */
+const SPAM_CONTACT =
+  /텔\s*@|탤\s*@|텔레\s*@|카톡\s*[:@]?\s*[A-Za-z0-9_]{4,}|ㅋㅌ\s*[A-Za-z0-9_]{3,}|@[A-Za-z0-9_]{5,}|[[【(]\s*0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\s*[\]】)]|[\w가-힣.-]+\.(?:com|net|kr|xyz|top|shop|vip|닷컴|COM)\b/;
+const SPAM_TRADE =
+  /카드깡|현금화|대포통장|통장\s*(?:매입|판매|구매|구입|대여|임대|삽니다|팝니다|사는곳|파는곳)|계좌\s*(?:매입|판매|구매|구입|대여|삽니다|팝니다|사는곳|파는곳)|작업대출|작대|토토|카지노|먹튀|찌라시|백링크|도배\s*프로그램|(?:대출|보험|유흥|토토)\s*(?:디비|DB)|디비\s*매입|악성글\s*(?:삭제|내리기)|소액결제\s*(?:현금화|정책)|쩜오|프리미엄룸|포커|바카라|슬롯|파워볼|배팅|베팅|환전|가입코드|보증업체/;
+
+function isSpamArticle(article: Cafe24Article): boolean {
+  const text = `${article.title ?? ""} ${(article.content ?? "").replace(/<[^>]+>/g, " ")}`;
+  if (SPAM_CONTACT.test(text) && SPAM_TRADE.test(text)) return true;
+  // 연락 미끼가 없어도 업종어가 서로 다른 것으로 2가지 이상이면 광고다(진짜 문의는 한 번도 그러지 않았다).
+  const hits = new Set((text.match(new RegExp(SPAM_TRADE.source, "g")) ?? []).map((h) => h.replace(/\s+/g, "")));
+  return hits.size >= 2;
+}
+
 export interface SyncBoardsOpts {
   /** 며칠 전까지 훑을지. 기본 14일. */
   days?: number;
@@ -194,6 +216,8 @@ export async function syncCafe24Boards(
   skipped: number;
   /** 이미 있던 메시지에 첨부(사진)를 뒤늦게 붙인 건수. */
   backfilled: number;
+  /** 광고 스팸으로 판정해 카페24에서 삭제한 글 수. */
+  spamDeleted: number;
   errors: string[];
   newInboundThreadIds: string[]; // 이번에 새로 적재된 고객(in) 메시지의 스레드 — 자동응대 트리거용
 }> {
@@ -210,6 +234,7 @@ export async function syncCafe24Boards(
       inserted: 0,
       skipped: 0,
       backfilled: 0,
+      spamDeleted: 0,
       errors: [
         `Cafe24 토큰 없음(${mall}) — 대시보드에서 Cafe24 재연결 필요 (mall.read_community 스코프 추가)`,
       ],
@@ -230,7 +255,7 @@ export async function syncCafe24Boards(
     } else {
       errors.push(`게시판 목록 조회 실패: ${msg}`);
     }
-    return { boards: 0, articles: 0, inserted: 0, skipped: 0, backfilled: 0, errors, newInboundThreadIds: [] };
+    return { boards: 0, articles: 0, inserted: 0, skipped: 0, backfilled: 0, spamDeleted: 0, errors, newInboundThreadIds: [] };
   }
 
   const csBoards = allBoards.filter(isCsBoard);
@@ -238,7 +263,7 @@ export async function syncCafe24Boards(
     errors.push(
       `CS 게시판을 찾지 못함. 확인한 게시판: ${allBoards.map((b) => b.board_name).join(", ") || "없음"}`
     );
-    return { boards: 0, articles: 0, inserted: 0, skipped: 0, backfilled: 0, errors, newInboundThreadIds: [] };
+    return { boards: 0, articles: 0, inserted: 0, skipped: 0, backfilled: 0, spamDeleted: 0, errors, newInboundThreadIds: [] };
   }
 
   const backfillOnly = opts.backfillOnly === true;
@@ -247,6 +272,7 @@ export async function syncCafe24Boards(
   let inserted = 0;
   let skipped = 0;
   let backfilled = 0;
+  let spamDeleted = 0;
   const boardNames = csBoards.map((b) => b.board_name);
   const productCache: ProductCache = new Map();
   const operatorId = getMallOperatorId(mall); // 운영자 댓글 판별용 (예: icaruse2000)
@@ -268,6 +294,28 @@ export async function syncCafe24Boards(
 
     for (const article of articles) {
       if (article.deleted === "T") {
+        skipped++;
+        continue;
+      }
+
+      // 광고 스팸은 인박스에 넣지 않고 게시판에서 바로 지운다 — 고객이 보는 화면에 남겨두지 않는다.
+      // 삭제는 되돌릴 수 없으므로 판정은 isSpamArticle(두 신호 동시)만 신뢰하고, 실패하면 그냥 넘긴다.
+      if (!backfillOnly && isSpamArticle(article)) {
+        try {
+          await cafe24Delete(
+            `/api/v2/admin/boards/${board.board_no}/articles/${article.article_no}?shop_no=1`,
+            accessToken,
+            mall,
+          );
+          spamDeleted++;
+          console.warn(
+            `[cafe24-board] 스팸 삭제 ${mall} #${article.article_no} "${(article.title ?? "").slice(0, 40)}"`,
+          );
+        } catch (e) {
+          errors.push(
+            `[${board.board_name}#${article.article_no}] 스팸 삭제 실패: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
         skipped++;
         continue;
       }
@@ -444,6 +492,7 @@ export async function syncCafe24Boards(
     inserted,
     skipped,
     backfilled,
+    spamDeleted,
     errors,
     newInboundThreadIds: [...newInbound],
   };
