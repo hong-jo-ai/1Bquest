@@ -26,36 +26,39 @@
       var s = document.createElement("style");
       s.id = "hrtEngCss";
       s.textContent =
-        '#hrtEngBtn{display:inline-block;margin:8px 0 0;padding:9px 14px;border:1px solid #111;border-radius:4px;' +
-        'background:#fff;color:#111;font-size:13px;cursor:pointer;letter-spacing:.02em}' +
+        '#hrtEngBtn{display:block;width:100%;box-sizing:border-box;margin:10px 0 2px;padding:13px 12px;' +
+        'border:1.5px solid #111;border-radius:6px;background:#fff;color:#111;font-size:14px;font-weight:700;' +
+        'cursor:pointer;letter-spacing:.01em;line-height:1.2;text-align:center}' +
         '#hrtEngBtn:hover{background:#111;color:#fff}' +
+        '#hrtEngBtn:active{background:#111;color:#fff}' +
         '#hrtEngWrap{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:16px}' +
         '#hrtEngWrap.on{display:flex}' +
         '#hrtEngDim{position:absolute;inset:0;background:rgba(0,0,0,.55)}' +
-        '#hrtEngBox{position:relative;background:#fff;color:#14161a;border-radius:12px;max-width:440px;width:100%;' +
-        'max-height:92vh;overflow:auto;padding:22px;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.6}' +
-        '#hrtEngBox h3{font-family:"Nanum Myeongjo",serif;font-weight:400;font-size:21px;margin:0 0 6px}' +
-        '#hrtEngBox .sb{color:#6e7479;font-size:13px;margin:0 0 16px;line-height:1.7}' +
+        '#hrtEngBox{position:relative;background:#fff;color:#14161a;border-radius:12px;max-width:430px;width:100%;' +
+        'max-height:94vh;display:flex;flex-direction:column;padding:18px 18px 14px;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.6}' +
+        '#hrtEngBox h3{font-family:"Nanum Myeongjo",serif;font-weight:400;font-size:19px;margin:0 0 5px;flex:none}' +
+        '#hrtEngScroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}' +
+        '#hrtEngBox .sb{color:#6e7479;font-size:12.5px;margin:0 0 12px;line-height:1.6;flex:none}' +
         '#hrtEngX{position:absolute;top:12px;right:14px;border:0;background:none;font-size:22px;color:#6e7479;cursor:pointer;line-height:1}' +
-        '#hrtEngStage{position:relative;width:100%;max-width:300px;margin:0 auto 6px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
+        '#hrtEngStage{position:relative;width:100%;max-width:232px;margin:0 auto 5px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
         '#hrtEngStage img{display:block;width:100%;height:auto}' +
         '#hrtEngZone{position:absolute;left:50.3%;top:50%;transform:translate(-50%,-50%);width:26.5%;height:21%;' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
         '#hrtEngOut{margin:0;color:#8d949a;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;line-height:1.28;text-shadow:0 1px 1px rgba(255,255,255,.45)}' +
-        '#hrtEngScale{text-align:center;color:#6e7479;font-size:11px;margin:0 0 16px}' +
-        '#hrtEngTxt{width:100%;min-height:62px;resize:vertical;padding:10px;border:1px solid #dcdcd8;border-radius:7px;font:inherit;font-size:14px;box-sizing:border-box}' +
+        '#hrtEngScale{text-align:center;color:#6e7479;font-size:10.5px;margin:0 0 12px}' +
+        '#hrtEngTxt{width:100%;min-height:54px;resize:vertical;padding:10px;border:1px solid #dcdcd8;border-radius:7px;font:inherit;font-size:14px;box-sizing:border-box}' +
         '#hrtEngBox .lb{display:block;font-size:11px;letter-spacing:.06em;color:#6e7479;margin:0 0 6px;text-transform:uppercase}' +
-        '#hrtEngFonts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px}' +
-        '#hrtEngFonts button{padding:10px 6px;border:1px solid #dcdcd8;border-radius:7px;background:#fff;color:#14161a;cursor:pointer;font-size:14px}' +
+        '#hrtEngFonts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:11px}' +
+        '#hrtEngFonts button{padding:8px 5px;border:1px solid #dcdcd8;border-radius:7px;background:#fff;color:#14161a;cursor:pointer;font-size:14px}' +
         '#hrtEngFonts button[aria-pressed="true"]{border-color:#111;box-shadow:0 0 0 1px #111}' +
         '#hrtEngFonts small{display:block;font-size:10px;color:#6e7479;margin-top:3px;font-family:-apple-system,sans-serif}' +
-        '#hrtEngSizeRow{display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 6px}' +
+        '#hrtEngSizeRow{display:flex;align-items:baseline;justify-content:space-between;margin:12px 0 4px}' +
         '#hrtEngPt{font-size:17px;font-weight:600}#hrtEngPt span{font-size:12px;font-weight:400;color:#6e7479}' +
         '#hrtEngMm{font-size:11px;color:#6e7479}' +
         '#hrtEngSize{width:100%;accent-color:#111}' +
         '#hrtEngWarn{margin:8px 0 0;font-size:12px;color:#a8552a;display:none}#hrtEngWarn.on{display:block}' +
-        '#hrtEngNote{font-size:11.5px;color:#6e7479;margin:14px 0 0;padding-top:12px;border-top:1px solid #dcdcd8;line-height:1.6}' +
-        '#hrtEngApply{width:100%;margin-top:14px;padding:13px;border:0;border-radius:7px;background:#111;color:#fff;font-size:14px;font-weight:600;cursor:pointer}';
+        '#hrtEngNote{font-size:11px;color:#6e7479;margin:11px 0 0;padding-top:10px;border-top:1px solid #dcdcd8;line-height:1.5}' +
+        '#hrtEngApply{width:100%;flex:none;margin-top:12px;padding:14px;border:0;border-radius:7px;background:#111;color:#fff;font-size:14px;font-weight:600;cursor:pointer}';
       document.head.appendChild(s);
       if (!document.getElementById("hrtEngFont")) {
         var l = document.createElement("link");
@@ -74,6 +77,7 @@
         '<button id="hrtEngX" type="button" aria-label="닫기">&times;</button>' +
         '<h3>당신의 시간을 새깁니다</h3>' +
         '<p class="sb">앞면이 시간을 보여주는 동안, 뒷면에는 당신의 문장이 남습니다.<br>세상에 하나뿐인 설월이 됩니다.</p>' +
+        '<div id="hrtEngScroll">' +
         '<div id="hrtEngStage"><img src="' + IMG + '" alt="설월 케이스백"><div id="hrtEngZone"><p id="hrtEngOut"></p></div></div>' +
         '<p id="hrtEngScale">각인면 지름 20mm · 실제 비율로 표시됩니다</p>' +
         '<span class="lb">각인 문구</span>' +
@@ -85,6 +89,7 @@
         '<p id="hrtEngWarn">⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.</p>' +
         '<p id="hrtEngNote"><b>화면은 참고용입니다.</b> 실제 레이저 각인은 글자 굵기·자간·줄 간격이 다를 수 있고, 크기도 각인 장비에서 마지막에 조정됩니다.<br>' +
         '각인 작업자에게 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
+        '</div>' +
         '<button id="hrtEngApply" type="button">이 문구로 신청하기</button></div>';
       document.body.appendChild(w);
 
