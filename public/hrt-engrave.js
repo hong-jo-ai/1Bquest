@@ -35,18 +35,18 @@
         '#hrtEngWrap.on{display:flex}' +
         '#hrtEngDim{position:absolute;inset:0;background:rgba(0,0,0,.55)}' +
         '#hrtEngBox{position:relative;background:#fff;color:#14161a;border-radius:12px;max-width:430px;width:100%;' +
-        'max-height:94vh;display:flex;flex-direction:column;padding:18px 18px 14px;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.6}' +
+        'max-height:94vh;display:flex;flex-direction:column;padding:16px 18px 12px;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.6}' +
         '#hrtEngBox h3{font-family:"Nanum Myeongjo",serif;font-weight:400;font-size:19px;margin:0 0 5px;flex:none}' +
         '#hrtEngScroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}' +
         '#hrtEngBox .sb{color:#6e7479;font-size:12.5px;margin:0 0 12px;line-height:1.6;flex:none}' +
         '#hrtEngX{position:absolute;top:12px;right:14px;border:0;background:none;font-size:22px;color:#6e7479;cursor:pointer;line-height:1}' +
-        '#hrtEngStage{position:relative;width:100%;max-width:232px;margin:0 auto 5px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
+        '#hrtEngStage{position:relative;width:100%;max-width:206px;margin:0 auto 4px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
         '#hrtEngStage img{display:block;width:100%;height:auto}' +
         '#hrtEngZone{position:absolute;left:50.3%;top:50%;transform:translate(-50%,-50%);width:26.5%;height:21%;' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
         '#hrtEngOut{margin:0;color:#8d949a;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;line-height:1.28;text-shadow:0 1px 1px rgba(255,255,255,.45)}' +
         '#hrtEngScale{text-align:center;color:#6e7479;font-size:10.5px;margin:0 0 12px}' +
-        '#hrtEngTxt{width:100%;min-height:54px;resize:vertical;padding:10px;border:1px solid #dcdcd8;border-radius:7px;font:inherit;font-size:14px;box-sizing:border-box}' +
+        '#hrtEngTxt{width:100%;min-height:48px;resize:vertical;padding:10px;border:1px solid #dcdcd8;border-radius:7px;font:inherit;font-size:14px;box-sizing:border-box}' +
         '#hrtEngBox .lb{display:block;font-size:11px;letter-spacing:.06em;color:#6e7479;margin:0 0 6px;text-transform:uppercase}' +
         '#hrtEngFonts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:11px}' +
         '#hrtEngFonts button{padding:8px 5px;border:1px solid #dcdcd8;border-radius:7px;background:#fff;color:#14161a;cursor:pointer;font-size:14px}' +
@@ -76,7 +76,7 @@
         '<div id="hrtEngDim"></div><div id="hrtEngBox" role="dialog" aria-modal="true" aria-label="각인 미리보기">' +
         '<button id="hrtEngX" type="button" aria-label="닫기">&times;</button>' +
         '<h3>당신의 시간을 새깁니다</h3>' +
-        '<p class="sb">앞면이 시간을 보여주는 동안, 뒷면에는 당신의 문장이 남습니다.<br>세상에 하나뿐인 설월이 됩니다.</p>' +
+        '<p class="sb">앞면이 시간을 보여주는 동안, 뒷면에는 당신의 문장이 남습니다.</p>' +
         '<div id="hrtEngScroll">' +
         '<div id="hrtEngStage"><img src="' + IMG + '" alt="설월 케이스백"><div id="hrtEngZone"><p id="hrtEngOut"></p></div></div>' +
         '<p id="hrtEngScale">각인면 지름 20mm · 실제 비율로 표시됩니다</p>' +
@@ -87,8 +87,7 @@
         '<div><span id="hrtEngPt">7.0<span>pt</span></span> <span id="hrtEngMm">≈ 2.5mm</span></div></div>' +
         '<input type="range" id="hrtEngSize" min="3" max="14" value="7" step="0.5" aria-label="글자 크기 기준">' +
         '<p id="hrtEngWarn">⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.</p>' +
-        '<p id="hrtEngNote"><b>화면은 참고용입니다.</b> 실제 레이저 각인은 글자 굵기·자간·줄 간격이 다를 수 있고, 크기도 각인 장비에서 마지막에 조정됩니다.<br>' +
-        '각인 작업자에게 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
+        '<p id="hrtEngNote"><b>화면은 참고용입니다.</b> 실제 각인은 굵기·자간·줄 간격이 다를 수 있고 크기도 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
         '</div>' +
         '<button id="hrtEngApply" type="button">이 문구로 신청하기</button></div>';
       document.body.appendChild(w);
