@@ -1,25 +1,86 @@
-/*! 해리엇 설월(#136) 각인 미리보기 — 2026-09-25
+/*! 해리엇 설월(#136) 각인 미리보기 — 2026-09-25 (영문몰 대응 2026-09-26)
  *  설계 원칙(전례 기반):
  *   1) 페일오픈: 어디서 실패하든 조용히 끝낸다. 기존 각인 입력란은 그대로 동작해야 한다.
  *   2) 가리지 않는다: 모달은 명시적 클릭으로만 열린다. 구매 버튼을 덮지 않는다.
  *   3) 설월 상세페이지에서만 동작. 그 외 페이지에서는 아무것도 하지 않는다.
+ *   4) 자르지 않는다: 각인 입력란 maxlength 를 넘으면 조용히 잘라 넣는 대신 신청을 막는다.
+ *      잘린 각인은 되돌릴 수 없다(서체·줄바꿈 정보가 통째로 날아간다).
+ *  국문몰(shop1)·영문몰(shop2) 한 파일로 처리한다 — 스크립트태그만 몰별로 등록.
  *  롤백: 카페24 스크립트태그만 삭제하면 원상복구.
  */
 (function () {
   "use strict";
   try {
-    if (!/\/product\/detail\.html/.test(location.pathname)) return;
-    var pno = (location.search.match(/[?&]product_no=(\d+)/) || [])[1];
-    if (pno !== "136") return;
+    // ── 상품번호 ── 카페24는 같은 상품에 URL 이 두 벌이다:
+    //    /product/detail.html?product_no=136  과  /product/설월/136/  (SEO 주소, 메인 배너가 쓴다)
+    //    쿼리만 보면 SEO 주소로 들어온 고객에겐 버튼이 안 뜬다(2026-09-26 실측).
+    function productNo() {
+      var q = (location.search.match(/[?&]product_no=(\d+)/) || [])[1];
+      if (q) return q;
+      var m = location.pathname.match(/\/product\/[^\/?]+\/(\d+)(?:[\/?]|$)/);
+      if (m) return m[1];
+      var c = document.querySelector('link[rel="canonical"]');
+      if (c) { var cm = String(c.href || "").match(/\/product\/[^\/?]+\/(\d+)(?:[\/?]|$)/); if (cm) return cm[1]; }
+      return null;
+    }
+    if (productNo() !== "136") return;
 
     var IMG = "https://ecimg.cafe24img.com/pg2772b24326326016/harriotkorea/web/upload/engrave/caseback.jpg";
+
+    // ── 몰 언어 ── shop2 = 영문몰. html lang 은 두 몰 다 "ko" 라 신호가 안 된다(2026-09-26 실측).
+    //    경로가 1순위, 각인칸 라벨이 2순위(영문몰이 나중에 자체 도메인을 받아도 살아남게).
+    function isEn() {
+      if (/(^|\/)shop2(\/|$)/.test(location.pathname)) return true;
+      var th = document.querySelector(".xans-product-addoption th");
+      if (th && /engraving/i.test(th.textContent || "")) return true;
+      return false;
+    }
+    var EN = isEn();
+
+    var T = EN ? {
+      btn: "Preview your engraving",
+      title: "Engrave your time",
+      sub: "The dial shows the hours. The caseback keeps your words.",
+      scale: "Engraving face 20mm across · shown at actual scale",
+      label: "Engraving message",
+      ph: "e.g. 2026.09.26\nFor the one I love",
+      size: "Size reference",
+      warn: "⚠ This runs past the engraving face. Reduce the size or shorten the text.",
+      long: "⚠ Too long to send with the order. Please shorten the text.",
+      note: "<b>This preview is a guide and does not guarantee the exact engraved result.</b> Weight, letter spacing and line spacing may differ, and the size is adjusted on the engraving machine. What reaches us is <b>your text, typeface, line breaks and size reference</b>.",
+      apply: "Use this engraving",
+      close: "Close",
+      dialog: "Engraving preview",
+      tagKo: "Korean", tagEn: "Latin", def: " · default",
+      sizeWord: "size ref"
+    } : {
+      btn: "각인 미리보기",
+      title: "당신의 시간을 새깁니다",
+      sub: "앞면이 시간을 보여주는 동안, 뒷면에는 당신의 문장이 남습니다.",
+      scale: "각인면 지름 20mm · 실제 비율로 표시됩니다",
+      label: "각인 문구",
+      ph: "예) 2026.09.26\n사랑하는 당신에게",
+      size: "글자 크기 기준",
+      warn: "⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.",
+      long: "⚠ 주문서에 담기엔 문구가 깁니다. 조금만 줄여주세요.",
+      note: "<b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.",
+      apply: "이 문구로 신청하기",
+      close: "닫기",
+      dialog: "각인 미리보기",
+      tagKo: "한글", tagEn: "영문", def: " · 기본",
+      sizeWord: "크기기준"
+    };
+
+    // 서체는 두 몰 모두 4종. ⚠️ 영문몰이라고 한글 서체를 빼면 안 된다 —
+    // 영문몰로 한글 각인 주문이 실제로 들어온다(윤동주 서시 27자, 2026-09-11).
     var FONTS = [
-      { n: "나눔고딕", f: "'Nanum Gothic',sans-serif", t: "한글" },
-      { n: "나눔명조", f: "'Nanum Myeongjo',serif", t: "한글" },
-      { n: "Arial", f: "Arial,Helvetica,sans-serif", t: "영문" },
-      { n: "Times New Roman", f: "'Times New Roman',Times,serif", t: "영문" }
+      { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko" },
+      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko" },
+      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en" },
+      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en" }
     ];
-    var font = FONTS[3].f, fontName = FONTS[3].n, pt = 7;
+    var DEF = 3; // 설월 기본 = Times New Roman (사장님 2026-09-18)
+    var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, pt = 7;
 
     function css() {
       if (document.getElementById("hrtEngCss")) return;
@@ -74,35 +135,37 @@
       var w = document.createElement("div");
       w.id = "hrtEngWrap";
       w.innerHTML =
-        '<div id="hrtEngDim"></div><div id="hrtEngBox" role="dialog" aria-modal="true" aria-label="각인 미리보기">' +
-        '<button id="hrtEngX" type="button" aria-label="닫기">&times;</button>' +
-        '<h3>당신의 시간을 새깁니다</h3>' +
-        '<p class="sb">앞면이 시간을 보여주는 동안, 뒷면에는 당신의 문장이 남습니다.</p>' +
+        '<div id="hrtEngDim"></div><div id="hrtEngBox" role="dialog" aria-modal="true" aria-label="' + T.dialog + '">' +
+        '<button id="hrtEngX" type="button" aria-label="' + T.close + '">&times;</button>' +
+        '<h3>' + T.title + '</h3>' +
+        '<p class="sb">' + T.sub + '</p>' +
         '<div id="hrtEngScroll">' +
-        '<div id="hrtEngStage"><img src="' + IMG + '" alt="설월 케이스백"><div id="hrtEngZone"><p id="hrtEngOut"></p></div></div>' +
-        '<p id="hrtEngScale">각인면 지름 20mm · 실제 비율로 표시됩니다</p>' +
-        '<span class="lb">각인 문구</span>' +
-        '<textarea id="hrtEngTxt" placeholder="예) 2026.09.25&#10;사랑하는 당신에게" spellcheck="false"></textarea>' +
+        '<div id="hrtEngStage"><img src="' + IMG + '" alt="SEOLWOL caseback"><div id="hrtEngZone"><p id="hrtEngOut"></p></div></div>' +
+        '<p id="hrtEngScale">' + T.scale + '</p>' +
+        '<span class="lb">' + T.label + '</span>' +
+        '<textarea id="hrtEngTxt" spellcheck="false"></textarea>' +
         '<div id="hrtEngFonts"></div>' +
-        '<div id="hrtEngSizeRow"><span class="lb" style="margin:0">글자 크기 기준</span>' +
+        '<div id="hrtEngSizeRow"><span class="lb" style="margin:0">' + T.size + '</span>' +
         '<div><span id="hrtEngPt">7.0<span>pt</span></span> <span id="hrtEngMm">≈ 2.5mm</span></div></div>' +
-        '<input type="range" id="hrtEngSize" min="3" max="14" value="7" step="0.5" aria-label="글자 크기 기준">' +
-        '<p id="hrtEngWarn">⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.</p>' +
+        '<input type="range" id="hrtEngSize" min="3" max="14" value="7" step="0.5" aria-label="' + T.size + '">' +
+        '<p id="hrtEngWarn"></p>' +
         '</div>' +
-        '<p id="hrtEngNote"><b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.</p>' +
-        '<button id="hrtEngApply" type="button">이 문구로 신청하기</button></div>';
+        '<p id="hrtEngNote">' + T.note + '</p>' +
+        '<button id="hrtEngApply" type="button">' + T.apply + '</button></div>';
       document.body.appendChild(w);
+      w.querySelector("#hrtEngTxt").placeholder = T.ph;
 
       var fw = w.querySelector("#hrtEngFonts");
       FONTS.forEach(function (o, i) {
         var b = document.createElement("button");
         b.type = "button";
-        b.setAttribute("aria-pressed", i === 3 ? "true" : "false");
-        b.innerHTML = o.n + "<small>" + o.t + (i === 3 ? " · 기본" : "") + "</small>";
+        b.setAttribute("aria-pressed", i === DEF ? "true" : "false");
+        b.innerHTML = (EN ? o.en : o.n) +
+          "<small>" + (o.t === "ko" ? T.tagKo : T.tagEn) + (i === DEF ? T.def : "") + "</small>";
         b.onclick = function () {
           [].forEach.call(fw.children, function (x) { x.setAttribute("aria-pressed", "false"); });
           b.setAttribute("aria-pressed", "true");
-          font = o.f; fontName = o.n; render();
+          font = o.f; fontName = EN ? o.en : o.n; render();
         };
         fw.appendChild(b);
       });
@@ -119,6 +182,18 @@
       var st = document.getElementById("hrtEngStage");
       return 0.3528 * 16 * (st.clientWidth / 1093);
     }
+    /** 주문서 각인란에 들어갈 한 줄. 문구 + 줄바꿈 위치(⏎) + 서체 + 크기기준. */
+    function orderValue() {
+      var v = document.getElementById("hrtEngTxt").value.replace(/\s+$/, "");
+      var lines = v.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
+      if (!lines.length) return "";
+      return lines.join(" ⏎ ") + "  [" + fontName + " · " + T.sizeWord + " " + pt.toFixed(1) + "pt]";
+    }
+    function limit() {
+      var input = document.getElementById("add_option_0");
+      var m = input ? parseInt(input.getAttribute("maxlength") || "0", 10) : 0;
+      return m > 0 ? m : 100;
+    }
     function render() {
       try {
         var t = document.getElementById("hrtEngTxt").value;
@@ -129,8 +204,12 @@
         out.style.fontSize = (pt * pxPerPt()) + "px";
         document.getElementById("hrtEngPt").innerHTML = pt.toFixed(1) + "<span>pt</span>";
         document.getElementById("hrtEngMm").textContent = "≈ " + (pt * 0.3528).toFixed(1) + "mm";
+        // 가로 넘침은 줄바꿈으로 해소되니 세로만 본다.
         var over = out.scrollHeight > zone.clientHeight + 1;
-        document.getElementById("hrtEngWarn").className = (over && t.trim() !== "") ? "on" : "";
+        var tooLong = orderValue().length > limit();
+        var warn = document.getElementById("hrtEngWarn");
+        warn.textContent = tooLong ? T.long : T.warn;
+        warn.className = (t.trim() !== "" && (over || tooLong)) ? "on" : "";
       } catch (e) {}
     }
     function open() {
@@ -143,13 +222,12 @@
     function close() { var w = document.getElementById("hrtEngWrap"); if (w) w.classList.remove("on"); }
     function apply() {
       try {
-        var v = document.getElementById("hrtEngTxt").value.replace(/\s+$/, "");
         var input = document.getElementById("add_option_0");
         if (!input) { close(); return; }
-        if (!v.trim()) { document.getElementById("hrtEngTxt").focus(); return; }
-        var lines = v.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
-        var val = lines.join(" ⏎ ") + "  [" + fontName + " · 크기기준 " + pt.toFixed(1) + "pt]";
-        if (val.length > 100) val = val.slice(0, 100);
+        var val = orderValue();
+        if (!val) { document.getElementById("hrtEngTxt").focus(); return; }
+        // 자르지 않는다 — 잘리면 서체·줄바꿈이 통째로 사라진 채 각인된다.
+        if (val.length > limit()) { render(); document.getElementById("hrtEngTxt").focus(); return; }
         input.value = val;
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -164,9 +242,12 @@
         var input = document.getElementById("add_option_0");
         if (!input) return false;
         if (document.getElementById("hrtEngBtn")) return true;
+        // 각인란이 너무 짧으면 미리보기 결과를 담을 수 없다 → 버튼 자체를 안 띄운다.
+        // (영문몰이 30자였다. 카페24에서 100자로 올리면 그때부터 자동으로 나타난다.)
+        if (limit() < 60) return true;
         css();
         var b = document.createElement("button");
-        b.id = "hrtEngBtn"; b.type = "button"; b.textContent = "각인 미리보기";
+        b.id = "hrtEngBtn"; b.type = "button"; b.textContent = T.btn;
         b.onclick = function (e) { e.preventDefault(); open(); };
         var host = input.parentNode;
         if (host) host.appendChild(b);
