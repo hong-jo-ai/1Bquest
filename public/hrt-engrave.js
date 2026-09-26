@@ -188,6 +188,19 @@
       var st = document.getElementById("hrtEngStage");
       return 16 * (st.clientWidth / 1093);
     }
+    /* ── 가로 보정 ──────────────────────────────────────────────
+     * 각인기 글자는 같은 높이의 CSS 글자보다 **좁다**. 사장님 실측(2026-09-26):
+     *   "2.5mm 로 각인해도 「사랑하는 당신에게」 가 한 줄로 잘 들어간다."
+     * 보정 전 모델은 그 문구를 20.9mm 로 그려 18.1mm 텍스트 영역을 넘겼다(= 줄바꿈).
+     * 한 줄에 들어가려면 가로가 0.8 배여야 한다 → WK.
+     *
+     * 폰트 크기를 WK 만큼 줄여 **줄바꿈 계산**을 맞추고, scaleY 로 **높이를 되돌린다**.
+     *   transform 은 레이아웃에 영향을 주지 않으므로 줄바꿈은 줄어든 크기 기준으로 계산되고,
+     *   눈에 보이는 높이만 원래 mm 로 복원된다 = 높이 mm 는 그대로, 폭만 좁은 글자.
+     *   (scaleX 로 좁히는 방법은 줄바꿈이 안 바뀌어 쓸 수 없다.)
+     * ⚠️ 한글 한 문구로 잡은 값이다. 영문 샘플로 어긋나면 이 숫자만 고치면 된다.
+     */
+    var WK = 0.78;
     /** 주문서 각인란에 들어갈 한 줄. 문구 + 줄바꿈 위치(⏎) + 서체 + 글자 높이(mm). */
     function orderValue() {
       var v = document.getElementById("hrtEngTxt").value.replace(/\s+$/, "");
@@ -207,10 +220,13 @@
         var zone = document.getElementById("hrtEngZone");
         out.textContent = t.trim() === "" ? "" : t;
         out.style.fontFamily = font;
-        out.style.fontSize = (mm * pxPerMm()) + "px";
+        out.style.fontSize = (mm * WK * pxPerMm()) + "px";
+        out.style.transform = "scaleY(" + (1 / WK) + ")";
+        out.style.transformOrigin = "center";
         document.getElementById("hrtEngPt").innerHTML = mm.toFixed(1) + "<span>mm</span>";
         // 가로 넘침은 줄바꿈으로 해소되니 세로만 본다.
-        var over = out.scrollHeight > zone.clientHeight + 1;
+        // scrollHeight 는 transform 전(레이아웃) 값이라 scaleY 만큼 되돌려 비교해야 한다.
+        var over = out.scrollHeight / WK > zone.clientHeight + 1;
         var tooLong = orderValue().length > limit();
         var warn = document.getElementById("hrtEngWarn");
         warn.textContent = tooLong ? T.long : T.warn;
