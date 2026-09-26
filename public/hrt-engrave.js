@@ -44,15 +44,16 @@
       scale: "Engraving face 20mm across · shown at actual scale",
       label: "Engraving message",
       ph: "e.g. 2026.09.26\nFor the one I love",
-      size: "Size reference",
+      size: "Letter height",
       warn: "⚠ This runs past the engraving face. Reduce the size or shorten the text.",
       long: "⚠ Too long to send with the order. Please shorten the text.",
-      note: "<b>This preview is a guide and does not guarantee the exact engraved result.</b> Weight, letter spacing and line spacing may differ, and the size is adjusted on the engraving machine. What reaches us is <b>your text, typeface, line breaks and size reference</b>.",
+      note: "<b>This preview is a guide and does not guarantee the exact engraved result.</b> Weight, letter spacing and line spacing may differ, and the size is adjusted on the engraving machine. What reaches us is <b>your text, typeface, line breaks and letter height</b>.",
       apply: "Use this engraving",
+      hint: "Most engravings sit between 2.3 and 2.7mm — larger for short lines, smaller for long ones.",
       close: "Close",
       dialog: "Engraving preview",
       tagKo: "Korean", tagEn: "Latin", def: " · default",
-      sizeWord: "size ref"
+      sizeWord: "height"
     } : {
       btn: "각인 미리보기",
       title: "당신의 시간을 새깁니다",
@@ -60,15 +61,16 @@
       scale: "각인면 지름 20mm · 실제 비율로 표시됩니다",
       label: "각인 문구",
       ph: "예) 2026.09.26\n사랑하는 당신에게",
-      size: "글자 크기 기준",
+      size: "글자 높이",
       warn: "⚠ 각인면을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.",
       long: "⚠ 주문서에 담기엔 문구가 깁니다. 조금만 줄여주세요.",
-      note: "<b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 크기 기준</b>입니다.",
+      note: "<b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 글자 높이</b>입니다.",
       apply: "이 문구로 신청하기",
+      hint: "대부분 2.3~2.7mm 사이로 새깁니다 — 문구가 짧으면 크게, 길면 작게.",
       close: "닫기",
       dialog: "각인 미리보기",
       tagKo: "한글", tagEn: "영문", def: " · 기본",
-      sizeWord: "크기기준"
+      sizeWord: "높이"
     };
 
     // 서체는 두 몰 모두 4종. ⚠️ 영문몰이라고 한글 서체를 빼면 안 된다 —
@@ -80,7 +82,9 @@
       { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en" }
     ];
     var DEF = 3; // 설월 기본 = Times New Roman (사장님 2026-09-18)
-    var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, pt = 7;
+    // 각인 프로그램은 pt 가 아니라 **글자 높이(mm)** 로 크기를 정한다(사장님 2026-09-26).
+    // 실제로 가장 많이 쓰는 값: 짧은 문구 2.7mm · 긴 문구 2.3~2.5mm → 기본 2.5mm.
+    var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, mm = 2.5;
 
     function css() {
       if (document.getElementById("hrtEngCss")) return;
@@ -115,7 +119,7 @@
         '#hrtEngFonts small{display:block;font-size:9px;color:#6e7479;margin-top:1px;font-family:-apple-system,sans-serif}' +
         '#hrtEngSizeRow{display:flex;align-items:baseline;justify-content:space-between;margin:8px 0 2px}' +
         '#hrtEngPt{font-size:17px;font-weight:600}#hrtEngPt span{font-size:12px;font-weight:400;color:#6e7479}' +
-        '#hrtEngMm{font-size:11px;color:#6e7479}' +
+        '#hrtEngHint{font-size:10.5px;color:#6e7479;margin:4px 0 0;line-height:1.45}' +
         '#hrtEngSize{width:100%;accent-color:#111}' +
         '#hrtEngWarn{margin:8px 0 0;font-size:12px;color:#a8552a;display:none}#hrtEngWarn.on{display:block}' +
         '#hrtEngNote{flex:none;font-size:10.5px;color:#6e7479;margin:9px 0 0;padding-top:9px;border-top:1px solid #dcdcd8;line-height:1.45}' +
@@ -146,8 +150,9 @@
         '<textarea id="hrtEngTxt" spellcheck="false"></textarea>' +
         '<div id="hrtEngFonts"></div>' +
         '<div id="hrtEngSizeRow"><span class="lb" style="margin:0">' + T.size + '</span>' +
-        '<div><span id="hrtEngPt">7.0<span>pt</span></span> <span id="hrtEngMm">≈ 2.5mm</span></div></div>' +
-        '<input type="range" id="hrtEngSize" min="3" max="14" value="7" step="0.5" aria-label="' + T.size + '">' +
+        '<span id="hrtEngPt">2.5<span>mm</span></span></div>' +
+        '<input type="range" id="hrtEngSize" min="1.5" max="4" value="2.5" step="0.1" aria-label="' + T.size + '">' +
+        '<p id="hrtEngHint">' + T.hint + '</p>' +
         '<p id="hrtEngWarn"></p>' +
         '</div>' +
         '<p id="hrtEngNote">' + T.note + '</p>' +
@@ -173,21 +178,22 @@
       w.querySelector("#hrtEngDim").onclick = close;
       w.querySelector("#hrtEngX").onclick = close;
       w.querySelector("#hrtEngTxt").addEventListener("input", render);
-      w.querySelector("#hrtEngSize").addEventListener("input", function () { pt = parseFloat(this.value); render(); });
+      w.querySelector("#hrtEngSize").addEventListener("input", function () { mm = parseFloat(this.value); render(); });
       w.querySelector("#hrtEngApply").onclick = apply;
       document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
     }
 
-    function pxPerPt() {
+    /** 1mm 가 화면에서 몇 px 인가. 원본 1093px 이미지에서 각인면(지름 20mm) = 320px → 1mm = 16px. */
+    function pxPerMm() {
       var st = document.getElementById("hrtEngStage");
-      return 0.3528 * 16 * (st.clientWidth / 1093);
+      return 16 * (st.clientWidth / 1093);
     }
-    /** 주문서 각인란에 들어갈 한 줄. 문구 + 줄바꿈 위치(⏎) + 서체 + 크기기준. */
+    /** 주문서 각인란에 들어갈 한 줄. 문구 + 줄바꿈 위치(⏎) + 서체 + 글자 높이(mm). */
     function orderValue() {
       var v = document.getElementById("hrtEngTxt").value.replace(/\s+$/, "");
       var lines = v.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
       if (!lines.length) return "";
-      return lines.join(" ⏎ ") + "  [" + fontName + " · " + T.sizeWord + " " + pt.toFixed(1) + "pt]";
+      return lines.join(" ⏎ ") + "  [" + fontName + " · " + T.sizeWord + " " + mm.toFixed(1) + "mm]";
     }
     function limit() {
       var input = document.getElementById("add_option_0");
@@ -201,9 +207,8 @@
         var zone = document.getElementById("hrtEngZone");
         out.textContent = t.trim() === "" ? "" : t;
         out.style.fontFamily = font;
-        out.style.fontSize = (pt * pxPerPt()) + "px";
-        document.getElementById("hrtEngPt").innerHTML = pt.toFixed(1) + "<span>pt</span>";
-        document.getElementById("hrtEngMm").textContent = "≈ " + (pt * 0.3528).toFixed(1) + "mm";
+        out.style.fontSize = (mm * pxPerMm()) + "px";
+        document.getElementById("hrtEngPt").innerHTML = mm.toFixed(1) + "<span>mm</span>";
         // 가로 넘침은 줄바꿈으로 해소되니 세로만 본다.
         var over = out.scrollHeight > zone.clientHeight + 1;
         var tooLong = orderValue().length > limit();

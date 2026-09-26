@@ -184,10 +184,11 @@ function engravingLines(t) {
   const out = [];
   for (const e of t.engravings) {
     // 설월은 기본 서체가 정해져 있다(사장님 2026-09-18) — 서체를 물을 필요가 없다는 걸 보고에 같이 적는다.
-    // ⚠️ 단, 각인 미리보기로 신청하면 문구 끝에 `[서체 · 크기기준 N.Npt]` 가 이미 붙어 온다.
+    // ⚠️ 단, 각인 미리보기로 신청하면 문구 끝에 `[서체 · 높이 N.Nmm]` 가 이미 붙어 온다.
     //    거기에 기본 서체까지 덧붙이면 한 줄에 서로 다른 서체가 둘 보인다 — 각인은 되돌릴 수 없다.
     //    고객이 고른 서체가 언제나 이긴다.
-    const chose = /\[[^\]]*\d\s*pt\s*\]\s*$/i.test(String(e.text));
+    //    `pt` 도 받는다 — 2026-09-26 이전 신청분이 그 형식이다(단위를 mm 로 바꾸기 전).
+    const chose = /\[[^\]]*\d\s*(?:mm|pt)\s*\]\s*$/i.test(String(e.text));
     const font = !chose && /설월|seolwol/i.test(String(e.product)) ? " · 서체 Times New Roman(설월 기본)" : "";
     out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}${font}`);
   }
