@@ -273,7 +273,23 @@
         for (var c = 0; c < cells.length; c++) {
           if (getComputedStyle(cells[c]).display !== "block") { stacked = false; break; }
         }
-        if (!stacked) return;   // 좌우 배치 레이아웃은 건드리지 않는다
+        // 기준 폭 = 표 바깥의 진짜 컨테이너
+        var host = row; while (host && getComputedStyle(host).display !== "block") host = host.parentElement;
+        while (host && /^(TABLE|TBODY|THEAD|TR|TD|TH)$/.test(host.tagName)) host = host.parentElement;
+        var full = host ? host.getBoundingClientRect().width : 0;
+        var now = input.getBoundingClientRect().width;
+        if (!full) return;
+        if (!stacked) {
+          // 좌우 배치인데 입력칸이 컨테이너의 절반도 안 되면(= 긴 라벨에 짓눌린 상태) 위아래로 쌓는다.
+          // 영문몰 모바일 실측: 컨테이너 468 / 라벨 100 / 입력칸 28px — 글자를 칠 수 없다.
+          // 멀쩡히 좌우로 배치된 데스크탑은 이 조건에 안 걸려 그대로 둔다.
+          if (now >= full * 0.5) return;
+          for (var k = 0; k < cells.length; k++) {
+            cells[k].style.display = "block";
+            cells[k].style.width = "100%";
+            cells[k].style.boxSizing = "border-box";
+          }
+        }
 
         var TABLEISH = { TABLE: 1, TBODY: 1, THEAD: 1, TR: 1, TD: 1, TH: 1 };
         var node = input.parentElement, n = 0;
