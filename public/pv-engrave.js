@@ -57,7 +57,7 @@
       scale: "Engraving area 15.5 × 10mm · shown at actual scale",
       label: "Engraving message", ph: "e.g. 2026.09.26\nFor you",
       size: "Letter height",
-      hint: "Most engravings sit between 2.3 and 2.7mm — larger for short lines, smaller for long ones.",
+      hint: "2.3mm is our standard. Go larger for short lines, smaller for long ones.",
       warn: "⚠ This runs past the engraving area. Reduce the size or shorten the text.",
       long: "⚠ Too long to send with the order. Please shorten the text.",
       note: "<b>This preview is a guide and does not guarantee the exact engraved result.</b> Weight, letter spacing and line spacing may differ, and the size is adjusted on the engraving machine. What reaches us is <b>your text, typeface, line breaks and letter height</b>.",
@@ -69,7 +69,7 @@
       scale: "각인 영역 15.5 × 10mm · 실제 비율로 표시됩니다",
       label: "각인 문구", ph: "예) 2026.09.26\n사랑하는 당신에게",
       size: "글자 높이",
-      hint: "대부분 2.3~2.7mm 사이로 새깁니다 — 문구가 짧으면 크게, 길면 작게.",
+      hint: "기본은 2.3mm입니다 — 문구가 짧으면 크게, 길면 작게.",
       warn: "⚠ 각인 영역을 넘칩니다. 크기를 줄이거나 문구를 짧게 해주세요.",
       long: "⚠ 주문서에 담기엔 문구가 깁니다. 조금만 줄여주세요.",
       note: "<b>화면은 참고용이며 실제와 똑같이 새겨지는 것을 보장하지 않습니다.</b> 굵기·자간·줄 간격이 다를 수 있고 크기도 각인 장비에서 조정됩니다. 전달되는 것은 <b>문구 · 서체 · 줄바꿈 위치 · 글자 높이</b>입니다.",
@@ -77,14 +77,22 @@
       tagKo: "한글", tagEn: "영문", def: " · 기본", sizeWord: "높이"
     };
 
+    /* 폴바이스가 실제로 쓰는 각인 서체 4종 (사장님 2026-09-26)
+     *   한글 = 나눔고딕 · 한글 필기체    영문 = Century Gothic · Sign Painter
+     * ⚠️ 화면 렌더링은 **근사**다. Century Gothic·Sign Painter 는 웹폰트가 없어
+     *    설치돼 있으면 그걸 쓰고, 없으면 성격이 가장 가까운 구글폰트로 떨어진다
+     *    (Century Gothic→Didact Gothic: 기하학적 산세·단층 a / Sign Painter→Caveat Brush: 브러시 스크립트).
+     *    각인 작업자에게 넘어가는 건 **이름**이므로 주문서 문자열은 정확한 서체명을 쓴다.
+     */
     var FONTS = [
       { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko" },
-      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko" },
-      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en" },
-      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en" }
+      { n: "한글 필기체", en: "Korean Script", f: "'Nanum Pen Script','Nanum Brush Script',cursive", t: "ko" },
+      { n: "Century Gothic", en: "Century Gothic", f: "'Century Gothic','Didact Gothic','Questrial',sans-serif", t: "en" },
+      { n: "Sign Painter", en: "Sign Painter", f: "'SignPainter','Sign Painter','Caveat Brush',cursive", t: "en" }
     ];
     var DEF = 0;
-    var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, mm = 2.5;
+    // 폴바이스 기본 각인 크기 = 2.3mm (사장님 2026-09-26). 해리엇 설월은 2.5mm 기본으로 별개.
+    var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, mm = 2.3;
 
     function css() {
       if (document.getElementById("pvEngCss")) return;
@@ -130,7 +138,7 @@
       if (!document.getElementById("pvEngFont")) {
         var l = document.createElement("link");
         l.id = "pvEngFont"; l.rel = "stylesheet";
-        l.href = "https://fonts.googleapis.com/css2?family=Nanum+Gothic&family=Nanum+Myeongjo&display=swap";
+        l.href = "https://fonts.googleapis.com/css2?family=Nanum+Gothic&family=Nanum+Pen+Script&family=Didact+Gothic&family=Caveat+Brush&display=swap";
         document.head.appendChild(l);
       }
     }
@@ -150,8 +158,8 @@
         '<textarea id="pvEngTxt" spellcheck="false"></textarea>' +
         '<div id="pvEngFonts"></div>' +
         '<div id="pvEngSizeRow"><span class="lb" style="margin:0">' + T.size + '</span>' +
-        '<span id="pvEngMm">2.5<span>mm</span></span></div>' +
-        '<input type="range" id="pvEngSize" min="1.5" max="4" value="2.5" step="0.1" aria-label="' + T.size + '">' +
+        '<span id="pvEngMm">2.3<span>mm</span></span></div>' +
+        '<input type="range" id="pvEngSize" min="1.5" max="4" value="2.3" step="0.1" aria-label="' + T.size + '">' +
         '<p id="pvEngHint">' + T.hint + '</p>' +
         '<p id="pvEngWarn"></p></div>' +
         '<p id="pvEngNote">' + T.note + '</p>' +
