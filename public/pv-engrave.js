@@ -118,7 +118,7 @@
         '#pvEngZone{position:absolute;transform:translate(-50%,-50%);' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
         '#pvEngOut{margin:0;color:#8f8f8f;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;' +
-        'line-height:1.28;text-shadow:0 1px 1px rgba(255,255,255,.45)}' +
+        'line-height:1.14;text-shadow:0 1px 1px rgba(255,255,255,.45)}' +
         '#pvEngScale{text-align:center;color:#8a8a8a;font-size:10.5px;margin:0 0 9px}' +
         '#pvEngTxt{width:100%;min-height:44px;resize:vertical;padding:10px;border:1px solid #ddd;border-radius:4px;font:inherit;font-size:14px;box-sizing:border-box}' +
         '#pvEngBox .lb{display:block;font-size:11px;letter-spacing:.06em;color:#8a8a8a;margin:0 0 6px;text-transform:uppercase}' +
