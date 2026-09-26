@@ -267,6 +267,14 @@
         while (node && TABLEISH[node.tagName] && n++ < 12) {
           node.style.width = "100%";
           node.style.boxSizing = "border-box";
+          // 🔑 `width:100%` 만으로는 안 된다. 스킨이 바깥 tbody 를 `display:block` 으로 덮어써서
+          //    그 안의 <tr> 이 **익명 테이블**이 되고, 익명 테이블은 내용 크기로 줄어든다(shrink-to-fit).
+          //    그래서 표 문맥이 끊긴 그 <tr> 하나만 블록으로 바꾼다.
+          //    (조건을 붙여 desktop 의 정상적인 표 행 — th|td 를 가로로 배치하는 — 은 건드리지 않는다)
+          if (node.tagName === "TR" && node.parentElement &&
+              getComputedStyle(node.parentElement).display === "block") {
+            node.style.display = "block";
+          }
           node = node.parentElement;
         }
         input.style.width = "100%";
