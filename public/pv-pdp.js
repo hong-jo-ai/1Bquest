@@ -75,11 +75,24 @@
       var need = t.getBoundingClientRect().width;
       var have = btn.getBoundingClientRect().width;
       if (!need || need <= have - 8) return;          // 안 잘리면 그대로
+      var bar = btn.parentElement;
+      if (!bar) return;
       btn.style.flex = "0 0 auto";
       btn.style.width = "auto";
       btn.style.minWidth = Math.ceil(need + 28) + "px";
       btn.style.paddingLeft = "14px";
       btn.style.paddingRight = "14px";
+      // 🔑 형제(구매하기)가 **고정 폭**이라 왼쪽만 넓히면 합이 넘쳐 줄바꿈된다.
+      //    실측: 왼쪽 85→123 인데 구매하기가 415 고정 → 538 > 500 → 아래로 밀렸다.
+      //    남은 폭을 형제가 먹도록 유연하게 바꾼다.
+      for (var i = 0; i < bar.children.length; i++) {
+        var sib = bar.children[i];
+        if (sib === btn) continue;
+        sib.style.flex = "1 1 0%";
+        sib.style.width = "auto";
+        sib.style.minWidth = "0";
+      }
+      bar.style.flexWrap = "nowrap";
       btn.setAttribute("data-pvfix", "1");
     }
 
