@@ -96,7 +96,52 @@
       btn.setAttribute("data-pvfix", "1");
     }
 
-    function run() { try { fixOptionRow(); } catch (e) {} try { fixFooter(); } catch (e) {} }
+    /* ── ③ 내부 스크롤 상자가 각인칸을 자른다 (해리엇과 같은 고장) ──
+     *   영문몰 데스크탑 실측: `div.opt-content { max-height:381px; overflow:auto }` 안에
+     *   각인칸이 있고 88px 가 상자 밖으로 숨어 있었다. 그 자리를 TOTAL 블록이 덮는다.
+     */
+    function unclip() {
+      var input = document.getElementById("add_option_0");
+      if (!input) return;
+      var e = input.parentElement;
+      while (e && e !== document.documentElement) {
+        var c = getComputedStyle(e);
+        if ((c.overflowY === "auto" || c.overflowY === "scroll") && e.scrollHeight > e.clientHeight + 1) {
+          e.style.maxHeight = "none";
+          e.style.height = "auto";
+          e.style.overflow = "visible";
+        }
+        e = e.parentElement;
+      }
+    }
+
+    /* ── ④ sticky 칼럼이 뷰포트보다 크면 바닥(구매 버튼)이 영원히 안 보인다 ──
+     *   ③으로 칼럼이 더 높아지므로 같이 고쳐야 한다. 칼럼이 화면에 들어가면 손대지 않는다.
+     */
+    function fitSticky() {
+      var input = document.getElementById("add_option_0");
+      if (!input) return;
+      var e = input.parentElement, col = null;
+      while (e && e !== document.documentElement) {
+        if (getComputedStyle(e).position === "sticky") { col = e; break; }
+        e = e.parentElement;
+      }
+      if (!col) return;
+      if (!col.getAttribute("data-pvtop")) {
+        col.setAttribute("data-pvtop", String(parseFloat(getComputedStyle(col).top) || 0));
+      }
+      var base = parseFloat(col.getAttribute("data-pvtop")) || 0;
+      var h = col.getBoundingClientRect().height;
+      col.style.top = Math.round(Math.min(base, window.innerHeight - h - 16)) + "px";
+    }
+
+    function run() {
+      try { fixOptionRow(); } catch (e) {}
+      try { unclip(); } catch (e) {}
+      try { fixSticky(); } catch (e) {}
+      try { fixFooter(); } catch (e) {}
+    }
+    function fixSticky() { fitSticky(); }
 
     run();
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
