@@ -1,0 +1,95 @@
+/*! 폴바이스 상세페이지 레이아웃 수리 — 2026-09-26
+ *  각인 미리보기(pv-engrave.js)와 **분리**해 둔다. 섞었다가 영문몰을 한 번 깨뜨렸다.
+ *  롤백도 따로 된다.
+ *
+ *  ① 각인 입력칸이 짓눌린다
+ *     카페24 스킨이 옵션 행을 표로 그리는데, 바깥 tbody 가 `display:block` 이라
+ *     그 안의 <tr> 이 **익명 테이블**이 되어 shrink-to-fit 으로 줄어든다.
+ *     실측 — 국문몰 모바일: 컨테이너 468 / 입력칸 260
+ *            영문몰 모바일: 컨테이너 468 / 라벨 100 + 입력칸 **28px**(글자를 칠 수 없다)
+ *     영문몰이 더 심한 건 라벨이 길어서다("Engraving text (leave blank for none)[Select]").
+ *
+ *  ② 하단 고정바의 'View Reviews' 가 잘린다 (영문몰)
+ *     왼쪽 버튼이 85px 인데 영문 글자가 94px → 양옆으로 삐져나가 화면 밖에서 잘린다.
+ *     한글 "리뷰 보기"는 들어가서 국문몰에선 안 보이던 문제다.
+ *
+ *  원칙: **망가진 경우에만** 손댄다. 멀쩡한 레이아웃(데스크탑 좌우 배치 등)은 그대로 둔다.
+ *  페일오픈.
+ */
+(function () {
+  "use strict";
+  try {
+    /* ── ① 각인 입력칸 ───────────────────────────────────────── */
+    function fixOptionRow() {
+      var input = document.getElementById("add_option_0");
+      if (!input || input.getAttribute("data-pvfix")) return !!input;
+      var row = input.closest ? input.closest("tr") : null;
+      if (!row) return true;
+
+      // 기준 폭 = 표 바깥의 진짜 블록 컨테이너
+      var host = row.parentElement;
+      while (host && /^(TABLE|TBODY|THEAD|TR|TD|TH)$/.test(host.tagName)) host = host.parentElement;
+      var full = host ? host.getBoundingClientRect().width : 0;
+      if (!full) return true;
+      if (input.getBoundingClientRect().width >= full * 0.8) return true;  // 이미 충분하면 손대지 않는다
+
+      var cells = row.children, stacked = true;
+      for (var c = 0; c < cells.length; c++) {
+        if (getComputedStyle(cells[c]).display !== "block") { stacked = false; break; }
+      }
+      // 좌우 배치인데 입력칸이 컨테이너 절반도 안 되면 위아래로 쌓는다(라벨이 길어 짓눌린 경우).
+      if (!stacked) {
+        if (input.getBoundingClientRect().width >= full * 0.5) return true;
+        for (var k = 0; k < cells.length; k++) {
+          cells[k].style.display = "block";
+          cells[k].style.width = "100%";
+          cells[k].style.boxSizing = "border-box";
+        }
+      }
+      // 표 사슬을 컨테이너 폭까지 편다.
+      var TABLEISH = { TABLE: 1, TBODY: 1, THEAD: 1, TR: 1, TD: 1, TH: 1 };
+      var node = input.parentElement, n = 0;
+      while (node && TABLEISH[node.tagName] && n++ < 12) {
+        node.style.width = "100%";
+        node.style.boxSizing = "border-box";
+        // 표 문맥이 끊긴 <tr>(부모가 block)은 블록으로 바꿔야 폭이 내려온다.
+        if (node.tagName === "TR" && node.parentElement &&
+            getComputedStyle(node.parentElement).display === "block") {
+          node.style.display = "block";
+        }
+        node = node.parentElement;
+      }
+      input.style.width = "100%";
+      input.style.boxSizing = "border-box";
+      input.setAttribute("data-pvfix", "1");
+      return true;
+    }
+
+    /* ── ② 하단 고정바 버튼 잘림 ─────────────────────────────── */
+    function fixFooter() {
+      var t = document.querySelector(".mobile-fix-footer .fix-toggle-txt");
+      if (!t) return;
+      var btn = t.parentElement;
+      while (btn && !/^(A|BUTTON|SPAN)$/.test(btn.tagName)) btn = btn.parentElement;
+      if (!btn || btn.getAttribute("data-pvfix")) return;
+      var need = t.getBoundingClientRect().width;
+      var have = btn.getBoundingClientRect().width;
+      if (!need || need <= have - 8) return;          // 안 잘리면 그대로
+      btn.style.flex = "0 0 auto";
+      btn.style.width = "auto";
+      btn.style.minWidth = Math.ceil(need + 28) + "px";
+      btn.style.paddingLeft = "14px";
+      btn.style.paddingRight = "14px";
+      btn.setAttribute("data-pvfix", "1");
+    }
+
+    function run() { try { fixOptionRow(); } catch (e) {} try { fixFooter(); } catch (e) {} }
+
+    run();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+    window.addEventListener("load", run);
+    window.addEventListener("resize", run);
+    var n = 0;
+    var timer = setInterval(function () { run(); if (++n > 16) clearInterval(timer); }, 500);
+  } catch (e) { /* 페일오픈 */ }
+})();

@@ -254,63 +254,6 @@
       } catch (e) { close(); }
     }
 
-    /* 각인칸과 버튼을 컨테이너 폭까지 늘린다.
-     * 카페24 스킨이 각인 행을 표(table) 로 그리는데 그 표 사슬이 **내용 크기**로 잡혀
-     * 바깥 컨테이너(468px)를 못 채운다 — 모바일 실측: 입력칸·버튼이 260px 에서 끊겼다.
-     * (`td.middle` 은 70px 인데 그 안의 표가 260px 로 삐져나와 있다.)
-     * 입력칸에서 위로 올라가며 표 계열 요소만 100% 로 펴면 바깥 폭이 그대로 내려온다.
-     */
-    function stretch(input) {
-      try {
-        // 🔴 2026-09-26 사고: 이걸 조건 없이 돌렸다가 **영문몰 상세가 깨졌다.**
-        //    영문몰 스킨은 라벨(th)과 입력칸(td)이 **좌우 테이블 셀**이다. 표를 100% 로 늘리면
-        //    긴 라벨("Engraving text (leave blank for none)[Select]")이 한 줄로 펴지면서
-        //    입력칸 셀을 짓눌러, 버튼 글자가 한 줄에 한 자씩 세로로 쏟아졌다.
-        //    → **라벨과 입력칸이 이미 위아래로 쌓인(display:block) 레이아웃에서만** 늘린다.
-        var row = input.closest ? input.closest("tr") : null;
-        if (!row) return;
-        var cells = row.children, stacked = true;
-        for (var c = 0; c < cells.length; c++) {
-          if (getComputedStyle(cells[c]).display !== "block") { stacked = false; break; }
-        }
-        // 기준 폭 = 표 바깥의 진짜 컨테이너
-        var host = row; while (host && getComputedStyle(host).display !== "block") host = host.parentElement;
-        while (host && /^(TABLE|TBODY|THEAD|TR|TD|TH)$/.test(host.tagName)) host = host.parentElement;
-        var full = host ? host.getBoundingClientRect().width : 0;
-        var now = input.getBoundingClientRect().width;
-        if (!full) return;
-        if (!stacked) {
-          // 좌우 배치인데 입력칸이 컨테이너의 절반도 안 되면(= 긴 라벨에 짓눌린 상태) 위아래로 쌓는다.
-          // 영문몰 모바일 실측: 컨테이너 468 / 라벨 100 / 입력칸 28px — 글자를 칠 수 없다.
-          // 멀쩡히 좌우로 배치된 데스크탑은 이 조건에 안 걸려 그대로 둔다.
-          if (now >= full * 0.5) return;
-          for (var k = 0; k < cells.length; k++) {
-            cells[k].style.display = "block";
-            cells[k].style.width = "100%";
-            cells[k].style.boxSizing = "border-box";
-          }
-        }
-
-        var TABLEISH = { TABLE: 1, TBODY: 1, THEAD: 1, TR: 1, TD: 1, TH: 1 };
-        var node = input.parentElement, n = 0;
-        while (node && TABLEISH[node.tagName] && n++ < 12) {
-          node.style.width = "100%";
-          node.style.boxSizing = "border-box";
-          // 🔑 `width:100%` 만으로는 안 된다. 스킨이 바깥 tbody 를 `display:block` 으로 덮어써서
-          //    그 안의 <tr> 이 **익명 테이블**이 되고, 익명 테이블은 내용 크기로 줄어든다(shrink-to-fit).
-          //    그래서 표 문맥이 끊긴 그 <tr> 하나만 블록으로 바꾼다.
-          //    (조건을 붙여 desktop 의 정상적인 표 행 — th|td 를 가로로 배치하는 — 은 건드리지 않는다)
-          if (node.tagName === "TR" && node.parentElement &&
-              getComputedStyle(node.parentElement).display === "block") {
-            node.style.display = "block";
-          }
-          node = node.parentElement;
-        }
-        input.style.width = "100%";
-        input.style.boxSizing = "border-box";
-      } catch (e) {}
-    }
-
     function mount() {
       try {
         var input = document.getElementById("add_option_0");
@@ -318,7 +261,6 @@
         if (document.getElementById("pvEngBtn")) return true;
         if (limit() < 60) return true;   // 각인칸이 짧으면 결과를 담을 수 없다 → 버튼을 띄우지 않는다
         css();
-        stretch(input);
         var b = document.createElement("button");
         b.id = "pvEngBtn"; b.type = "button"; b.textContent = T.btn;
         b.onclick = function (e) { e.preventDefault(); open(); };
