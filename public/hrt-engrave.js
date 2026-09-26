@@ -223,17 +223,21 @@
      */
     function fitZone(out, zone) {
       var R = 9.9 * pxPerMm();
+      var MIN = R;   // 폭 하한(=반지름). 이 아래로는 안 줄인다 — 아래 주석 참고.
       zone.style.height = (2 * R) + "px";
       var w = 2 * R;
       for (var i = 0; i < 6; i++) {
         zone.style.width = w + "px";
         var y = (out.scrollHeight / WK) / 2;          // 보이는 높이의 절반
-        var nw = y >= R ? 0 : 2 * Math.sqrt(R * R - y * y);
+        var nw = y >= R ? MIN : 2 * Math.sqrt(R * R - y * y);
+        // 문구가 각인면을 크게 넘으면 폭이 0 으로 수렴해 미리보기가 빈 화면이 된다.
+        // 경고만 뜨고 아무것도 안 보이면 고객은 뭐가 문제인지 모른다 →
+        // 하한에서 멈추고, 넘치는 글자는 각인면 밖으로 잘려 보이게 둔다(overflow:hidden).
+        if (nw < MIN) { w = MIN; break; }
         if (Math.abs(nw - w) < 0.5) { w = nw; break; }
         w = nw;
-        if (w <= 0) break;
       }
-      zone.style.width = Math.max(w, 0) + "px";
+      zone.style.width = w + "px";
       return 2 * R;
     }
     function render() {
