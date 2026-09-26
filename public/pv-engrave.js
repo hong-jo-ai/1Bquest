@@ -254,6 +254,26 @@
       } catch (e) { close(); }
     }
 
+    /* 각인칸과 버튼을 컨테이너 폭까지 늘린다.
+     * 카페24 스킨이 각인 행을 표(table) 로 그리는데 그 표 사슬이 **내용 크기**로 잡혀
+     * 바깥 컨테이너(468px)를 못 채운다 — 모바일 실측: 입력칸·버튼이 260px 에서 끊겼다.
+     * (`td.middle` 은 70px 인데 그 안의 표가 260px 로 삐져나와 있다.)
+     * 입력칸에서 위로 올라가며 표 계열 요소만 100% 로 펴면 바깥 폭이 그대로 내려온다.
+     */
+    function stretch(input) {
+      try {
+        var TABLEISH = { TABLE: 1, TBODY: 1, THEAD: 1, TR: 1, TD: 1, TH: 1 };
+        var node = input.parentElement, n = 0;
+        while (node && TABLEISH[node.tagName] && n++ < 12) {
+          node.style.width = "100%";
+          node.style.boxSizing = "border-box";
+          node = node.parentElement;
+        }
+        input.style.width = "100%";
+        input.style.boxSizing = "border-box";
+      } catch (e) {}
+    }
+
     function mount() {
       try {
         var input = document.getElementById("add_option_0");
@@ -261,6 +281,7 @@
         if (document.getElementById("pvEngBtn")) return true;
         if (limit() < 60) return true;   // 각인칸이 짧으면 결과를 담을 수 없다 → 버튼을 띄우지 않는다
         css();
+        stretch(input);
         var b = document.createElement("button");
         b.id = "pvEngBtn"; b.type = "button"; b.textContent = T.btn;
         b.onclick = function (e) { e.preventDefault(); open(); };
