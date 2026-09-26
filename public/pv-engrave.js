@@ -262,6 +262,19 @@
      */
     function stretch(input) {
       try {
+        // 🔴 2026-09-26 사고: 이걸 조건 없이 돌렸다가 **영문몰 상세가 깨졌다.**
+        //    영문몰 스킨은 라벨(th)과 입력칸(td)이 **좌우 테이블 셀**이다. 표를 100% 로 늘리면
+        //    긴 라벨("Engraving text (leave blank for none)[Select]")이 한 줄로 펴지면서
+        //    입력칸 셀을 짓눌러, 버튼 글자가 한 줄에 한 자씩 세로로 쏟아졌다.
+        //    → **라벨과 입력칸이 이미 위아래로 쌓인(display:block) 레이아웃에서만** 늘린다.
+        var row = input.closest ? input.closest("tr") : null;
+        if (!row) return;
+        var cells = row.children, stacked = true;
+        for (var c = 0; c < cells.length; c++) {
+          if (getComputedStyle(cells[c]).display !== "block") { stacked = false; break; }
+        }
+        if (!stacked) return;   // 좌우 배치 레이아웃은 건드리지 않는다
+
         var TABLEISH = { TABLE: 1, TBODY: 1, THEAD: 1, TR: 1, TD: 1, TH: 1 };
         var node = input.parentElement, n = 0;
         while (node && TABLEISH[node.tagName] && n++ < 12) {
