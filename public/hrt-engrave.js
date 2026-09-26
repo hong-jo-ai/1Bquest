@@ -107,7 +107,7 @@
         '#hrtEngX{position:absolute;top:12px;right:14px;border:0;background:none;font-size:22px;color:#6e7479;cursor:pointer;line-height:1}' +
         '#hrtEngStage{position:relative;width:100%;max-width:204px;margin:0 auto 3px;background:#f1f1ef;border-radius:10px;overflow:hidden}' +
         '#hrtEngStage img{display:block;width:100%;height:auto}' +
-        '#hrtEngZone{position:absolute;left:50.3%;top:50%;transform:translate(-50%,-50%);width:26.5%;height:21%;' +
+        '#hrtEngZone{position:absolute;left:50.3%;top:50%;transform:translate(-50%,-50%);width:29%;height:29%;' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
         '#hrtEngOut{margin:0;color:#8d949a;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;line-height:1.28;text-shadow:0 1px 1px rgba(255,255,255,.45)}' +
         '#hrtEngScale{text-align:center;color:#6e7479;font-size:10.5px;margin:0 0 9px}' +
@@ -213,6 +213,29 @@
       var m = input ? parseInt(input.getAttribute("maxlength") || "0", 10) : 0;
       return m > 0 ? m : 100;
     }
+    /* ── 각인면은 원이다 ────────────────────────────────────────
+     * 쓸 수 있는 가로폭은 **줄 수에 따라 다르다.** 지름 20mm 원에서
+     * 세로 y 만큼 벗어난 자리의 가로폭(현)은 2√(r²−y²) 로 줄어든다:
+     *   1줄 19.5mm · 2줄 18.7mm · 3줄 17.3mm · 4줄 15.1mm · 5줄 13.3mm
+     * 그래서 고정폭(예전 18.1mm)은 짧은 문구엔 너무 좁고 긴 문구엔 너무 넓었다.
+     * 폭을 줄이면 줄이 늘고, 줄이 늘면 폭이 또 줄어드니 몇 번 돌려 수렴시킨다.
+     * r 을 9.9mm 로 두어 가장자리에 0.1mm 여유를 남긴다(1줄일 때 19.5mm).
+     */
+    function fitZone(out, zone) {
+      var R = 9.9 * pxPerMm();
+      zone.style.height = (2 * R) + "px";
+      var w = 2 * R;
+      for (var i = 0; i < 6; i++) {
+        zone.style.width = w + "px";
+        var y = (out.scrollHeight / WK) / 2;          // 보이는 높이의 절반
+        var nw = y >= R ? 0 : 2 * Math.sqrt(R * R - y * y);
+        if (Math.abs(nw - w) < 0.5) { w = nw; break; }
+        w = nw;
+        if (w <= 0) break;
+      }
+      zone.style.width = Math.max(w, 0) + "px";
+      return 2 * R;
+    }
     function render() {
       try {
         var t = document.getElementById("hrtEngTxt").value;
@@ -224,9 +247,10 @@
         out.style.transform = "scaleY(" + (1 / WK) + ")";
         out.style.transformOrigin = "center";
         document.getElementById("hrtEngPt").innerHTML = mm.toFixed(1) + "<span>mm</span>";
+        var maxH = fitZone(out, zone);
         // 가로 넘침은 줄바꿈으로 해소되니 세로만 본다.
         // scrollHeight 는 transform 전(레이아웃) 값이라 scaleY 만큼 되돌려 비교해야 한다.
-        var over = out.scrollHeight / WK > zone.clientHeight + 1;
+        var over = out.scrollHeight / WK > maxH + 1;
         var tooLong = orderValue().length > limit();
         var warn = document.getElementById("hrtEngWarn");
         warn.textContent = tooLong ? T.long : T.warn;
