@@ -105,7 +105,7 @@
         '#pvEngScroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}' +
         '#pvEngBox .sb{color:#8a8a8a;font-size:12.5px;margin:0 0 12px;line-height:1.6;flex:none}' +
         '#pvEngX{position:absolute;top:12px;right:14px;border:0;background:none;font-size:22px;color:#8a8a8a;cursor:pointer;line-height:1}' +
-        '#pvEngStage{position:relative;width:100%;max-width:204px;margin:0 auto 3px;background:#f4f4f4;border-radius:6px;overflow:hidden}' +
+        '#pvEngStage{position:relative;width:100%;max-width:180px;margin:0 auto 3px;background:#f4f4f4;border-radius:6px;overflow:hidden}' +
         '#pvEngStage img{display:block;width:100%;height:auto}' +
         '#pvEngZone{position:absolute;transform:translate(-50%,-50%);' +
         'display:flex;align-items:center;justify-content:center;overflow:hidden;text-align:center}' +
