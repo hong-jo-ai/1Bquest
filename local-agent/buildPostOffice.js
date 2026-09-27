@@ -124,10 +124,12 @@ async function cafe24Rows(m){
     const ship=(o.items??[]).filter(it=>String(it.status_text||"")==="배송준비중");
     const mob=clean(r.cellphone||r.phone);
     for(const it of ship){
-      // 옵션 각인이 우선, 없으면 수기 등록분(톡톡·웹챗으로 온 요청), 그 다음이 배송메시지 —
-      // 단 각인 가능한 품목에만.
-      const eng=engravingOf(it) || (engravable(it.product_name)
-        ? (manual[clean(o.order_id)] || engravingFromMessage(r.shipping_message)) : "");
+      // 수기 등록분(톡톡·웹챗으로 온 요청)이 있으면 그게 우선 — 주문 후 고객이 문구를 바꾼 경우다
+      // (2026-09-27 김은진: 옵션칸엔 옛 문구, 웹챗으로 새 문구). 없으면 옵션 각인, 그 다음이 배송메시지.
+      // 단 수기·배송메시지는 각인 가능한 품목에만.
+      const manualEng=engravable(it.product_name) ? manual[clean(o.order_id)] : "";
+      const eng=manualEng || engravingOf(it) || (engravable(it.product_name)
+        ? engravingFromMessage(r.shipping_message) : "");
       const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
       rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
