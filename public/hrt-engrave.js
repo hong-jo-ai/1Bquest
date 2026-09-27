@@ -191,6 +191,39 @@
       document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
     }
 
+    /* 🔑 원의 현(弦)을 구할 때 쓰는 세로 높이는 **줄상자가 아니라 잉크 높이**다.
+     *   line-height 1.28 짜리 줄상자로 재면 한 줄인데도 위아래 여백까지 높이로 잡혀
+     *   현이 실제보다 짧게 나오고, 들어갈 문구가 줄바꿈된다.
+     *   (2026-09-28: TNR 2.0mm 가 실물은 한 줄인데 미리보기는 두 줄로 예측했다.)
+     *   잉크 높이 = (줄수−1)×줄간격 + 첫 줄 잉크높이. 잉크높이는 canvas TextMetrics 로 잰다. */
+    var _inkCache = {};
+    function inkRatio(family, px) {
+      var key = family + "|" + Math.round(px);
+      if (_inkCache[key] != null) return _inkCache[key];
+      var r = 0.9;
+      try {
+        var c = document.createElement("canvas").getContext("2d");
+        c.font = px + "px " + family;
+        var m = c.measureText("Hg한글");
+        var h = (m.actualBoundingBoxAscent || 0) + (m.actualBoundingBoxDescent || 0);
+        if (h > 0) r = h / px;
+      } catch (e) {}
+      _inkCache[key] = r;
+      return r;
+    }
+    /** 보이는(scaleY 적용 후) 잉크 세로 길이 px. */
+    function inkExtent(out) {
+      try {
+        var cs = getComputedStyle(out);
+        var lh = parseFloat(cs.lineHeight) || 0;
+        var fs = parseFloat(cs.fontSize) || 0;
+        if (!lh || !fs) return out.scrollHeight / WK;
+        var n = Math.max(1, Math.round(out.scrollHeight / lh));
+        var ink = inkRatio(cs.fontFamily, fs) * fs;
+        return ((n - 1) * lh + ink) / WK;
+      } catch (e) { return out.scrollHeight / WK; }
+    }
+
     /** 1mm 가 화면에서 몇 px 인가. 원본 1093px 이미지에서 각인면(지름 20mm) = 320px → 1mm = 16px. */
     function pxPerMm() {
       var st = document.getElementById("hrtEngStage");
@@ -240,7 +273,7 @@
       var w = 2 * R;
       for (var i = 0; i < 6; i++) {
         zone.style.width = w + "px";
-        var y = (out.scrollHeight / WK) / 2;          // 보이는 높이의 절반
+        var y = inkExtent(out) / 2;                   // 보이는 **잉크** 높이의 절반
         var nw = y >= R ? MIN : 2 * Math.sqrt(R * R - y * y);
         // 문구가 각인면을 크게 넘으면 폭이 0 으로 수렴해 미리보기가 빈 화면이 된다.
         // 경고만 뜨고 아무것도 안 보이면 고객은 뭐가 문제인지 모른다 →
@@ -266,7 +299,7 @@
         var maxH = fitZone(out, zone);
         // 가로 넘침은 줄바꿈으로 해소되니 세로만 본다.
         // scrollHeight 는 transform 전(레이아웃) 값이라 scaleY 만큼 되돌려 비교해야 한다.
-        var over = out.scrollHeight / WK > maxH + 1;
+        var over = inkExtent(out) > maxH + 1;
         var tooLong = orderValue().length > limit();
         var warn = document.getElementById("hrtEngWarn");
         warn.textContent = tooLong ? T.long : T.warn;
