@@ -75,15 +75,18 @@
 
     // 서체는 두 몰 모두 4종. ⚠️ 영문몰이라고 한글 서체를 빼면 안 된다 —
     // 영문몰로 한글 각인 주문이 실제로 들어온다(윤동주 서시 27자, 2026-09-11).
-    /* wk = 각인기 폭 ÷ 브라우저 폭. **서체마다 다르다**(EzCad TrueType 파일과 웹폰트의 metrics 차이).
-     *   나눔명조 0.94 (실측) · Times New Roman 1.06 (실측) — 방향이 반대다.
+    /* wk = 각인기 폭 ÷ **브라우저가 실제로 그린 폭**.
+     *  ⚠️ canvas measureText 로 잡으면 안 된다 — DOM 렌더 폭과 3% 어긋난다(2026-09-28 실수).
+     *     보정은 반드시 미리보기에 띄워놓고 잰 폭으로 한다.
+     * wk = 각인기 폭 ÷ 브라우저 폭. **서체마다 다르다**(EzCad TrueType 파일과 웹폰트의 metrics 차이).
+     *   나눔명조 0.92 · Times New Roman 1.02 (둘 다 실측) — 방향이 반대다.
      *   미검증 서체는 **크게 잡는다**: 실제보다 넓게 그려야 고객이 큰 크기를 고르지 않는다.
      *   (반대로 좁게 잡으면 고객이 너무 큰 크기를 골라 각인면을 넘는다 — 2026-09-28 실제 사고) */
     var FONTS = [
       { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko", wk: 1.00 },
-      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko", wk: 0.94 },
-      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en", wk: 1.06 },
-      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en", wk: 1.06 }
+      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko", wk: 0.92 },
+      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en", wk: 1.02 },
+      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en", wk: 1.02 }
     ];
     // 기본 서체 — 영문몰 = Times New Roman(설월 기본, 사장님 2026-09-18),
     // 국문몰 = 나눔명조(사장님 2026-09-27). 국문몰 고객은 한글로 새기는 경우가 많은데 TNR 엔 한글 글리프가 없다
