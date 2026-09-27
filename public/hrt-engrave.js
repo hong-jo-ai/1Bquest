@@ -81,7 +81,10 @@
       { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en" },
       { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en" }
     ];
-    var DEF = 3; // 설월 기본 = Times New Roman (사장님 2026-09-18)
+    // 기본 서체 — 영문몰 = Times New Roman(설월 기본, 사장님 2026-09-18),
+    // 국문몰 = 나눔명조(사장님 2026-09-27). 국문몰 고객은 한글로 새기는 경우가 많은데 TNR 엔 한글 글리프가 없다
+    // (김은진 20260927-0000079 가 한글 문구 + TNR 로 주문서에 들어왔다). 선택은 여전히 자유.
+    var DEF = EN ? 3 : 1;
     // 각인 프로그램은 pt 가 아니라 **글자 높이(mm)** 로 크기를 정한다(사장님 2026-09-26).
     // 실제로 가장 많이 쓰는 값: 짧은 문구 2.7mm · 긴 문구 2.3~2.5mm → 기본 2.5mm.
     var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, mm = 2.5;
