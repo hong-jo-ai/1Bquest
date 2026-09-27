@@ -243,8 +243,14 @@ async function loadReported(db) {
   } catch { return null; }   // 조회 실패 = 모름 → 전부 새 주문으로 취급(알림 누락보다 중복이 낫다)
 }
 
-async function main() {
-  const db = sb();
+/**
+ * 두 몰의 shop2 배송준비중 주문 수집 — 보고·라벨발급·준비표(enMallPickSheet)가 함께 쓴다.
+ * 수집 실패는 채널 단위로 삼키고 나머지는 진행한다(한 몰 장애로 다른 몰이 묻히지 않게).
+ */
+async function collectEnMallTargets(opts = {}) {
+  const db = opts.db || sb();
+  const includeAll = opts.all ?? ALL;
+  const quiet = opts.quiet ?? QUIET;
   const manual = await manualEngravings(db);
   const all = [];
   for (const m of MALLS) {
@@ -253,15 +259,21 @@ async function main() {
       const orders = await fetchOrders(db, m);
       for (const o of orders) {
         const s = toShipment(o, m.brand, manual);
-        if (!ALL && !s.pendingCount) continue;     // 기본은 '배송준비중'만
+        if (!includeAll && !s.pendingCount) continue;     // 기본은 '배송준비중'만
         all.push(s);
       }
       log(`${m.brand} shop2 조회 ${orders.length}건 → 대상 ${all.filter((x) => x.brand === m.brand).length}건`);
     } catch (e) {
       log(`⚠️ ${m.brand} 조회 실패: ${e.message}`);
-      if (!QUIET) await relayText(`🌍 영문몰 수집 실패 — ${m.brand}\n${e.message}`).catch(() => {});
+      if (!quiet) await relayText(`🌍 영문몰 수집 실패 — ${m.brand}\n${e.message}`).catch(() => {});
     }
   }
+  return all;
+}
+
+async function main() {
+  const db = sb();
+  const all = await collectEnMallTargets({ db });
 
   // ── 송장번호만 입력(라벨은 이미 뽑은 경우) ──
   if (TRACK_FOR) {
@@ -370,8 +382,10 @@ async function main() {
   if (!ALL) await beat("en-mall-outbound", { pending: all.length, ready: ready.length, held: held.length });
 }
 
-main().catch(async (e) => {
+if (require.main === module) main().catch(async (e) => {
   log(`❌ 실패: ${e.message}`);
   try { await relayText(`🌍 영문몰 수집 실패\n${e.message}`); } catch { /* 알림 실패는 삼킨다 */ }
   process.exit(1);
 });
+
+module.exports = { collectEnMallTargets };
