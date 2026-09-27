@@ -76,14 +76,14 @@
     // 서체는 두 몰 모두 4종. ⚠️ 영문몰이라고 한글 서체를 빼면 안 된다 —
     // 영문몰로 한글 각인 주문이 실제로 들어온다(윤동주 서시 27자, 2026-09-11).
     /* wk = 각인기 폭 ÷ 브라우저 폭. **서체마다 다르다**(EzCad TrueType 파일과 웹폰트의 metrics 차이).
-     *   나눔명조 0.94 (실측) · Times New Roman 1.07 (실측) — 방향이 반대다.
+     *   나눔명조 0.94 (실측) · Times New Roman 1.06 (실측) — 방향이 반대다.
      *   미검증 서체는 **크게 잡는다**: 실제보다 넓게 그려야 고객이 큰 크기를 고르지 않는다.
      *   (반대로 좁게 잡으면 고객이 너무 큰 크기를 골라 각인면을 넘는다 — 2026-09-28 실제 사고) */
     var FONTS = [
       { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko", wk: 1.00 },
       { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko", wk: 0.94 },
-      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en", wk: 1.07 },
-      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en", wk: 1.07 }
+      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en", wk: 1.06 },
+      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en", wk: 1.06 }
     ];
     // 기본 서체 — 영문몰 = Times New Roman(설월 기본, 사장님 2026-09-18),
     // 국문몰 = 나눔명조(사장님 2026-09-27). 국문몰 고객은 한글로 새기는 경우가 많은데 TNR 엔 한글 글리프가 없다
@@ -230,10 +230,11 @@
      *   1줄 19.5mm · 2줄 18.7mm · 3줄 17.3mm · 4줄 15.1mm · 5줄 13.3mm
      * 그래서 고정폭(예전 18.1mm)은 짧은 문구엔 너무 좁고 긴 문구엔 너무 넓었다.
      * 폭을 줄이면 줄이 늘고, 줄이 늘면 폭이 또 줄어드니 몇 번 돌려 수렴시킨다.
-     * r 을 9.9mm 로 두어 가장자리에 0.1mm 여유를 남긴다(1줄일 때 19.5mm).
+     * r = 10.0mm (여백 0). 그전엔 9.9 로 0.1mm 여유를 뒀는데, 실측에서 글자가 원 가장자리까지
+     * 꽉 차게 들어가는 것이 확인돼(TNR 2.0mm) 지름 전체를 쓰도록 고쳤다.
      */
     function fitZone(out, zone) {
-      var R = 9.9 * pxPerMm();
+      var R = 10.0 * pxPerMm();   // 각인면 반지름. 여백 0 — 사장님 실측 "원에 여백없이 완전 딱 맞게"(2026-09-28)
       var MIN = R;   // 폭 하한(=반지름). 이 아래로는 안 줄인다 — 아래 주석 참고.
       zone.style.height = (2 * R) + "px";
       var w = 2 * R;

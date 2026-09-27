@@ -84,13 +84,13 @@
      *    각인 작업자에게 넘어가는 건 **이름**이므로 주문서 문자열은 정확한 서체명을 쓴다.
      */
     /* wk = 각인기 폭 ÷ 브라우저 폭. **서체마다 다르다** → [[harriot-engraving-preview]] 참고.
-     *   해리엇에서 실측된 값: 나눔명조 0.94 · Times New Roman 1.07.
+     *   해리엇에서 실측된 값: 나눔명조 0.94 · Times New Roman 1.06.
      *   폴바이스 4종은 아직 미검증이라 **크게 잡는다**(좁게 잡으면 고객이 큰 크기를 골라 넘친다). */
     var FONTS = [
       { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko", wk: 1.00 },
       { n: "한글 필기체", en: "Korean Script", f: "'Nanum Pen Script','Nanum Brush Script',cursive", t: "ko", wk: 1.00 },
-      { n: "Century Gothic", en: "Century Gothic", f: "'Century Gothic','Didact Gothic','Questrial',sans-serif", t: "en", wk: 1.07 },
-      { n: "Sign Painter", en: "Sign Painter", f: "'SignPainter','Sign Painter','Caveat Brush',cursive", t: "en", wk: 1.07 }
+      { n: "Century Gothic", en: "Century Gothic", f: "'Century Gothic','Didact Gothic','Questrial',sans-serif", t: "en", wk: 1.06 },
+      { n: "Sign Painter", en: "Sign Painter", f: "'SignPainter','Sign Painter','Caveat Brush',cursive", t: "en", wk: 1.06 }
     ];
     var DEF = 0;
     // 폴바이스 기본 각인 크기 = 2.3mm (사장님 2026-09-26). 해리엇 설월은 2.5mm 기본으로 별개.
