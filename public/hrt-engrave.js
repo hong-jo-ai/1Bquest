@@ -75,11 +75,15 @@
 
     // 서체는 두 몰 모두 4종. ⚠️ 영문몰이라고 한글 서체를 빼면 안 된다 —
     // 영문몰로 한글 각인 주문이 실제로 들어온다(윤동주 서시 27자, 2026-09-11).
+    /* wk = 각인기 폭 ÷ 브라우저 폭. **서체마다 다르다**(EzCad TrueType 파일과 웹폰트의 metrics 차이).
+     *   나눔명조 0.94 (실측) · Times New Roman 1.07 (실측) — 방향이 반대다.
+     *   미검증 서체는 **크게 잡는다**: 실제보다 넓게 그려야 고객이 큰 크기를 고르지 않는다.
+     *   (반대로 좁게 잡으면 고객이 너무 큰 크기를 골라 각인면을 넘는다 — 2026-09-28 실제 사고) */
     var FONTS = [
-      { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko" },
-      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko" },
-      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en" },
-      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en" }
+      { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko", wk: 1.00 },
+      { n: "나눔명조", en: "Nanum Myeongjo", f: "'Nanum Myeongjo',serif", t: "ko", wk: 0.94 },
+      { n: "Arial", en: "Arial", f: "Arial,Helvetica,sans-serif", t: "en", wk: 1.07 },
+      { n: "Times New Roman", en: "Times New Roman", f: "'Times New Roman',Times,serif", t: "en", wk: 1.07 }
     ];
     // 기본 서체 — 영문몰 = Times New Roman(설월 기본, 사장님 2026-09-18),
     // 국문몰 = 나눔명조(사장님 2026-09-27). 국문몰 고객은 한글로 새기는 경우가 많은데 TNR 엔 한글 글리프가 없다
@@ -88,6 +92,7 @@
     // 각인 프로그램은 pt 가 아니라 **글자 높이(mm)** 로 크기를 정한다(사장님 2026-09-26).
     // 실제로 가장 많이 쓰는 값: 짧은 문구 2.7mm · 긴 문구 2.3~2.5mm → 기본 2.5mm.
     var font = FONTS[DEF].f, fontName = EN ? FONTS[DEF].en : FONTS[DEF].n, mm = 2.5;
+    var WK = FONTS[DEF].wk;
 
     function css() {
       if (document.getElementById("hrtEngCss")) return;
@@ -173,7 +178,7 @@
         b.onclick = function () {
           [].forEach.call(fw.children, function (x) { x.setAttribute("aria-pressed", "false"); });
           b.setAttribute("aria-pressed", "true");
-          font = o.f; fontName = EN ? o.en : o.n; render();
+          font = o.f; fontName = EN ? o.en : o.n; WK = o.wk; render();
         };
         fw.appendChild(b);
       });
@@ -207,7 +212,6 @@
      *   (scaleX 로 좁히는 방법은 줄바꿈이 안 바뀌어 쓸 수 없다.)
      * ⚠️ 한글 한 문구로 잡은 값이다. 영문 샘플로 어긋나면 이 숫자만 고치면 된다.
      */
-    var WK = 0.932;
     /** 주문서 각인란에 들어갈 한 줄. 문구 + 줄바꿈 위치(⏎) + 서체 + 글자 높이(mm). */
     function orderValue() {
       var v = document.getElementById("hrtEngTxt").value.replace(/\s+$/, "");
