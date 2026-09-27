@@ -196,20 +196,17 @@
      *   현이 실제보다 짧게 나오고, 들어갈 문구가 줄바꿈된다.
      *   (2026-09-28: TNR 2.0mm 가 실물은 한 줄인데 미리보기는 두 줄로 예측했다.)
      *   잉크 높이 = (줄수−1)×줄간격 + 첫 줄 잉크높이. 잉크높이는 canvas TextMetrics 로 잰다. */
-    var _inkCache = {};
-    function inkRatio(family, px) {
-      var key = family + "|" + Math.round(px);
-      if (_inkCache[key] != null) return _inkCache[key];
-      var r = 0.9;
+    var _c2d = null;
+    /** 실제 문구의 잉크 높이(px). ⚠️ 샘플 문자열로 재면 안 된다 —
+     *  Times New Roman 에 "한글"을 넣으면 대체 폰트로 떨어져 높이가 부풀려진다(2026-09-28 실수). */
+    function inkPx(family, px, text) {
       try {
-        var c = document.createElement("canvas").getContext("2d");
-        c.font = px + "px " + family;
-        var m = c.measureText("Hg한글");
+        if (!_c2d) _c2d = document.createElement("canvas").getContext("2d");
+        _c2d.font = px + "px " + family;
+        var m = _c2d.measureText(text || "X");
         var h = (m.actualBoundingBoxAscent || 0) + (m.actualBoundingBoxDescent || 0);
-        if (h > 0) r = h / px;
-      } catch (e) {}
-      _inkCache[key] = r;
-      return r;
+        return h > 0 ? h : px * 0.9;
+      } catch (e) { return px * 0.9; }
     }
     /** 보이는(scaleY 적용 후) 잉크 세로 길이 px. */
     function inkExtent(out) {
@@ -219,8 +216,8 @@
         var fs = parseFloat(cs.fontSize) || 0;
         if (!lh || !fs) return out.scrollHeight / WK;
         var n = Math.max(1, Math.round(out.scrollHeight / lh));
-        var ink = inkRatio(cs.fontFamily, fs) * fs;
-        return ((n - 1) * lh + ink) / WK;
+        var txt = String(out.textContent || "").replace(/\n/g, " ").trim() || "X";
+        return ((n - 1) * lh + inkPx(cs.fontFamily, fs, txt)) / WK;
       } catch (e) { return out.scrollHeight / WK; }
     }
 
