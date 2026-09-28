@@ -88,6 +88,7 @@
   🔴 **라벨 발급 ≠ 픽업 예약.** `pickupType=USE_SCHEDULED_PICKUP` 은 정기 픽업이 있다는 뜻일 뿐 기사를 부르지 않는다 — 픽업은 따로 잡는다(당일 마감 15:30·토 13:00).
   발급 전 **Rate API 로 무료 운임 조회** 가능. 통관 신고 원산지 = **무브먼트국**(설월·기원=CH, `fedexShip.cooFor`), HS 910211. 라벨 원본은 tmp 라 공유드라이브 `다운로드/페덱스라벨/` 에 복사.
   통관 정보요청 메일은 **harriotwatches@gmail.com** 으로 오고, 첨부 **watch worksheet** 양식을 채워야 한다.
+  📄 **페덱스 라벨엔 상품명이 없다** → 포장 준비는 `node local-agent/enMallPickSheet.js --print`(품목·각인·박스·막힌 사유를 A4 로, 레이저 프린터).
 - **카페24 배송완료 전환**은 크론이 한다. 네이버페이 주문은 API 불가 → 7일 넘게 정체되면 판매자센터 수동.
 (smartstore-dispatch-cancel-window · kakao-gift-channel-economics · postoffice-outbound · harriot-en-mall-outbound-gap · boxspec-shipping-dimensions · fedex-customs-and-label-certification · cafe24-delivery-complete-auto)
 
