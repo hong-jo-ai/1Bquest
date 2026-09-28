@@ -69,7 +69,8 @@ function render(targets, file) {
         doc.font("krB").fontSize(11).fillColor("#a00").text("각인 — 새기면 되돌릴 수 없음");
         doc.font("kr").fontSize(11).fillColor("#a00");
         for (const e of t.engravings) {
-          const font = /설월|seolwol/i.test(String(e.product)) && !/\[/.test(e.text) ? "  (설월 기본 Times New Roman)" : "";
+          const font = /설월|seolwol/i.test(String(e.product)) && !/\[/.test(e.text) ? "  (설월 기본 Times New Roman)" : ""
+            + (e.corrected ? "  (고객 메일 정정 — 주문서 문구 아님)" : "");
           // 줄바꿈은 각인 미리보기가 ⏎ 로 넣어 보낸다. 그 글자는 한글 폰트에 없어 네모로 깨지므로
           // **실제 줄로 나눠 찍는다** — 몇 줄짜리 각인인지가 작업자에게 그대로 보인다.
           const lines = String(e.text).split(/\s*⏎\s*/).filter(Boolean);

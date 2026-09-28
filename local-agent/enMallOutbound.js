@@ -22,6 +22,8 @@
  *        "송장 라벨 인쇄하면 송장번호는 바로 입력해줘"). 인쇄 생략은 --no-print.
  *   node local-agent/enMallOutbound.js --tracking <주문번호> <송장번호>   ← 이미 뽑은 라벨의 송장만 입력
  *        주소가 부실하면 발급할 때만 덮어쓴다: --street/--street2/--city/--zip (예: 도시칸 공란인 대만 주문)
+ *        전화번호가 없으면 --phone <번호> (메일로 받은 번호)
+ *        고객이 메일로 각인을 정정하면 kv manual_engravings 에 "<브랜드>:<주문번호>" 키로 — 주문서보다 우선
  */
 const fs = require("fs"), path = require("path"), os = require("os");
 const DASH = path.resolve(__dirname, "..");
@@ -137,10 +139,15 @@ function toShipment(o, brand, manual = {}) {
   const items = (o.items || []).map((it) => ({ name: it.product_name, qty: Number(it.quantity) || 1 }));
 
   // 주문서 각인이 우선, 없으면 수기 등록분(웹챗·메일로 따로 받은 것) — 각인 가능한 품목에만.
+  // 예외: 고객이 주문 뒤 메일로 문구를 **정정**한 경우 — kv 키 "<브랜드>:<주문번호>" 가 주문서보다 우선한다
+  // (2026-09-28 Davis 건: 주문서 "Pollyanna & George" → 메일로 "Polly & George"). 키에 몰을 박아
+  // 국문몰의 같은 주문번호에 정정이 새지 않게 한다.
+  const corrected = manual[`${brand}:${o.order_id}`] || "";
   const engravings = [];
   for (const it of (o.items || [])) {
-    const v = engravingOf(it) || (engravable(it.product_name) ? (manual[String(o.order_id)] || "") : "");
-    if (v) engravings.push({ product: it.product_name, text: v });
+    const v = (corrected && engravable(it.product_name) ? corrected : "")
+      || engravingOf(it) || (engravable(it.product_name) ? (manual[String(o.order_id)] || "") : "");
+    if (v) engravings.push({ product: it.product_name, text: v, corrected: !!(corrected && v === corrected) });
   }
   // 배송메시지에 각인을 적어 보내는 고객이 있다(2026-09-18 김영주 건: 각인칸은 비고 메시지에만 있었다).
   const msg = String(r.shipping_message || "").trim();
@@ -190,7 +197,7 @@ function engravingLines(t) {
     //    `pt` 도 받는다 — 2026-09-26 이전 신청분이 그 형식이다(단위를 mm 로 바꾸기 전).
     const chose = /\[[^\]]*\d\s*(?:mm|pt)\s*\]\s*$/i.test(String(e.text));
     const font = !chose && /설월|seolwol/i.test(String(e.product)) ? " · 서체 Times New Roman(설월 기본)" : "";
-    out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}${font}`);
+    out.push(`   「${e.text}」 ← ${String(e.product).slice(0, 34)}${font}${e.corrected ? " · 🔁고객 메일 정정(주문서 문구 아님)" : ""}`);
   }
   if (t.msgLooksEngraving) out.push(`   ⚠️ 배송메시지에 각인 언급: "${t.shippingMessage.slice(0, 80)}"`);
   return out;
@@ -298,6 +305,14 @@ async function main() {
         t.addrParts[key] = ARGV[i + 1];
         t.blockers = t.blockers.filter((b) => !(key === "city" && b.startsWith("도시 없음")));
       }
+    }
+    // 전화번호 보정 — 주문서에 번호가 없어 메일로 받은 경우(페덱스 필수). 숫자만 쓴다.
+    const pi = ARGV.indexOf("--phone");
+    if (pi >= 0 && ARGV[pi + 1]) {
+      const ph = ARGV[pi + 1].replace(/[^\d]/g, "");
+      log(`전화 보정: ${JSON.stringify(t.phone || "")} → ${JSON.stringify(ph)}`);
+      t.phone = ph;
+      if (ph) t.blockers = t.blockers.filter((b) => !b.startsWith("수취인 전화번호 없음"));
     }
     if (t.blockers.length) { log(`✗ ${LABEL_FOR} — 미비: ${t.blockers.join(", ")}`); process.exit(1); }
     const { createShipment } = require("./fedexShip");
