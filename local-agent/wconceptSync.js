@@ -253,7 +253,12 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   // '먼저' 알림 — SMS는 iMac Messages(chat.db)에서 자동 추출 시도. 자동 실패 시에만 텔레그램 요청이 옴.
   await tg("📦 W컨셉 매출 동기화를 시작합니다.\nSMS 인증번호는 iMac에서 자동으로 읽을게요 — 자동이 안 되면 'wc 코드' 요청 메시지를 보낼 테니 그때만 보내주세요.");
   const files = [];
+  // 계정별 실패는 모아 두고 **다음 계정은 계속 돈다** — 송장입력 때문이다(2026-09-28: 1번 계정이 비밀번호
+  // 5회 실패로 막히자 루프가 통째로 끝나 2번 계정 주문 3건의 송장이 하루 종일 안 들어갔다).
+  // 대신 매출 합산은 한 계정이라도 빠지면 하지 않는다 — 한쪽 엑셀만으로 합산하면 매출이 반토막으로 덮인다.
+  const failures = [];
   for (const acc of ACCOUNTS) {
+   try {
     const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
     fs.mkdirSync(profileDir, { recursive: true });
     // ⚠️ 이전 실행이 남긴 유령 Chrome / Singleton 락을 먼저 치운다.
@@ -313,6 +318,13 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
     } finally {
       await ctx.close().catch(() => {});
     }
+   } catch (e) {
+    failures.push(`${acc.key}번: ${e.message}`);
+    log(`❌ W컨셉 ${acc.key}번 실패 — 다음 계정은 계속 진행: ${e.message.slice(0, 120)}`, "error");
+   }
+  }
+  if (failures.length) {
+    throw new Error(`W컨셉 ${failures.join(" / ")} — 나머지 계정 송장입력은 진행함, 매출 합산은 건너뜀`);
   }
   const { outPath, rowCount } = combineXlsxFiles(files);
   log(`두 계정 합산: 데이터 ${rowCount}행 → ${outPath}`);
