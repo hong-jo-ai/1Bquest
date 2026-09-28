@@ -11,6 +11,7 @@
  * 실행: node labelPrintQueue.js            (최근 2일 접수분 중 미적재 건)
  *       node labelPrintQueue.js --test     (프린터 연결 확인용 테스트 라벨 1장)
  *       node labelPrintQueue.js --only 6890174004831
+ *       node labelPrintQueue.js --only 6890174004831 --reprint   (이미 인쇄한 건 다시)
  * launchd: com.paulvice.label-print-queue (5분). 인쇄 대상이 없어도 beat.
  */
 const fs = require("fs"), path = require("path");
@@ -60,7 +61,9 @@ async function enqueue(regiNo, pdf, meta) {
   const keys = (rows || []).map((r) => PREFIX + r.regi_no);
   const { data: existing } = keys.length ? await sb.from("kv_store").select("key").in("key", keys) : { data: [] };
   const done = new Set((existing || []).map((k) => k.key));
-  const todo = (rows || []).filter((r) => r.regi_no && !done.has(PREFIX + r.regi_no));
+  // --reprint: 이미 인쇄한 건도 다시(라벨 양식을 고친 뒤 재출력 — 2026-09-28 상품명 잘림 건). --only 와 함께만.
+  const reprint = args.includes("--reprint") && args.includes("--only");
+  const todo = (rows || []).filter((r) => r.regi_no && (reprint || !done.has(PREFIX + r.regi_no)));
   log(`접수분 ${rows?.length ?? 0} · 신규 인쇄대상 ${todo.length}`);
   let n = 0;
   for (const s of todo) {
