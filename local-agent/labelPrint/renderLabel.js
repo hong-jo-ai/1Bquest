@@ -137,6 +137,23 @@ function renderLabel(s) {
         width: mm(wMm), height: mm(hMm), lineGap: mm(gap), ellipsis: true,
       });
     };
+    /** 칸 안에 전부 들어가는 가장 큰 글자로(maxPt→minPt). 최소 크기로도 넘치면 그때만 말줄임. */
+    const fitBlock = (txt, x, y, wMm, hMm, maxPt, minPt, gap = 0.4) => {
+      const t = String(txt ?? "");
+      let size = maxPt;
+      for (; size > minPt; size -= 0.5) {
+        doc.font("kr").fontSize(size);
+        if (doc.heightOfString(t, { width: mm(wMm), lineGap: mm(gap) }) <= mm(hMm)) break;
+      }
+      block(t, x, y, wMm, size, hMm, gap);
+    };
+    /** 한 줄 — 폭 안에 들어갈 때까지 글자를 줄인다. */
+    const fitLine = (txt, x, y, wMm, maxPt, minPt) => {
+      const t = String(txt ?? "");
+      let size = maxPt;
+      for (; size > minPt; size -= 0.5) { doc.font("kr").fontSize(size); if (doc.widthOfString(t) <= mm(wMm)) break; }
+      T(t, x, y + (maxPt - size) * 0.15, size);
+    };
     const bar = (text, x, y, wMm, hMm) => {
       const mods = code128Modules(text);
       const total = mods.reduce((a, m) => a + m.w, 0);
@@ -164,7 +181,7 @@ function renderLabel(s) {
     T("(1/1)", 52, 51.2, 7.5);
     if (zip) { bar(zip, 4.5, 46.5, 32, 12.5); H(zip, 13.5, 59.8, 10.5); }
 
-    // 상품명(최대 3줄) + 각인 — 세로 분할선을 넘지 않게. 수량은 우체국 출력본과 같게 뒤에 붙인다.
+    // 상품명(칸에 맞춰 글자 크기 자동) + 각인 — 세로 분할선을 넘지 않게. 수량은 우체국 출력본과 같게 뒤에 붙인다.
     //
     // ⚠️ 옵션(색상)은 채널마다 오는 자리가 다르다.
     //   카페24·해리엇·29CM·스마트스토어 … → 수집 단계에서 상품명에 합쳐 넣는다(`prod = 상품명 + option_value`).
@@ -186,9 +203,18 @@ function renderLabel(s) {
     const head = nameBase.slice(0, nameBase.length - opt.length);
     const already = opt && nameBase.endsWith(opt) && (head === "" || /[\s\-–—:]$/.test(head));
     const optText = opt && opt !== "NONE" && !already ? ` (${opt})` : "";
-    block(`${s.product_name || ""}${optText}${s.qty ? `, 수량:${s.qty}` : ""}`, SAFE_L, 67.0, 58, 8.5, 15.5);
-    // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음"
-    T(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 9.5);
+    // 상품명이 잘려 나갔다(2026-09-28 사장님 사진: 밴드조절기+에끌라+메탈스트랩 3품목에서 셋째가 "메탈 스트"로 끊김).
+    // 원인 ①칸 높이를 15.5mm(3줄)로 묶어 뒀는데 실제 좌측칸은 [각인] 줄(103.2) 바로 위까지 비어 있다
+    //      ②각인이 상품명 안 "(각인:…)" 과 맨 아래 [각인] 줄에 두 번 찍혀 자리를 먹었다.
+    // → 칸을 33mm 로 넓히고, 그래도 넘치면 글자를 8.5→6pt 로 줄여 **전부 들어가게** 한다.
+    //   각인이 하나뿐이고 아래 줄에 그대로 찍힐 때만 상품명 안의 중복을 뺀다. 둘 이상이면 어느 품목의
+    //   각인인지가 상품명 옆에 있어야 하므로 남긴다(아래 줄은 첫 각인만 찍는다).
+    const engInName = String(s.product_name || "").match(/\(각인\s*:[^)]*\)/g) || [];
+    const bottomIsSame = engInName.length === 1 && !String(raw?.delivMsg || s.deliv_msg || "").trim();
+    const prodText = bottomIsSame ? String(s.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/, "") : String(s.product_name || "");
+    fitBlock(`${prodText}${optText}${s.qty ? `, 수량:${s.qty}` : ""}`, SAFE_L, 67.0, 58, 33, 8.5, 6);
+    // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음". 세로 분할선(66.7)을 넘지 않게 줄인다.
+    fitLine(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 59, 9.5, 6);   // 폭 59mm — 실물은 프린터에서 1~2mm 오른쪽으로 밀려 찍힌다
 
     // QR(종적조회) — 좌측칸 우상단
     try {
