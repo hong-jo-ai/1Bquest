@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Package, Mail, BatteryMedium, ExternalLink, Plus, Minus, AlertTriangle, Settings2, Check } from "lucide-react";
+import { Package, Mail, Scroll, BatteryMedium, ExternalLink, Plus, Minus, AlertTriangle, Settings2, Check } from "lucide-react";
 import { loadSupplies, saveSupplies, type SupplyItem, type SupplyType } from "@/lib/suppliesStorage";
 
-const TYPE_LABEL: Record<SupplyType, string> = { box: "택배박스", bag: "완충봉투", battery: "배터리" };
-const TYPE_ICON: Record<SupplyType, typeof Package> = { box: Package, bag: Mail, battery: BatteryMedium };
-const TYPE_ORDER: SupplyType[] = ["box", "bag", "battery"];
+const TYPE_LABEL: Record<SupplyType, string> = { box: "택배박스", bag: "완충봉투", wrap: "습자지", battery: "배터리" };
+const TYPE_ICON: Record<SupplyType, typeof Package> = { box: Package, bag: Mail, wrap: Scroll, battery: BatteryMedium };
+const TYPE_ORDER: SupplyType[] = ["box", "bag", "wrap", "battery"];
 
 function modelText(it: SupplyItem): string {
   if (it.type !== "battery") return it.notes ?? "";
@@ -50,7 +50,7 @@ export default function SuppliesManager() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">부자재 재고</h2>
-          <p className="text-xs text-zinc-400 mt-0.5">택배박스 · 완충봉투 · 시계 배터리 (출고 연동 자동 차감)</p>
+          <p className="text-xs text-zinc-400 mt-0.5">택배박스 · 완충봉투 · 습자지 · 시계 배터리 (출고 연동 자동 차감)</p>
         </div>
         <div className="flex items-center gap-3">
           {saved && (

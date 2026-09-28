@@ -1,5 +1,5 @@
 /**
- * 부자재(택배박스·완충봉투·시계 배터리) 재고 — 완제품 재고와 별개 코너.
+ * 부자재(택배박스·완충봉투·습자지·시계 배터리) 재고 — 완제품 재고와 별개 코너.
  * 저장: localStorage + Vercel KV (syncStorage, key=SUPPLIES_KEY). 완제품 inventoryStorage 와 동일 패턴.
  *
  * 소모 모델:
@@ -9,7 +9,7 @@
  */
 import { saveWithSync, loadFromServer } from "./syncStorage";
 
-export type SupplyType = "box" | "bag" | "battery";
+export type SupplyType = "box" | "bag" | "wrap" | "battery";
 
 /** 배터리가 매핑된 시계 모델(출고 매칭용). brand+model 로 상품명 매칭 정밀도 확보. */
 export interface SupplyModelRef {
@@ -27,6 +27,7 @@ export interface SupplyItem {
   currentStock: number;
   reorderThreshold: number;   // 이 수량 이하면 발주 알림
   orderUrl?: string;          // 발주 링크
+  unitCost?: number;          // 개당 매입단가(원, VAT·배송 포함) — 재발주·원가 참고용
   unit?: string;              // 개 / 장 / EA
   notes?: string;
   // ── 자동 차감 스냅샷(Phase 2) ──
@@ -79,6 +80,10 @@ export const DEFAULT_SUPPLIES: SupplyItem[] = [
   { id: "box-dutyfree", type: "box", name: "면세점 납품 박스", boxRule: "dutyfree", currentStock: 0, reorderThreshold: 10, unit: "개", autoDeduct: true },
   // ── 완충봉투 ──
   { id: "bag-cushion", type: "bag", name: "시계포장용 완충제 봉투", boxRule: "cushion", currentStock: 246, reorderThreshold: 30, unit: "장", autoDeduct: true, notes: "시계 출고 1개당 1장" },
+  // ── 습자지(브랜드 로고 패턴, 수동관리) — 패키지랩 주문제작, 인쇄파일은 packagelab@naver.com ──
+  // 2026-09-28 첫 주문(네이버페이·주문자 홍성조): 각 259,000원(VAT·배송 포함). 파일=공유드라이브 다운로드/<브랜드> 습자지 <사이즈>.pdf
+  { id: "wrap-harriot", type: "wrap", name: "해리엇 습자지 230×450", currentStock: 6000, reorderThreshold: 500, unit: "매", unitCost: 43, autoDeduct: false, orderUrl: "https://packagelab.co.kr/product/detail.html?product_no=681", notes: "패키지랩 [주문제작] 습자지 · 1도 · 6,000매 259,000원(≈43원/매) · 9/28 주문분" },
+  { id: "wrap-paulvice", type: "wrap", name: "폴바이스 습자지 170×450", currentStock: 8000, reorderThreshold: 500, unit: "매", unitCost: 32, autoDeduct: false, orderUrl: "https://packagelab.co.kr/product/detail.html?product_no=681", notes: "패키지랩 [주문제작] 습자지 · 1도 · 8,000매 259,000원(≈32원/매) · 9/28 주문분" },
   // ── 배터리(규격별) ──
   battery("SR920SW", [H("성산 레이디"), H("서해"), H("일구")], 8),
   battery("SR626SW", [H("광안 레이디"), P("데비"), P("미니엘"), P("켈리"), P("엠마")], 2),
@@ -116,7 +121,7 @@ export async function loadSupplies(): Promise<SupplyItem[]> {
   const merged = DEFAULT_SUPPLIES.map((def) => {
     const cur = byId.get(def.id);
     return cur
-      ? { ...def, currentStock: cur.currentStock, reorderThreshold: cur.reorderThreshold, orderUrl: cur.orderUrl ?? def.orderUrl, baselineConsumed: cur.baselineConsumed, baselineAt: cur.baselineAt, autoDeduct: cur.autoDeduct ?? def.autoDeduct, notes: cur.notes ?? def.notes }
+      ? { ...def, currentStock: cur.currentStock, reorderThreshold: cur.reorderThreshold, orderUrl: cur.orderUrl ?? def.orderUrl, unitCost: cur.unitCost ?? def.unitCost, baselineConsumed: cur.baselineConsumed, baselineAt: cur.baselineAt, autoDeduct: cur.autoDeduct ?? def.autoDeduct, notes: cur.notes ?? def.notes }
       : { ...def };
   });
   // 저장본에만 있는 사용자 추가 항목 보존
