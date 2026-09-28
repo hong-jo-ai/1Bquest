@@ -88,7 +88,9 @@
      *   폴바이스 4종은 아직 미검증이라 **크게 잡는다**(좁게 잡으면 고객이 큰 크기를 골라 넘친다). */
     var FONTS = [
       { n: "나눔고딕", en: "Nanum Gothic", f: "'Nanum Gothic',sans-serif", t: "ko", wk: 1.00 },
-      { n: "한글 필기체", en: "Korean Script", f: "'Nanum Pen Script','Nanum Brush Script',cursive", t: "ko", wk: 1.00 },
+      // 각인기(EzCad) 글꼴 이름 그대로 — 주문서에 이 이름이 찍혀야 각인할 때 헷갈리지 않는다.
+      // 화면은 나눔손글씨 펜으로 **근사**한다(윤 봄날은 웹폰트가 없다).
+      { n: "Yoon 봄날 M", en: "Yoon Bomnal M", f: "'Nanum Pen Script','Nanum Brush Script',cursive", t: "ko", wk: 1.00 },
       { n: "Century Gothic", en: "Century Gothic", f: "'Century Gothic','Didact Gothic','Questrial',sans-serif", t: "en", wk: 1.02 },
       { n: "Sign Painter", en: "Sign Painter", f: "'SignPainter','Sign Painter','Caveat Brush',cursive", t: "en", wk: 1.02 }
     ];
