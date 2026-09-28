@@ -55,7 +55,7 @@ async function all(table, cols, apply = (q) => q) {
 
   // ② 오늘 접수한 송장
   const ship = (await all("pp_shipments", "channel,req_type,recipient_name,product_name,qty,regi_no,created_at",
-    q => q.gte("created_at", today + "T00:00:00Z"))).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    q => q.gte("created_at", today + "T00:00:00+09:00"))).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const out = ship.filter(s => s.req_type !== "2"), ret = ship.filter(s => s.req_type === "2");
   L.push(`\n■ 오늘 우체국 접수 — 출고 ${out.length} · 회수 ${ret.length}`);
   const byCh = {};
