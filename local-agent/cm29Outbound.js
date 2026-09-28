@@ -124,6 +124,10 @@ async function getDetail(page, serial, log) {
   const slice = recvIdx >= 0 ? lines.slice(recvIdx) : lines;
   const grab = (label) => { const i = slice.findIndex(l => l.startsWith(label)); if (i<0) return ""; const same = slice[i].slice(label.length).trim(); return same || (slice[i+1]||"").trim(); };
   const name = grab("수령자명");
+  // 주문인 — 수령자 블록 **앞**(주문자 정보)에서만 찾는다. 라벨이 없으면 빈칸(라벨 '주문인' 칸, 2026-09-28).
+  const head = recvIdx >= 0 ? lines.slice(0, recvIdx) : [];
+  const bi = head.findIndex(l => /^주문자(명| 이름)?\b/.test(l) && !/정보/.test(l));
+  const buyer = bi < 0 ? "" : (head[bi].replace(/^주문자(명| 이름)?/, "").trim() || (head[bi+1]||"").trim());
   const phoneRaw = grab("연락처");
   const phone = (phoneRaw.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/) || [""])[0].replace(/\s/g,"");
   const addrRaw = grab("배송 주소");
@@ -166,7 +170,7 @@ async function getDetail(page, serial, log) {
     return [];
   }).catch(() => []);
   log(`  ${serial}: ${name} / ${phone} / (${zip}) ${addr.slice(0,30)}... / 상품 ${items.length}개`);
-  return { serial, name, phone, zip, addr, msg, items };
+  return { serial, name, buyer, phone, zip, addr, msg, items };
 }
 
 async function getCm29OutboundRows(_opts, log) {
@@ -185,7 +189,7 @@ async function getCm29OutboundRows(_opts, log) {
     const d = await getDetail(page, s, log);
     const items = d.items.length ? d.items : [{ prod: "" }];
     for (const it of items) {
-      rows.push({ name: d.name, mobile: phoneIsMobile(d.phone)?d.phone:"", tel: phoneIsMobile(d.phone)?"":d.phone, addr: d.addr, zip: d.zip, prod: it.prod, color: "", qty: it.qty || "1", msg: d.msg, order: d.serial, seller: "29CM" });
+      rows.push({ name: d.name, buyer: d.buyer || "", mobile: phoneIsMobile(d.phone)?d.phone:"", tel: phoneIsMobile(d.phone)?"":d.phone, addr: d.addr, zip: d.zip, prod: it.prod, color: "", qty: it.qty || "1", msg: d.msg, order: d.serial, seller: "29CM" });
     }
   }
   return rows;

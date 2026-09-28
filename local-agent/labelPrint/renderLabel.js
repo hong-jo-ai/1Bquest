@@ -148,7 +148,16 @@ function renderLabel(s) {
     // ── 좌측칸 ────────────────────────────────────────────────
     T(`주문일 : ${date}`, SAFE_L, 12.9, 7.5);   // 로고(y 2~11)와 겹치지 않게
     T(`접수국 : ${String(s.regipo_nm || "").replace(/우체국$/, "")}`, SAFE_L, 16.1, 7.5);
+    // 주문인 — 선물 주문처럼 수령인과 다르면 포장할 때 헷갈린다(사장님 2026-09-28). 다를 때만 굵게.
+    // 채널이 주문자를 안 주면(orderer_name NULL) 예전처럼 빈칸.
+    const buyer = String(s.orderer_name || "").trim().slice(0, 20);
     T("주문인:", SAFE_L, 21.6, 7.5);
+    if (buyer) {
+      const same = buyer.replace(/\s/g, "") === String(s.recipient_name || "").replace(/\s/g, "");
+      doc.font("kr").fontSize(7.5);
+      const x = SAFE_L + doc.widthOfString("주문인: ") / mm(1);
+      (same ? T : H)(buyer, x, 21.6, 7.5);
+    }
     T(`고객 주문처: ${s.channel || ""}`, SAFE_L, 25.2, 7.5);
     R("요금:  계약요금", 58, 34.8, 8);
     R(`신청일 : ${date}`, 60.5, 43.2, 8);

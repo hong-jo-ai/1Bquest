@@ -46,6 +46,8 @@ function shipmentRecord(row, params, result, extra = {}) {
     channel: row.seller,
     req_type: params.reqType,
     recipient_name: row.name || null,
+    // 주문인 — 채널이 안 주면 NULL(라벨은 빈칸). 비회원 주문은 이름칸에 전화번호가 오기도 해 숫자뿐이면 버린다.
+    orderer_name: (row.buyer && !/^[\d\s-]+$/.test(String(row.buyer))) ? String(row.buyer).trim() : null,
     recipient_addr: (params.recAddr1 || "") + (params.recAddr2 ? " " + params.recAddr2 : ""),
     recipient_zip: params.recZip || null,
     recipient_mobile: params.recMob || null,

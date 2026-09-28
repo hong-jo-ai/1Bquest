@@ -134,7 +134,7 @@ function rowsFromExcel(file, log) {
   const col = (re) => head.findIndex((h) => re.test(h));
   const ci = {
     serial: col(/주문일련번호/), order: col(/^주문번호/), addr1: col(/주소1|기본주소/), addr2: col(/주소2|상세주소/),
-    name: col(/^수령자/), zip: col(/우편번호/), tel: col(/전화번호/), hp: col(/핸드폰|휴대/), opt: col(/^옵션/),
+    name: col(/^수령자/), buyer: col(/^주문자(명)?$/), zip: col(/우편번호/), tel: col(/전화번호/), hp: col(/핸드폰|휴대/), opt: col(/^옵션/),
     qty: col(/주문수량|수량/), prod: col(/상품명/), msg: col(/출고메시지|배송메시지|메모/),
   };
   const out = [];
@@ -153,7 +153,7 @@ function rowsFromExcel(file, log) {
     const prod = g(ci.prod).replace(/^\[\d+\]\s*/, "").trim();
     const order = g(ci.serial) || g(ci.order);
     if (!addr) { log && log(`  ⚠️ 주소 없음 — 스킵 (${name})`); continue; }
-    out.push({ name, mobile, tel, addr, zip, prod, color: g(ci.opt), qty: g(ci.qty) || "1", msg: g(ci.msg), order, seller: "무신사" });
+    out.push({ name, buyer: g(ci.buyer), mobile, tel, addr, zip, prod, color: g(ci.opt), qty: g(ci.qty) || "1", msg: g(ci.msg), order, seller: "무신사" });
   }
   return out;
 }

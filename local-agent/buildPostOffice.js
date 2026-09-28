@@ -132,7 +132,7 @@ async function cafe24Rows(m){
         ? engravingFromMessage(r.shipping_message) : "");
       const prod=clean(it.product_name)+(clean(it.option_value)?" "+clean(it.option_value):"")+(eng?` (각인:${eng})`:"");
       const a1=clean(r.address1), a2=clean(r.address2);
-      rows.push({name:clean(r.name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
+      rows.push({name:clean(r.name),buyer:clean(o.billing_name),mobile:isMobile(mob)?mob:"",tel:isMobile(mob)?"":mob,addr:(a1+" "+a2).trim(),addr1:a1,addr2:a2,zip:clean(r.zipcode),prod,color:"",qty:String(it.quantity||1),msg:clean(r.shipping_message),order:clean(o.order_id),seller:m.seller});
     }
   }
   return rows;
@@ -172,8 +172,9 @@ function mergeByRecipient(rows){
   const map = new Map();
   for(const r of rows){
     const key = recipientKey(r);
-    if(!map.has(key)) map.set(key, { ...r, _orders:[], _prods:[], _qty:0 });
+    if(!map.has(key)) map.set(key, { ...r, _orders:[], _prods:[], _qty:0, _buyers:[] });
     const g = map.get(key);
+    if(r.buyer && !g._buyers.includes(r.buyer)) g._buyers.push(r.buyer);
     if(r.order && !g._orders.includes(r.order)) g._orders.push(r.order);
     const p = String(r.prod||"").trim();
     if(p && !g._prods.includes(p)) g._prods.push(p);
@@ -183,8 +184,8 @@ function mergeByRecipient(rows){
   return [...map.values()].map((g) => {
     let prod = g._prods.join(" / ");
     if(prod.length > 400) prod = prod.slice(0,397) + "..."; // goodsNm 최대 400byte
-    const { _orders, _prods, _qty, ...rest } = g;
-    return { ...rest, prod, qty:String(g._qty||1), order:g._orders.sort().join("+") };
+    const { _orders, _prods, _qty, _buyers, ...rest } = g;
+    return { ...rest, prod, qty:String(g._qty||1), order:g._orders.sort().join("+"), buyer:_buyers.join(", ") };
   });
 }
 

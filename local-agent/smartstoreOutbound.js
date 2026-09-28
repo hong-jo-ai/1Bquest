@@ -97,6 +97,7 @@ function toRows(orders, engravings = {}) {
     rows.push({
       order: orderNo,
       name: sa.name || "",
+      buyer: o.ordererName || "",   // 주문인 — 선물 주문이면 수령인과 다르다(라벨 '주문인' 칸)
       mobile: isMobile ? phone : "",
       tel: isMobile ? "" : phone,          // 0502 안심번호는 일반전화 칸으로
       addr: [sa.baseAddress, sa.detailedAddress].filter(Boolean).join(" "),
