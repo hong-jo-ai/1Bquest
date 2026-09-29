@@ -126,8 +126,9 @@ async function getDetail(page, serial, log) {
   const name = grab("수령자명");
   // 주문인 — 수령자 블록 **앞**(주문자 정보)에서만 찾는다. 라벨이 없으면 빈칸(라벨 '주문인' 칸, 2026-09-28).
   const head = recvIdx >= 0 ? lines.slice(0, recvIdx) : [];
-  const bi = head.findIndex(l => /^주문자(명| 이름)?\b/.test(l) && !/정보/.test(l));
-  const buyer = bi < 0 ? "" : (head[bi].replace(/^주문자(명| 이름)?/, "").trim() || (head[bi+1]||"").trim());
+  // 29CM 상세창 라벨은 "구매자 정보 / 구매자명"이다(2026-09-29 실측). "주문자"도 함께 받는다.
+  const bi = head.findIndex(l => /^(구매자|주문자)(명| 이름)/.test(l));
+  const buyer = bi < 0 ? "" : (head[bi].replace(/^(구매자|주문자)(명| 이름)/, "").trim() || (head[bi+1]||"").trim());
   const phoneRaw = grab("연락처");
   const phone = (phoneRaw.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/) || [""])[0].replace(/\s/g,"");
   const addrRaw = grab("배송 주소");
