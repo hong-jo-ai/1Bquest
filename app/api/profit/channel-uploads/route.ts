@@ -25,6 +25,8 @@ import {
   UPLOADABLE_CHANNELS,
 } from "@/lib/multiChannelData";
 
+import { loadCogsContext, enrichUploadsWithCogs, type CogsContext } from "@/lib/profit/channelCogs";
+
 export const dynamic = "force-dynamic";
 
 interface UploadMeta {
@@ -112,11 +114,21 @@ export async function GET() {
     return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
 
+  // 채널 리포트엔 원가가 없다 — 재고 매핑으로 원가율을 구해 빈 dailyCogs 를 채운다(응답만, 저장소는 그대로).
+  // 실패해도 매출은 보여야 하므로 원가 보강만 건너뛴다.
+  let cogsCtx: CogsContext | null = null;
+  try {
+    cogsCtx = await loadCogsContext();
+  } catch (e) {
+    console.error("[channel-uploads] 원가 보강 실패:", e instanceof Error ? e.message : e);
+  }
+
   const uploads: Partial<Record<UploadableChannel, MergedChannelUpload>> = {};
   for (const row of data ?? []) {
     const channel = (row.key as string).slice(KEY_PREFIX.length) as UploadableChannel;
     if (!ALLOWED.includes(channel)) continue;
     const record = normalizeStored(row.data);
+    if (cogsCtx) record.uploads = enrichUploadsWithCogs(channel, record.uploads, cogsCtx);
     const merged = recordToResponse(record);
     if (merged) uploads[channel] = merged;
   }

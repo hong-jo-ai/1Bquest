@@ -42,8 +42,16 @@ export const DEFAULT_SETTINGS: ProfitSettings = {
     musinsa: 30,
     "29cm": 30,
     naver_smartstore: 5.563,
+    // 해리엇 카페24 국문몰 — 키가 없어 0% 로 계산되던 것(2026-09 매출 2,649만에 수수료 0). PG 기본 수수료.
+    cafe24_harriot: 3.85,
     // 해리엇 카페24 글로벌 영문몰(shop_no=2) — 식스샵 글로벌 대체. 카페24 기본 수수료 기준.
     cafe24_harriot_global: 3.85,
+    // 조선몰(더비비드) — 벤더 수수료 35%
+    chosunmall: 35,
+    // 직거래·단체주문 — 계좌이체라 수수료 없음(키가 없으면 '수수료 미설정' 경고가 뜬다)
+    direct_paulvice: 0,
+    direct_harriot: 0,
+    b2b_harriot: 0,
     groupbuy: 0,
     kakao_gift: 30, // 카카오 + 피오르드(중간 벤더) 통합 수수료. 정산서 검증으로 30% 확정
     // 면세점: 매출로 입력하는 '입금예정액'이 이미 제드아이티씨 수수료 12% 제외 net → 추가 수수료 0
@@ -55,6 +63,15 @@ export const DEFAULT_SETTINGS: ProfitSettings = {
   vatRate: 10,
   usdToKrw: 1450,
 };
+
+/**
+ * 영세율(수출) 채널 — 부가세를 빼지 않는다.
+ * 영문몰은 해외 배송 판매라 매출세액이 0 인데, 전체 매출에 10/110 을 일괄 차감해 이익이 줄어 보였다(2026-09).
+ */
+export const ZERO_RATED_CHANNELS: ReadonlySet<string> = new Set([
+  "cafe24_global",
+  "cafe24_harriot_global",
+]);
 
 function getDb() {
   const url = process.env.SUPABASE_URL;

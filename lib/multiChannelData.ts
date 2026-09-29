@@ -115,6 +115,8 @@ export interface MultiChannelData {
   unmatchedSkus?: string[];
   /** SKU 칼럼이 없어 nameAliases 매핑이 필요한 상품명. */
   unmatchedNames?: string[];
+  /** dailyCogs 가 원가율 추정으로 채워졌는지 (lib/profit/channelCogs.ts). */
+  cogsEstimated?: boolean;
   inventory: InventoryItem[];
   /** 옵션(색상)단위 전체 판매 — 재고 색상별 차감용 (topProducts는 상위10·옵션무시). */
   salesByOption?: Array<{ sku: string; name: string; option: string; sold: number }>;

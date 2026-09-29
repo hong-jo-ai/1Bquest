@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calendar, Settings as SettingsIcon, X, Plus, Trash2, Check } from "lucide-react";
 import type { DailyData, DailyCost } from "@/lib/cafe24Data";
 import type { ProfitSettings, FixedCost } from "@/lib/profitSettings";
-import { DEFAULT_SETTINGS } from "@/lib/profitSettings";
+import { DEFAULT_SETTINGS, ZERO_RATED_CHANNELS } from "@/lib/profitSettings";
 
 export interface ProfitChannel {
   id: string;
@@ -176,7 +176,12 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
   // ── 계산 ───────────────────────────────────────────────────────────────
   const calc = useMemo(() => {
     // 채널별 매출/주문 합산 (기간 내) — visible만
-    const perChannel: Record<string, { revenue: number; orders: number; fee: number }> = {};
+    const perChannel: Record<string, { revenue: number; orders: number; fee: number; vat: number }> = {};
+    // 영문몰은 영세율(수출) — 부가세를 빼지 않는다. 채널별로 따로 계산.
+    const vatOf = (channelId: string, rev: number) =>
+      ZERO_RATED_CHANNELS.has(channelId) ? 0 : (rev * settings.vatRate) / (100 + settings.vatRate);
+    // 매출이 있는데 수수료율 키가 없는 채널 — 0% 로 조용히 계산되던 것을 드러낸다.
+    const missingFeeChannels: string[] = [];
     let totalRev = 0;
     let totalOrders = 0;
 
@@ -189,15 +194,16 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           chOrd += d.orders;
         }
       }
+      if (chRev > 0 && settings.channelFees[ch.id] === undefined) missingFeeChannels.push(ch.name);
       const feeRate = settings.channelFees[ch.id] ?? 0;
       const fee = (chRev * feeRate) / 100;
-      perChannel[ch.id] = { revenue: chRev, orders: chOrd, fee };
+      perChannel[ch.id] = { revenue: chRev, orders: chOrd, fee, vat: vatOf(ch.id, chRev) };
       totalRev += chRev;
       totalOrders += chOrd;
     }
 
-    // 부가세 (매출의 vatRate/(100+vatRate))
-    const vatLiability = (totalRev * settings.vatRate) / (100 + settings.vatRate);
+    // 부가세 (과세 채널 매출의 vatRate/(100+vatRate), 영세율 채널은 0)
+    const vatLiability = Object.values(perChannel).reduce((s, c) => s + c.vat, 0);
     const revenueExVat = totalRev - vatLiability;
 
     // 채널 수수료 합
@@ -306,9 +312,11 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
       let dayShipments = 0;
       let dayFee = 0;
       let dayCogs = 0;
+      let dayVat = 0;
       for (const ch of visibleChannels) {
         const found = ch.daily.find((d) => d.date === date);
         const rev = found?.revenue ?? 0;
+        dayVat += vatOf(ch.id, rev);
         const ord = found?.orders ?? 0;
         const ship = found?.shipments ?? ord;
         const feeRate = settings.channelFees[ch.id] ?? 0;
@@ -319,7 +327,6 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
         const cogsEntry = ch.cogs?.find((c) => c.date === date);
         if (cogsEntry) dayCogs += cogsEntry.cost;
       }
-      const dayVat = (dayRev * settings.vatRate) / (100 + settings.vatRate);
       const dayShipping = dayShipments * settings.shippingPerOrder;
       const metaEntry = metaDaily.find((m) => m.date === date);
       // 메타 광고는 카페24 자사몰만 위해 집행 → 카페24 보고일 때만 차감
@@ -332,6 +339,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
 
     return {
       perChannel,
+      missingFeeChannels,
       totalRev,
       totalOrders,
       totalShipments,
@@ -488,7 +496,7 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
         <PnlSection title="변동비 (매출 연동)">
           <PnlRow
             label="부가세"
-            sub={`매출의 ${settings.vatRate}/(100+${settings.vatRate})`}
+            sub={`과세 채널 매출의 ${settings.vatRate}/(100+${settings.vatRate}) · 영문몰은 영세율 0`}
             amount={-calc.vatLiability}
           />
           {channels.map((ch) => {
@@ -548,6 +556,12 @@ export default function ProfitDashboard({ channels, unmatchedSkus, unmatchedName
           )}
           <PnlRow label="매출총이익" amount={calc.grossProfit} bold accent />
         </PnlSection>
+
+        {calc.missingFeeChannels.length > 0 && (
+          <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+            ⚠ 수수료율 미설정 채널: {calc.missingFeeChannels.join(", ")} — 수수료 0% 로 계산 중입니다. ⚙ 비용 설정에서 입력하세요.
+          </div>
+        )}
 
         {unmatchedSkus && unmatchedSkus.length > 0 && (
           <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
