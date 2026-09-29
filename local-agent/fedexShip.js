@@ -28,10 +28,14 @@ const SHIPPER = {
 const HS_WATCH = "910211";
 // 원산지 — 미국 CBP 는 시계(스트랩 제외)의 원산지를 **무브먼트가 조립된 국가**로 본다.
 // 한국에서 디자인·조립해도 원산지는 바뀌지 않는다(사장님 방침 2026-09-15, 메모리 origin-claim-policy).
-// 설월·기원 = RONDA(스위스). 무브먼트를 모르는 라인은 예전 값(KR)으로 두되 새 라인이 나오면 여기에 추가할 것.
+// 무브먼트를 모르는 라인은 예전 값(KR)으로 두되 새 라인이 나오면 여기에 추가할 것.
+// 🔴 설월 = RONDA 708 **Swiss Parts**(사장님 실물 확인 2026-09-29) — 스위스 부품을 론다 **태국** 공장에서 조립한 판.
+//    Swiss Made(스위스 조립, 5석)가 아니다. 한국에서 문페이즈 디스크만 바꿔 재조립하는 건 무브먼트 원산지를
+//    바꾸지 않는다고 판단(표시 부품 교체) → TH. 9/28 까지는 CH 로 신고했다(워크시트 반려 계기로 정정).
+// 기원도 RONDA **Swiss Parts · 1 jewel**(사장님 실물 확인 2026-09-29) → 같은 이유로 TH.
 const COO_DEFAULT = "KR";
 const COO_BY_MOVEMENT = [
-  { re: /설월|seolwol|기원|ki:?won/i, coo: "CH" },   // RONDA 708 / RONDA
+  { re: /설월|seolwol|기원|ki:?won/i, coo: "TH" },   // RONDA Swiss Parts (론다 태국 공장 조립)
 ];
 const cooFor = (prod) => (COO_BY_MOVEMENT.find((x) => x.re.test(String(prod || ""))) || {}).coo || COO_DEFAULT;
 // 세관 품목설명은 상품명만으로는 무엇인지 모른다("SEOLWOL") — 품목 종류를 앞에 붙인다.
