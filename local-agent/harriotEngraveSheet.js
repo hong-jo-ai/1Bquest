@@ -10,8 +10,9 @@
  *   수기 정정분은 주문서 원문도 같이 찍는다 — 어느 쪽을 새기는지 작업자가 알아야 하므로.
  *
  * 작업 전에 걸러주는 것(빨간 경고):
- *   - 영문 서체(Arial·Times New Roman)에 한글·한자 → 그 서체엔 글자가 없다(EzCad 가 대체 서체로 찍음)
- *   - 한자 포함 → 각인기 서체에 글리프가 있는지 EzCad 미리보기로 확인
+ *   ⛔ 서체·문구를 "고쳐야 할 것"으로 경고하지 않는다 — **고객이 신청한 그대로 새기는 게 원칙**이다.
+ *      영문 서체(TNR·Arial)에 한글을 섞어도 각인 미리보기에 한글로 나왔으면 실제로도 그렇게 새긴다
+ *      (사장님 2026-09-30). 여기서 거르는 건 문구가 불완전하거나(높이 없음·옛 형식·배송메시지) 보내면 안 되는 건뿐.
  *   - 공백 2칸 연속 · 서체/높이 미지정 · 옛 형식(⏎ 없는 줄바꿈) · 수량 ≥ 2 · 발송 보류
  *   - 배송메시지에 "각인" 이 있는데 주문서 칸이 비어 있음
  *
@@ -46,10 +47,7 @@ const F = {
   나눔명조: ["/System/Library/Fonts/Supplemental/AppleMyungjo.ttf"],
 };
 const FONT_ALIAS = { "nanum gothic": "나눔고딕", "nanum myeongjo": "나눔명조", "times": "Times New Roman" };
-const LATIN_FONTS = new Set(["Arial", "Times New Roman"]);
 
-const HANGUL = /[ㄱ-ㆎ가-힣]/;
-const HANJA = /[㐀-鿿豈-﫿]/;
 
 /** "문구 ⏎ 문구  [서체 · 높이 2.5mm]" → { lines, font, mm, legacy } */
 function parseEngraving(raw) {
@@ -73,13 +71,9 @@ function parseEngraving(raw) {
 
 function warningsFor(job) {
   const w = [];
-  const all = job.lines.join(" ");
   if (!job.font) w.push("서체 미지정 — 설월 기본은 국문 나눔명조 / 영문 Times New Roman. 확인 후 진행");
   if (!job.mm) w.push("글자 높이 미지정 — 기본 2.5mm(짧은 문구 2.7 · 긴 문구 2.3~2.5)");
-  if (LATIN_FONTS.has(job.font) && HANGUL.test(all)) w.push(`${job.font} 에는 한글이 없다 — EzCad 가 다른 서체로 찍는다. 고객에게 서체 확인`);
-  if (LATIN_FONTS.has(job.font) && HANJA.test(all)) w.push(`${job.font} 에는 한자가 없다 — 고객에게 서체 확인`);
-  if (!LATIN_FONTS.has(job.font) && HANJA.test(all)) w.push("한자 포함 — EzCad 미리보기에서 글자가 네모/빈칸으로 안 나오는지 확인");
-  if (job.lines.some((l) => /\S {2,}\S/.test(l))) w.push("공백 2칸 이상 연속 — 고객 입력 그대로다. 의도인지 한 번 보고 새길 것");
+  if (job.lines.some((l) => /\S {2,}\S/.test(l))) w.push("공백 2칸 연속 — 고객 입력 그대로 새길 것(한 칸으로 줄이지 말 것)");
   if (job.legacy) w.push("옛 형식 — ' / ' 가 줄바꿈인지 문구인지 불분명");
   if (job.qty >= 2) w.push(`수량 ${job.qty} — 각인칸은 하나. 두 점 다 새기는지 고객 확인`);
   if (job.held) w.push(`🛑 발송 보류 중(${job.held}) — 각인하지 말 것`);
