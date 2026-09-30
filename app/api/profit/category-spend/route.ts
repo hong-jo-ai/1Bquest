@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     // 매입 전자세금계산서(현금이체 비용) — write_date 기준. 통장 미업로드분의 실비 보강.
     db
       .from("finance_tax_invoices")
-      .select("category, total_amount, write_date, partner_name, partner_reg_no")
+      .select("category, total_amount, write_date, partner_name, partner_reg_no, approval_no")
       .eq("invoice_type", "purchase")
       .gte("write_date", since)
       .lte("write_date", until),
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
   for (const r of invRes.data ?? []) {
     const amt = Number(r.total_amount) || 0;
     if (amt <= 0) continue;
-    const override = findInvoiceBrandOverride(r.partner_reg_no as string | null, r.partner_name as string | null);
+    const override = findInvoiceBrandOverride(r.partner_reg_no as string | null, r.partner_name as string | null, r.approval_no as string | null);
     if (override) {
       const bucket = (invoiceBrandAds[override.brand] ??= { amount: 0, count: 0 });
       bucket.amount += amt;
