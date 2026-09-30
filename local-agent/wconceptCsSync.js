@@ -13,6 +13,7 @@
 require("dotenv").config({ override: true });
 const os = require("os"), path = require("path");
 const { chromium } = require("playwright");
+const { openWconcept } = require("./wconceptBrowser");
 const { loginWconcept, ACCOUNTS } = require("./wconceptSync");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
@@ -57,16 +58,12 @@ async function scrapeClaims(page, claimType, log) {
 (async () => {
   log("=== W컨셉 CS 동기화 시작 ===");
   const acc = ACCOUNTS[0];
-  const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
-  const ctx = await chromium.launchPersistentContext(profileDir, {
-    headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
-    args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"],
-    ignoreDefaultArgs: ["--enable-automation"],
-  });
+  // 상시 창(wconceptBrowser) — 실행마다 크롬을 새로 띄우면 launchd 에서 SIGSEGV 로 죽었다(2026-09-30 전환)
+  const wc = await openWconcept(acc, log); const ctx = wc.ctx;
   ctx.on("page", (p) => p.on("dialog", (d) => d.accept().catch(() => {})));
   const claims = [];
   try {
-    const page = ctx.pages()[0] || (await ctx.newPage());
+    const page = wc.page;
     page.on("dialog", (d) => d.accept().catch(() => {}));
     await page.goto("https://newpin.wconcept.co.kr/Order/OrderReturnManageShipping?type=return", { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
     await sleep(3000);
@@ -91,7 +88,7 @@ async function scrapeClaims(page, claimType, log) {
       }
       log(`W컨셉 ${ct} ${rows.length}건`);
     }
-  } finally { await ctx.close().catch(() => {}); }
+  } finally { await wc.release(); }
 
   // ⚠️ 하트비트는 클레임 유무와 무관하게 찍는다.
   // 예전엔 여기서 바로 return 해서 "클레임 0건인 날 = 하트비트 없음"이 됐고,

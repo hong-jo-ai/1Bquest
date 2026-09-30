@@ -2,6 +2,7 @@
 require("dotenv").config({ override: true });
 const os = require("os"), path = require("path"), fs = require("fs");
 const { chromium } = require("playwright");
+const { openWconcept } = require("./wconceptBrowser");
 const { loginWconcept, ACCOUNTS } = require("./wconceptSync");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
@@ -51,13 +52,10 @@ function mapRow(cells) {
 
 (async () => {
   const acc = ACCOUNTS[0];
-  const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
-  const ctx = await chromium.launchPersistentContext(profileDir, {
-    headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
-    args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"], ignoreDefaultArgs: ["--enable-automation"],
-  });
+  // 상시 창(wconceptBrowser) — 실행마다 크롬을 새로 띄우면 launchd 에서 SIGSEGV 로 죽었다(2026-09-30 전환)
+  const wc = await openWconcept(acc, log); const ctx = wc.ctx;
   try {
-    const page = ctx.pages()[0] || (await ctx.newPage());
+    const page = wc.page;
     await page.goto(READY, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
     await sleep(3000);
     if (/Auth\/Login/i.test(page.url())) { const ok = await loginWconcept(ctx, page, acc, log); if (!ok) throw new Error("로그인 실패"); await page.goto(READY, { waitUntil: "domcontentloaded" }); await sleep(3000); }
@@ -85,5 +83,5 @@ function mapRow(cells) {
     out.slice(0, 20).forEach(r => log(JSON.stringify([r.name,r.mobile,r.tel,r.addr,r.zip,r.prod,r.qty,r.msg,r.order,r.seller])));
     fs.writeFileSync("/tmp/wconcept_po_rows.json", JSON.stringify(out, null, 2));
     log("→ /tmp/wconcept_po_rows.json 저장 (" + out.length + "건)");
-  } finally { await sleep(1500); await ctx.close().catch(()=>{}); }
+  } finally { await sleep(1500); await wc.release(); }
 })().catch((e) => { console.error("ERR", e); process.exit(1); });

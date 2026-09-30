@@ -6,6 +6,7 @@
 require("dotenv").config({ override: true });
 const os = require("os"), path = require("path"), fs = require("fs");
 const { chromium } = require("playwright");
+const { openWconcept } = require("./wconceptBrowser");
 const { loginWconcept, ACCOUNTS } = require("./wconceptSync");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LST = "https://newpin.wconcept.co.kr/Order/LstShippingOrder";       // 결제완료내역
@@ -66,15 +67,12 @@ async function getWconceptOutboundRows({ doConfirm = true, accounts = ACCOUNTS }
 }
 
 async function processAccount(acc, doConfirm, log) {
-  const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
-  const ctx = await chromium.launchPersistentContext(profileDir, {
-    headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
-    args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"], ignoreDefaultArgs: ["--enable-automation"],
-  });
+  // 상시 창(wconceptBrowser) — 실행마다 크롬을 새로 띄우면 launchd 에서 SIGSEGV 로 죽었다(2026-09-30 전환)
+  const wc = await openWconcept(acc, log); const ctx = wc.ctx;
   // JS confirm() 자동 수락
   ctx.on("page", (p) => p.on("dialog", (d) => { log(`DIALOG: ${d.message().slice(0,80)}`); d.accept().catch(()=>{}); }));
   try {
-    const page = ctx.pages()[0] || (await ctx.newPage());
+    const page = wc.page;
     page.on("dialog", (d) => { log(`DIALOG: ${d.message().slice(0,80)}`); d.accept().catch(()=>{}); });
     await page.goto(LST, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(()=>{});
     await sleep(3000);
@@ -175,7 +173,7 @@ async function processAccount(acc, doConfirm, log) {
     }
     log(`상품준비중내역 매핑 ${total}건 (송장있어 제외 ${shipped}) → 출고대기 ${out.length}건`);
     return out;
-  } finally { await sleep(1500); await ctx.close().catch(()=>{}); }
+  } finally { await sleep(1500); await wc.release(); }
 }
 
 module.exports = { getWconceptOutboundRows };

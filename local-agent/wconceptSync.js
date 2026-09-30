@@ -13,6 +13,7 @@ const path = require("path");
 const fs = require("fs");
 const XLSX = require("xlsx");
 const { chromium } = require("playwright");
+const { openWconcept } = require("./wconceptBrowser");
 const { waitForWconceptCode } = require("./wconceptSmsCode");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -259,28 +260,14 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
   const failures = [];
   for (const acc of ACCOUNTS) {
    try {
-    const profileDir = path.join(os.homedir(), ".paulvice-marketplace-agent", `wconcept_${acc.key}`);
-    fs.mkdirSync(profileDir, { recursive: true });
-    // ⚠️ 이전 실행이 남긴 유령 Chrome / Singleton 락을 먼저 치운다.
-    //    미정리 시 launchPersistentContext 가 "기존 세션에서 여는 중"으로 기존 인스턴스에
-    //    넘기고 즉시 종료돼, 다운로드 시점에 "Target page, context or browser has been closed"
-    //    로 죽는다. 2026-09-12~14 4연속 실패가 이것 — wconcept_1 에 죽은 PID(48414)의
-    //    SingletonLock 이 9/14 17:04 부터 남아 있었다.
-    //    무신사·29CM 은 2026-07-14 부터 marketplaceSync 에서 같은 보호를 받아 왔고
-    //    W컨셉만 이 경로가 빠져 있었다. 구현을 복제하지 않고 그 export 를 그대로 쓴다.
-    //    best-effort — 정리에 실패해도 동기화는 계속한다(페일오픈).
+    // 상시 창(wconceptBrowser)에 붙는다. 예전엔 여기서 매번 launchPersistentContext 로 크롬을 새로 띄웠고,
+    // launchd 실행에서 엑셀 다운로드 순간 **크롬이 SIGSEGV 로 죽었다**(9/11~9/30, 크래시 리포트가 실패 시각과 초 단위 일치).
+    // 켜 둔 창에 붙는 29CM·무신사는 같은 시각에도 멀쩡했다 → 2026-09-30 W컨셉도 상시 창으로 전환.
+    // ⚠️ 여기서 cleanupProfileLock 을 부르면 상시 창을 죽인다. 유령 락 정리는 openWconcept 가 창이 없을 때만 한다.
+    const wc = await openWconcept(acc, log);
+    const ctx = wc.ctx;
     try {
-      require("./marketplaceSync").cleanupProfileLock(profileDir, log);
-    } catch (e) {
-      log(`W컨셉 ${acc.key}번 프로필 락 정리 건너뜀: ${e.message.slice(0, 60)}`);
-    }
-    const ctx = await chromium.launchPersistentContext(profileDir, {
-      headless: false, channel: "chrome", acceptDownloads: true, locale: "ko-KR", viewport: null,
-      args: ["--disable-blink-features=AutomationControlled", "--start-maximized", "--lang=ko-KR"],
-      ignoreDefaultArgs: ["--enable-automation"],
-    });
-    try {
-      let page = ctx.pages()[0] || (await ctx.newPage());
+      let page = wc.page;
       const ok = await loginWconcept(ctx, page, acc, log);
       if (!ok) throw new Error(`W컨셉 ${acc.key}번 로그인/인증 실패`);
 
@@ -310,13 +297,13 @@ async function syncWconcept({ startDate, endDate, ingest = false }, log) {
           }
           if (attempt === 2) throw e;
           log(`W컨셉 ${acc.key}번 다운로드 1차 실패 → 재시도: ${e.message.slice(0, 80)}`);
-          page = ctx.pages()[0] || (await ctx.newPage());
+          page = await ctx.newPage();
           await sleep(3000);
         }
       }
       files.push(file);
     } finally {
-      await ctx.close().catch(() => {});
+      await wc.release();
     }
    } catch (e) {
     failures.push(`${acc.key}번: ${e.message}`);
