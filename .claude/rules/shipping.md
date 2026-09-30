@@ -85,6 +85,7 @@
 ## 6. 채널별로 다른 것
 - **스마트스토어**: 접수 직후 발송처리(취소 창 닫기). 취소건 재고는 `ssStockSync` 가 자동 +1 → **반송품 도착해도 또 +1 금지**.
 - **카카오선물**: 우리 쪽 주문 테이블이 없다. 취소 = 송장 `cancelShipment` / 기록 자동 / **재고는 PO 에서 수동 제거** / 피오르드(song@fjord.kr)에 통보.
+- **W컨셉 브라우저 = 계정별 상시 창**(CDP 9341·9342, `wconceptBrowser.js`, 2026-09-30). 실행마다 크롬을 새로 띄우던 시절엔 launchd 에서 엑셀 다운로드 순간 크롬이 죽었다. 새 W컨셉 스크립트도 `openWconcept` 를 쓸 것 — `launchPersistentContext`·`cleanupProfileLock` 을 계정 프로필에 쓰면 상시 창이 죽는다.
 - **W컨셉**: 수집 0건이면 `runPostOffice.js` 또는 `wconceptOutbound.js`(주문확인 포함). `wconceptReadyExtract.js` 는 읽기전용이라 0건이 정상 → 오진 주의. 배달완료 가드 해제(`WC_ALLOW_DELIVERED=1`)는 사장님 승인 후 수동으로만.
 - **무신사**: "신규 0건"을 믿지 말고 배송출고처리 그리드 행수를 본다. AG-Grid 우클릭 엑셀은 마스킹 → 접수에 사용 금지.
 - **조선몰**: 우체국 파이프라인 밖(10:30 단독). 처리한 발주서 메일 id 를 kv `chosunmall_po_seen` 에 남긴다 — **새 발주서가 없는 날 어제 것을 다시 처리하지 않게**(2026-09-23 중복 텔레그램·중복 회신초안 사고).
