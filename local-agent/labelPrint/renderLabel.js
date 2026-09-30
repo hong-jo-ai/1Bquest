@@ -59,6 +59,26 @@ function splitAreaCd(cd) {
   return { head: s.slice(0, 2), mid: s.slice(2, 5), a: s.slice(5, 7), b: s.slice(7, 9) };
 }
 
+/**
+ * 각인 줄바꿈 표시 ⏎ 는 라벨 서체(AppleSDGothicNeo)에 글리프가 없어 **엑스박스(□)로 찍힌다**
+ * (사장님 2026-09-30). 줄 번호 ①②③ 으로 바꿔 찍는다 — 서체에 있고, " / " 와 달리
+ * 날짜(2026/03/28) 같은 문구 속 글자와 헷갈리지 않는다.  "A ⏎ B ⏎ C" → "①A ②B ③C"
+ */
+const CIRC = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮";
+function lineMarks(t) {
+  const parts = String(t).split(/\s*⏎\s*/);
+  if (parts.length < 2) return String(t);
+  return parts.map((p, i) => (i ? " " : "") + (CIRC[i] || `(${i + 1})`) + p.trim()).join("");
+}
+function labelEngraving(str) {
+  const s = String(str ?? "");
+  if (!s.includes("⏎")) return s;
+  const withParen = s.replace(/\(각인\s*:\s*([^)]*)\)/g, (_, t) => `(각인:${lineMarks(t)})`);
+  if (!withParen.includes("⏎")) return withParen;
+  const m = /^(\s*\[각인\]\s*)([\s\S]*)$/.exec(withParen);
+  return m ? m[1] + lineMarks(m[2]) : lineMarks(withParen);
+}
+
 function engravingOf(s, raw) {
   const msg = String(raw?.delivMsg || s.deliv_msg || "").trim();
   if (msg) return msg;
@@ -224,9 +244,9 @@ function renderLabel(s) {
     // _added: 이미 인쇄한 송장에 주문이 나중에 합쳐져 다시 찍는 라벨 — 먼저 나온 라벨은 버리고 이걸로 포장.
     const prodLine = (s._added ? "[추가품목 재인쇄·이 라벨로 포장] " : "")
       + (items.length > 1 ? `[합포장 ${items.length}건] ` + items.map(lineOf).join(" / ") : lineOf(items[0]));
-    fitBlock(prodLine, SAFE_L, 67.0, 58, 33, 8.5, 6);
+    fitBlock(labelEngraving(prodLine), SAFE_L, 67.0, 58, 33, 8.5, 6);
     // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음". 세로 분할선(66.7)을 넘지 않게 줄인다.
-    fitLine(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 59, 9.5, 6);   // 폭 59mm — 실물은 프린터에서 1~2mm 오른쪽으로 밀려 찍힌다
+    fitLine(engrave ? labelEngraving(engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 59, 9.5, 6);   // 폭 59mm — 실물은 프린터에서 1~2mm 오른쪽으로 밀려 찍힌다
 
     // QR(종적조회) — 좌측칸 우상단
     try {
@@ -281,4 +301,4 @@ function renderTestLabel(note = "") {
   });
 }
 
-module.exports = { renderLabel, renderTestLabel, xmlTag, splitAreaCd, fmtRegi };
+module.exports = { labelEngraving, renderLabel, renderTestLabel, xmlTag, splitAreaCd, fmtRegi };
