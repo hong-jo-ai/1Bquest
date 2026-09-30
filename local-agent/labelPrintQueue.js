@@ -65,10 +65,21 @@ async function enqueue(regiNo, pdf, meta) {
   const reprint = args.includes("--reprint") && args.includes("--only");
   const todo = (rows || []).filter((r) => r.regi_no && (reprint || !done.has(PREFIX + r.regi_no)));
   log(`접수분 ${rows?.length ?? 0} · 신규 인쇄대상 ${todo.length}`);
+  // 합포장(같은 등기번호 여러 줄)은 라벨 한 장에 전 품목을 싣는다. 줄마다 돌면 첫 줄만 그려지고
+  // 나머지는 "이미 큐에 있음"으로 버려져 포장 누락이 났다(2026-09-30 무신사 김지연·카페24 박지현).
+  // 형제 줄이 이번 조회 범위 밖일 수 있어 등기번호로 다시 읽는다.
+  const regis = [...new Set(todo.map((r) => r.regi_no))];
+  const { data: sibs } = regis.length ? await sb.from("pp_shipments").select("*").in("regi_no", regis).eq("req_type", "1").eq("status", "submitted") : { data: [] };
+  const byRegi = new Map();
+  for (const r of sibs || []) (byRegi.get(r.regi_no) || byRegi.set(r.regi_no, []).get(r.regi_no)).push(r);
+  const seen = new Set();
   let n = 0;
   for (const s of todo) {
+    if (seen.has(s.regi_no)) continue;
+    seen.add(s.regi_no);
     try {
-      const pdf = await renderLabel(s);
+      const group = (byRegi.get(s.regi_no) || [s]).sort((a, b) => String(a.registered_at).localeCompare(String(b.registered_at)));
+      const pdf = await renderLabel(group.length > 1 ? { ...s, _items: group } : s);
       await enqueue(s.regi_no, pdf, { order_number: s.order_number, recipient_name: s.recipient_name, channel: s.channel, shipment_id: s.id });
       n++; log(`  적재 ${s.regi_no} ${s.recipient_name} (${s.channel})`);
     } catch (e) { log(`  ❌ ${s.regi_no}: ${e.message}`); }

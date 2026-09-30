@@ -87,7 +87,10 @@ function renderLabel(s) {
   const recTel = vTel
     ? vTel.replace(/^(\d{4})(\d{4})(\d{4})$/, "$1-$2-$3").replace(/^(\d{4})(\d{3})(\d{4})$/, "$1-$2-$3")
     : (s.recipient_mobile || s.recipient_tel || "");
-  const engrave = engravingOf(s, raw);
+  // 합포장: 같은 등기번호에 pp_shipments 가 여러 줄이면 큐가 s._items 로 전부 넘긴다.
+  // 첫 줄만 그리던 시절 둘째 품목이 라벨에서 사라져 포장 누락이 났다(2026-09-30 무신사 김지연 — 에끌라 골드 누락).
+  const items = Array.isArray(s._items) && s._items.length ? s._items : [s];
+  const engrave = items.map((it) => engravingOf(it, raw)).find(Boolean) || "";
   const date = ymd(s.registered_at);
 
   return new Promise((resolve, reject) => {
@@ -198,21 +201,28 @@ function renderLabel(s) {
     //    9/21 안주원·9/22 권주하 두 건이 색상 없이 나갔다). 색상 통합 상품명이라 정확히 이 형태다.
     //    "이미 상품명에 있다"고 볼 수 있는 건 색상이 **이름 끝에 단독으로** 붙은 경우뿐이다
     //    (예: "… - 로즈골드"). 앞 글자가 &·/·+·, 처럼 나열 기호면 통합 표기이므로 색상을 찍는다.
-    const opt = String(s.color || "").trim();
-    const nameBase = String(s.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/g, "").trim();
-    const head = nameBase.slice(0, nameBase.length - opt.length);
-    const already = opt && nameBase.endsWith(opt) && (head === "" || /[\s\-–—:]$/.test(head));
-    const optText = opt && opt !== "NONE" && !already ? ` (${opt})` : "";
+    const optTextOf = (it) => {
+      const opt = String(it.color || "").trim();
+      const nameBase = String(it.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/g, "").trim();
+      const head = nameBase.slice(0, nameBase.length - opt.length);
+      const already = opt && nameBase.endsWith(opt) && (head === "" || /[\s\-–—:]$/.test(head));
+      return opt && opt !== "NONE" && !already ? ` (${opt})` : "";
+    };
     // 상품명이 잘려 나갔다(2026-09-28 사장님 사진: 밴드조절기+에끌라+메탈스트랩 3품목에서 셋째가 "메탈 스트"로 끊김).
     // 원인 ①칸 높이를 15.5mm(3줄)로 묶어 뒀는데 실제 좌측칸은 [각인] 줄(103.2) 바로 위까지 비어 있다
     //      ②각인이 상품명 안 "(각인:…)" 과 맨 아래 [각인] 줄에 두 번 찍혀 자리를 먹었다.
     // → 칸을 33mm 로 넓히고, 그래도 넘치면 글자를 8.5→6pt 로 줄여 **전부 들어가게** 한다.
     //   각인이 하나뿐이고 아래 줄에 그대로 찍힐 때만 상품명 안의 중복을 뺀다. 둘 이상이면 어느 품목의
     //   각인인지가 상품명 옆에 있어야 하므로 남긴다(아래 줄은 첫 각인만 찍는다).
-    const engInName = String(s.product_name || "").match(/\(각인\s*:[^)]*\)/g) || [];
+    const engInName = items.flatMap((it) => String(it.product_name || "").match(/\(각인\s*:[^)]*\)/g) || []);
     const bottomIsSame = engInName.length === 1 && !String(raw?.delivMsg || s.deliv_msg || "").trim();
-    const prodText = bottomIsSame ? String(s.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/, "") : String(s.product_name || "");
-    fitBlock(`${prodText}${optText}${s.qty ? `, 수량:${s.qty}` : ""}`, SAFE_L, 67.0, 58, 33, 8.5, 6);
+    const lineOf = (it) => {
+      const name = bottomIsSame ? String(it.product_name || "").replace(/\s*\(각인\s*:[^)]*\)/, "") : String(it.product_name || "");
+      return `${name}${optTextOf(it)}${it.qty ? `, 수량:${it.qty}` : ""}`;
+    };
+    // 합포장이면 품목 수를 앞에 적어 포장할 때 개수부터 보이게 한다.
+    const prodLine = items.length > 1 ? `[합포장 ${items.length}건] ` + items.map(lineOf).join(" / ") : lineOf(items[0]);
+    fitBlock(prodLine, SAFE_L, 67.0, 58, 33, 8.5, 6);
     // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음". 세로 분할선(66.7)을 넘지 않게 줄인다.
     fitLine(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 59, 9.5, 6);   // 폭 59mm — 실물은 프린터에서 1~2mm 오른쪽으로 밀려 찍힌다
 
