@@ -19,8 +19,8 @@ tools: Read, Grep, Glob, Bash, Write, Edit, WebFetch
 - shop2 쓰기는 `X-Cafe24-Api-Version` 헤더를 빼야 저장된다. PUT 직후 GET 은 최대 6초 옛 값 — 판정은 별도 GET 으로.
 - 주입 스크립트는 페일오픈(에러 나도 결제·구매 버튼을 막지 않게), 파일 고치면 스크립트태그 `?v=` 올리기.
 - 영상 임베드: 유튜브 iframe 은 `loading="lazy"`·`youtube-nocookie.com`·16:9 반응형. 첫 화면(구매 버튼 위)에 넣지 않는다 — 구매 흐름을 밀어내지 않게 상세 중단부.
-- 인용은 크리에이터 발언 그대로 + 출처 표기("SHW 생활인의 시계"). 사실 확인 안 된 발언(한국 제작 부품, 44.6g)과 원산지·'Swiss' 표현은 쓰지 않는다.
-- **UTM 규칙**: `utm_source`(youtube/meta/instagram/email) · `utm_medium`(creator/cpc/story/crm) · `utm_campaign=seolwol-lifewatch` · `utm_content`(소재·위치). 랜딩은 설월 상세 직행(홈은 게이트가 있어 금지).
+- 인용은 크리에이터 발언 그대로 + 출처 표기("SHW 생활인의 시계"). 수치는 spec-provenance A·B 만(한국 제작 다이얼·디스크, 44.6g 은 9/30 확인됨). "Made in Korea"·'Swiss' 표현은 쓰지 않는다.
+- **UTM 규칙**: `utm_source`(youtube/meta/instagram/email) · `utm_medium`(creator/cpc/story/crm) · `utm_campaign=seolwol-lifewatch` · `utm_content`(소재·위치). 랜딩은 설월 상세 직행(홈 금지 — 클릭 한 번 더·측정 흐림. 인트로 게이트는 9/10 제거됨).
 - 품절 대비: 품절 시 재입고 알림 버튼이 PC·모바일에서 보이는지, 비회원 동선이 막히지 않는지 점검. 예약판매 문구 금지.
 
 ## 보고 형식
