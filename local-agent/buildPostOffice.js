@@ -347,7 +347,7 @@ async function collectOutboundRows(){
 }
 
 module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient,
-  CAFE24_MALLS, cafe24Token, engravingOf, engravable, engravingFromMessage, manualEngravings };
+  CAFE24_MALLS, cafe24Token, cafe24Rows, isPreorderProduct, engravingOf, engravable, engravingFromMessage, manualEngravings };
 
 // CLI: 엑셀 빌드 + 텔레그램/이메일 발송 (기존 동작)
 async function main(){
