@@ -32,6 +32,8 @@ const {
 const { listHolds } = require("./postParcel/holdOrders");
 
 const ARGV = process.argv.slice(2);
+// --orders a,b,c : 상태와 무관하게 그 주문만(이미 배송중으로 넘긴 뒤 다시 뽑을 때)
+const ONLY = (() => { const i = ARGV.indexOf("--orders"); return i >= 0 ? new Set(String(ARGV[i + 1] || "").split(",").map((x) => x.trim()).filter(Boolean)) : null; })();
 const KST = () => new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(" ", "_").replace(/:/g, "").slice(0, 15);
 const DRIVE = "/Users/mac/Library/CloudStorage/GoogleDrive-shong@harriotwatches.com/공유 드라이브/다운로드/각인작업";
 const OUT_DIR = fs.existsSync(path.dirname(DRIVE)) ? DRIVE : require("os").tmpdir();
@@ -106,7 +108,8 @@ async function buildJobs() {
   const jobs = [], plain = [];
   for (const o of orders) {
     const r = (o.receivers || [])[0] || {};
-    const ship = (o.items || []).filter((it) => String(it.status_text || "") === "배송준비중");
+    if (ONLY && !ONLY.has(o.order_id)) continue;
+    const ship = (o.items || []).filter((it) => ONLY || String(it.status_text || "") === "배송준비중");
     for (const it of ship) {
       const prod = String(it.product_name || "").trim() + (it.option_value ? ` ${it.option_value}` : "");
       const base = {
@@ -158,7 +161,7 @@ function render({ jobs, plain }, file) {
     doc.fillColor("#000").moveDown(0.6);
 
     jobs.forEach((j, i) => {
-      const est = 70 + j.lines.length * 30 + j.warnings.length * 14 + (j.optionText ? 14 : 0);
+      const est = 70 + j.lines.length * 30 + j.warnings.length * 26 + (j.optionText ? 14 : 0) + (j.orderLines ? 14 : 0);
       ensure(est);
       const top = doc.y;
       doc.rect(L, top, W, 1.2).fill(j.warnings.length ? "#c00" : "#000");
@@ -179,6 +182,7 @@ function render({ jobs, plain }, file) {
         doc.y = y + 30;
       });
 
+      if (j.orderLines) doc.font("kr").fontSize(9).fillColor("#555").text(`주문서에 온 값(이대로 새기지 않음): ${j.orderLines.join(" / ")}`, L);
       if (j.optionText) doc.font("kr").fontSize(9).fillColor("#555").text(`주문서 원문(새기지 않음): ${j.optionText.replace(/\s*⏎\s*/g, " / ")}`, L);
       if (j.source === "배송메시지" || j.warnings.some((w) => w.includes("배송메시지"))) doc.font("kr").fontSize(9).fillColor("#555").text(`배송메시지 원문: ${j.msg}`, L);
       for (const w of j.warnings) doc.font("krB").fontSize(10).fillColor("#c00").text(`※ ${w}`, L);
@@ -198,8 +202,67 @@ function render({ jobs, plain }, file) {
   });
 }
 
+/**
+ * 🔴 고객 화면의 줄바꿈 재현. 2026-09-30 전 미리보기는 고객이 친 Enter 만 ⏎ 로 넘기고
+ * 화면의 자동 줄바꿈은 빠뜨렸다(박상진: 주문서 1줄, 화면 3줄). 그래서 **라이브 미리보기에
+ * 같은 문구·서체·높이를 넣고 보이는 줄을 다시 읽는다.** 고치기 전 주문도 화면 기준으로 새길 수 있게.
+ * 실패하면 주문서 값 그대로 두고 경고만 단다(각인을 막지는 않는다).
+ */
+async function screenLines(jobs) {
+  if (!jobs.length || ARGV.includes("--no-screen")) return;
+  let br;
+  try {
+    const { chromium } = require("./node_modules/playwright");
+    br = await chromium.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true });
+    const pg = await br.newPage({ viewport: { width: 390, height: 844 } });
+    await pg.goto("https://harriotkorea.cafe24.com/product/detail.html?product_no=136", { waitUntil: "domcontentloaded", timeout: 60000 });
+    await pg.waitForSelector("#hrtEngBtn", { timeout: 20000 });
+    await pg.$eval("#hrtEngBtn", (e) => e.click());
+    for (const j of jobs) {
+      if (!/설월/.test(j.prod)) continue;
+      const got = await pg.evaluate(async ({ text, font, mm }) => {
+        const ta = document.getElementById("hrtEngTxt");
+        ta.value = text; ta.dispatchEvent(new Event("input"));
+        const btn = [...document.querySelectorAll("#hrtEngFonts button")].find((b) => b.firstChild && b.firstChild.textContent.trim() === font);
+        if (btn) btn.click();
+        const sz = document.getElementById("hrtEngSize"); sz.value = mm; sz.dispatchEvent(new Event("input"));
+        await document.fonts.ready; await new Promise((r) => setTimeout(r, 150));
+        ta.dispatchEvent(new Event("input"));
+        const out = document.getElementById("hrtEngOut"), node = out.firstChild;
+        if (!node) return null;
+        const lh = parseFloat(getComputedStyle(out).fontSize) || 1, r = document.createRange();
+        const lines = []; let cur = "", last = null;
+        for (let i = 0; i < node.data.length; i++) {
+          const ch = node.data[i];
+          if (ch === "\n") { lines.push(cur); cur = ""; last = null; continue; }
+          r.setStart(node, i); r.setEnd(node, i + 1);
+          const rc = r.getClientRects(), top = rc.length ? rc[rc.length - 1].top : null;
+          if (top !== null && last !== null && top - last > lh * 0.5) { lines.push(cur); cur = ""; }
+          if (top !== null) last = top;
+          cur += ch;
+        }
+        lines.push(cur);
+        return { lines: lines.map((x) => x.trim()).filter(Boolean), found: !!btn };
+      }, { text: j.lines.join("\n"), font: j.font || "나눔명조", mm: j.mm || "2.5" });
+      if (!got) continue;
+      if (!got.found) { j.warnings.push(`미리보기에 '${j.font}' 서체 버튼이 없어 화면 줄바꿈을 확인 못 함`); continue; }
+      if (got.lines.join("\u0000") !== j.lines.join("\u0000")) {
+        j.orderLines = j.lines;
+        j.lines = got.lines;
+        if (!j.lines.some((l) => /\S {2,}\S/.test(l))) j.warnings = j.warnings.filter((w) => !w.startsWith("공백 2칸"));
+        j.warnings.unshift(`줄바꿈 정정 — 주문서엔 ${j.orderLines.length}줄로 왔지만 고객 화면엔 ${got.lines.length}줄로 보였다. 위 칸(화면 기준)대로 새길 것`);
+      }
+      j.screenChecked = true;
+    }
+  } catch (e) {
+    console.log(`화면 줄바꿈 확인 실패: ${e.message}`);
+    for (const j of jobs) j.warnings.push("화면 줄바꿈 확인 실패 — 사이트 미리보기에서 직접 확인 후 새길 것");
+  } finally { if (br) await br.close().catch(() => {}); }
+}
+
 async function main() {
   const data = await buildJobs();
+  await screenLines(data.jobs);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const file = path.join(OUT_DIR, `해리엇각인_${KST()}.pdf`);
   await render(data, file);
