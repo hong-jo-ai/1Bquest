@@ -45,7 +45,7 @@
 (preorder-shipping-guard · postoffice-hold-orders · shipping-hold-switch · parcel-pickup-holidays)
 
 ## 3. 각인 — 새기면 되돌릴 수 없다
-- **각인 작업표**: `node local-agent/harriotEngraveSheet.js --open` → 해리엇 국문몰 배송준비중 전부를 줄 단위 복사용 PDF(공유드라이브 `다운로드/각인작업/`)로. 높이 미지정·배송메시지 문구·보류만 빨간 경고로 거른다.
+- **각인 작업표**: `node local-agent/harriotEngraveSheet.js --open` → 해리엇 국문몰 배송준비중 전부를 줄 단위 복사용 PDF(공유드라이브 `다운로드/각인작업/`)로. 높이 미지정·배송메시지 문구·보류만 빨간 경고로 거른다. 라이브 미리보기로 **고객 화면의 줄바꿈을 재현**해 주문서와 다르면 "줄바꿈 정정"으로 화면 기준 줄을 준다. 배송중으로 넘긴 뒤엔 `--orders 주문1,주문2`.
 - **고객이 신청한 그대로 새긴다**(사장님 2026-09-30). TNR·Arial 에 한글을 골라도 각인 미리보기에 한글로 나왔으면 그대로 새긴다 — 서체 불일치로 고객에게 되묻지 않는다.
 - 주문서 각인칸이 우선. 주문서 밖(웹챗·메일·배송메시지)으로 온 각인은 kv `manual_engravings`(스마트스토어는 `smartstore_engraving_overrides`).
 - **배송메시지에 각인을 적는 고객이 있다**(각인칸을 못 찾아서). `buildPostOffice.js` 가 배송메시지에서 문구를 뽑아 송장에 올리고, 못 뽑으면 `확인요 ※배송메시지:…` 로 원문을 찍는다 — **송장에 `확인요` 가 보이면 새기기 전에 문구부터 확정한다.**(2026-09-22 해리엇 배상아 건)
