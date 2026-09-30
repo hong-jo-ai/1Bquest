@@ -134,6 +134,25 @@ async function buildJobs() {
 }
 
 // ── PDF ──
+/**
+ * 복사되지 않는 글자 — 글리프를 **도형(path)** 으로 그린다. 텍스트가 아니라서 드래그 복사에 안 딸려온다.
+ * 줄 번호("1줄")를 텍스트로 찍었더니 여러 줄을 한 번에 긁으면 "2줄 3줄" 까지 복사돼
+ * EzCad 에 붙이기 번거로웠다(사장님 2026-09-30). 눈에는 보이고 복사에는 안 잡히게.
+ */
+function drawAsShape(doc, str, x, y, size, color) {
+  const [file, post] = F.kr;
+  if (!fkCache.krShape) { const f = fontkit.openSync(file); fkCache.krShape = f.fonts ? (f.fonts.find((z) => z.postscriptName === post) || f.fonts[0]) : f; }
+  const font = fkCache.krShape, run = font.layout(str), sc = size / font.unitsPerEm;
+  let cx = x;
+  doc.save();
+  run.glyphs.forEach((g, i) => {
+    const d = g.path.scale(sc, -sc).translate(cx, y + size * 0.85).toSVG();
+    if (d) doc.path(d).fill(color);
+    cx += run.positions[i].xAdvance * sc;
+  });
+  doc.restore();
+}
+
 const fkCache = {};
 function hasGlyphs(fontKey, text) {
   const [file, post] = F[fontKey] || [];
@@ -177,7 +196,7 @@ function render({ jobs, plain }, file) {
         const face = hasGlyphs(j.font, ln) ? j.font : hasGlyphs("kr", ln) ? "kr" : "uni";
         const y = doc.y;
         doc.rect(L + 34, y, W - 34, 26).fill("#eeeeee");
-        doc.fillColor("#888").font("kr").fontSize(9).text(`${n + 1}줄`, L + 4, y + 8, { width: 28 });
+        drawAsShape(doc, `${n + 1}줄`, L + 4, y + 8, 9, "#888");
         doc.fillColor("#000").font(face).fontSize(16).text(ln, L + 42, y + 4, { width: W - 50, lineBreak: false });
         doc.y = y + 30;
       });
