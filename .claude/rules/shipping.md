@@ -98,6 +98,7 @@
 ## 7. 라벨 인쇄·운영 함정
 - **접수하면 인쇄 큐가 자동으로 깨어난다**(2026-09-23, `register.js kickLabelQueue`). 체감 지연은 노트북 폴링 20초뿐. 그래도 손으로 깨우려면 `launchctl kickstart gui/$(id -u)/com.paulvice.label-print-queue`.
 - 이미 인쇄한 라벨 다시 뽑기 = `node local-agent/labelPrintQueue.js --only <등기번호> --reprint`(등기번호 같으니 붙여서 그대로 발송).
+- 각인 줄바꿈 ⏎ 는 라벨 서체에 없어 □ 로 찍힌다 → 라벨에선 **①②③ 줄 번호**로 바꿔 찍는다(`renderLabel.js labelEngraving`, 2026-09-30). DB·주문서 값은 ⏎ 그대로.
 - 상품명 칸은 [각인] 줄 위까지 쓰고 넘치면 글자를 8.5→6pt 로 줄인다(2026-09-28 전엔 3줄에서 잘렸다).
 - 큐는 5분 주기, 노트북은 20초 폴링이라 **나눠 나온다.** "N장밖에 안 나왔다"면 `print_job` 에 `queued` 가 남았는지부터.
 - 라벨은 우체국 값이 아니라 **우리 DB 값을 찍는다** — DB 가 틀리면 라벨도 틀린다.
