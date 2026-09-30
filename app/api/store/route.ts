@@ -37,6 +37,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { key, data } = await req.json();
   if (!key) return Response.json({ error: "key 없음" }, { status: 400 });
+  // 재고 대장 통째 덮어쓰기 차단 — 새로고침 안 한 옛 탭·기기가 낡은 대장을 올려 반품 +1·메모를 지웠다(2026-09-30).
+  // 대장은 /api/inventory/entry(SKU 단위 병합)로만 쓴다.
+  if (/_inventory_v1$/.test(String(key))) {
+    return Response.json({ ok: false, error: "재고 대장은 /api/inventory/entry 로 저장 — 새로고침 필요" }, { status: 409 });
+  }
 
   const supabase = getClient();
   if (!supabase) return Response.json({ ok: false, reason: "DB_NOT_CONFIGURED" });

@@ -170,6 +170,9 @@ export default function InventoryManager() {
   >({});
   // 채널코드→재고SKU 매핑 사전 (서버 /api/inventory/sku-map). ref 라 rebuild 시 항상 최신 사용.
   const skuMapRef = useRef<SkuMapData>({ skuMaps: {}, optMaps: {}, nameMap: {}, alias: {} });
+  // 서버가 카페24에 실제로 push 하는 계산값(/api/inventory/levels). 있으면 화면 계산보다 우선한다.
+  // 🔴 화면은 입고일 이전 판매까지 세서 서버와 달랐다 — 에끌라 골드를 화면에서 108 로 맞추자 카페24엔 398 이 들어갔다(2026-09-30).
+  const levelsRef = useRef<Record<string, { totalSold: number; currentStock: number; liveTracked?: boolean }>>({});
 
   /** 제품 목록 재조합 (Cafe24 캐시 + 채널 업로드 + 최신 서버 데이터) */
   const rebuildProducts = useCallback((
@@ -186,7 +189,13 @@ export default function InventoryManager() {
     // 숨긴 SKU 목록(이름 포함) — 선택 복원 패널용. 목록에 없는 SKU(진열제외 등)는 코드만 표시.
     setHiddenItems([...hiddenSkus].sort().map((sku) => ({ sku, name: allProducts.find((x) => x.sku === sku)?.name })));
     const visible = allProducts.filter((p) => !hiddenSkus.has(p.sku));
-    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads, skuMapRef.current)));
+    const lv = levelsRef.current;
+    setProducts(buildInventoryProducts(visible, buildSoldBySku(cafe24Sales, uploads, skuMapRef.current)).map((p) => {
+      const l = lv[p.sku];
+      if (!l) return p;
+      const stockPct = p.entry.initialStock > 0 ? Math.round((l.currentStock / p.entry.initialStock) * 100) : 0;
+      return { ...p, totalSold: l.totalSold, currentStock: l.currentStock, liveTracked: !!l.liveTracked, stockPct, agingStatus: calcAgingStatus(p.daysInStock, l.currentStock) };
+    }));
   }, []);
 
   /** 최초 로드 — Cafe24 API + 채널 업로드 + 서버 동기화 */
@@ -206,14 +215,20 @@ export default function InventoryManager() {
     let cafe24Sales: { sku: string; sold: number }[] = [];
     let uploads: Record<string, { topProducts?: ChannelItem[]; salesByOption?: ChannelItem[] }> = {};
 
-    const [productsRes, salesRes, uploadsRes, skuMapRes] = await Promise.allSettled([
+    const [productsRes, salesRes, uploadsRes, skuMapRes, levelsRes] = await Promise.allSettled([
       fetch(`/api/cafe24/products?brand=${brand}`),
       // 판매수량은 "누적"(입고일 이후 전 주문)을 써야 정확 — 과거엔 이번달 TOP10 만 써서
       // TOP10 밖 상품이 유령재고로 뜨고 매월 리셋되는 버그가 있었음 (2026-07-29 수정).
       fetch(`/api/cafe24/sold-cumulative?brand=${brand}`),
       fetch("/api/profit/channel-uploads"),
       fetch(`/api/inventory/sku-map?brand=${brand}`),
+      fetch(`/api/inventory/levels?brand=${brand}`),
     ]);
+    levelsRef.current = {};
+    if (levelsRes.status === "fulfilled" && levelsRes.value.ok) {
+      const j = await levelsRes.value.json().catch(() => null);
+      if (j?.ok) for (const l of j.levels ?? []) levelsRef.current[l.sku] = l;
+    }
     if (skuMapRes.status === "fulfilled" && skuMapRes.value.ok) {
       const j = await skuMapRes.value.json();
       if (j.ok) skuMapRef.current = { skuMaps: j.skuMaps ?? {}, optMaps: j.optMaps ?? {}, nameMap: j.nameMap ?? {}, alias: j.alias ?? {} };
@@ -329,7 +344,7 @@ export default function InventoryManager() {
     setProducts(prev => prev.map(p => {
       if (p.sku !== sku) return p;
       const newEntry = { ...p.entry, ...patch };
-      const currentStock = Math.max(0, newEntry.initialStock + newEntry.manualAdjustment - p.totalSold - (newEntry.dutyfreeOut ?? 0));
+      const currentStock = p.liveTracked ? p.currentStock : Math.max(0, newEntry.initialStock + newEntry.manualAdjustment - p.totalSold - (newEntry.dutyfreeOut ?? 0));
       const daysInStock  = Math.floor((Date.now() - new Date(newEntry.stockInDate).getTime()) / 86_400_000);
       const agingStatus  = calcAgingStatus(daysInStock, currentStock);
       const stockPct     = newEntry.initialStock > 0 ? Math.round((currentStock / newEntry.initialStock) * 100) : 0;

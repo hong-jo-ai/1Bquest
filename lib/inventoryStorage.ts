@@ -29,6 +29,8 @@ export interface InventoryProduct extends ProductInfo {
   soldByChannel: Record<string, number>;
   totalSold: number;
   currentStock: number;
+  /** 카페24 재고추적 ON — 현재고는 카페24 실재고이고, 조정값은 동기화에 쓰이지 않는다 */
+  liveTracked?: boolean;
   daysInStock: number;
   agingStatus: AgingStatus;
   stockPct: number;
@@ -260,8 +262,10 @@ export function ensureArchiveInventorySeeded(): void {
   });
   saveWithSync(MANUAL_PRODUCTS_KEY(), Array.from(manualBySku.values()));
 
+  // 대장은 로컬에만 합친다(loadInventory 도 mergeArchiveEntries 로 합침). 예전엔 화면을 열 때마다
+  // 로컬 대장 전체를 서버로 올려, 로컬이 낡았으면 그 사이 적힌 반품 +1·메모를 지웠다(2026-09-30).
   const inventory = readLocalJson<Record<string, InventoryEntry>>(STORAGE_KEY(), {});
-  saveWithSync(STORAGE_KEY(), { ...ARCHIVE_ENTRIES, ...inventory });
+  localStorage.setItem(STORAGE_KEY(), JSON.stringify({ ...ARCHIVE_ENTRIES, ...inventory }));
 
   // 주의: 여기서 숨김 목록(HIDDEN_SKUS_KEY())을 건드리지 않는다.
   // 과거엔 아카이브 SKU를 숨김에서 강제로 제거(항상 노출)했는데,
@@ -293,18 +297,31 @@ export function loadInventory(): Record<string, InventoryEntry> {
   } catch { return mergeArchiveEntries({}); }
 }
 
+// 🔴 대장은 서버(kv)가 정본이다. 브라우저 사본을 통째로 서버에 올리지 않는다 — 사본이 낡았으면
+//    그 사이 스크립트·다른 기기가 적은 반품 +1·메모가 지워진다(2026-09-30 에끌라 골드 9/22 메모 유실).
+//    저장은 고친 SKU 의 고친 칸만 /api/inventory/entry 로 보낸다. 로컬은 화면 즉시 반영용 캐시일 뿐.
 export function saveInventory(data: Record<string, InventoryEntry>): void {
   if (typeof window === "undefined") return;
-  saveWithSync(STORAGE_KEY(), data);
+  localStorage.setItem(STORAGE_KEY(), JSON.stringify(data));
 }
 
 export function updateEntry(sku: string, patch: Partial<InventoryEntry>): void {
   const all = loadInventory();
   all[sku] = { ...defaultEntry(sku), ...all[sku], ...patch };
   saveInventory(all);
+  if (typeof window === "undefined") return;
+  fetch("/api/inventory/entry", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ brand: ACTIVE_BRAND, sku, patch }),
+  })
+    .then(async (r) => { if (!(r.ok && (await r.json())?.ok)) console.error("[재고] 서버 저장 실패", sku); })
+    .catch((e) => console.error("[재고] 서버 저장 실패", sku, e));
 }
 
 export async function syncInventoryFromServer(): Promise<Record<string, InventoryEntry> | null> {
+  // 예전 방식(전체 업로드)이 남긴 '미확정' 표시가 있으면 loadFromServer 가 낡은 로컬 대장을 다시 올린다 → 지운다.
+  if (typeof window !== "undefined") localStorage.removeItem("__sync_pending:" + STORAGE_KEY());
   return loadFromServer<Record<string, InventoryEntry>>(STORAGE_KEY());
 }
 

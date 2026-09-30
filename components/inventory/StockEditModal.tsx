@@ -38,7 +38,10 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
   const [categoryOverride, setCategoryOverride] = useState(product.entry.categoryOverride ?? "");
   const [discontinued, setDiscontinued] = useState(product.entry.discontinued ?? false);
 
-  const previewStock = Math.max(0, initialStock + adjustment - product.totalSold);
+  // 서버(카페24 push)와 같은 식 — 면세점 출고를 빼야 한다. 추적 ON 상품은 카페24 실재고가 그대로 간다.
+  const previewStock = product.liveTracked
+    ? product.currentStock
+    : Math.max(0, initialStock + adjustment - product.totalSold - (product.entry.dutyfreeOut ?? 0));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -229,6 +232,11 @@ export default function StockEditModal({ product, categories, onSave, onClose }:
             <span className="text-sm text-violet-600 dark:text-violet-400 font-medium">저장 후 현재 재고</span>
             <span className="text-2xl font-bold text-violet-700 dark:text-violet-300">{previewStock}개</span>
           </div>
+          {product.liveTracked && (
+            <p className="text-xs text-amber-600 -mt-3">
+              카페24 재고추적 ON 상품 — 현재고는 카페24 수량이 그대로 쓰여 여기 조정값은 반영되지 않습니다. 수량은 카페24에서 고치세요.
+            </p>
+          )}
 
           <button
             onClick={() => { onSave(product.sku, { initialStock, stockInDate, manualAdjustment: adjustment, notes, categoryOverride, discontinued }); onClose(); }}
