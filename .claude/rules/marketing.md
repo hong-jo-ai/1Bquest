@@ -49,3 +49,8 @@
 ## 7. 외부로 나가는 문구
 - 고객·파트너에게 나가는 메시지는 **초안 → 사장님 확인 → 발송**. "이렇게 써줘"는 발송 승인이 아니다.
 - 크리에이터·파트너 연락 채널은 대개 **카톡** — 사장님이 직접 보낸다. 나는 초안까지.
+
+## 8. 마케팅 에이전트 팀 (`.claude/agents/mkt-*`)
+- 분석 `mkt-insight-analyst`(읽기 전용) · 편집 `mkt-clip-editor` · 광고 `mkt-meta-ads`(PAUSED 까지) · 랜딩 `mkt-landing-cro` · CRM `mkt-crm`(초안까지) · 카피 `mkt-social-copy`(초안까지).
+- 지휘는 **메인 세션**이 한다(서브에이전트끼리는 서로 못 부른다). 캠페인마다 `docs/<캠페인>.md` 상태판을 두고 에이전트가 읽고 로그를 남긴다 — 첫 사례 `docs/seolwol-lifewatch-video-campaign.md`.
+- 밖으로 나가는 것(ACTIVE·발송·게시·라이브 반영)은 에이전트가 하지 않는다. 메인이 사장님 확인 후 실행.
