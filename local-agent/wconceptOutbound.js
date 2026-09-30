@@ -154,7 +154,10 @@ async function processAccount(acc, doConfirm, log) {
     await page.locator('#btnSearch, button:has-text("조회")').first().click({ timeout: 4000 }).catch(()=>{});
     await sleep(3500); await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(()=>{});
     const readyRows = await dataRows(page);
-    const out = []; const seen = new Set();
+    // 🔴 이 화면은 모든 줄을 DOM 에 **두 번** 그린다(로그 실측: 8→4·6→3·2→1). 예전엔 order|prod 로 한 줄만 남겨
+    //    같은 주문에 같은 상품 두 줄(1+1)까지 하나로 합쳐 버렸다 — 9/22 김선정 Z13815631 커프 실버 2개 중 1개만 출고.
+    //    → 키별로 센 뒤 절반만큼 행을 낸다. 홀수면 2배 가정이 깨진 것이니 경고하고 올림(누락보다 과다가 안전 — 접수 전 확인).
+    const groups = new Map();
     let total = 0, shipped = 0;
     for (const r of readyRows) {
       const m = mapReady(r);
@@ -162,8 +165,13 @@ async function processAccount(acc, doConfirm, log) {
       total++;
       if (m.invoice) { shipped++; continue; }
       const k = m.order + "|" + m.prod;
-      if (seen.has(k)) continue; seen.add(k);
-      out.push(m);
+      if (!groups.has(k)) groups.set(k, { m, n: 0 });
+      groups.get(k).n++;
+    }
+    const out = [];
+    for (const [k, { m, n }] of groups) {
+      if (n % 2) log(`⚠️ W컨셉 ${k} 화면 ${n}줄(홀수) — 두 번 그리기 가정이 깨졌다. ${Math.ceil(n / 2)}건으로 잡음, 엑셀과 대조 필요`);
+      for (let i = 0; i < Math.ceil(n / 2); i++) out.push({ ...m });
     }
     log(`상품준비중내역 매핑 ${total}건 (송장있어 제외 ${shipped}) → 출고대기 ${out.length}건`);
     return out;

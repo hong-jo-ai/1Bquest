@@ -221,7 +221,9 @@ function renderLabel(s) {
       return `${name}${optTextOf(it)}${it.qty ? `, 수량:${it.qty}` : ""}`;
     };
     // 합포장이면 품목 수를 앞에 적어 포장할 때 개수부터 보이게 한다.
-    const prodLine = items.length > 1 ? `[합포장 ${items.length}건] ` + items.map(lineOf).join(" / ") : lineOf(items[0]);
+    // _added: 이미 인쇄한 송장에 주문이 나중에 합쳐져 다시 찍는 라벨 — 먼저 나온 라벨은 버리고 이걸로 포장.
+    const prodLine = (s._added ? "[추가품목 재인쇄·이 라벨로 포장] " : "")
+      + (items.length > 1 ? `[합포장 ${items.length}건] ` + items.map(lineOf).join(" / ") : lineOf(items[0]));
     fitBlock(prodLine, SAFE_L, 67.0, 58, 33, 8.5, 6);
     // 각인/배송메시지가 없으면 우체국 출력본처럼 "정보 없음". 세로 분할선(66.7)을 넘지 않게 줄인다.
     fitLine(engrave ? (engrave.startsWith("[") ? engrave : `[각인] ${engrave}`) : "정보 없음", SAFE_L, 103.2, 59, 9.5, 6);   // 폭 59mm — 실물은 프린터에서 1~2mm 오른쪽으로 밀려 찍힌다

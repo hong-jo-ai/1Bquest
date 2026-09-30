@@ -59,11 +59,17 @@ async function enqueue(regiNo, pdf, meta) {
   if (error) throw error;
   // 이미 큐에 올린 건 제외
   const keys = (rows || []).map((r) => PREFIX + r.regi_no);
-  const { data: existing } = keys.length ? await sb.from("kv_store").select("key").in("key", keys) : { data: [] };
-  const done = new Set((existing || []).map((k) => k.key));
+  const { data: existing } = keys.length ? await sb.from("kv_store").select("key,data").in("key", keys) : { data: [] };
+  const jobs = new Map((existing || []).map((k) => [k.key, k.data || {}]));
+  // 🔴 이미 인쇄한 송장에 **나중에 합쳐진 주문**은 다시 찍는다. 12:30 에 인쇄한 수취인에게 14:30 새 주문이 오면
+  //    register.js 가 같은 등기번호를 재사용해 행만 추가한다 → 전에는 "이미 큐에 있음"으로 건너뛰어 추가 품목이
+  //    어떤 라벨에도 안 나왔다. 인쇄 이후에 생긴 행이 있으면 전 품목 라벨을 [추가] 표시로 재인쇄한다.
+  //    비교는 2분 여유를 둔다 — 행 created_at 은 DB 시각, 잡 created_at 은 아이맥 시각이라 같은 접수에서도 0.2초 역전된다.
+  const added = (r) => { const j = jobs.get(PREFIX + r.regi_no); return !!(j && j.created_at && Date.parse(r.created_at) - Date.parse(j.created_at) > 120e3); };
+  const done = new Set([...jobs.keys()]);
   // --reprint: 이미 인쇄한 건도 다시(라벨 양식을 고친 뒤 재출력 — 2026-09-28 상품명 잘림 건). --only 와 함께만.
   const reprint = args.includes("--reprint") && args.includes("--only");
-  const todo = (rows || []).filter((r) => r.regi_no && (reprint || !done.has(PREFIX + r.regi_no)));
+  const todo = (rows || []).filter((r) => r.regi_no && (reprint || !done.has(PREFIX + r.regi_no) || added(r)));
   log(`접수분 ${rows?.length ?? 0} · 신규 인쇄대상 ${todo.length}`);
   // 합포장(같은 등기번호 여러 줄)은 라벨 한 장에 전 품목을 싣는다. 줄마다 돌면 첫 줄만 그려지고
   // 나머지는 "이미 큐에 있음"으로 버려져 포장 누락이 났다(2026-09-30 무신사 김지연·카페24 박지현).
@@ -79,7 +85,8 @@ async function enqueue(regiNo, pdf, meta) {
     seen.add(s.regi_no);
     try {
       const group = (byRegi.get(s.regi_no) || [s]).sort((a, b) => String(a.registered_at).localeCompare(String(b.registered_at)));
-      const pdf = await renderLabel(group.length > 1 ? { ...s, _items: group } : s);
+      const readd = done.has(PREFIX + s.regi_no) && !reprint;
+      const pdf = await renderLabel(group.length > 1 || readd ? { ...s, _items: group, _added: readd } : s);
       await enqueue(s.regi_no, pdf, { order_number: s.order_number, recipient_name: s.recipient_name, channel: s.channel, shipment_id: s.id });
       n++; log(`  적재 ${s.regi_no} ${s.recipient_name} (${s.channel})`);
     } catch (e) { log(`  ❌ ${s.regi_no}: ${e.message}`); }
