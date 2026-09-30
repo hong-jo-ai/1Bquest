@@ -31,6 +31,7 @@ const JOBS: JobSpec[] = [
   //    상태가 조용히 이어졌다. 새 launchd 잡은 beat() + 이 목록 등록이 함께여야 한다.
   { key: "heartbeat:smartstore-cs-scan", label: "스마트스토어 CS 수집(iMac·30분)", maxHours: 2 },
   { key: "heartbeat:label-print-queue", label: "운송장 라벨 인쇄 큐(iMac·5분)", maxHours: 2 },
+  { key: "heartbeat:engrave-sheet", label: "각인 작업표(iMac·평일 09:00/12:40/15:20)", maxHours: 28, weekdaysOnly: true },
   { key: "cron_last_ok:preorder-unshipped", label: "예약상품 미발송 감시", maxHours: 28 },
   // 식스샵 동기화 폐지(2026-07) — 해리엇 글로벌 카페24 영문몰(shop_no=2) 이전. launchd 잡도 언로드 필요.
   { key: "heartbeat:postoffice-outbound", label: "우체국 출고빌드(iMac)", maxHours: 28, weekdaysOnly: true },
