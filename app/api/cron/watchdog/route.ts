@@ -45,6 +45,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:hrt-scarce-sync", label: "해리엇 품절임박 배지 동기화(iMac)", maxHours: 28 },
   { key: "heartbeat:jed-mail-watch", label: "제드아이티씨 메일 감시(iMac·10분)", maxHours: 2 },
   { key: "heartbeat:fedex-label-watch", label: "페덱스 라벨 인증 메일 감시(iMac·1시간)", maxHours: 3 },
+  // 월 1회(15일 09:30). 사장님이 결제를 자꾸 깜빡해서 만든 알림이라, 안 뜬 것도 잡아야 한다.
+  { key: "heartbeat:navist-pay-reminder", label: "나비스트 결제 알림(iMac·매월 15일)", maxHours: 32 * 24 },
   // 영문몰(shop_no=2) 주문 수집 — 11시. 이 잡이 멈추면 **해외 주문이 통째로 안 보인다**:
   // 국문몰과 달리 우체국 출고목록에도 pp_shipments 에도 안 들어와서 다른 감시에 걸리지 않는다.
   { key: "heartbeat:en-mall-outbound", label: "영문몰 주문 수집(iMac·11시)", maxHours: 28 },
