@@ -30,10 +30,13 @@ const { beat } = require("./heartbeat");
 
 const DRY = process.argv.includes("--dry");
 const RESET = process.argv.includes("--reset");
-const QUERY = "(from:label@fedex.com OR from:noreply@fedex.com) newer_than:30d";
+// 페덱스 쪽 사람·API 지원까지 본다. 라벨 인증(label@)·케이스 접수(noreply@) 만 보다가
+// 2026-09-23 APAC API 지원(apacfedexapi@)의 ETD 답장을 놓쳤다 — 담당자 개인 주소로도 온다.
+// 제외: donotreply@(배송추적 알림)·message.fedex.com(마케팅) — 매일 오는 소음이라 빼야 신호가 산다.
+const QUERY = "from:fedex.com -from:donotreply@fedex.com -from:message.fedex.com newer_than:30d";
 const TOKEN_KEY = "google_refresh_token";          // shong@harriotwatches.com (평문 refresh_token)
 const CURSOR_KEY = "fedex_label_mail_cursor";
-const CASE_NO = "27468617";
+const CASE_NO = "27468617(라벨인증·2026-09-17 통과)";
 const log = (m) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 const SB = process.env.SUPABASE_URL;
@@ -82,6 +85,10 @@ function htmlToText(h) {
     .replace(/\n{3,}/g, "\n\n").trim();
 }
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// ⚠️ 문법검사로 `node -e 'require(...)'` 하면 이 IIFE 가 그대로 돌아 실제 알림이 나간다
+//    (2026-09-30 실제로 텔레그램 1건 발송됨). require.main 가드로 막는다 — 검사는 require 로, 실행은 CLI 로.
+if (require.main !== module) { module.exports = {}; return; }
 
 (async () => {
   try {
