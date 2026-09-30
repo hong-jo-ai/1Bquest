@@ -346,7 +346,8 @@ async function collectOutboundRows(){
   return { rows, heldCount, promiseRows, failed, counts:{cafe:cnt("카페24"),har:cnt("해리엇"),cm:cnt("29CM"),wc:cnt("W컨셉"),mu:cnt("무신사")} };
 }
 
-module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient };
+module.exports = { collectOutboundRows, sendTelegram, sendEmail, HEADER, recipientKey, mergeByRecipient,
+  CAFE24_MALLS, cafe24Token, engravingOf, engravable, engravingFromMessage, manualEngravings };
 
 // CLI: 엑셀 빌드 + 텔레그램/이메일 발송 (기존 동작)
 async function main(){
