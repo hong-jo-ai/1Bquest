@@ -204,9 +204,33 @@
       var st = document.getElementById("pvEngStage");
       return PXMM * (st.clientWidth / NATIVE);
     }
+    /** 🔴 미리보기에 **보이는 줄** 그대로 나눈다 — 고객이 친 Enter 만이 아니라 자동 줄바꿈까지.
+     *  고객은 화면에 보이는 대로 새겨질 거라 믿는데, 예전엔 Enter 만 ⏎ 로 넘겨서
+     *  「사랑하는 아들  재희에게 ~ 아빠가」(화면 3줄)가 주문서엔 한 줄로 와 각인 중에 발견됐다
+     *  (2026-09-30 해리엇 박상진 20260929-0000054). 글자마다 화면 위치(top)를 재서 줄을 가른다. */
+    function visualLines(out) {
+      try {
+        var node = out && out.firstChild;
+        if (!node || node.nodeType !== 3 || !node.data) return null;
+        var lh = parseFloat(getComputedStyle(out).fontSize) || 1;
+        var lines = [], cur = "", lastTop = null, r = document.createRange();
+        for (var i = 0; i < node.data.length; i++) {
+          var ch = node.data.charAt(i);
+          if (ch === "\n") { lines.push(cur); cur = ""; lastTop = null; continue; }
+          r.setStart(node, i); r.setEnd(node, i + 1);
+          var rects = r.getClientRects(), top = rects.length ? rects[rects.length - 1].top : null;
+          if (top !== null && lastTop !== null && top - lastTop > lh * 0.5) { lines.push(cur); cur = ""; }
+          if (top !== null) lastTop = top;
+          cur += ch;
+        }
+        lines.push(cur);
+        return lines;
+      } catch (e) { return null; }
+    }
     function orderValue() {
       var v = document.getElementById("pvEngTxt").value.replace(/\s+$/, "");
-      var lines = v.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
+      var raw = visualLines(document.getElementById("pvEngOut")) || v.split("\n");
+      var lines = raw.map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
       if (!lines.length) return "";
       return lines.join(" ⏎ ") + "  [" + fontName + " · " + T.sizeWord + " " + mm.toFixed(1) + "mm]";
     }
@@ -248,6 +272,7 @@
       try {
         var input = document.getElementById("add_option_0");
         if (!input) { close(); return; }
+        render();                  // 줄 나눔은 지금 화면 기준 — 읽기 직전에 다시 그린다
         var val = orderValue();
         if (!val) { document.getElementById("pvEngTxt").focus(); return; }
         if (val.length > limit()) { render(); document.getElementById("pvEngTxt").focus(); return; }
