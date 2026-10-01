@@ -84,6 +84,8 @@
         ph: "Email address",
         btn: "Notify me",
         note: "We will use this address only to tell you SEOLWOL is back in stock.",
+        agree: "I agree to Harriot collecting my email address to notify me when SEOLWOL is back in stock.",
+        need: "Please tick the box to continue.",
         ok: "Thank you. We will write to you the day SEOLWOL returns.",
         bad: "Please check the email address.",
         fail: "Something went wrong. Please try again in a moment.",
@@ -105,6 +107,8 @@
         "#hrtSo button{flex:0 0 auto;width:auto;height:44px;margin:0;padding:0 18px;border:1px solid #111;border-radius:0;background:#111;color:#fff;font-size:13px;font-weight:500;letter-spacing:.08em;cursor:pointer;white-space:nowrap}",
         "#hrtSo button[disabled]{opacity:.5;cursor:default}",
         "#hrtSo .hrtSoN{margin-top:8px;font-size:11.5px;line-height:1.6;color:#777}",
+        "#hrtSo label.hrtSoC{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;padding:0;font-size:12px;line-height:1.6;color:#333;cursor:pointer}",
+        "#hrtSo label.hrtSoC input{flex:0 0 auto;width:16px;height:16px;margin:2px 0 0;padding:0;border:1px solid #111;border-radius:0;accent-color:#111;-webkit-appearance:checkbox;appearance:auto}",
         "#hrtSo .hrtSoM{margin-top:10px;font-size:13px;line-height:1.6;color:#111}",
         "#hrtSo .hrtSoM.err{color:#a00}",
         // 품절 판정이 참일 때만 붙는 class 로 스코프한다. 카페24 앱이 inline display:block 을 다시 써도 이긴다.
@@ -125,6 +129,11 @@
       input.setAttribute("aria-label", T.ph); input.setAttribute("maxlength", "254");
       var btn = document.createElement("button"); btn.type = "submit"; btn.textContent = T.btn;
       form.appendChild(input); form.appendChild(btn); box.appendChild(form);
+      // 개인정보 수집 동의 체크박스(사장님 2026-10-01) — 체크해야 신청된다. 기본값은 해제.
+      var lab = document.createElement("label"); lab.className = "hrtSoC";
+      var chk = document.createElement("input"); chk.type = "checkbox"; chk.id = "hrtSoAgree";
+      var labT = document.createElement("span"); labT.textContent = T.agree;
+      lab.appendChild(chk); lab.appendChild(labT); box.appendChild(lab);
       var note = document.createElement("div"); note.className = "hrtSoN"; note.textContent = T.note; box.appendChild(note);
       var msg = document.createElement("div"); msg.className = "hrtSoM"; msg.style.display = "none";
       msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite"); box.appendChild(msg);
@@ -137,13 +146,14 @@
           if (btn.disabled) return;
           var v = String(input.value || "").trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say(T.bad, true); try { input.focus(); } catch (e1) {} return; }
+          if (!chk.checked) { say(T.need, true); try { chk.focus(); } catch (e5) {} return; }
           btn.disabled = true;
           var opt = {
             method: "POST", mode: "cors", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               list: "restock", productNo: Number(TARGET_NO), mall: "en", contact: v,
-              // 입력칸 바로 아래에 이용 목적을 적어 두었다(T.note). 광고성 수신 동의는 받지 않는다.
-              consentPrivacy: true, consentMarketing: false,
+              // 체크박스로 수집 동의를 받고, 이용 목적은 그 아래에 적어 두었다(T.note). 광고성 수신 동의는 받지 않는다.
+              consentPrivacy: !!chk.checked, consentMarketing: false,
               utmSource: utm("utm_source"), utmMedium: utm("utm_medium"),
               utmCampaign: utm("utm_campaign"), utmContent: utm("utm_content"),
               referrer: document.referrer ? String(document.referrer).slice(0, 300) : null,
@@ -163,7 +173,7 @@
               if (timer) clearTimeout(timer);
               if (d && d.ok) {
                 // 신청이 끝나면 입력 안내("Leave your email…")와 입력칸을 접고 감사 문구만 남긴다.
-                form.style.display = "none"; note.style.display = "none";
+                form.style.display = "none"; note.style.display = "none"; lab.style.display = "none";
                 if (lead) lead.style.display = "none";
                 say(T.ok, false);
               }
