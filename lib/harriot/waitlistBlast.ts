@@ -18,6 +18,9 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const LOG_KEY = "harriot:seolwol:blast-log:v1";
 
+/** 해리엇 발송의 LMS 제목. 비우면 폴바이스 기본 제목이 붙는다. */
+const KR_LMS_SUBJECT = "해리엇 고객 안내";
+
 export interface BlastLogEntry {
   campaign: string;
   sentAt: string;
@@ -302,7 +305,11 @@ export async function runBlast(
 
   let krSuccess = 0;
   if (krList.length) {
-    const outcome = await sendMany(krList.map((to) => ({ to, text: krText })));
+    // 제목을 비우면 solapi.ts 의 DEFAULT_LMS_SUBJECT("폴바이스 고객 안내")가 붙는다.
+    // 해리엇 명단에 폴바이스 이름이 나가면 안 되므로 브랜드 제목을 명시한다(2026-09-10).
+    const outcome = await sendMany(
+      krList.map((to) => ({ to, text: krText, subject: KR_LMS_SUBJECT })),
+    );
     krSuccess = outcome.successCount;
   }
 
