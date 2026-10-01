@@ -17,6 +17,7 @@ import type { KakaoGiftPo } from "@/lib/finance/kakaoGiftPo";
 const invKey = (mall: MallId) => (mall === "paulvice" ? "paulvice_inventory_v1" : `${mall}_inventory_v1`);
 const syncLogKey = (mall: MallId) => (mall === "paulvice" ? "inventory_sync_log" : `inventory_sync_log:${mall}`);
 const aliasKey = (mall: MallId) => (mall === "paulvice" ? "inventory_sku_alias" : `inventory_sku_alias:${mall}`);
+const sharedKey = (mall: MallId) => (mall === "paulvice" ? "inventory_shared_stock" : `inventory_shared_stock:${mall}`);
 
 export interface SyncResult {
   sku: string;
@@ -168,29 +169,68 @@ export async function fetchSalesBySku(
   sinceBySku?: Record<string, string>,
 ): Promise<Record<string, number>> {
   const salesBySku: Record<string, number> = {};
-  try {
-    const endDate = new Date().toISOString().slice(0, 10);
-    // startDate 는 전 SKU 공통 최소 실사일이라 조회 범위일 뿐이다.
-    // SKU별 차감 여부는 sinceBySku 로 주문일을 다시 걸러야 한다 — 안 그러면
-    // 늦게 실사한 SKU가 실사 이전 판매까지 다시 빼먹는다.
-    const orders = (await fetchAllOrders(token, startDate, endDate, true, mall)) as Array<{
+  const endDate = new Date().toISOString().slice(0, 10);
+  // 🔴 카페24 주문 API 는 embed=items 일 때 조회 범위가 3개월을 넘으면 422 를 낸다.
+  // 예전엔 전 구간을 한 번에 불러 422 → catch 에서 삼켜 "판매 0" 이 됐고, 재고추적 OFF 상품은
+  // 자사몰 판매가 한 개도 안 빠졌다(2026-10-01 느와르 실사 65 vs 카페24 91). 85일씩 쪼개 부른다.
+  // 실패는 삼키지 않는다 — 판매를 0 으로 치고 재고를 밀어 넣는 것보다 동기화가 멈추는 편이 안전하다.
+  const dayMs = 86400000;
+  for (let from = new Date(`${startDate}T00:00:00Z`).getTime(); ; ) {
+    const to = Math.min(from + 85 * dayMs, new Date(`${endDate}T00:00:00Z`).getTime());
+    const fromDay = new Date(from).toISOString().slice(0, 10);
+    const toDay = new Date(to).toISOString().slice(0, 10);
+    // startDate 는 조회 범위일 뿐이다. SKU별 차감 여부는 sinceBySku 로 주문일을 다시 걸러야 한다 —
+    // 안 그러면 늦게 실사한 SKU가 실사 이전 판매까지 다시 빼먹는다.
+    const orders = (await fetchAllOrders(token, fromDay, toDay, true, mall)) as Array<{
       order_date?: string;
-      items?: Array<{ product_code?: string; quantity?: number }>;
+      items?: Array<{ product_code?: string; quantity?: number; order_status?: string }>;
     }>;
     for (const order of orders) {
       const orderDay = String(order.order_date ?? "").slice(0, 10);
       for (const item of order.items ?? []) {
         const sku = item.product_code;
         if (!sku) continue;
+        // 취소(C*)는 물건이 안 나간 주문이다. 반품(R*)·교환(E*)은 나갔다 돌아오는 것이라
+        // 판매로 세고, 회수·검수 후 manualAdjustment +1 로 되돌린다(기존 운영 방식).
+        if (/^C/.test(item.order_status ?? "")) continue;
         const since = sinceBySku?.[sku];
         if (since && orderDay && orderDay < since) continue;
         salesBySku[sku] = (salesBySku[sku] ?? 0) + (item.quantity ?? 0);
       }
     }
-  } catch (e) {
-    console.log("[inventorySync] 판매 데이터 조회 실패:", e);
+    if (toDay >= endDate) break;
+    from = to + dayMs;
   }
   return salesBySku;
+}
+
+/**
+ * 재고 공유맵 { 공유코드: 원재고코드 } — 실물 재고가 따로 없고 다른 상품의 재고에서 꺼내 파는 상품.
+ * 예) 에끌라 골드 브라운(P00000KE)은 골드(P00000HN) 본품에 밴드만 바꿔 내보낸다.
+ * 판매는 원재고에서 빠지고(별칭과 같은 효과), 동기화 때 원재고 수량이 공유 상품에도 그대로 들어간다.
+ * kv `inventory_shared_stock`.
+ */
+export async function loadSharedStock(mall: MallId = "paulvice"): Promise<Record<string, string>> {
+  const supabase = getSupabase();
+  if (!supabase) return {};
+  const { data } = await supabase.from("kv_store").select("data").eq("key", sharedKey(mall)).maybeSingle();
+  return (data?.data as Record<string, string>) ?? {};
+}
+
+/** 자사몰 판매를 역산해야 하는(=재고추적 OFF) SKU 중 가장 이른 실사일. 추적 ON 은 카페24 실재고를 쓰므로 주문을 볼 필요가 없다. */
+function earliestUntrackedDate(
+  entries: Record<string, InventoryEntry>,
+  skus: string[],
+  liveStock: Record<string, { quantity: number; tracked: boolean }>,
+): string | null {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    skus
+      .filter((sku) => !liveStock[sku]?.tracked)
+      .map((sku) => entries[sku].stockInDate)
+      .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
+      .sort()[0] ?? null
+  );
 }
 
 // 상품명 정규화 — 브랜드 접두어·공백·특수문자 제거(색상/옵션 단어는 유지: 색상별 SKU 구분).
@@ -582,19 +622,22 @@ export async function computeInventoryLevels(token: string, mall: MallId = "paul
     (sku) => (entries[sku].initialStock > 0 || !!entries[sku].stockInDate) && !entries[sku].discontinued,
   );
   if (skus.length === 0) return [];
-  const today = new Date().toISOString().slice(0, 10);
-  const earliest = skus
-    .map((sku) => entries[sku].stockInDate)
-    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
-    .sort()[0];
-  const startDate = earliest ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const liveStock = await fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>));
+  const startDate = earliestUntrackedDate(entries, skus, liveStock);
   const sinceBySku = buildSinceBySku(entries, skus);
-  const [cafe24SalesRaw, otherChannelsRaw, alias, liveStock] = await Promise.all([
-    fetchSalesBySku(token, startDate, mall, sinceBySku),
+  const [cafe24SalesRaw, otherChannelsRaw, aliasRaw, shared] = await Promise.all([
+    // 읽기 전용 경로라 조회 실패는 화면을 깨지 않게 삼키되, 로그는 남긴다.
+    startDate
+      ? fetchSalesBySku(token, startDate, mall, sinceBySku).catch((e) => {
+          console.error("[inventorySync] 카페24 판매 조회 실패(표시용):", e);
+          return {} as Record<string, number>;
+        })
+      : Promise.resolve({} as Record<string, number>),
     fetchOtherChannelsSales(token, mall, sinceBySku),
     loadSkuAlias(mall),
-    fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>)),
+    loadSharedStock(mall),
   ]);
+  const alias = { ...aliasRaw, ...shared };
   const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
   const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
   return skus.map((sku) => {
@@ -637,24 +680,27 @@ export async function runInventorySync(
     return { synced: 0, failed: 0, results: [] };
   }
 
-  // 가장 이른 stockInDate 부터만 주문 fetch — 그 이전 매출은 initialStock 등록 시점 이전이라 무관.
-  // stockInDate 가 비어있거나 미래면 365일 전부터 (안전장치).
-  const today = new Date().toISOString().slice(0, 10);
-  const earliestStockDate = skus
-    .map((sku) => entries[sku].stockInDate)
-    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today)
-    .sort()[0];
-  const startDate = earliestStockDate ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  // 자사몰 주문은 재고추적 OFF 상품의 가장 이른 실사일부터만 본다 — 추적 ON 은 카페24 실재고를 쓴다.
+  const liveStock = await fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>));
+  const startDate = earliestUntrackedDate(entries, skus, liveStock);
 
   // 사전 일괄 조회 (병렬: 카페24 판매 페이징 + 다른 채널 판매 + SKU→productNo 매핑)
   const sinceBySku = buildSinceBySku(entries, skus);
-  const [cafe24SalesRaw, otherChannelsRaw, productNoMap, alias, liveStock] = await Promise.all([
-    fetchSalesBySku(token, startDate, mall, sinceBySku),
+  let cafe24SalesError: string | null = null;
+  const [cafe24SalesRaw, otherChannelsRaw, productNoMap, aliasRaw, shared] = await Promise.all([
+    startDate
+      ? fetchSalesBySku(token, startDate, mall, sinceBySku).catch((e) => {
+          cafe24SalesError = e instanceof Error ? e.message : String(e);
+          console.error("[inventorySync] 카페24 판매 조회 실패:", e);
+          return {} as Record<string, number>;
+        })
+      : Promise.resolve({} as Record<string, number>),
     fetchOtherChannelsSales(token, mall, sinceBySku),
     buildSkuProductNoMap(token, mall),
     loadSkuAlias(mall),
-    fetchLiveCafe24Stock(token, mall).catch(() => ({} as Record<string, { quantity: number; tracked: boolean }>)),
+    loadSharedStock(mall),
   ]);
+  const alias = { ...aliasRaw, ...shared };
   const cafe24SalesBySku = applySkuAlias(cafe24SalesRaw, alias);
   const otherChannelsSales = applySkuAlias(otherChannelsRaw, alias);
 
@@ -674,6 +720,10 @@ export async function runInventorySync(
     if (!productNo) {
       return { sku, quantity: currentStock, ok: false, error: "상품 없음" };
     }
+    // 자사몰 판매를 못 읽었으면 추적 OFF 상품은 건드리지 않는다 — 판매 0 으로 친 값을 밀어 넣으면 재고가 부푼다.
+    if (cafe24SalesError && !live?.tracked) {
+      return { sku, quantity: currentStock, ok: false, error: `카페24 판매 조회 실패로 건너뜀: ${cafe24SalesError}` };
+    }
     try {
       await updateVariantStock(token, productNo, currentStock, mall);
       return { sku, quantity: currentStock, ok: true };
@@ -681,6 +731,23 @@ export async function runInventorySync(
       return { sku, quantity: currentStock, ok: false, error: e.message ?? "업데이트 실패" };
     }
   });
+
+  // 재고 공유 상품 — 원재고 수량을 그대로 넣는다(실물이 하나라 숫자도 하나여야 한다).
+  for (const [sharedSku, sourceSku] of Object.entries(shared)) {
+    const src = results.find((r) => r.sku === sourceSku);
+    if (!src?.ok) continue;
+    const productNo = productNoMap.get(sharedSku);
+    if (!productNo) {
+      results.push({ sku: sharedSku, quantity: src.quantity, ok: false, error: "상품 없음" });
+      continue;
+    }
+    try {
+      await updateVariantStock(token, productNo, src.quantity, mall);
+      results.push({ sku: sharedSku, quantity: src.quantity, ok: true });
+    } catch (e: any) {
+      results.push({ sku: sharedSku, quantity: src.quantity, ok: false, error: e.message ?? "업데이트 실패" });
+    }
+  }
 
   const synced = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok).length;
