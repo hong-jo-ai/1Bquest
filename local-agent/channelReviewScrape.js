@@ -177,7 +177,8 @@ async function scrapeWconcept(products) {
     // 1) 브랜드 상품 나열(브라우저에서 응답 가로채기)
     const collected = [];
     const brandHandler = async (resp) => {
-      if (/brand\/v2\/brand\/\d+\/products/i.test(resp.url())) {
+      // 2026-09 W컨셉이 주소를 brand/v2/brand/<cd>/products → brand/v1/products/<cd> 로 바꿨다(2주간 0건 수집). 둘 다 받는다.
+      if (/brand\/v\d+\/(brand\/\d+\/products|products\/\d+)/i.test(resp.url())) {
         try { const j = await resp.json(); if (j && j.data && j.data.content) collected.push(...j.data.content); } catch {}
       }
     };
@@ -189,6 +190,7 @@ async function scrapeWconcept(products) {
     const goods = [...new Map(collected.map((c) => [String(c.itemCd), { itemCd: String(c.itemCd), itemName: c.itemName, reviewCnt: c.reviewCnt || 0 }])).values()];
     const withRev = goods.filter((g) => g.reviewCnt > 0);
     console.log(`W컨셉 상품 ${goods.length}개, 리뷰 있는 상품 ${withRev.length}개`);
+    if (!goods.length) throw new Error("W컨셉 브랜드 상품 0개 — 상품목록 API 주소·응답 구조가 바뀌었는지 확인");
 
     let token = null, total = 0, matchedGoods = 0;
     const seen = new Set(); // W컨셉이 같은 상품을 여러 itemCd(변형)로 등록 + 리뷰 복제 → (상품+내용+작성자) 중복 제거
@@ -238,6 +240,7 @@ async function scrapeWconcept(products) {
 
 // ── 29CM (오픈 GET API, 리뷰 적음) ───────────────────────────────
 const CM29_BRAND = process.env.CM29_FRONT_BRAND_NO || "116837"; // 폴바이스
+const CM29_IMG = "https://img.29cm.co.kr";
 async function cm29Goods() {
   let all = [];
   for (let page = 1; page <= 10; page++) {
@@ -264,7 +267,9 @@ async function cm29Reviews(itemNo) {
   return out;
 }
 function mapCm29Review(r, g, prod) {
-  const photos = (r.uploadFiles || []).map((f) => (typeof f === "string" ? f : f.url || f.fileUrl || f.imageUrl || f.thumbnailUrl || "")).filter(Boolean);
+  // 29CM 은 사진을 "/next-product/…" 상대경로로 준다 → CDN 호스트를 붙여야 우리 화면에서 뜬다
+  const photos = (r.uploadFiles || []).map((f) => (typeof f === "string" ? f : f.url || f.fileUrl || f.imageUrl || f.thumbnailUrl || "")).filter(Boolean)
+    .map((u) => (/^https?:/.test(u) ? u : CM29_IMG + (u.startsWith("/") ? u : "/" + u)));
   let date = null; const t = r.insertTimestamp; if (t) date = typeof t === "number" ? new Date(t).toISOString() : String(t);
   return {
     channel: "29cm", channel_review_id: String(r.itemReviewNo), channel_goods_no: String(g.itemNo),
@@ -312,9 +317,13 @@ async function rematchAll(products) {
   const products = await loadCafe24Products();
   console.log(`자사몰 상품 ${products.length}개 로딩`);
   if (which === "rematch") { await rematchAll(products); process.exit(0); }
-  if (which === "musinsa" || which === "all") await scrapeMusinsa(products);
-  if (which === "wconcept" || which === "all") await scrapeWconcept(products);
-  if (which === "29cm" || which === "all") await scrape29cm(products);
+  // 채널 하나가 죽어도 나머지는 수집하고, 실패는 끝에 모아 알린다(조용한 0건 방지)
+  const failed = [];
+  for (const [name, fn] of [["musinsa", scrapeMusinsa], ["wconcept", scrapeWconcept], ["29cm", scrape29cm]]) {
+    if (which !== name && which !== "all") continue;
+    try { await fn(products); } catch (e) { console.error(`ERR ${name}`, e.stack || e.message); failed.push(`${name}: ${e.message}`); }
+  }
+  if (failed.length) throw new Error(failed.join(" / "));
   await require("./heartbeat").beat("channel-review-scrape");
   process.exit(0);
 })().catch(async (e) => { console.error("ERR", e.stack || e.message); try { await require("./notifyFail").notifyFail("채널리뷰 수집", e && e.message ? e.message : String(e)); } catch (_) {} process.exit(1); });
