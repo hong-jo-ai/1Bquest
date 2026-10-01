@@ -43,11 +43,12 @@ async function tg(msg) {
 }
 
 async function main() {
-  log("=== 17시 송장입력 (카페24 + 29CM + 무신사 + 카카오선물) ===");
+  log("=== 17시 송장입력 (카페24 + 29CM + 무신사 + 스마트스토어 + 카카오선물) ===");
   const r1 = await run("cafe24Dispatch.js", { CAFE24_DISPATCH_LIMIT: "300" }); // 옛 'submitted' 누적 + 주말백로그 대비(최신순 정렬과 함께)
   const r3 = await run("cm29Dispatch.js", {});       // 이메일 자동로그인(SMS X), 멱등
   const r5 = await run("musinsaDispatch.js", {});    // 배송출고처리 택배송장일괄입력→출고완료, 멱등(목록서 빠짐)
   const r5g = await run("musinsaGlobalDispatch.js", {}); // 무신사 글로벌 출고요청(별도 메뉴) 송장 역입력, 후보 없으면 로그인 안 함
+  const r6 = await run("smartstoreDispatch.js", {});  // 커머스 API 발송처리(EPOST), 멱등(PAYED 만 대상)
   const r2 = await run("kakaoGiftReplySend.js", {});
   const c24 = (r1.out.match(/성공 (\d+)/) || [,"?"])[1];
   const cm = /출고처리 시도 완료|✏️/.test(r3.out) ? (r3.out.match(/✏️/g)||[]).length+"건 처리" : (/대상 없음|행수: 0/.test(r3.out) ? "대상없음" : "확인필요");
@@ -55,10 +56,13 @@ async function main() {
   const muMsg = mu ? (+mu[1] ? `성공 ${mu[1]}건` : "대상없음") : (/대상 없음|신규 송장 없음/.test(r5.out) ? "대상없음" : "확인필요");
   const mug = r5g.out.match(/글로벌 송장입력 완료: 성공 (\d+)/);
   const mugMsg = /글로벌 대상 없음/.test(r5g.out) ? "대상없음" : (mug ? (+mug[1] ? `성공 ${mug[1]}건` : "미처리") : "확인필요");
+  const ssm = r6.out.match(/완료 — 성공 (\d+)/);
+  const ssMsg = ssm ? (+ssm[1] ? `성공 ${ssm[1]}건` : (/대상 없음/.test(r6.out) ? "대상없음" : "미처리")) : "확인필요";
   const kakao = /카카오 회신 발송/.test(r2.out) ? "발송" : (/스킵|채울 건 없음|메일 없음/.test(r2.out) ? "스킵" : "확인필요");
   const held = await heldSummary();
+  const ssLine = `\n- 스마트스토어: ${ssMsg}`;
   const mugLine = /글로벌 대상 없음/.test(r5g.out) ? "" : `\n- 무신사글로벌: ${mugMsg}`;
-  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 무신사: ${muMsg}${mugLine}\n- 카카오선물: ${kakao}${held}`);
+  await tg(`📮 17시 송장입력\n- 카페24: 성공 ${c24}건\n- 29CM: ${cm}\n- 무신사: ${muMsg}${mugLine}${ssLine}\n- 카카오선물: ${kakao}${held}`);
   await require("./heartbeat").beat("dispatch17");
   log("=== 완료 ===");
 }

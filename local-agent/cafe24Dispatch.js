@@ -51,10 +51,21 @@ async function dispatchMall(sb, m, limit){
     .eq("channel",m.channel).eq("req_type","1").eq("is_test",false).eq("status","submitted")
     .not("regi_no","is",null).neq("regi_no","TESTREGINOAPI")
     .order("created_at",{ascending:false}).limit(limit);
+  // ⚠️ 발송보류 목록은 원래 **접수 단계(buildPostOffice)만** 봤다. 이미 접수된 건은
+  //    송장입력을 그대로 타서 고객에게 "발송했습니다" 메일이 나갔다 —
+  //    2026-09-02 하성진 건이 그렇게 터졌다(각인 대기 중인데 발송 통보). 여기서도 본다.
+  let heldKeys = new Set();
+  try { heldKeys = new Set(await require("./postParcel/holdOrders").holdKeys()); }
+  catch(e){ log(`[${m.channel}] 보류목록 조회 실패 — 필터 생략: ${e.message}`); }
+
   log(`[${m.channel}] 송장입력 대상 ${ships?.length||0}건 (limit ${limit})`);
 
   let ok=0, fail=0;
   for (const s of (ships||[])) {
+    if (heldKeys.has(`${m.channel}|${s.order_number}`) || heldKeys.has(s.order_number)) {
+      log(`  [${m.channel}] ${s.order_number}: 발송보류 등록됨 — 송장입력 스킵`);
+      continue;
+    }
     try {
       // 주문 아이템(배송준비중) 코드 수집
       const od = await call("GET", `/api/v2/admin/orders/${s.order_number}?embed=items`);
