@@ -46,8 +46,8 @@
       // 스킨이 sticky 로 잡아둔 경우에만 건드린다(모바일 레이아웃은 그대로).
       if (getComputedStyle(col).position !== "sticky") return;
       var h = col.getBoundingClientRect().height;
-      var top = Math.min(BASE_TOP, window.innerHeight - h - GAP);
-      col.style.top = Math.round(top) + "px";
+      var top = Math.round(Math.min(BASE_TOP, window.innerHeight - h - GAP)) + "px";
+      if (col.style.top !== top) col.style.top = top;   // 같은 값이면 안 쓴다(아래 MutationObserver 와 맞물려 돌지 않게)
     }
 
     function apply() { try { unclip(); fitSticky(); } catch (e) {} }
@@ -61,6 +61,14 @@
     try {
       var col = document.getElementById("cd-nav");
       if (col && window.ResizeObserver) new ResizeObserver(fitSticky).observe(col);
+      // 2026-10-01: 스킨 스크롤 핸들러가 `$('.detailArea > .infoArea').attr('style','height:…')` 로
+      // style 속성을 통째로 덮어써 우리가 넣은 top 이 지워진다(스크롤이 칼럼높이+100px 을 넘는 순간).
+      // 높이가 그대로면 ResizeObserver 가 안 울려 그 뒤로 영영 top:150px → 구매·재입고 버튼이 화면 밖.
+      // → style 속성이 바뀔 때마다 다시 맞춘다.
+      if (col && window.MutationObserver) {
+        new MutationObserver(function () { try { fitSticky(); } catch (e) {} })
+          .observe(col, { attributes: true, attributeFilter: ["style"] });
+      }
     } catch (e) {}
     // 스킨 JS 가 나중에 내부 스크롤을 다시 켜는 경우를 대비해 잠깐 더 지켜본다.
     var n = 0;
