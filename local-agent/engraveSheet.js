@@ -95,6 +95,24 @@ function parseEngraving(raw) {
   return { lines, font, mm, legacy };
 }
 
+/**
+ * 고객이 서체·높이를 고르지 않은 해리엇 주문의 기본값(사장님 지정) — 묻지 않고 이 값으로 새긴다.
+ *   설월 = Times New Roman (2026-09-18)
+ *   가양 = 서체 옵션을 제공하지 않는 모델이라 Times New Roman · 높이 2.1mm (2026-10-01)
+ * 여기 없는 모델은 서체 미정이면 각인 전에 묻는다(warningsFor). 밴드 상품명의 "(…설월 호환)" 에 걸리지 않게 앞머리만 본다.
+ */
+const HARRIOT_DEFAULTS = [
+  { match: /^설월/, font: "Times New Roman" },
+  { match: /^가양/, font: "Times New Roman", mm: "2.1" },
+];
+function applyDefaults(job) {
+  if (job.brand !== "해리엇") return;
+  const d = HARRIOT_DEFAULTS.find((x) => x.match.test(job.prod));
+  if (!d) return;
+  if (!job.font) { job.font = d.font; job.fontDefault = true; }
+  if (!job.mm && d.mm) { job.mm = d.mm; job.mmDefault = true; }
+}
+
 function warningsFor(job) {
   const w = [];
   // 서체·높이는 미리보기 상품만 주문서에 실려 온다. 해리엇은 서체 미정이면 각인 전에 묻는 게 규칙(shipping.md §3).
@@ -169,6 +187,7 @@ async function buildJobs() {
           ...base, raw, source, optionText: manualText ? optionText : "", ...parsed,
           ambiguousManual: !branded && !!plainKey && manualText && others.some((s) => s.has(o.order_id)),
         };
+        applyDefaults(job);
         job.warnings = warningsFor(job);
         jobs.push(job);
       }
@@ -326,7 +345,7 @@ function render(sections, file) {
         doc.font("kr").fontSize(9.5).fillColor("#555").text(`${j.prod} ×${j.qty}  ·  주문 ${j.time}  ·  작업표 첫 등장 ${j.firstSeen || "-"}  ·  출처: ${j.source}`, L);
         doc.moveDown(0.25);
         doc.fillColor("#000").font("krB").fontSize(13)
-          .text(`서체  ${j.font || (j.hasPreview || j.brand === "해리엇" ? "미지정" : "주문서에 없음")}      높이  ${j.mm ? j.mm + " mm" : (j.hasPreview ? "미지정" : "-")}      ${j.lines.length}줄`, L);
+          .text(`서체  ${j.font ? j.font + (j.fontDefault ? " (기본)" : "") : (j.hasPreview || j.brand === "해리엇" ? "미지정" : "주문서에 없음")}      높이  ${j.mm ? j.mm + " mm" + (j.mmDefault ? " (기본)" : "") : (j.hasPreview ? "미지정" : "-")}      ${j.lines.length}줄`, L);
         doc.moveDown(0.2);
 
         j.lines.forEach((ln, n) => {
@@ -375,7 +394,7 @@ async function main() {
 
   const all = sections.flatMap((s) => s.jobs), fresh = all.filter((j) => j.isNew);
   console.log(`[${kst()}] 각인 ${all.length}건(새로 ${fresh.length}) · 확인 필요 ${all.filter((j) => j.warnings.length).length}건`);
-  for (const j of all) console.log(`  ${j.isNew ? "NEW " : "    "}${j.brand} ${j.order} [${j.font || "?"} ${j.mm || "?"}mm] ${j.lines.join(" / ")}${j.warnings.length ? "  ⚠ " + j.warnings.join(" | ") : ""}`);
+  for (const j of all) console.log(`  ${j.isNew ? "NEW " : "    "}${j.brand} ${j.order} [${j.font || "?"}${j.fontDefault ? "(기본)" : ""} ${j.mm || "?"}mm${j.mmDefault ? "(기본)" : ""}] ${j.lines.join(" / ")}${j.warnings.length ? "  ⚠ " + j.warnings.join(" | ") : ""}`);
   console.log(file);
   if (ARGV.includes("--open")) execFileSync("open", [file]);
 
