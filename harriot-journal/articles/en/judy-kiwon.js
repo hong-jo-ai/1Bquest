@@ -1,0 +1,28 @@
+const IMG = "https://harriotwatches.com/journal/img/";
+module.exports = {
+  slug: "judy-kiwon", order: 7, category: "Story",
+  title: "She Left Seoul in 1976. Korea Came Back on Her Wrist.",
+  titleSuffix: "A customer story — Judy",
+  dek: "“I’m so proud to be Korean.” That is what she wrote while trying to order KI:WON from California.",
+  description: "Judy left Seoul for California in 1976, aged three. Nearly fifty years later she fought through a failed checkout to order a HARRIOT KI:WON.",
+  keywords: "korean watch, KI:WON, HARRIOT, Korean American, customer story",
+  date: "2025-04-17",
+  hero: IMG + "judy_kiwon_01.jpg", heroLight: true,
+  heroAlt: "A HARRIOT KI:WON watch with its packaging.",
+  image: IMG + "judy_kiwon_01.jpg", alt: "A HARRIOT KI:WON watch with its packaging",
+  blocks: [
+    { t:"lede", text:"Not long ago a message arrived from the United States. “Hello! My name is Judy. I’m trying to buy the KI:WON from the US but the payment keeps failing…” That is how it began." },
+    { t:"p", text:"The checkout kept breaking, but she did not give up, and eventually completed the order through PayPal. What followed carried something deeper than the wish to buy a watch." },
+    { t:"quote", text:"I came across this brand a month ago. The design is so beautiful, and I could feel that each one is made with care. The watch called ‘KI:WON’ pulled at me especially. I’m so proud to be Korean.", cite:"Judy" },
+    { t:"p", text:"Judy left Seoul for California in 1976, at the age of three. Living as a Korean in that America would have been far stranger and lonelier than it is now." },
+    { t:"p", text:"Today K-pop, Korean drama, Korean film, skincare and food are loved worldwide — she told me frozen gimbap is sold in Costco and Trader Joe’s, which surprised even me." },
+    { t:"p", text:"A few days later another message came. “The watch arrived today! My husband and I both love it. Even the packaging moved me. I’m going to give these to my brothers — I can’t wait to see their reaction.”" },
+    { t:"h2", text:"Quietly, but firmly" },
+    { t:"p", html:"Messages like that send me back to why HARRIOT exists. Our watches are not simply accessories. They hold the symbols, the identity and the story of Korea. KI:WON says, <strong>quietly but firmly, “I am Korean.”</strong>" },
+    { t:"p", text:"To Koreans living abroad, and to everyone who loves this country, I hope HARRIOT can be a gift that lets you remember Korea and be proud of it. Judy, thank you sincerely for choosing us." },
+    { t:"end" },
+    { t:"note", text:"Published on the HARRIOT blog on 17 April 2025. Shared with the customer’s prior consent." },
+  ],
+  cta: { href:"/journal/judy-family.html", label:"Read next", name:"Five Watches, One Photograph",
+    desc:"What Judy sent us two months later.", go:"Continue reading" },
+};

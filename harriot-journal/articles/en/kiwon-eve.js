@@ -1,0 +1,26 @@
+const IMG = "https://harriotwatches.com/journal/img/";
+module.exports = {
+  slug: "kiwon-eve", order: 5, category: "Story",
+  title: "“You’re Not Giving Up on HARRIOT, Are You?”",
+  titleSuffix: "The night before KI:WON",
+  dek: "A journalist asked me that in the autumn of 2023. It stayed with me for a long time.",
+  description: "Written the night before KI:WON was revealed: a year of silence, and the question of what a watch that is genuinely HARRIOT would be.",
+  keywords: "korean watch, KI:WON, HARRIOT, korean watch brand",
+  date: "2025-04-03",
+  hero: IMG + "kiwon_eve_01.jpg", heroLight: true,
+  heroAlt: "An image made ahead of the KI:WON reveal.",
+  image: IMG + "kiwon_eve_01.jpg", alt: "Ahead of the KI:WON reveal",
+  blocks: [
+    { t:"lede", text:"In the autumn of 2023 I sat down for an interview after a long time away. A journalist from a magazine published by the Korea SMEs and Startups Agency got in touch, carefully, saying she had been following HARRIOT for years." },
+    { t:"quote", text:"You’re not giving up on HARRIOT, are you? You really have to keep going.", cite:"The journalist" },
+    { t:"p", text:"That stayed with me for a long time. HARRIOT had been quiet publicly for a while, and I had been quietly — though not calmly — working through the same questions." },
+    { t:"p", text:"What would a watch that is genuinely HARRIOT be? What message can we put into the world right now? The past year was spent looking for answers to those." },
+    { t:"p", html:"Making something new turned out to be more than devising an attractive design. It is <strong>holding a philosophy, designing a meaning, and then realising all of it as an object.</strong>" },
+    { t:"p", text:"The watch that came out of that is KI:WON. It is a new starting point for HARRIOT, and it carries the value we believe in — that we remember where Korea began. The flag, the rose of Sharon, and the language of time we call memory are all in it." },
+    { t:"p", text:"Tomorrow we reveal it. Thank you to everyone who waited so long. I hope this watch makes you remember HARRIOT once more. Quietly, but deeply." },
+    { t:"end" },
+    { t:"note", text:"Written by founder Sungjo Hong on the HARRIOT blog on 3 April 2025, the day before KI:WON was revealed." },
+  ],
+  cta: { href:"/journal/kiwon.html", label:"Read next", name:"How to Put a National Flag on a Dial",
+    desc:"The making of KI:WON, revealed the following day.", go:"Continue reading" },
+};

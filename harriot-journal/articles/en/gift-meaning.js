@@ -1,0 +1,28 @@
+const IMG = "https://harriotwatches.com/journal/img/";
+module.exports = {
+  slug: "gift-meaning", order: 10, category: "Story",
+  title: "A Gift, and What It Carries",
+  dek: "A good gift is remembered not because it was expensive, but because something honest was put into it.",
+  description: "Why HARRIOT watches are chosen as gifts: a watch that begins with the name of a country, engraving and packaging done with care, and a promise to keep making them in Korea.",
+  keywords: "korean watch, HARRIOT, KI:WON, watch as a gift, engraving, made in Korea",
+  date: "2025-04-16",
+  hero: IMG + "gift_meaning_01.jpg", heroLight: true,
+  heroAlt: "A HARRIOT KI:WON watch with its packaging.",
+  image: IMG + "gift_meaning_01.jpg", alt: "A HARRIOT KI:WON watch with its packaging",
+  blocks: [
+    { t:"lede", text:"Everyone wants to give someone a good gift. But a gift is remembered not because it cost a great deal — it lasts when something honest and meaningful was put inside it." },
+    { t:"h2", text:"A watch that begins with the name of a country" },
+    { t:"p", text:"HARRIOT wanted to hold more than the hour: the beginning of Korea, and the beauty of its existing at all. KI:WON takes its inspiration from that moment of origin. The trigram pattern at the centre of the dial, and the four trigrams of the flag set around it, become more particular the closer you look — and more so again once you know what they are." },
+    { t:"h2", text:"What one watch can hold" },
+    { t:"p", text:"For one person it is a gift for an important day; for another it is what they give themselves at the end of a year. We listen to each story, and put care into every small thing, from the engraving to the packaging." },
+    { t:"quote", text:"A good watch, in the end, begins with a good intention.", cite:"Sungjo Hong, founder of HARRIOT" },
+    { t:"h2", text:"What we keep" },
+    { t:"p", text:"Every watch is made in Korea. The design goes beyond being attractive: it carries a story. And we stay with each customer until they are satisfied." },
+    { t:"p", text:"If you are looking for something to keep for a long time — for someone else, or for yourself — we hope a HARRIOT can be where it begins." },
+    { t:"end" },
+    { t:"note", text:"Published on the HARRIOT blog on 16 April 2025." },
+  ],
+  cta: { href:"/product/list.html?cate_no=42", label:"The watch", name:"KI:WON",
+    desc:"Leave your engraving with the order. 37mm · sapphire crystal · 50m water resistance.",
+    go:"See KI:WON" },
+};

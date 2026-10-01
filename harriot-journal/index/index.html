@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+
+<!--
+  HARRIOT JOURNAL — 목록 페이지
+  배포: /skin4/journal/index.html      공개: /journal/
+
+  ✏️ 새 글을 올리면 POSTS 배열에 한 줄 추가하면 끝이다.
+     lead:true 인 글이 맨 위 큰 기사로 나온다(하나만 지정).
+     mins = 읽는 데 걸리는 분. 본문 글자수 ÷ 500 으로 잡는다.
+     ARCHIVE 는 아직 저널로 옮기지 않은 매거진 게시판 글 — 옮기면 POSTS 로 올리고 여기서 뺀다.
+-->
+
+<script>
+var POSTS = [
+  {
+    slug:  "kari-757",
+    lead:  true,
+    title: "누리호를 기다린 757개의 시계",
+    dek:   "한 시계 브랜드가 한국항공우주연구원에 무작정 연락을 걸었습니다. 담당자에게 닿기까지 한 달, 계약서에 사인하기까지 세 달이 걸렸습니다.",
+    date:  "2026-09-02",
+    mins:  5,
+    image: "https://harriotwatches.co.kr/roma/img/211830/kari_01.jpg",
+    alt:   "전남 고흥 나로우주센터 발사대에 세워진 시험발사체"
+  }
+];
+
+/* 아직 저널로 옮기지 않은 글 — 매거진 게시판으로 연결 */
+var ARCHIVE = [
+  { href:"/board/magazine/read.html?no=8&board_no=5", title:"2018년 4월 27일을 손목에 새기다 — 도보 에디션 제작기" },
+  { href:"/board/magazine/read.html?no=7&board_no=5", title:"시계의 얼굴을 빚는 사람 — 36년, 성우정밀 장인 이야기" },
+  { href:"/board/magazine/read.html?no=6&board_no=5", title:"바늘 하나에도 장인이 있습니다 — 아미테크 이야기" },
+  { href:"/board/magazine/read.html?no=5&board_no=5", title:"공장이 없다면, 직접 짓기로 했습니다 — 일구 컬렉션의 시작" },
+  { href:"/board/magazine/read.html?no=4&board_no=5", title:"우리가 MADE IN KOREA를 고집하는 이유" },
+  { href:"/board/magazine/read.html?no=3&board_no=5", title:"[인터뷰] 내가 국산 시계를 만드는 이유 — 이코노믹리뷰" }
+];
+
+/* 카페24가 <title>을 상점 공통값으로 덮어쓴다 → 되돌린다. */
+(function () {
+  var t = "JOURNAL — 해리엇이 남긴 기록 | HARRIOT 해리엇";
+  function set() { if (document.title !== t) document.title = t; }
+  set();
+  document.addEventListener("DOMContentLoaded", set);
+  window.addEventListener("load", set);
+})();
+</script>
+
+<title>JOURNAL — 해리엇이 남긴 기록</title>
+<meta name="description" content="한국 시계 브랜드 해리엇이 남긴 제작기와 기록. 한국항공우주연구원 협업, 36년 문자판 장인, MADE IN KOREA 손목시계가 만들어지는 과정.">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HARRIOT">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="JOURNAL — 해리엇이 남긴 기록">
+<meta property="og:description" content="한국 시계 브랜드 해리엇이 남긴 제작기와 기록.">
+<meta property="og:image" content="https://harriotwatches.co.kr/roma/img/211830/kari_01.jpg">
+<meta property="og:url" content="https://harriotwatches.co.kr/journal/">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="/favicon.ico">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "HARRIOT JOURNAL",
+  "description": "한국 시계 브랜드 해리엇이 남긴 제작기와 기록.",
+  "url": "https://harriotwatches.co.kr/journal/",
+  "inLanguage": "ko",
+  "isPartOf": { "@type": "WebSite", "name": "HARRIOT", "url": "https://harriotwatches.co.kr/" },
+  "mainEntity": {
+    "@type": "ItemList",
+    "itemListElement": [
+      {
+        "@type": "ListItem", "position": 1,
+        "url": "https://harriotwatches.co.kr/journal/kari-757/",
+        "name": "누리호를 기다린 757개의 시계 — 해리엇 × 한국항공우주연구원"
+      }
+    ]
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "홈",      "item": "https://harriotwatches.co.kr/" },
+    { "@type": "ListItem", "position": 2, "name": "JOURNAL" }
+  ]
+}
+</script>
+
+<link rel="stylesheet" as="style" crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+
+<style>
+.jr, .jr *, .jr *::before, .jr *::after { box-sizing: border-box; }
+.jr h1, .jr h2, .jr h3, .jr p, .jr ul, .jr li, .jr figure { margin: 0; padding: 0; }
+.jr img { display: block; width: 100%; height: auto; }
+.jr li { list-style: none; }
+
+.jr {
+  --ink:  #111111;
+  --mute: #8e8e8e;
+  --rule: #ebebeb;
+
+  background: #fff;
+  color: var(--ink);
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont,
+               'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100svh; display: flex; flex-direction: column;
+}
+
+.jr__wide { max-width: 1240px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 48px); width: 100%; }
+
+/* ── 상단 바 ───────────────────────────────────────────────────────────── */
+.jr__bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px clamp(20px, 4vw, 48px);
+}
+.jr__brand { display: block; width: 116px; }
+.jr__nav { display: flex; gap: 26px; }
+.jr__nav a {
+  font-size: 12px; font-weight: 500; letter-spacing: .06em;
+  color: var(--mute); text-decoration: none;
+}
+.jr__nav a:hover { color: var(--ink); }
+
+/* ── 마스트헤드 ────────────────────────────────────────────────────────── */
+.jr__mast { padding: clamp(28px, 4vw, 52px) 0 clamp(32px, 4vw, 56px); }
+.jr__mastTitle { font-size: 12px; font-weight: 700; letter-spacing: .26em;
+                 text-transform: uppercase; color: var(--mute); }
+.jr__mastDek { margin-top: 10px; font-size: 15px; color: var(--mute);
+               line-height: 1.7; word-break: keep-all; }
+
+/* ── 리드 : 왼쪽 헤드라인 / 오른쪽 사진 ────────────────────────────────── */
+.jr__lead { padding-bottom: clamp(56px, 8vw, 104px); }
+.jr__leadLink {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  gap: clamp(28px, 5vw, 72px); align-items: center;
+  text-decoration: none; color: inherit;
+}
+.jr__leadTitle {
+  font-size: clamp(30px, 4.2vw, 52px); font-weight: 700;
+  line-height: 1.24; letter-spacing: -.035em; word-break: keep-all;
+}
+.jr__leadDek {
+  margin-top: 20px; font-size: 16px; line-height: 1.8; color: #4a4a4a;
+  word-break: keep-all; max-width: 44ch;
+}
+.jr__leadFig { overflow: hidden; aspect-ratio: 4 / 3; background: #f4f4f4; }
+.jr__leadFig img { width: 100%; height: 100%; object-fit: cover;
+                   transition: transform .55s cubic-bezier(.2,.6,.2,1); }
+.jr__leadLink:hover .jr__leadFig img { transform: scale(1.03); }
+.jr__leadLink:hover .jr__leadTitle { text-decoration: underline; text-underline-offset: 6px; }
+
+/* ── 그리드 ────────────────────────────────────────────────────────────── */
+.jr__grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: clamp(36px, 4vw, 56px) clamp(20px, 2.6vw, 34px);
+}
+.jr__card a { display: block; text-decoration: none; color: inherit; }
+.jr__cardFig { overflow: hidden; aspect-ratio: 16 / 10; background: #f4f4f4; }
+.jr__cardFig img { width: 100%; height: 100%; object-fit: cover;
+                   transition: transform .55s cubic-bezier(.2,.6,.2,1); }
+.jr__card a:hover .jr__cardFig img { transform: scale(1.03); }
+.jr__h {
+  font-size: clamp(19px, 1.7vw, 22px); font-weight: 700; line-height: 1.34;
+  letter-spacing: -.03em; margin-top: 18px; word-break: keep-all;
+}
+.jr__card a:hover .jr__h { text-decoration: underline; text-underline-offset: 5px; }
+
+/* 메타 : 시계 아이콘 + 분량 */
+.jr__meta {
+  margin-top: 12px; display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--mute);
+}
+.jr__meta svg { flex: none; width: 13px; height: 13px; stroke: currentColor;
+                fill: none; stroke-width: 1.6; }
+.jr__leadLink .jr__meta { margin-top: 22px; }
+
+/* ── 아카이브 ──────────────────────────────────────────────────────────── */
+.jr__archive { padding: clamp(64px, 8vw, 112px) 0 clamp(48px, 6vw, 80px); margin-top: auto; }
+.jr__archive h2 {
+  font-size: 12px; font-weight: 700; letter-spacing: .26em; text-transform: uppercase;
+  color: var(--mute); padding-bottom: 16px;
+}
+.jr__archive a {
+  display: flex; align-items: baseline; gap: 16px;
+  padding: 18px 0; border-top: 1px solid var(--rule);
+  font-size: 16px; font-weight: 500; line-height: 1.55;
+  color: var(--ink); text-decoration: none; word-break: keep-all;
+}
+.jr__archive li:last-child a { border-bottom: 1px solid var(--rule); }
+.jr__archive a:hover { color: var(--mute); }
+.jr__archiveNote { margin-top: 20px; font-size: 13px; color: var(--mute); line-height: 1.75; }
+
+/* ── 푸터 ──────────────────────────────────────────────────────────────── */
+.jr__foot { border-top: 1px solid var(--rule); padding: 32px clamp(20px, 4vw, 48px) 64px; }
+.jr__footInner {
+  max-width: 1240px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+}
+.jr__footNav { display: flex; gap: 26px; flex-wrap: wrap; }
+.jr__footNav a { font-size: 12px; font-weight: 500; letter-spacing: .06em;
+                 color: var(--mute); text-decoration: none; }
+.jr__footNav a:hover { color: var(--ink); }
+.jr__footNote { font-size: 12px; color: var(--mute); }
+
+@media (max-width: 900px) {
+  .jr__leadLink { grid-template-columns: 1fr; gap: 24px; }
+  .jr__leadFig { order: -1; aspect-ratio: 16 / 10; }
+  .jr__grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) { .jr__grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+
+<body>
+<div class="jr">
+
+  <header class="jr__bar">
+    <a class="jr__brand" href="/" aria-label="HARRIOT 홈">
+      <img src="/seolwol/harriot-logo-horizontal-black.png" alt="HARRIOT 해리엇">
+    </a>
+    <nav class="jr__nav">
+      <a href="/category/collection/43/">컬렉션</a>
+      <a href="/roma/sub/sub-01.html">브랜드</a>
+      <a href="/">쇼핑</a>
+    </nav>
+  </header>
+
+  <div class="jr__wide">
+    <div class="jr__mast">
+      <h1 class="jr__mastTitle">Journal</h1>
+      <p class="jr__mastDek">한국에서 시계를 만들며 남긴 기록</p>
+    </div>
+
+    <div data-lead></div>
+    <ul class="jr__grid" data-grid></ul>
+  </div>
+
+  <section class="jr__archive">
+    <div class="jr__wide">
+      <h2>매거진 아카이브</h2>
+      <ul data-archive></ul>
+      <p class="jr__archiveNote">이전에 매거진에 올린 글입니다. 순차적으로 이곳으로 옮기고 있습니다.</p>
+    </div>
+  </section>
+
+  <footer class="jr__foot">
+    <div class="jr__footInner">
+      <nav class="jr__footNav">
+        <a href="/">홈</a>
+        <a href="/roma/sub/sub-01.html">브랜드</a>
+        <a href="/category/collection/43/">컬렉션</a>
+        <a href="/seolwol/">설월</a>
+      </nav>
+      <p class="jr__footNote">HARRIOT — 대한민국을 기억하는 시계</p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  var CLOCK = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+              '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  function meta(p) {
+    return '<div class="jr__meta">' + CLOCK +
+           '<span>' + (p.mins ? esc(p.mins) + '분 분량' : '') + '</span></div>';
+  }
+
+  var lead = POSTS.filter(function (p) { return p.lead; })[0];
+  var rest = POSTS.filter(function (p) { return p !== lead; });
+
+  var leadSlot = document.querySelector("[data-lead]");
+  if (leadSlot && lead) {
+    leadSlot.className = "jr__lead";
+    leadSlot.innerHTML =
+      '<a class="jr__leadLink" href="/journal/' + esc(lead.slug) + '/">' +
+        '<div>' +
+          '<h2 class="jr__leadTitle">' + esc(lead.title) + '</h2>' +
+          '<p class="jr__leadDek">' + esc(lead.dek || "") + '</p>' +
+          meta(lead) +
+        '</div>' +
+        '<figure class="jr__leadFig"><img src="' + esc(lead.image) + '" alt="' +
+          esc(lead.alt || "") + '" loading="eager"></figure>' +
+      '</a>';
+  }
+
+  var grid = document.querySelector("[data-grid]");
+  if (grid) {
+    if (!rest.length) grid.style.display = "none";
+    grid.innerHTML = rest.map(function (p) {
+      return '<li class="jr__card">' +
+        '<a href="/journal/' + esc(p.slug) + '/">' +
+          '<figure class="jr__cardFig"><img src="' + esc(p.image) + '" alt="' +
+            esc(p.alt || "") + '" loading="lazy"></figure>' +
+          '<h2 class="jr__h">' + esc(p.title) + '</h2>' +
+          meta(p) +
+        '</a></li>';
+    }).join("");
+  }
+
+  var arc = document.querySelector("[data-archive]");
+  if (arc) {
+    arc.innerHTML = ARCHIVE.map(function (a) {
+      return '<li><a href="' + esc(a.href) + '">' + esc(a.title) + "</a></li>";
+    }).join("");
+  }
+})();
+</script>
+</body>
+</html>

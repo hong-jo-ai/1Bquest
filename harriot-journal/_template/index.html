@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+
+<!--
+================================================================================
+  HARRIOT JOURNAL — 매거진 피처 템플릿
+  배포 경로: /skin4/journal/<slug>/index.html
+  공개 URL : https://harriotwatches.co.kr/journal/<slug>/
+
+  레이아웃 폭 3단 (전부 .jr 안에서 처리 — 100vw 트릭 안 씀. 카페24 래퍼가
+  overflow:hidden 이어도 안 깨진다):
+    .jr__bleed  풀블리드    · 히어로, 장면 전환용 큰 사진
+    .jr__wide   1040px     · 본문보다 넓은 브레이크아웃 사진 / 2단 사진
+    .jr__wrap    680px     · 본문 텍스트
+
+  ⚠️ 카페24 제약 (2026-09-02 실측)
+   · <title> 은 카페24가 상점 공통값으로 덮어쓴다. 스킨으로 못 막는다.
+     → 아래 스크립트가 document.title 을 되돌린다(구글은 렌더 후 인식,
+       네이버 Yeti 는 불확실). 그래서 h1 과 JSON-LD headline 이 실질 제목 신호다.
+   · canonical 은 카페24가 경로 기준으로 자동 생성한다. 여기서 또 넣지 말 것(신호 충돌).
+   · og / meta / script 는 살아남는다.
+   · 게시판(board)에는 절대 올리지 말 것 — canonical 이 전 글 동일이라 색인 안 된다.
+
+  ✏️ 새 글 = 이 폴더 복제 → ARTICLE 블록 + <article> 본문만 교체.
+================================================================================
+-->
+
+<script>
+/* ── ARTICLE : 이 블록만 고치면 된다 ───────────────────────────────────────── */
+var ARTICLE = {
+  slug:        "template-slug",
+  title:       "글 제목을 여기에 — 검색어를 앞쪽에",
+  description: "검색결과에 그대로 노출되는 두 문장. 155자 안쪽. 무엇을 알려주는 글인지 먼저, 브랜드는 뒤에.",
+  published:   "2026-09-02",
+  modified:    "2026-09-02",
+  image:       "https://harriotwatches.co.kr/roma/img/211830/og_default.png",
+  category:    "HERITAGE"   /* HERITAGE · CRAFT · GUIDE · STORY */
+};
+/* ──────────────────────────────────────────────────────────────────────────── */
+
+ARTICLE.url = "https://harriotwatches.co.kr/journal/" + ARTICLE.slug + "/";
+
+/* 카페24가 <title> 을 덮어쓰므로 되돌린다. head 즉시 + DOM 준비 후 한 번 더. */
+(function () {
+  var t = ARTICLE.title + " | HARRIOT 해리엇";
+  function set() { if (document.title !== t) document.title = t; }
+  set();
+  document.addEventListener("DOMContentLoaded", set);
+  window.addEventListener("load", set);
+})();
+</script>
+
+<title>HARRIOT JOURNAL</title>
+<meta name="description" content="글 요약 — ARTICLE.description 과 같은 문장을 여기에도(JS 미실행 크롤러 대비).">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="HARRIOT">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="글 제목을 여기에 — 검색어를 앞쪽에">
+<meta property="og:description" content="글 요약 — ARTICLE.description 과 같은 문장.">
+<meta property="og:image" content="https://harriotwatches.co.kr/roma/img/211830/og_default.png">
+<meta property="og:url" content="https://harriotwatches.co.kr/journal/template-slug/">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="/favicon.ico">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "글 제목을 여기에 — 검색어를 앞쪽에",
+  "description": "글 요약 — ARTICLE.description 과 같은 문장.",
+  "image": ["https://harriotwatches.co.kr/roma/img/211830/og_default.png"],
+  "datePublished": "2026-09-02",
+  "dateModified": "2026-09-02",
+  "inLanguage": "ko",
+  "articleSection": "HERITAGE",
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://harriotwatches.co.kr/journal/template-slug/" },
+  "author":    { "@type": "Organization", "name": "HARRIOT", "url": "https://harriotwatches.co.kr/" },
+  "publisher": {
+    "@type": "Organization",
+    "name": "HARRIOT",
+    "url": "https://harriotwatches.co.kr/",
+    "logo": { "@type": "ImageObject", "url": "https://harriotwatches.co.kr/roma/img/211830/og_default.png" }
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "홈",      "item": "https://harriotwatches.co.kr/" },
+    { "@type": "ListItem", "position": 2, "name": "JOURNAL", "item": "https://harriotwatches.co.kr/journal/" },
+    { "@type": "ListItem", "position": 3, "name": "글 제목을 여기에 — 검색어를 앞쪽에" }
+  ]
+}
+</script>
+
+<link rel="stylesheet" as="style" crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;400;500;600;700&display=swap');
+
+/* 카페24 공통 CSS 와 섞여도 흔들리지 않도록 전부 .jr 스코프 안에서만 선언 */
+.jr, .jr *, .jr *::before, .jr *::after { box-sizing: border-box; }
+.jr h1, .jr h2, .jr h3, .jr p, .jr figure, .jr blockquote,
+.jr ul, .jr ol, .jr dl, .jr dd { margin: 0; padding: 0; }
+.jr img { display: block; width: 100%; height: auto; }
+
+.jr {
+  --ink:      #111111;
+  --ink-soft: #555555;
+  --ink-mute: #8e8e8e;
+  --rule:     #ebebeb;
+  --paper:    #ffffff;
+  --wash:     #f7f7f7;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Noto Serif KR', Georgia, serif;   /* 매거진 = 세리프 본문 */
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* 폭 3단 */
+.jr__wrap  { max-width: 680px;  margin: 0 auto; padding: 0 22px; }
+.jr__wide  { max-width: 1040px; margin: 0 auto; padding: 0 22px; }
+.jr__bleed { width: 100%; }
+
+/* 라벨·메타·캡션은 산세 — 본문 세리프와 대비 */
+.jr__kicker, .jr__meta, .jr figcaption, .jr__bar, .jr__foot,
+.jr__ctaLabel, .jr__ctaGo, .jr__tag {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+}
+
+/* ── 상단 바 (히어로 위에 겹침) ────────────────────────────────────────── */
+.jr__bar {
+  position: absolute; inset: 0 0 auto; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 26px clamp(20px, 5vw, 60px);
+}
+.jr__brand { display: block; width: 124px; }
+.jr__back {
+  font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+  color: rgba(255,255,255,.82); text-decoration: none;
+}
+.jr__back:hover { color: #fff; }
+
+/* ── 히어로 : 풀블리드 사진 + 오버레이 타이틀 ──────────────────────────── */
+.jr__hero { position: relative; min-height: min(92svh, 860px); display: flex; align-items: flex-end; }
+.jr__heroImg { position: absolute; inset: 0; }
+.jr__heroImg img { width: 100%; height: 100%; object-fit: cover; }
+.jr__scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(8,8,8,.42) 0%, rgba(8,8,8,.10) 34%, rgba(8,8,8,.78) 100%);
+}
+.jr__heroBody {
+  position: relative; z-index: 2; width: 100%;
+  padding: 0 0 clamp(48px, 8vw, 96px); color: #fff; text-align: center;
+}
+.jr__heroBody .jr__kicker { color: rgba(255,255,255,.72); }
+.jr__heroBody .jr__title  { color: #fff; }
+.jr__heroBody .jr__dek    { color: rgba(255,255,255,.82); }
+
+.jr__kicker {
+  font-size: 11px; letter-spacing: .32em; text-transform: uppercase;
+  font-weight: 500; color: var(--ink-mute);
+}
+.jr__title {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-weight: 700;
+  font-size: clamp(34px, 6vw, 68px);
+  line-height: 1.24;
+  letter-spacing: -.035em;
+  margin-top: 24px;
+  word-break: keep-all;              /* 한글 단어 중간 끊김 방지 */
+  text-wrap: balance;
+}
+.jr__dek {
+  margin: 26px auto 0; max-width: 560px;
+  font-size: clamp(15px, 1.6vw, 17px); font-weight: 300; line-height: 1.95;
+  word-break: keep-all;
+}
+.jr__meta {
+  margin-top: 30px; display: flex; gap: 16px; justify-content: center;
+  align-items: center; flex-wrap: wrap;
+  font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+}
+.jr__heroBody .jr__meta { color: rgba(255,255,255,.66); }
+.jr__meta span[aria-hidden] { opacity: .5; }
+
+/*  대안 히어로 — 사진 위 글자가 안 읽히는 컷이면 이걸 쓴다.
+    .jr__hero 에 class="jr__hero -light" 추가하면 사진 아래 흰 지면에 타이틀이 온다. */
+.jr__hero.-light { min-height: 0; display: block; }
+.jr__hero.-light .jr__scrim { display: none; }
+.jr__hero.-light .jr__heroImg { position: static; }
+.jr__hero.-light .jr__heroImg img { height: auto; max-height: 74svh; }
+.jr__hero.-light .jr__heroBody { color: var(--ink); padding: clamp(44px,6vw,72px) 0 0; }
+.jr__hero.-light .jr__title  { color: var(--ink); }
+.jr__hero.-light .jr__dek    { color: var(--ink-soft); }
+.jr__hero.-light .jr__kicker { color: var(--ink-mute); }
+.jr__hero.-light .jr__meta   { color: var(--ink-mute); }
+.jr__hero.-light .jr__bar    { position: static; }
+.jr__hero.-light .jr__back   { color: var(--ink-mute); }
+
+/* ── 본문 ──────────────────────────────────────────────────────────────── */
+.jr__body { padding: clamp(56px, 8vw, 96px) 0 0; }
+.jr__body > * + * { margin-top: 28px; }
+
+.jr__body p {
+  font-size: 17px; line-height: 2.1; color: #1a1a1a;
+  word-break: keep-all;
+}
+
+/* 드롭캡 — 첫 문단에 .-lede */
+.jr__body p.-lede::first-letter {
+  float: left; font-size: 4.6em; line-height: .84;
+  font-weight: 400; margin: .06em .12em 0 0; color: var(--ink);
+}
+.jr__body p.-lede { font-size: 18px; }
+
+.jr__body h2 {
+  font-weight: 500; font-size: clamp(23px, 3.2vw, 31px);
+  line-height: 1.55; letter-spacing: -.03em;
+  margin-top: clamp(56px, 7vw, 88px); word-break: keep-all;
+}
+.jr__body h3 {
+  font-weight: 600; font-size: 18px; letter-spacing: -.015em;
+  margin-top: 44px; word-break: keep-all;
+}
+.jr__body ul, .jr__body ol { padding-left: 24px; }
+.jr__body li { font-size: 17px; line-height: 2.1; margin-top: 10px; word-break: keep-all; }
+.jr__body a { color: var(--ink); text-underline-offset: 4px; }
+.jr__body strong { font-weight: 600; }
+
+/* 풀쿼트 */
+.jr__pull {
+  margin: clamp(52px, 7vw, 84px) auto;
+  padding: 34px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+  text-align: center;
+}
+.jr__pull p {
+  font-size: clamp(21px, 2.8vw, 28px); font-weight: 300;
+  line-height: 1.72; letter-spacing: -.03em; word-break: keep-all;
+}
+.jr__pull cite {
+  display: block; margin-top: 18px; font-style: normal;
+  font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-mute);
+}
+
+/* 사진 */
+.jr figure { margin: clamp(48px, 6vw, 76px) auto; }
+.jr figcaption {
+  margin-top: 14px; font-size: 12px; line-height: 1.8; color: var(--ink-mute);
+  word-break: keep-all;
+}
+.jr__wide figcaption, .jr__bleed figcaption { max-width: 680px; margin-left: auto; margin-right: auto; padding: 0 22px; }
+/* 사진 2장 나란히 */
+.jr__duo { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.6vw, 20px); }
+.jr__duo figcaption { padding: 0; }
+
+/* 끝 표시 */
+.jr__end { margin-top: 44px; font-size: 13px; letter-spacing: .3em; color: var(--ink-mute); }
+
+/* ── 상품 CTA ──────────────────────────────────────────────────────────── */
+.jr__cta {
+  margin-top: clamp(56px, 7vw, 88px);
+  background: var(--wash); padding: clamp(28px, 4vw, 44px);
+  display: flex; gap: clamp(20px, 3vw, 34px); align-items: center; flex-wrap: wrap;
+  text-decoration: none; color: inherit;
+}
+.jr__cta img { width: 132px; flex: none; }
+.jr__ctaBody { flex: 1 1 240px; min-width: 0; }
+.jr__ctaLabel { font-size: 10px; letter-spacing: .28em; text-transform: uppercase; color: var(--ink-mute); }
+.jr__ctaName { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; font-size: 21px; font-weight: 700; margin-top: 10px; letter-spacing: -.025em; word-break: keep-all; }
+.jr__ctaDesc { margin-top: 8px; font-size: 14px; color: var(--ink-soft); word-break: keep-all; }
+.jr__ctaGo {
+  margin-top: 18px; display: inline-block; font-size: 12px; letter-spacing: .12em;
+  border-bottom: 1px solid var(--ink); padding-bottom: 5px;
+}
+
+/* ── 푸터 ──────────────────────────────────────────────────────────────── */
+.jr__foot {
+  margin-top: clamp(72px, 10vw, 120px);
+  border-top: 1px solid var(--rule); background: var(--paper);
+  padding: 44px clamp(20px, 5vw, 60px) 80px; text-align: center;
+}
+.jr__footNav { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+.jr__footNav a {
+  font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--ink-mute); text-decoration: none;
+}
+.jr__footNav a:hover { color: var(--ink); }
+.jr__footNote { margin-top: 22px; font-size: 11px; color: var(--ink-mute); letter-spacing: .05em; }
+
+@media (max-width: 620px) {
+  .jr__duo { grid-template-columns: 1fr; }
+  .jr__cta { flex-direction: column; align-items: flex-start; }
+  .jr__body p.-lede::first-letter { font-size: 3.8em; }
+}
+</style>
+</head>
+
+<body>
+<div class="jr">
+
+  <!-- ▼▼▼ 여기부터 글마다 교체 ▼▼▼ -->
+  <article>
+
+    <!-- ── 히어로 ──────────────────────────────────────────────────────
+         사진 위 글자가 안 읽히는 컷이면 아래 section 에 class="jr__hero -light"
+         로 바꾼다(사진 아래 흰 지면에 타이틀이 온다).                        -->
+    <section class="jr__hero">
+      <div class="jr__heroImg">
+        <img src="https://harriotwatches.co.kr/roma/img/211830/og_default.png"
+             alt="이미지 설명 — 무엇이 찍혀 있는지 구체적으로" loading="eager">
+      </div>
+      <div class="jr__scrim"></div>
+
+      <header class="jr__bar">
+        <a class="jr__brand" href="/" aria-label="HARRIOT 홈">
+          <img src="/seolwol/harriot-logo-horizontal-white.png" alt="HARRIOT 해리엇">
+        </a>
+        <a class="jr__back" href="/journal/">Journal</a>
+      </header>
+
+      <div class="jr__heroBody">
+        <div class="jr__wrap">
+          <div class="jr__kicker">HERITAGE</div>
+          <!-- h1 은 페이지당 하나. <title>이 카페24에 덮이므로 이게 실질 제목 신호다. -->
+          <h1 class="jr__title">글 제목을 여기에 — 검색어를 앞쪽에</h1>
+          <p class="jr__dek">
+            한두 문장으로 이 글이 무엇을 말하는지. 본문 첫 문단과 겹치지 않게 쓴다.
+          </p>
+          <div class="jr__meta">
+            <span>HARRIOT</span>
+            <span aria-hidden="true">·</span>
+            <time datetime="2026-09-02">2026년 9월 2일</time>
+            <span aria-hidden="true">·</span>
+            <span data-readtime>—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 본문 ────────────────────────────────────────────────────────── -->
+    <div class="jr__wrap">
+      <div class="jr__body" data-article-body>
+
+        <p class="-lede">
+          첫 문단이 가장 중요하다. 검색해서 들어온 사람이 “여기 답이 있구나”를
+          3초 안에 알 수 있어야 한다. 노리는 검색어를 자연스럽게 한 번 넣는다.
+          드롭캡이 걸리는 문단이라 두세 줄 이상으로 쓴다.
+        </p>
+
+        <p>
+          두 번째 문단부터는 평범한 본문. 한 문단은 3~5줄이 읽기 좋다.
+        </p>
+      </div>
+    </div>
+
+    <!-- 본문보다 넓은 사진 (브레이크아웃) -->
+    <div class="jr__wide">
+      <figure>
+        <img src="" alt="" loading="lazy">
+        <figcaption>사진 설명. 언제 어디서 찍은 무엇인지.</figcaption>
+      </figure>
+    </div>
+
+    <div class="jr__wrap">
+      <div class="jr__body">
+        <h2>소제목은 사람들이 검색창에 치는 말로</h2>
+        <p>h2 는 검색엔진이 목차로 읽는다.</p>
+      </div>
+    </div>
+
+    <!-- 풀쿼트 -->
+    <div class="jr__wrap">
+      <blockquote class="jr__pull">
+        <p>글 전체를 대표할 한 문장. 길면 힘이 빠진다.</p>
+        <cite>출처 또는 화자</cite>
+      </blockquote>
+    </div>
+
+    <!-- 사진 2장 나란히 -->
+    <div class="jr__wide">
+      <div class="jr__duo">
+        <figure><img src="" alt="" loading="lazy"><figcaption>왼쪽 설명.</figcaption></figure>
+        <figure><img src="" alt="" loading="lazy"><figcaption>오른쪽 설명.</figcaption></figure>
+      </div>
+    </div>
+
+    <!-- 장면 전환용 풀블리드 사진 -->
+    <div class="jr__bleed">
+      <figure>
+        <img src="" alt="" loading="lazy">
+        <figcaption>풀블리드 사진 설명.</figcaption>
+      </figure>
+    </div>
+
+    <div class="jr__wrap">
+      <div class="jr__body">
+        <h2>마무리 섹션</h2>
+        <p>독자를 어디로 보낼지 정하고 끝낸다.</p>
+        <p class="jr__end">■</p>
+      </div>
+
+      <!-- 글과 관련된 상품 하나. SEO 글도 결국 상품으로 보내야 한다. -->
+      <a class="jr__cta" href="/product/detail.html?product_no=">
+        <img src="" alt="">
+        <div class="jr__ctaBody">
+          <div class="jr__ctaLabel">Featured</div>
+          <div class="jr__ctaName">상품명</div>
+          <div class="jr__ctaDesc">한 줄 설명 · 가격</div>
+          <span class="jr__ctaGo">제품 보기</span>
+        </div>
+      </a>
+    </div>
+
+  </article>
+  <!-- ▲▲▲ 여기까지 ▲▲▲ -->
+
+  <footer class="jr__foot">
+    <nav class="jr__footNav">
+      <a href="/">HOME</a>
+      <a href="/journal/">JOURNAL</a>
+      <a href="/roma/sub/sub-01.html">BRAND</a>
+      <a href="/category/collection/43/">COLLECTION</a>
+    </nav>
+    <p class="jr__footNote">HARRIOT — 대한민국을 기억하는 시계</p>
+  </footer>
+
+</div>
+
+<script>
+/* 읽는 데 걸리는 시간 — 한글 분당 500자 기준. 본문을 세어서 넣으므로 수기 수정 불필요. */
+(function () {
+  var el = document.querySelector("[data-article-body]");
+  var slot = document.querySelector("[data-readtime]");
+  if (!el || !slot) return;
+  var chars = (el.innerText || "").replace(/\s/g, "").length;
+  slot.textContent = Math.max(1, Math.round(chars / 500)) + "분 분량";
+})();
+</script>
+</body>
+</html>

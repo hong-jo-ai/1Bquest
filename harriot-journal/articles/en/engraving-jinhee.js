@@ -1,0 +1,26 @@
+const IMG = "https://harriotwatches.com/journal/img/";
+module.exports = {
+  slug: "engraving-jinhee", order: 9, category: "Story",
+  title: "A Name Engraved at Nine O’Clock",
+  titleSuffix: "“My love, Choi Jin-hee”",
+  dek: "We normally engrave the caseback. This customer asked for the side of the case instead. When I heard why, I had nothing to say.",
+  description: "A customer asked for his engraving on the flank of the case rather than the caseback — because he wanted to see it every time he looked at the watch.",
+  keywords: "korean watch, HARRIOT, KI:WON, watch engraving, customer story, gift",
+  date: "2025-04-15",
+  hero: IMG + "choi_jinhee_01.jpg",
+  heroAlt: "Macro photograph of Korean text laser-engraved along the side of a watch case.",
+  image: IMG + "choi_jinhee_01.jpg", alt: "An engraving on the side of a watch case",
+  blocks: [
+    { t:"lede", text:"I check every customer’s request myself, and I do the engraving by hand. Not as a process to be got through — I look at each sentence assuming there is a story behind it." },
+    { t:"p", text:"A few days ago a question came in from a customer who had ordered KI:WON in jade. “I’d like the engraving to read ‘My love, Choi Jin-hee’ — could it go on the side of the case rather than the back?”" },
+    { t:"p", html:"We normally engrave the caseback. There is more room, the letters come out cleanly, and customers are happy with it. But he wanted it on the flank of the case, at <strong>nine o’clock</strong>. When I heard the reason, I had nothing to say." },
+    { t:"quote", text:"It’s my wife’s name. I want to keep seeing it, every time I look at my watch.", cite:"The customer" },
+    { t:"p", text:"Something I had thought of as letters on a watch is, for someone else, the beginning and the end of a day — a reason for living. That one sentence filled me up." },
+    { t:"p", text:"Some people come to us for a father’s birthday, some for a friend’s wedding, some to record time spent with the person they love. And I engrave, carefully, so that the moment lasts longer. Not as someone who sells watches, but as someone helping to make another person’s time." },
+    { t:"p", text:"KI:WON means origin. I hope this watch can be the beginning of someone’s love, and the starting point of a memory." },
+    { t:"end" },
+    { t:"note", text:"Published on the HARRIOT blog on 15 April 2025. The engraving and the story are shared with the customer’s prior consent." },
+  ],
+  cta: { href:"/product/list.html?cate_no=42", label:"The watch", name:"KI:WON",
+    desc:"Leave your engraving with the order and we will cut it ourselves.", go:"See KI:WON" },
+};

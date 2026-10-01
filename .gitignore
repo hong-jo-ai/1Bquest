@@ -75,3 +75,4 @@ local-agent/_*
 # ssh2 테스트 픽스처(더미 개인키)까지 올라가며 GitHub 푸시 보호에 걸렸음(2026-07-27)
 local-agent/node_modules/
 local-agent/.secrets/
+harriot-journal/dist/
