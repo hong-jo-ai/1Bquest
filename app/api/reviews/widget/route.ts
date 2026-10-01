@@ -218,6 +218,34 @@ async function groupProductNos(mall: MallId, productNo: number): Promise<number[
   } catch { return [productNo]; }
 }
 
+type OwnReview = { id: string; rating: number; content: string; author: string; date: string; photos: string[]; source: string | null };
+
+/**
+ * 연결그룹의 자사몰 리뷰 캐시(kv, 5분).
+ * 그룹이 크면(미니엘 쁘띠 17개) 색상 페이지마다 카페24를 20~30번씩 부른다 — 색상끼리 결과가 같으니 한 번만 읽고 나눠 쓴다.
+ * 카페24 호출 한도는 주문·출고 크론과 같이 쓰므로 위젯이 잡아먹으면 안 된다.
+ */
+const GROUP_CACHE_TTL_MS = 5 * 60 * 1000;
+function kvClient() {
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return url && key ? createClient(url, key) : null;
+}
+async function readGroupCache(key: string): Promise<OwnReview[] | null> {
+  try {
+    const sb = kvClient(); if (!sb) return null;
+    const { data } = await sb.from("kv_store").select("data").eq("key", key).maybeSingle();
+    const c = data?.data as { at?: number; reviews?: OwnReview[] } | undefined;
+    if (c && Array.isArray(c.reviews) && typeof c.at === "number" && Date.now() - c.at < GROUP_CACHE_TTL_MS) return c.reviews;
+  } catch { /* 캐시 실패 = 그냥 새로 읽는다 */ }
+  return null;
+}
+async function writeGroupCache(key: string, reviews: OwnReview[]): Promise<void> {
+  try {
+    const sb = kvClient(); if (!sb) return;
+    await sb.from("kv_store").upsert({ key, data: { at: Date.now(), reviews }, updated_at: new Date().toISOString() });
+  } catch { /* noop */ }
+}
+
 const CHANNEL_LABEL: Record<string, string> = { musinsa: "무신사", "29cm": "29CM", wconcept: "W컨셉" };
 
 /** 외부 채널 상품평(channel_reviews)을 위젯 리뷰 형태로 — 매칭된 product_no + 몰 기준. */
@@ -277,43 +305,50 @@ export async function GET(req: NextRequest) {
   try {
     // 연결그룹: 색상만 다른 같은 컬렉션 등은 묶인 상품들의 리뷰를 함께 노출.
     const productNos = await groupProductNos(mall, productNo);
-    const seen = new Set<number>();
-    const articles: Cafe24ReviewArticle[] = [];
-    for (const pno of productNos) {
-      // cafe24 요청당 100건 제한 → offset 페이지네이션 (마이그레이션 리뷰 100+건 상품 대응)
-      let offset = 0;
-      while (articles.length < limit) {
-        const pageSize = Math.min(100, limit - articles.length) || 100;
-        const json = (await cafe24Get(
-          `/api/v2/admin/boards/${boardNo}/articles?product_no=${pno}&limit=${pageSize}&offset=${offset}`,
-          token,
-          mall,
-        )) as { articles?: Cafe24ReviewArticle[] };
-        const page = json.articles ?? [];
-        for (const a of page) {
-          if (a.parent_article_no || a.deleted === "T" || a.display === "F" || a.secret === "T") continue;
-          if (seen.has(a.article_no)) continue;
-          seen.add(a.article_no);
-          articles.push(a);
+    const cacheKey = productNos.length > 1
+      ? `review_widget_group:v1:${mall}:${boardNo}:${limit}:${[...productNos].sort((a, b) => a - b).join(",")}`
+      : null;
+    let reviews: OwnReview[] | null = cacheKey ? await readGroupCache(cacheKey) : null;
+    if (!reviews) {
+      const seen = new Set<number>();
+      const articles: Cafe24ReviewArticle[] = [];
+      for (const pno of productNos) {
+        // cafe24 요청당 100건 제한 → offset 페이지네이션 (마이그레이션 리뷰 100+건 상품 대응)
+        let offset = 0;
+        while (articles.length < limit) {
+          const pageSize = Math.min(100, limit - articles.length) || 100;
+          const json = (await cafe24Get(
+            `/api/v2/admin/boards/${boardNo}/articles?product_no=${pno}&limit=${pageSize}&offset=${offset}`,
+            token,
+            mall,
+          )) as { articles?: Cafe24ReviewArticle[] };
+          const page = json.articles ?? [];
+          for (const a of page) {
+            if (a.parent_article_no || a.deleted === "T" || a.display === "F" || a.secret === "T") continue;
+            if (seen.has(a.article_no)) continue;
+            seen.add(a.article_no);
+            articles.push(a);
+          }
+          if (page.length < pageSize) break; // 마지막 페이지
+          offset += pageSize;
+          if (offset >= 1000) break; // 안전 상한 (API 콜 폭주 방지)
         }
-        if (page.length < pageSize) break; // 마지막 페이지
-        offset += pageSize;
-        if (offset >= 1000) break; // 안전 상한 (API 콜 폭주 방지)
       }
-    }
 
-    const reviews = articles
-      .map((a) => ({
-        id: String(a.article_no),
-        rating: Number(a.rating) || 0,
-        content: cleanContent(a.content),
-        author: maskName(a.nick_name || a.writer),
-        date: (a.created_date || "").slice(0, 10),
-        photos: normalizePhotos(a),
-        source: /네이버/.test(a.writer || a.nick_name || "") ? "네이버" : null,  // 연동된 네이버 구매평 표기
-      }))
-      .filter((r) => r.content || r.photos.length) // 빈 리뷰 제외
-      .sort((a, b) => (b.date || "").localeCompare(a.date || "")); // 최신순
+      reviews = articles
+        .map((a) => ({
+          id: String(a.article_no),
+          rating: Number(a.rating) || 0,
+          content: cleanContent(a.content),
+          author: maskName(a.nick_name || a.writer),
+          date: (a.created_date || "").slice(0, 10),
+          photos: normalizePhotos(a),
+          source: /네이버/.test(a.writer || a.nick_name || "") ? "네이버" : null,  // 연동된 네이버 구매평 표기
+        }))
+        .filter((r) => r.content || r.photos.length) // 빈 리뷰 제외
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "")); // 최신순
+      if (cacheKey) await writeGroupCache(cacheKey, reviews);
+    }
 
     // 외부 채널(무신사 등) 상품평 병합 — 출처(source) 표기. 자사몰 리뷰 + 채널 리뷰 합산.
     const channelReviews = await fetchChannelReviews(mall, productNos);
