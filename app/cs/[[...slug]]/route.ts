@@ -3,6 +3,11 @@
  *
  *   https://care.paulvice.co.kr/cs      → 폴바이스 자사몰 + 상담창 자동 열림
  *   https://care.paulvice.co.kr/cs/h    → 해리엇 자사몰 + 상담창 자동 열림
+ *   https://dashboard.harriotwatches.com/cs/h → 해리엇 브랜드카드 QR (2026-10-01)
+ *
+ * 해리엇은 국문몰·영문몰 고객이 같은 카드를 받는다 → 브라우저 언어로 가른다.
+ * 한국어면 국문몰(문자 알림), 아니면 영문몰(영어 UI·이메일 알림). 인쇄물이라 주소는 못 바꾸니
+ * 목적지는 여기서만 바꾼다.
  *
  * 왜 리다이렉트인가: 웹챗 위젯은 자사몰 페이지에 붙어 있어서 그 페이지로 보내야 한다.
  * 그런데 `paulvice.co.kr/?pv_open=1` 은 카드·안내문에 찍기엔 길고 지저분하다.
@@ -18,19 +23,27 @@ export const dynamic = "force-dynamic";
 const MALL: Record<string, string> = {
   paulvice: "https://paulvice.co.kr",
   harriot: "https://harriotwatches.co.kr",
+  harriotEn: "https://harriotwatches.com",
 };
 
+/** 브라우저 1순위 언어가 한국어인가. 헤더가 없으면 한국어로 본다(국내 고객이 다수). */
+function prefersKorean(acceptLanguage: string | null): boolean {
+  const first = (acceptLanguage ?? "").split(",")[0].trim().toLowerCase();
+  return !first || first.startsWith("ko");
+}
+
 /** `/cs/h`, `/cs/harriot`, `/cs/해리엇` 모두 해리엇으로 본다. 나머지는 폴바이스. */
-function mallOf(slug: string[] | undefined): string {
+function mallOf(slug: string[] | undefined, acceptLanguage: string | null): string {
   const first = (slug?.[0] ?? "").toLowerCase();
-  return /^(h|harriot|해리엇)$/.test(first) ? MALL.harriot : MALL.paulvice;
+  if (!/^(h|harriot|해리엇)$/.test(first)) return MALL.paulvice;
+  return prefersKorean(acceptLanguage) ? MALL.harriot : MALL.harriotEn;
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params;
   const src = new URL(req.url).searchParams.get("s") ?? "";
 
-  const target = new URL(mallOf(slug));
+  const target = new URL(mallOf(slug, req.headers.get("accept-language")));
   target.searchParams.set("pv_open", "1");
   // 유입 채널은 있을 때만 — 빈 값이 붙어 URL 이 지저분해지는 걸 막는다.
   if (src) target.searchParams.set("pv_s", src.slice(0, 24));
