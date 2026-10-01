@@ -63,7 +63,7 @@
 | A4 | 원본 수령 후 클립: 15s 4:5·9:16 / 6s 범퍼 / 인용 자막 컷 3종 | clip-editor | ✅ 시안 6개 `다운로드/seolwol-lifewatch-clips/20260930/short/` (재빌드 `scratchpad/seolwol-lifewatch/work_short/build.py`) — 4:5 A/B 선택 대기 |
 | A5 | 메타: **영상 조회자·사이트 방문자 리타게팅** 세트(소액), 기존 설월 세트와 겹침 점검 | meta-ads | ⏸ 속도 안정까지 보류 |
 | A6 | ✅ 10/1 라이브(한국어 자막 88초판 자체 호스팅) — 설월 상세(국·영 × PC·모바일)에 영상 임베드 + "달 모양이 안 바뀌는 문페이즈" 제3자 해석 인용 | landing-cro | 대기 |
-| A7 | 인스타 스토리 공유 + 감사(크리에이터 태그) · 피드 컷. 스토리 링크 `utm_source=instagram&utm_medium=story` | social-copy | 3프레임 초안 완료 — 유료광고 표기·태그 계정·인용 원문 결정 대기 |
+| A7 | ✅ 릴스 2개 Buffer 예약(10/1·10/4 21:00) · 남은 것=스토리(범퍼 6초) — 인스타 스토리 공유 + 감사(크리에이터 태그) · 피드 컷. 스토리 링크 `utm_source=instagram&utm_medium=story` | social-copy | 3프레임 초안 완료 — 유료광고 표기·태그 계정·인용 원문 결정 대기 |
 | A8 | 대기명단·설월 미구매 회원 대상 "리뷰 영상" 메일 — 쿠폰 없음, 수신거부 필터 | crm | 대기 |
 | A13 | ✅ 10/1 라이브 — 영문몰 설월 상세에 영어 자막판 삽입 — 카페24 skin5/seolwol/img 자체 호스팅 `<video>`(자동재생X·포스터), 크레딧 "Review by SHW" + 원본 유튜브 링크. 해리엇 유튜브 재업로드 X. 크리에이터 추가 확인 불필요(사장님 9/30) | landing-cro | 영어 자막판 ✅ 시안 88초 `다운로드/seolwol-lifewatch-clips/20260930/en-longcut/`(SRT·한영 대조표 포함, 재빌드 `work_en/`) → 사장님 확인 후 반영 |
 | A11 | 홈 메타 설명 "메이드 인 코리아 시계 브랜드" 정리(원산지 방침) | landing-cro | 대기 |
@@ -72,6 +72,8 @@
 | A10 | 10/6 판정: 원본 수령·200만 이체·UTM 유입·판매속도 → 증액/유지/중단 | insight-analyst → 메인 | 10/6 |
 
 ## 4. 로그 (최신이 위)
+- 2026-10-01 15:35 **인스타 릴스 2개 Buffer 예약**(사장님 문구·시간 확정, 유료광고 표기 없음): ①9:16 B "낭만" **10/1 21:00**(post `6abdfe81fa15f1606cc06541`) ②9:16 A "달의 디테일" **10/4 21:00**(`6abdfe88bb0abb08f8d18abe`), 채널 harriotwatches. 캡션에 @shwkorea 태그, 해시태그는 캡션 끝(첫 댓글은 Buffer 유료 플랜 기능이라 불가). 영상 = Supabase `review-media/social/seolwol-shw-reel-*.mp4`, payload `scratchpad/seolwol-lifewatch/ig/post{1,2}.json`. ☑️10/1 21시 이후 실제 게시 확인(`buffer posts get --id …` status=sent).
+- 2026-10-01 15:32 A9 영문몰 재입고 메일 신청 **구현·로컬 검증 완료, 미커밋·미등록**(landing-cro — 커밋·스크립트태그·상품·스킨·운영 KV 쓰기 0, 발송 0). 파일: `public/hrt-soldout.js`(신규) · `lib/harriot/restockList.ts`(신규) · `app/api/harriot/waitlist/route.ts`(`list:"restock"` 분기만 추가, 기존 경로 그대로) · `proxy.ts`(ALLOW_PREFIX). 명단 = 새 KV `harriot:seolwol:restock:v1`(출시 대기명단·수동 `restock_requests` 와 분리 — 근거는 restockList.ts 머리 주석). 품절 판정 = `.action_button .sub_sold` 와 `a.btnSubmit` 의 **자기 class**(모바일 UA 는 서버가 블록을 바꿔 그리므로 "보이는가"로 판정하면 안 됨). 몰 판정 = `CAFE24.SDE_SHOP_NUM` 우선(`harriotwatches.co.kr/shop2/…` 는 shop 1 국문 화면 — 경로만 보면 틀린다). 검증: 브라우저 24화면 통과(품절 모의 8 = 국·영 × PC·모바일 × 주소 두 벌 / 재고 있는 지금 8 / 다른 상품 #121 4 / #121 진짜 품절 마크업에 대상번호만 바꿔 주입 4) + 라우트 테스트 14건(가짜 KV·가짜 텔레그램) + tsc·eslint 오류 0. 캡처 `scratchpad/seolwol-lifewatch/a9/shots_v1/`, 재실행 `a9/v1/verify.js`·`a9/v1/apitest/`. 남은 것: 메인 리뷰·커밋·배포 → 사장님 승인 후 스크립트태그 shop1·shop2 등록(`?v=20261001`) → 라이브 네 화면 재확인. ☑️입고 때 이 명단에 메일 보내는 스크립트는 아직 없다(발송기 `lib/harriot/emailSend.ts` 만 있음). ☑️품절 모의는 클래스 치환이라 실제 품절 첫날 라이브 재확인 필요.
 - 2026-10-01 13:25 **A13·A6 라이브**(사장님 "반영해"): 영문몰·국문몰 설월 상세에 리뷰 영상 블록(Moon 뒤·Index 앞, 인용 한 줄 + 자체 호스팅 88초 + 유튜브 링크, 유료광고 표기 없음). 영상 = Supabase `review-media/pdp/seolwol-shw-{en,ko}-v1.mp4`, 포스터 = 카페24 skin. 카페24 는 `onclick` 을 보존한다(가운데 클릭 재생, preload none 유지). 라이브 검증: 국문 4/4·영문 6/6 화면 통과(가로 넘침 0·재생 전 영상 요청 0·재생/탐색·구매 버튼 화면 안·에러 0). ☑️실제 폰 재생은 미확인(에뮬레이션에선 가운데 탭 무동작, 컨트롤바 ▶만).
   되돌리기: 영문 `a13/apply.draft.mjs --rollback --go`(백업이 스위스 삭제본 기준) · 국문 `a6/backup/shop1_*_20261001.html`(PC)·`shop1_mobile_description_pre-finish.html`(모바일).
 - 2026-10-01 스펙표 'Swiss/스위스' 삭제(사장님): 영문 `RONDA 708 quartz moon phase`, 국문 `RONDA 708 쿼츠 문페이즈` — 두 몰 PC·모바일 본문 라이브 확인. 원본 `a13/backup/pre_swissfix/`·`a6/backup/pre_swissfix/`.
