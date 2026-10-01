@@ -28,7 +28,7 @@
 |---|------|--------|------------|----------|
 | 1 | **8/21 (금) 오늘** D-20 | `01_snow_index.jpg` | 눈 질감과 인덱스 두 개 | 전부 |
 | 2 | **8/25 (화)** D-16 | `06_strap.jpg` | 가죽과 케이스 — 소재만 | 다이얼·달·이름 |
-| 3 | **8/29 (토)** D-12 | `02_moon.jpg` | 문페이즈 창 = 지붕 곡선 | 이름·전체 형태·가격 |
+| 3 | **8/29 (토)** D-12 | `02_moon.jpg` | 문페이즈 창 = 지붕 곡선 **+ 위상이 아니라 위치(최대 차별점)** | 이름·전체 형태·가격 |
 | 4 | **9/2 (수)** D-8 | `03_alignment.jpg` | 초침 심볼 ↔ 로고 정렬 | 전체 형태·가격 |
 | 5 | **9/6 (일)** D-4 | `04_angle.jpg` | **이름 공개 · 시계 전체 · 9/10 예고** | 가격 |
 | 6 | **9/10 (목)** D-0 | `05_front.jpg` | 판매 시작 · 가격 · 링크 | — |
@@ -82,13 +82,21 @@
 
 > Look again at the shape of the window.
 >
-> It is not a circle. It was cut along the line of a roof — the eaves you stand under when you look up at the moon from a courtyard.
+> On most moon phase watches, two arcs curve inward at the base of the window. They shave the moon at its sides — that is what makes the phase.
+>
+> We cut them the other way. Outward, along the line of a hanok roof.
+>
+> So this moon never wanes. It is always full. What changes, day by day, is where it hangs above the eaves.
 >
 > ―
 >
 > 창의 모양을 다시 봐주세요.
 >
-> 원형이 아닙니다. 지붕의 선을 따라 잘랐습니다. 마당에서 달을 올려다볼 때, 하늘을 먼저 가르는 그 처마입니다.
+> 보통 문페이즈는 창 아래쪽에 안쪽으로 파고든 호가 두 개 있습니다. 그게 달의 양옆을 깎아서 초승달을 만듭니다.
+>
+> 설월은 그 호를 반대로 잘랐습니다. 바깥으로, 한옥 지붕의 선을 따라.
+>
+> 그래서 이 달은 차고 기울지 않습니다. 늘 보름달입니다. 날마다 바뀌는 건 달이 처마 위 어디에 걸려 있는가입니다.
 
 `#harriot #moonphase #moonphasewatch #hanok #koreanwatch`
 `#해리엇 #문페이즈 #문페이즈시계 #한옥`
@@ -141,7 +149,7 @@
 
 > **Seolwol 雪月 — available now.**
 >
-> Moon phase · date · 38mm, 8.15mm thin. A dial the colour of snow on a roof, a window cut along the eaves, and a moon we drew again ourselves.
+> Moon phase · date · 38mm. A dial the colour of snow on a roof, a window cut along the eaves, and a moon we drew again ourselves.
 >
 > Engraving is free, and it does not delay your order.
 >
@@ -151,7 +159,7 @@
 >
 > **설월 雪月 — 오늘부터 만나보실 수 있습니다.**
 >
-> 문페이즈 · 날짜 · 38mm, 두께 8.15mm. 눈이 쌓인 지붕의 색을 낸 다이얼, 처마의 곡선을 따라 자른 창, 그리고 직접 다시 그린 달.
+> 문페이즈 · 날짜 · 38mm. 눈이 쌓인 지붕의 색을 낸 다이얼, 처마의 곡선을 따라 자른 창, 그리고 직접 다시 그린 달.
 >
 > 349,000원 · 각인은 무료이고, 각인을 넣어도 출고일은 같습니다.
 >
@@ -195,7 +203,7 @@
 |---|---------|--------|------|
 | 1 | 8/21 ✅ 게시됨 | `01_snow_index.jpg` | 눈 질감·인덱스 |
 | 2 | **8/27 (목) 오늘** D-14 | `06_strap.jpg` | 가죽·케이스 옆선 |
-| 3 | 8/31 (일) D-10 | `02_moon.jpg` | 문페이즈 창 = 지붕 곡선 |
+| 3 | 8/31 (일) D-10 | `02_moon.jpg` | 문페이즈 창 = 지붕 곡선 **+ 위상이 아니라 위치(최대 차별점)** |
 | 4 | 9/3 (수) D-7 | `03_alignment.jpg` | 초침 심볼 ↔ 로고 정렬 |
 | 5 | 9/6 (토) D-4 | `04_angle.jpg` | 이름 공개·전체·9/10 예고 |
 | 6 | 9/10 (목) D-0 | `05_front.jpg` | 판매 시작·가격·링크 |
@@ -207,9 +215,136 @@
 **문페이즈 창·전체 형태·이름·가격은 그대로 감춰진다.** 카드는 쓰지 않는 컷이 맞다.
 
 **③ 뒷면(케이스백) 컷은 3번 이후로 보류.**
-- 케이스백엔 **한옥 지붕 실루엣 각인 + 그 아래 커스텀 각인 공간**이 있다
+- 케이스백엔 **가운데 원형 각인면(달) + 둘레의 한옥 지붕 결**이 있다
   (`docs/harriot-seolwol-detail-plan.md` ⑪·촬영컷 22). "아무것도 없는 면"이 아니다.
-- 지붕 실루엣은 **다이얼 창과 같은 모티프**라, 3번(창 공개) 전에 뒷면을 올리면 카드가 샌다.
+- 둘레의 지붕 결은 **다이얼 창과 같은 모티프**라, 3번(창 공개) 전에 뒷면을 올리면 카드가 샌다.
 - 현 소재로는 촬영 자체가 불가: `DSC01439` 는 스트랩이 케이스백을 덮고 하이라이트가 날아가
-  지붕 실루엣이 안 보인다. **각인이 읽히는 뒷면 컷을 새로 찍어야** 쓸 수 있다.
+  가운데 원형 각인면이 안 보인다. **각인이 읽히는 뒷면 컷을 새로 찍어야** 쓸 수 있다.
 - 쓰기 좋은 자리 = 3번 이후, 또는 상세·언박싱("각인 무료" 메시지와 함께).
+
+---
+
+## ★ 전체공개 포스트 (2026-08-31) — 풀 리빌
+
+> 참고: MAEN Watches / Brooklyn 36 공개 포스트. 치수·디자인 의도·디테일·가격·날짜를
+> 한 번에 다 푸는 롱폼. 드립 티저로는 안 되던 확산이 이 포맷에서 일어난다.
+> 대표 판단(2026-08-27): "기원 때는 다 공개했더니 커뮤니티가 퍼갔다."
+
+### 왜 짧게 가는가 (2026-08-31 대표 지적으로 개정)
+
+초안은 제품의 거의 모든 것을 캡션에 담았다. 그러나 **인스타와 블로그가 같은 일을 하게 된다.**
+캡션에서 다 읽고 나면 블로그에 갈 이유가 없어지는데, **커뮤니티가 퍼가는 것은 캡션이 아니라 블로그 링크**다.
+(기원 사례) 즉 긴 캡션은 정작 퍼갈 물건을 약하게 만든다.
+
+**역할 분담**
+- **인스타** = 걸음을 멈추게 하는 훅 + 시계 커뮤니티가 즉시 요구하는 사양 + 블로그로 보내기
+- **블로그** = 기획 배경 · 다이얼 색 · 인덱스 기하 · 초침 정렬 · 제작 기간 (전부)
+
+**캡션에 남긴 것 / 블로그로 보낸 것**
+
+| 남김 | 이유 |
+|------|------|
+| 훅(달이 차고 기울지 않는다) | 스크롤을 멈추게 하는 유일한 문장 |
+| 호를 뒤집은 메커니즘 | 최대 차별점. 커뮤니티가 스크린샷으로 옮기는 대목 |
+| 달 2개 트레이드오프 | 짧고, 먼저 말해야 신뢰가 된다 |
+| 야광 한 줄 | 캐러셀 3번이 야광 사진이라 캡션에 없으면 사진이 뜬다 |
+| 사양 · 가격 · 날짜 | 시계 커뮤니티는 사양을 감추면 화를 낸다 (단 **확인된 값만**) |
+
+| 보냄 | 이유 |
+|------|------|
+| 기와지붕 한 장(기획 배경) | 블로그의 가장 좋은 도입부. 여기서 쓰면 블로그가 빈다 |
+| 다이얼 색 · 인덱스 기하 · 빛의 이동 · 초침 1초 | 클릭에 대한 보상 |
+
+### 캡션 (국문 · 753자 — 초안 1336자에서 44% 축약)
+
+```
+이 시계의 달은 차고 기울지 않습니다.
+
+문페이즈인데 달의 모양이 바뀌지 않습니다. 날마다 바뀌는 것은 달이 처마 위 어디에 걸려 있는가입니다.
+
+설월 雪月. 가장 깊은 겨울, 눈이 그친 밤에 뜨는 달을 그렇게 불렀습니다.
+
+문페이즈 창 아래에는 안쪽으로 파고든 두 개의 호가 있습니다. 그 호가 달의 양옆을 깎아 초승달을 만듭니다. 거의 모든 문페이즈가 이 구조입니다.
+
+설월은 그 호를 반대로 잘랐습니다. 바깥으로 흘러내리게. 마당에서 올려다본 한옥 처마선 그대로입니다.
+
+달을 깎던 선이 사라졌으니 달은 늘 보름달입니다. 대신 그 달이 한쪽 처마 끝에서 떠올라 지붕을 건너 반대편 처마 뒤로 저뭅니다. 한 달에 걸쳐 한 번.
+
+대가도 있습니다. 한 달에 한 번, 지붕 양 끝에 달이 하나씩 걸리는 구간이 있습니다. 모르고 만든 게 아니라 알고 택했습니다.
+
+야광은 달에만 넣었습니다. 불을 끄면 지붕 위에 달만 남습니다.
+
+38mm · 두께 8.15mm · 러그투러그 43.2mm · 밴드폭 20mm
+316L · 플랫 사파이어 · RONDA 708 쿼츠 문페이즈 · 5 ATM
+문페이즈 디스크 자체 제작 · 슈퍼루미노바(달)
+케이스백 원형 각인면 · 커스텀 각인 무료 · 2년 보증
+
+349,000원 · 9월 10일 출시 · 초도 300개
+
+다이얼 색을 어디서 가져왔는지, 인덱스를 왜 열두 번 파냈는지, 만드는 데 왜 그렇게 오래 걸렸는지는 블로그에 적었습니다. 프로필 링크에 있습니다.
+
+궁금한 점은 댓글로 물어봐 주세요. 제가 직접 답변드리겠습니다.
+```
+
+### 댓글 1 — 영문 (1411자, 댓글 1개로 해결)
+
+```
+The moon on this watch does not wax or wane.
+
+It is a moon phase, but the moon's shape never changes. What changes, day by day, is where it hangs above the eaves.
+
+SEOLWOL 雪月 — the name for the moon that rises once the snow has stopped, in the deepest part of winter.
+
+At the base of a moon phase window sit two arcs curving inward. They shave the moon at its sides and make the crescent. Almost every moon phase is built this way.
+
+Seolwol cuts them in reverse — flowing outward, the roofline of a hanok seen from a courtyard.
+
+With the arcs that carved the moon gone, the moon is always full. Instead it rises at one eave, crosses the roof, and sets behind the other. Once over the course of a month.
+
+There is a cost. Once a month a setting moon and a rising moon sit in the window together, one on each end of the roof. We did not miss it. We chose it.
+
+The lume is on the moon alone. Turn out the light and only the moon is left above the roof.
+
+38mm · 8.15mm · L2L 43.2mm · 316L steel
+Flat sapphire · RONDA 708 quartz moon phase · 5 ATM
+In-house moon disc · Super-LumiNova (moon)
+Caseback: hanok roofline, custom engraving free · 2 year warranty
+
+Releasing 10 September · 300 pieces in the first run
+
+Where the dial colour came from, why the indices are hollowed twelve times, and why it took so long — all of it is on the blog. Link in bio.
+
+Questions welcome in the comments — I will answer them myself.
+```
+
+### 댓글 2 — 해시태그 (26개)
+
+```
+#해리엇 #해리엇와치스 #설월 #문페이즈 #문페이즈시계 #한옥 #국내시계브랜드 #시계추천 #드레스워치 #시계스타그램
+#harriot #seolwol #moonphase #moonphasewatch #microbrand #watchnerd #dresswatch #watchfam #watchesofinstagram #watchuseek #koreanwatch #newrelease #watchcollector #quartzwatch #independentwatchbrand #watchfamasia
+```
+
+> 국문 캡션 원문(1,336자 롱폼)은 git 이력에 있다. 블로그 본문과 내용이 겹치므로
+> 인스타에 다시 쓸 일은 없다. 필요하면 `블로그_사진팩/_블로그_본문_사진배치.txt` 가 상위 호환이다.
+
+### ✅ 사양 표기 — 전 항목 검증 완료 (2026-08-31)
+
+`harriot-seolwol-spec-provenance.md` 대조 + 대표 실측·확인으로 **등급 C 0건.**
+
+| 항목 | 결과 |
+|------|------|
+| 두께 8.15mm | 대표 캘리퍼 실측 — 종전 값이 맞았음 |
+| **러그투러그 43.2mm** | 대표 캘리퍼 실측 — **종전 43.8mm 는 오류.** 0.6mm 틀린 채 전 문서에 퍼져 있었음 |
+| 316L · 5 ATM · 슈퍼루미노바 · 초도 300개 | 대표 확인 |
+
+> 실측 아니었으면 러그투러그가 틀린 채로 인스타·상세페이지·유튜버 자료에 그대로 나갔다.
+> 시계는 캘리퍼로 재는 물건이라 커뮤니티가 바로 잡아낸다.
+
+### 하지 말 것
+
+- **선주문 할인 금지.** MAEN 은 "pre-order discounted price" 를 걸지만 설월은 정가 출시다.
+  할인으로 출발하면 349,000원이 기준가가 아니라 상한가가 된다.
+- **두 가격 나란히 쓰지 말 것.** 국문 ₩349,000 / 영문은 가격 생략 후 link in bio.
+- **달 2개 구간을 빼지 말 것.** 먼저 말하면 설계 결정, 나중에 걸리면 결함이다.
+- **손목샷 포스트는 이 다음.** MAEN 도 공개글 → 착용컷 순서였다. 현재 착용 사진이 없고
+  9/7 브리프에도 없어서 26·27번으로 추가함.

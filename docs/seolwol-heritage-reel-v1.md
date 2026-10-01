@@ -1,5 +1,11 @@
 # SEOLWOL (설월) 헤리티지 릴스 v1 — 대본 + 비주얼/자막 플랜
 
+> 🔄 **2026-08-31 정정**: 이 대본은 "역방향 문페이즈·고정달이 사실이 아니다"라는 이유로
+> 재작성 대상이 되어 있었으나 **오판이었습니다.** 달은 항상 보름달이고 위상 변화가 없는 것이 맞습니다.
+> 24–36s 비트("the moon does not wane. It is fixed")는 **살립니다.**
+> 다만 같은 구간의 "What moves is the eaves"류 표현은 틀립니다 — 움직이는 것은 **달**입니다.
+
+
 > 2026-07-21 작성. 레퍼런스 = "Cartier Santos Story" 릴스(히스토리 스토리텔링 포맷)를 해리엇 톤으로 번안.
 > 관련: `docs/harriot-seolwol-launch-prep.md`(영문 카피 원안), `docs/seolwol-package-spec-v1.md`, [[harriot-seolwol-launch]].
 
