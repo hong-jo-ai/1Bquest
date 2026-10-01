@@ -4,10 +4,11 @@
  * 왜 필요한가(2026-10-01): 페덱스 실비를 건당 4만으로 어림해 왔는데 실제는 운임 5.6만 + 미납 관세 전가분이었다
  *   (9월 추정 100만 vs 실청구 174만). 손익·기원 정산이 청구서 실액을 써야 해서, 매달 청구 내역을 쌓아 둔다.
  *
- * 🔴 다운로드 자체는 자동화하지 않는다 — Billing Online 은 로그인이 필요하고 세션이 금방 끊긴다.
- *   자동 로그인은 계정 잠금 위험(마켓 사고 선례)이라 하지 않는다. 대신:
- *     ① 매월 8일·15일에 "내려받아 폴더에 넣어 달라"고 텔레그램으로 알린다(그달 청구분이 아직 없을 때만).
- *     ② 사장님이 엑셀을 `공유드라이브/다운로드/페덱스청구/` 에 넣으면 1시간 안에 자동으로 읽어 반영하고 요약을 보낸다.
+ * 엑셀이 들어오는 길은 둘이다:
+ *     ① 자동 — `fedexBillingFetch.js` 가 매월 9일·24일 Billing Online 에 로그인해 받아 `다운로드/페덱스청구/` 에 저장한다.
+ *     ② 수동 — 사장님이 직접 받아 같은 폴더에 넣는다. 이 스크립트가 1시간 안에 읽어 반영하고 요약을 보낸다.
+ *   12일·18일에 그달 청구분이 여전히 없으면(자동이 실패했다는 뜻) 내려받아 달라고 텔레그램으로 알린다.
+ *   열 이름은 화면 언어를 따라 한글·영문 두 가지가 온다 — 둘 다 읽고 값은 한글 표기로 통일한다.
  *
  * 저장: kv `fedex_invoice_data` = { rows: { "<청구서번호>|<AWB>": {...} }, files: [...], lastRemind }
  *   같은 파일·겹치는 기간을 다시 넣어도 키가 같아 중복되지 않는다(누계 파일을 매번 통째로 받아도 된다).
@@ -44,17 +45,29 @@ const MON = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", 
 /** "06-Jan-2026" → "2026-01-06" */
 const isoDate = (s) => { const m = String(s || "").match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/); return m ? `${m[3]}-${MON[m[2]]}-${m[1]}` : String(s || ""); };
 
+// 값도 언어를 따른다 → 한글 표기로 통일(요약·정산이 type === "운송" 으로 가른다)
+const TYPE = { Transportation: "운송", "Duty/Tax": "관세/세금" };
+const PAYER = { Shipper: "발송인", Recipient: "수취인", "Third Party": "제3자" };
+
 /** Billing Online 엑셀 한 장 → 행 목록. 요금 항목은 "라벨·금액" 열이 50쌍 반복된다. */
 function parseFile(file) {
   const wb = XLSX.readFile(file);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const A = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
   const H = A[0].map((h) => String(h).trim());
-  const col = (name) => H.indexOf(name);
+  // 열 이름은 내려받은 화면 언어를 따른다 — 사장님이 받은 파일은 한글, 자동 다운로드(전용 창)는 영문.
+  const ALIAS = {
+    "FedEx 청구서 번호": "FedEx Invoice Number", "청구서 유형": "Invoice Type", "청구 날짜": "Invoice Date", "결제 기한": "Due Date",
+    "항공운송장 번호": "Air Waybill Number", "요금 청구 대상": "Bill To", "발송 날짜": "Ship Date", "서비스": "Service",
+    "수취인 연락 담당자 이름": "Recipient Contact Name", "수취인 주소 시/군": "Recipient Address City", "수취인 국가 주소 /지역": "Recipient Address Country/Territory",
+    "길이": "Dim Length", "폭": "Dim Width", "높이": "Dim Height", "산정 중량": "Rated Weight Amount", "항공운송장 총 금액": "Air Waybill Total Amount",
+    "항공운송장 요금 라벨": "Air Waybill Charge Label",
+  };
+  const col = (name) => { const i = H.indexOf(name); return i >= 0 ? i : H.indexOf(ALIAS[name] || "\u0000"); };
   const need = ["FedEx 청구서 번호", "청구서 유형", "청구 날짜", "항공운송장 번호", "항공운송장 총 금액", "발송 날짜"];
   const missing = need.filter((n) => col(n) < 0);
   if (missing.length) throw new Error(`엑셀 형식이 다르다 — 없는 열: ${missing.join(", ")}`);
-  const firstLabel = H.indexOf("항공운송장 요금 라벨");
+  const firstLabel = col("항공운송장 요금 라벨");
   const rows = [];
   for (const r of A.slice(1)) {
     const inv = String(r[col("FedEx 청구서 번호")] || "").trim(), awb = String(r[col("항공운송장 번호")] || "").trim();
@@ -63,8 +76,8 @@ function parseFile(file) {
     for (let i = firstLabel; i >= 0 && i < H.length; i += 2) { const k = String(r[i] || "").trim(); if (k) charges[k] = (charges[k] || 0) + num(r[i + 1]); }
     const ship = String(r[col("발송 날짜")] || "");
     rows.push({
-      inv, type: String(r[col("청구서 유형")] || "").trim(), invDate: isoDate(r[col("청구 날짜")]), due: isoDate(r[col("결제 기한")]),
-      awb, payer: String(r[col("요금 청구 대상")] || "").trim(),
+      inv, type: TYPE[String(r[col("청구서 유형")] || "").trim()] || String(r[col("청구서 유형")] || "").trim(), invDate: isoDate(r[col("청구 날짜")]), due: isoDate(r[col("결제 기한")]),
+      awb, payer: PAYER[String(r[col("요금 청구 대상")] || "").trim()] || String(r[col("요금 청구 대상")] || "").trim(),
       ship: /^\d{8}$/.test(ship) ? `${ship.slice(0, 4)}-${ship.slice(4, 6)}-${ship.slice(6)}` : ship,
       svc: String(r[col("서비스")] || "").trim(),
       name: String(r[col("수취인 연락 담당자 이름")] || "").trim(), city: String(r[col("수취인 주소 시/군")] || "").trim(), cc: String(r[col("수취인 국가 주소 /지역")] || "").trim(),
@@ -138,10 +151,10 @@ async function main() {
       "누계: " + summarize(all)[0],
     ].join("\n");
   } else if (!FILE && !targets.length) {
-    // 알림: 8일·15일에, 이번 달에 발행된 청구서가 아직 한 건도 없으면(지난달 발송분 청구는 보통 1~8일에 나온다)
+    // 알림: 12일·18일에, 이번 달에 발행된 청구서가 아직 한 건도 없으면 — 자동 다운로드(fedexBillingFetch, 9·24일)가 실패했다는 뜻이다
     const day = Number(today.slice(8)), month = today.slice(0, 7);
-    if ((day === 8 || day === 15) && lastInv.slice(0, 7) < month && state.lastRemind !== today) {
-      msg = `🧾 페덱스 청구 내역 갱신할 때입니다.\nBilling Online(fedex.com/online/billing)에서 청구 내역 엑셀을 내려받아 공유드라이브 「다운로드/페덱스청구」 폴더에 넣어 주세요. 넣으면 자동으로 반영하고 요약을 보내드립니다.\n(현재 데이터의 마지막 청구일 ${lastInv || "없음"})`;
+    if ((day === 12 || day === 18) && lastInv.slice(0, 7) < month && state.lastRemind !== today) {
+      msg = `🧾 이번 달 페덱스 청구 내역이 아직 없습니다(자동 다운로드가 안 된 것으로 보입니다).\nBilling Online(fedex.com/online/billing)에서 청구 내역 엑셀을 내려받아 공유드라이브 「다운로드/페덱스청구」 폴더에 넣어 주세요. 넣으면 자동으로 반영하고 요약을 보내드립니다.\n(현재 데이터의 마지막 청구일 ${lastInv || "없음"})`;
       state.lastRemind = today;
     }
   }

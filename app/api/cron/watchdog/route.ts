@@ -47,6 +47,8 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:fedex-label-watch", label: "페덱스 라벨 인증 메일 감시(iMac·1시간)", maxHours: 3 },
   { key: "heartbeat:fedex-duty-watch", label: "페덱스 미지급 관세 경고 → 고객 안내 메일(iMac·1시간)", maxHours: 3 },
   { key: "heartbeat:fedex-invoice-import", label: "페덱스 청구 내역 적재·월간 알림(iMac·1시간)", maxHours: 3 },
+  // 매월 9일·24일. 실패하면 하트비트를 안 찍는다 — 한 회차를 놓쳐도 다음 회차 전에 잡히게 17일.
+  { key: "heartbeat:fedex-billing-fetch", label: "페덱스 청구 내역 자동 다운로드(iMac·매월 9·24일)", maxHours: 17 * 24 },
   // 월 1회(15일 09:30). 사장님이 결제를 자꾸 깜빡해서 만든 알림이라, 안 뜬 것도 잡아야 한다.
   { key: "heartbeat:navist-pay-reminder", label: "나비스트 결제 알림(iMac·매월 15일)", maxHours: 32 * 24 },
   // 영문몰(shop_no=2) 주문 수집 — 11시. 이 잡이 멈추면 **해외 주문이 통째로 안 보인다**:
