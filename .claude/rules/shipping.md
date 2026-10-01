@@ -96,6 +96,10 @@
   발급 전 **Rate API 로 무료 운임 조회** 가능. 통관 신고 원산지 = **무브먼트국**(설월·기원=CH, `fedexShip.cooFor`), HS 910211. 라벨 원본은 tmp 라 공유드라이브 `다운로드/페덱스라벨/` 에 복사.
   통관 정보요청 메일은 **harriotwatches@gmail.com** 으로 오고, 첨부 **watch worksheet** 양식을 채워야 한다.
   📄 **페덱스 라벨엔 상품명이 없다** → 포장 준비는 `node local-agent/enMallPickSheet.js --print`(품목·각인·박스·막힌 사유를 A4 로, 레이저 프린터).
+  💸 **관세는 수취인 부담을 유지하고, 고객이 안 내서 넘어오는 분은 비용으로 처리한다**(사장님 2026-10-01). 미국은 페덱스가 먼저 배달하고 나중에 청구해서, 미납이면 60일 뒤 우리 계정으로 넘어온다(12~6월 미국 44건 중 5건).
+  경고 메일("미지급 관세 및 세금")이 오면 `fedexDutyWatch.js` 가 **승인 없이** 고객에게 납부 안내 메일을 보내고 텔레그램으로 알린다 — 이 메일 한 종류에만 해당하는 상시 승인이다.
+  협찬·불량 교환은 발송인 부담(DDP)으로 보낸다. 대납 수수료(미국 약 2.3만)는 어느 쪽이든 붙는다. 브라질 등 고관세국은 발송 전에 관세 동의부터.
+  실비 = 운임 건당 약 5.6만(추정 4만 아님). 청구 내역은 `fedexBillingFetch.js` 가 매월 9·24일 받아 kv `fedex_invoice_data` 에 쌓는다.
 - **카페24 배송완료 전환**은 크론이 한다. 네이버페이 주문은 API 불가 → 7일 넘게 정체되면 판매자센터 수동.
 (smartstore-dispatch-cancel-window · kakao-gift-channel-economics · postoffice-outbound · harriot-en-mall-outbound-gap · boxspec-shipping-dimensions · fedex-customs-and-label-certification · cafe24-delivery-complete-auto)
 
