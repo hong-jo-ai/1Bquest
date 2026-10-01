@@ -30,6 +30,16 @@
     var API = "https://paulvice-dashboard.vercel.app/api/harriot/waitlist";
     var MARK = "data-hrt-soldout";   // 중복 주입 가드(전역 변수 대신 <html> 속성)
 
+    // 재고가 있을 때의 한 줄 안내(사장님 2026-10-01: "품절임박" 스티커 대신 사실만 적은 한 줄).
+    // 켜는 법 = NOTICE_ON 을 true 로 바꾸고 스크립트태그 ?v= 를 올린다. 품절되면 아래 품절 블록이 대신 뜬다.
+    // 🔴 리오더가 입고되면 이 문구는 틀린 말이 된다 → NOTICE_ON 을 끄거나 문구를 바꿀 것. 잊어도 NOTICE_UNTIL 뒤엔 안 뜬다.
+    var NOTICE_ON = false;
+    var NOTICE_UNTIL = Date.parse("2026-11-10T00:00:00+09:00");
+    var NOTICE = {
+      ko: "1차 생산분이 얼마 남지 않았습니다. 다음 입고는 11월 이후입니다.",
+      en: "Only a few of the first batch remain. The next batch will not arrive before November."
+    };
+
     var root = document.documentElement;
     if (!root || root.getAttribute(MARK)) return;
 
@@ -189,6 +199,18 @@
       return { input: input, btn: btn };
     }
 
+    // 재고가 있을 때: 구매 버튼 위 한 줄 안내. 구매 버튼이 실제로 보일 때만 넣는다(구조를 못 읽으면 아무것도 안 한다).
+    function mountNotice(area) {
+      if (!NOTICE_ON || !(Date.now() < NOTICE_UNTIL)) return;
+      if (document.getElementById("hrtSoNote")) return;
+      var buy = area.querySelector(".action_button a.btnSubmit");
+      if (!on(buy)) return;
+      var d = document.createElement("div"); d.id = "hrtSoNote";
+      d.textContent = isEn() ? NOTICE.en : NOTICE.ko;
+      d.style.cssText = "margin:16px 0 12px;padding:11px 14px;border:1px solid #111;background:#fff;color:#111;font-size:13px;line-height:1.7;text-align:left;word-break:keep-all;overflow-wrap:break-word;box-sizing:border-box;max-width:100%";
+      area.parentNode.insertBefore(d, area);
+    }
+
     // 스킨 버튼의 모서리 둥글기를 따라간다(못 읽으면 각진 그대로).
     function matchSkin(area, parts) {
       try {
@@ -222,7 +244,7 @@
       if (document.getElementById("hrtSo")) return true;
       var area = actionArea();
       if (!area || !area.parentNode) return false;
-      if (!isSoldOut(area)) return true;                 // 재고가 있으면 아무것도 하지 않는다
+      if (!isSoldOut(area)) { try { mountNotice(area); } catch (e) {} return true; }   // 재고가 있으면 한 줄 안내만(꺼져 있으면 아무것도 안 함)
 
       var en = isEn();
       var T = en ? COPY.en : COPY.ko;
