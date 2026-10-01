@@ -22,11 +22,10 @@ module.exports = {
       eyebrow: "Harriot · 설월 雪月",
       title: "설월",
       titleEn: "Harriot Seolwol",
-      image: { cut: "01", alt: "다이얼 정면 매크로 — 달이 처마 사이에 절반쯤 걸린 순간", ratio: "4/3" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut01-dial-hero-v2.jpg", alt: "다이얼 정면 매크로 — 달이 처마 사이에 절반쯤 걸린 순간", ratio: "4/3" },
       line: "하늘을 보는 것이 아니라,<br>처마 밑에서 올려다보는 것.",
       priceNote: "문페이즈 · 날짜 · 38mm",
       price: "349,000원",
-      badge: "9월 10일 출시<br>각인 상시 무료 · 각인해도 출고 일정은 같습니다",
     },
 
     // ── ② OPENING ───────────────────────────────────────────
@@ -43,6 +42,7 @@ module.exports = {
       head: "눈과 달빛이<br>한 단어에.",
       body: [
         "가장 깊은 겨울, 눈이 그친 밤에 뜨는 달을 설월(雪月)이라 불렀습니다. 눈과 달빛이 한 단어 안에 들어 있습니다.",
+        "시작은 우연히 본 사진 한 장이었습니다. 곱게 쌓인 눈에 햇빛이 비쳐, <b>흰색도 하늘색도 아닌 그 중간 어딘가의 묘한 색</b>을 내고 있는 한옥 기와지붕. 그 색이 너무 아름다웠습니다. 처마의 곡선과 그 푸르스름한 색이 강렬해서, 언젠가 이것들을 표현한 시계를 만들어야겠다고 생각했습니다.",
         "우리에게 달은 올려다보는 것이었습니다. 소원을 빌고, 떠난 사람을 생각하고, 다음 계절을 기다리는 자리였습니다.",
         "그리고 그 달은 언제나 처마 아래에서 보였습니다. 마당에 서면 한옥의 지붕선이 하늘을 먼저 가르고, 달은 그 곡선의 끝에 걸려 있었습니다.",
         "우리가 기억하는 것은 달이 아니라, <b>처마와 함께 본 달</b>입니다.",
@@ -70,21 +70,22 @@ module.exports = {
         {
           from: { src: "world/m37_eave-tip.png", alt: "한옥 처마 끝에 걸린 겨울 보름달" },
           fromCap: "한옥의 처마",
-          to: { cut: "05", alt: "12시 문페이즈 창 — 처마 곡선 형태", ratio: "16/9" },
+          to: { src: "https://harriotwatches.co.kr/seolwol/img/cut05-window-v2.jpg", alt: "12시 문페이즈 창 — 처마 곡선 형태", ratio: "16/9" },
           toCap: "12시 방향의 창",
           text: "마당에 서면 지붕선이 하늘을 먼저 가릅니다. 달은 늘 그 곡선의 끝에 걸려 있었습니다. 그 선을 그대로 창의 모양으로 옮겼고, 다시 인덱스 열두 개의 곡선으로 옮겼습니다.",
         },
         {
-          from: { src: "world/m32_snowtiles.png", alt: "한옥 기와 위에 쌓인 눈" },
-          fromCap: "기와 위에 쌓인 눈",
-          to: { cut: "09", alt: "다이얼 사광 매크로 — 파인 스노우 텍스처", ratio: "16/9" },
-          toCap: "다이얼",
-          text: "눈은 흰색이 아닙니다. 그늘진 곳에서는 아주 옅은 하늘빛을 띱니다. 다이얼의 색과 고운 결은 여기서 나왔습니다.",
+          // 2026-08-31: AI 무드컷(m32_snowtiles.png) → 대표가 직접 찍은 실사진으로 교체.
+          from: { src: "world/real_snow-roof.jpg", alt: "눈이 쌓인 한옥 지붕" },
+          fromCap: "눈이 쌓인 한옥 지붕",
+          to: { src: "https://harriotwatches.co.kr/seolwol/img/cut09-dial-texture-v2.jpg", alt: "다이얼 사광 매크로 — 파인 스노우 텍스처", ratio: "16/9" },
+          toCap: "설월의 다이얼",
+          text: "눈은 흰색이 아닙니다. 그늘진 곳에 쌓인 눈은 아주 옅은 하늘빛을 띱니다. 지붕 위의 저 색이 다이얼의 색이 되었습니다. 색을 맞춘 것이 아니라, 저 지붕을 보고 정한 색입니다. 결도 같은 자리에서 왔습니다 — 굵은 입자도, 펄도 없이, 눈이 내려앉은 기와의 표면.",
         },
         {
           from: { src: "world/m33_moon.png", alt: "눈이 그친 밤의 보름달" },
           fromCap: "눈이 그친 밤의 달",
-          to: { cut: "06", alt: "자체 제작 문페이즈 디스크", ratio: "1/1" },
+          to: { src: "https://harriotwatches.co.kr/seolwol/img/cut06-disc-v2b.jpg", alt: "자체 제작 문페이즈 디스크", ratio: "1/1" },
           toCap: "문페이즈 디스크",
           text: "무브먼트가 주는 달로는 이 달이 되지 않았습니다. 달과 별을 다시 그리고, 표면의 결까지 넣었습니다.",
         },
@@ -101,16 +102,30 @@ module.exports = {
         "달은 그 처마 사이로 떠오르고, 처마 뒤로 저뭅니다.",
         "당신이 보는 것은 하늘의 달이 아니라, <b>마당에서 올려다본 달</b>입니다.",
       ],
-      image: { cut: "05", alt: "12시 문페이즈 창 초근접 — 창의 처마 곡선 형태", ratio: "16/9" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut05-window-v2.jpg", alt: "12시 문페이즈 창 초근접 — 창의 처마 곡선 형태", ratio: "16/9" },
+    },
+
+    // ── ④-a2 위상이 아니라 위치 ★ 최대 차별점 (2026-08-31 추가) ──
+    {
+      type: "narrative",
+      eyebrow: "Not a Phase",
+      head: "달이 차고 기울지 않습니다.",
+      body: [
+        "문페이즈 시계는 날마다 달의 <b>모양</b>이 바뀝니다. 창 아래쪽에 안쪽으로 파고든 두 개의 호가 달의 양옆을 깎아내며 그 위상을 만듭니다. 거의 모든 문페이즈가 이 구조입니다.",
+        "<b>설월의 달은 늘 보름달입니다.</b> 대신 날마다 바뀌는 것은 <b>달이 처마 위 어디에 걸려 있는가</b>입니다.",
+        "그러기 위해 창 아래쪽의 두 호를 반대로 잘랐습니다. 안으로 파고들게 하는 대신 바깥으로 흘러내리게 — 마당에서 올려다본 처마선입니다. 달은 그 처마 끝에서 떠올라, 지붕 위를 건너, 반대편 처마 뒤로 저뭅니다. 한 달에 걸쳐 한 번.",
+        "반쯤 걸친 달은 반달로 보이지 않습니다. 달을 가리는 선이 달을 깎아내는 둥근 호가 아니라, 바깥으로 흘러내리는 처마의 곡선이기 때문입니다. 위상이 아니라 <b>지붕에 가린 달</b>로 읽힙니다.",
+      ],
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut05-window-v2.jpg", alt: "문페이즈 창 — 보름달이 처마 곡선에 걸린 모습", ratio: "16/9" },
     },
 
     // ── ④-b 문페이즈 3컷 시퀀스 ─────────────────────────────
     {
       type: "sequence",
       items: [
-        { image: { cut: "02", alt: "문페이즈 — 달이 처마 뒤에서 떠오름", ratio: "1/1" }, caption: "떠오르고" },
-        { image: { cut: "03", alt: "문페이즈 — 달이 처마 곡선 끝에 걸림", ratio: "1/1" }, caption: "걸리고" },
-        { image: { cut: "04", alt: "문페이즈 — 달이 처마 뒤로 저묾", ratio: "1/1" }, caption: "저물고" },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut02-moon-rise.jpg", alt: "문페이즈 — 달이 처마 뒤에서 떠오름", ratio: "1/1" }, caption: "떠오르고" },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut03-moon-cross.jpg", alt: "문페이즈 — 달이 처마 곡선 끝에 걸림", ratio: "1/1" }, caption: "걸리고" },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut04-moon-set.jpg", alt: "문페이즈 — 달이 처마 뒤로 저묾", ratio: "1/1" }, caption: "저물고" },
       ],
     },
 
@@ -127,8 +142,8 @@ module.exports = {
         "그리고 달에만 야광을 올렸습니다.<br><b>불을 끄면 바늘도 인덱스도 사라지고, 달만 남습니다.</b>",
       ],
       items: [
-        { image: { cut: "06", alt: "자체 제작 문페이즈 디스크 클로즈 — 달 표면의 결과 별", ratio: "1/1" }, caption: "달의 결과 별. 무브먼트 기본 디스크를 쓰지 않고 새로 제작했습니다." },
-        { image: { cut: "07", alt: "소등 상태 장노출 — 야광 달만 떠 있는 컷", ratio: "1/1" }, caption: "불을 끄면 달만 남습니다." },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut06-disc-v2b.jpg", alt: "자체 제작 문페이즈 디스크 클로즈 — 달 표면의 결과 별", ratio: "1/1" }, caption: "달의 결과 별. 무브먼트 기본 디스크를 쓰지 않고 새로 제작했습니다." },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut07-lume.jpg", alt: "소등 상태 장노출 — 야광 달만 떠 있는 컷", ratio: "1/1" }, caption: "불을 끄면 달만 남습니다." },
       ],
     },
 
@@ -142,21 +157,21 @@ module.exports = {
         "초침이 12시에 닿는 순간, 반대편의 심볼은 6시의 로고 위에 내려앉습니다. 다이얼 한가운데를 지나는 하나의 선이 됩니다.",
         "아무 기능도 하지 않는 1초입니다.",
       ],
-      image: { cut: "08", alt: "초침이 12시에 선 순간 — 심볼과 6시 로고가 세로축에 정렬", ratio: "1/1" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut08-align.jpg", alt: "초침이 12시에 선 순간 — 심볼과 6시 로고가 세로축에 정렬", ratio: "1/1" },
     },
 
     // ── ⑦ THE DIAL ──────────────────────────────────────────
     {
       type: "features",
       eyebrow: "The Dial",
-      head: "눈은 빛나지 않고,<br>머금습니다.",
+      head: "눈은 빛을 모으지 않고,<br>흩습니다.",
       intro:
-        "다이얼의 색은 흰색이 아니라, 눈이 쌓인 지붕의 색입니다. 아주 옅은 하늘빛. 결은 곱게 두었습니다. 거친 텍스처도, 펄의 반짝임도 넣지 않았습니다.",
-      image: { cut: "09", alt: "다이얼 사광 매크로 — 파인 스노우 텍스처의 결", ratio: "16/9" },
+        "다이얼의 색은 흰색이 아니라, 눈이 쌓인 지붕의 색입니다. 아주 옅은 하늘빛. 결은 굵게 세웠습니다. 매끈하게 다듬는 대신, 갓 내린 눈의 결정이 서 있는 상태로 두었습니다.",
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut09-dial-texture-v2.jpg", alt: "다이얼 사광 매크로 — 파인 스노우 텍스처의 결", ratio: "16/9" },
       items: [
         { title: "페일 스카이 블루", desc: "눈이 쌓인 한옥 지붕의 색. 흰색이 아닙니다." },
-        { title: "파인 스노우 텍스처", desc: "거친 결도, 펄도 없이. 눈은 빛나지 않고 머금습니다." },
-        { title: "무광 마감", desc: "광을 낼 수 있는 만큼 죽였습니다. 바탕이 반짝이면 눈이 보이지 않습니다." },
+        { title: "파인 스노우 텍스처", desc: "가까이 보면 표면이 고르지 않습니다. 눈이 원래 그렇습니다." },
+        { title: "무광 마감", desc: "거울처럼 되비추지 않습니다. 빛은 결에 부딪혀 잘게 부서집니다." },
         { title: "도팽 핸즈", desc: "가운데 능선이 빛을 반으로 나눕니다. 끝은 날카롭지 않게 눌렀습니다." },
       ],
     },
@@ -176,10 +191,10 @@ module.exports = {
       figcap: "위 · 한옥 처마선 / 아래 · 설월 인덱스 측면. 같은 곡선입니다. (단위 mm)",
       after: [
         "평평한 인덱스는 한 각도에서 한 번 번쩍이고 꺼집니다. 오목한 면은 그렇지 않습니다. 손목이 기울면 빛이 곡면을 타고 흐릅니다. 꺼지는 대신 <b>이동합니다.</b>",
-        "다이얼은 광을 최대한 죽였습니다. 빛을 되던지는 것은 인덱스뿐입니다.",
+        "다이얼은 빛을 흩습니다. 한 줄로 모아 되던지는 것은 인덱스뿐입니다.",
         "눈밭에 햇빛이 닿을 때처럼 — 바탕은 조용하고, 반짝임만 움직입니다.",
       ],
-      image: { cut: "10", alt: "인덱스 사광 매크로 — 오목한 면을 타고 흐르는 하이라이트", ratio: "16/9" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut10-index-v2.jpg", alt: "인덱스 사광 매크로 — 오목한 면을 타고 흐르는 하이라이트", ratio: "16/9" },
       imageCap: "빛이 곡면을 타고 이동합니다",
     },
 
@@ -195,8 +210,8 @@ module.exports = {
         "스트랩은 네이비 크로코 패턴 소가죽. 광택이 있는 가죽이라 무광의 다이얼과 정확히 반대편에 섭니다. 20mm에서 16mm로 좁아지며 손목을 정리합니다.",
       ],
       items: [
-        { image: { cut: "11", alt: "측면 프로파일 — 플랫 사파이어와 얇은 케이스", ratio: "1/1" }, caption: "낮고 평평한 실루엣." },
-        { image: { cut: "13", alt: "스트랩 클로즈 — 네이비 크로코 패턴의 광택", ratio: "1/1" }, caption: "네이비 크로코 패턴 소가죽." },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut11-profile-v2.jpg", alt: "측면 프로파일 — 플랫 사파이어와 얇은 케이스", ratio: "1/1" }, caption: "낮고 평평한 실루엣." },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut13-strap-v2.jpg", alt: "스트랩 클로즈 — 네이비 크로코 패턴의 광택", ratio: "1/1" }, caption: "네이비 크로코 패턴 소가죽." },
       ],
     },
 
@@ -207,10 +222,9 @@ module.exports = {
       head: "소매 아래에서<br>가장 자연스럽게.",
       body: "드레스 워치입니다. 예식과 자리에 어울리지만, 그것만을 위한 시계는 아닙니다. 흰 셔츠와 니트, 코트 소매 아래에서 가장 자연스럽습니다.",
       images: [
-        { cut: "14", alt: "손목 착용 — 정면", ratio: "4/5" },
-        { cut: "15", alt: "손목 착용 — 사선", ratio: "4/5" },
-        { cut: "16", alt: "손목 착용 — 코트 소매 아래", ratio: "4/5" },
-        { cut: "23", alt: "정면 풀샷 (고해상)", ratio: "4/5" },
+        { src: "https://harriotwatches.co.kr/seolwol/img/cut14-wrist-suit.jpg", alt: "손목 착용 — 정면", ratio: "4/5" },
+        { src: "https://harriotwatches.co.kr/seolwol/img/cut15-wrist-casual.jpg", alt: "손목 착용 — 사선", ratio: "4/5" },
+        { src: "https://harriotwatches.co.kr/seolwol/img/cut23-front.jpg", alt: "정면 풀샷 (고해상)", ratio: "4/5" },
       ],
     },
 
@@ -223,17 +237,14 @@ module.exports = {
         "트레이싱지 슬리브 위에 회색 달이 인쇄되어 있습니다. 그 아래로 네이비 상자에 은박으로 새긴 한옥 처마가 비쳐 겹칩니다.",
         "<b>지붕 위에 달이 걸립니다.</b>",
       ],
-      image: { cut: "17", alt: "슬리브 씌운 상태 — 트레이싱지 위 회색 달 아래로 은박 처마가 비쳐 겹침", ratio: "4/3" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut15-box-sleeve.jpg", alt: "슬리브 씌운 상태 — 트레이싱지 위 회색 달 아래로 은박 처마가 비쳐 겹침", ratio: "4/3" },
     },
 
     // ── ⑩-b 언박싱 나머지 4단계 (2×2) ────────────────────────
     {
       type: "sequence",
       items: [
-        { image: { cut: "18", alt: "슬리브 제거 — 은박 처마만 남은 네이비 박스", ratio: "4/3" }, caption: "슬리브를 벗기면 달은 사라지고 처마만 남습니다." },
-        { image: { cut: "19", alt: "뚜껑 열기 — 트레이싱지 커버의 문구", ratio: "4/3" }, caption: "뚜껑을 열면 트레이싱지 한 장. 달과 한옥이 우리에게 어떤 의미였는지 적혀 있습니다." },
-        { image: { cut: "20", alt: "트레이싱지 커버를 걷어내는 순간", ratio: "4/3" }, caption: "그 장을 걷어내면," },
-        { image: { cut: "21", alt: "시계와 보증서가 드러난 내부", ratio: "4/3" }, caption: "설월과 보증서." },
+        { image: { src: "https://harriotwatches.co.kr/seolwol/img/cut16-box-bare.jpg", alt: "슬리브 제거 — 은박 처마만 남은 네이비 박스", ratio: "4/3" }, caption: "슬리브를 벗기면 달은 사라지고 처마만 남습니다. 뚜껑을 열면 트레이싱지 한 장 — 달과 한옥이 우리에게 어떤 의미였는지 적혀 있습니다. 그 장을 걷어내면, 설월과 보증서." },
       ],
     },
 
@@ -250,7 +261,7 @@ module.exports = {
       head: "새기다, 오래 남도록.",
       lead:
         "케이스백 위쪽에는 한옥 지붕의 실루엣이 새겨져 있고, 그 아래는 비워 두었습니다.<br>이름을 넣으셔도 되고, 날짜를 넣으셔도 됩니다. 비워 두셔도 됩니다.",
-      image: { cut: "22", alt: "케이스백 각인 클로즈 — 한옥 지붕 실루엣 + 이름 각인 예시", ratio: "1/1" },
+      image: { src: "https://harriotwatches.co.kr/seolwol/img/cut22-caseback-v2.jpg", alt: "케이스백 각인 클로즈 — 한옥 지붕 실루엣 + 이름 각인 예시", ratio: "1/1" },
       imageCap: "케이스백 각인 예시",
       free: ENGRAVE_FREE ? "각인 무료 · 각인해도 출고일은 같습니다" : null,
       notes: ENGRAVE_FREE
@@ -276,12 +287,12 @@ module.exports = {
         ["케이스 지름", "38mm"],
         ["케이스 두께", "8.15mm"],
         ["케이스 재질", "316L 스테인리스 스틸"],
-        ["러그", "러그투러그 43.8mm · 밴드폭 20mm"],
+        ["러그", "러그투러그 43.2mm · 밴드폭 20mm"],
         ["글라스", "플랫 사파이어 크리스털 · 내부 무반사 / 외부 지문방지 코팅"],
         ["다이얼", "페일 스카이 블루 · 파인 스노우 텍스처"],
         ["인덱스", "아플라이드 · 4.0mm · 양끝 15° 컷 · 중앙 R7 오목(처마 곡선) · 폴리시 실버"],
         ["핸즈", "도팽 · 초침(해리엇 심볼 카운터밸런스)"],
-        ["문페이즈", "12시 방향 · <b>자체 제작 디스크</b>(딥 네이비 · 야광 문)"],
+        ["문페이즈", "12시 방향 · <b>자체 제작 디스크</b> · <b>보름달 고정(위상 변화 없음)</b> — 약 29.5일에 걸쳐 처마 위를 건넘 · 딥 네이비 · 야광 문"],
         ["날짜", "6시 방향 · 화이트 디스크"],
         ["야광", "슈퍼루미노바 · 달에만 적용"],
         ["무브먼트", "RONDA 708 쿼츠 문페이즈"],
@@ -292,7 +303,7 @@ module.exports = {
         ["보증기간", "2년"],
       ],
       note:
-        "<b>9월 10일 출시</b>입니다. 주문하신 순서대로 출고해 드립니다.",
+        "주문하신 순서대로 출고해 드립니다.",
     },
 
     // ── ⑬-a 무드 브레이크 — 처마 끝의 달 ────────────────────

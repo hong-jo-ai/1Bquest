@@ -92,39 +92,29 @@ async function syncHarriot() {
   log(`[해리엇] 국문 임박${Object.keys(kr.items).length}/품절${Object.keys(kr.soldout).length} · 영문 임박${nos.length}/품절${soldNos.length} (영문품절: ${soldNos.join(",")})`);
   if (DRY) return { scarce: nos.length, soldout: soldNos.length };
 
-  // PDP SOLD OUT 테이프 애드온 — common.js 번들 캐시와 무관하게 직로드되는 이 파일에서 실행
-  // (2026-07-19: 옵티마이저 번들 캐시로 common.js 수정이 늦게 반영되는 문제 우회. 인라인 스타일=CSS 의존 없음)
+  // SOLD OUT 테이프 애드온(국문 skin4) — PDP + 목록 양쪽.
+  // 2026-09-03: 기존 '컨테이너에 붙이기' 방식은 skin4 .xans-product-image 가 9,538px 거대 래퍼라
+  //   띠가 이미지보다 4,000px 아래(화면 밖)에 그려졌다(실측). 영문판과 같은 '이미지 직접 래핑' 방식으로 교체.
+  //   임박 배지는 국문 스킨 자체 로직이 따로 그리므로 여기서 만들지 않는다(중복 방지).
   const PDP_ADDON = `;(function(){
   var D=window.HRT_SCARCE_DATA||{};var SOLD=D.soldout||{};
   var T='SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT  SOLD OUT';
-  function tape(el){
-    if(!el||el.querySelector('.hrt2-band'))return;
-    if(getComputedStyle(el).position==='static')el.style.position='relative';
-    el.style.overflow='hidden';
+  function hrefNo(href){if(!href)return null;var m=href.match(/[?&]product_no=([0-9]+)(&|$)/);if(m)return m[1];m=href.split('?')[0].match(/\\/product\\/(?:[^/]+\\/)?([0-9]+)(?:\\/|$)/);return m?m[1]:null;}
+  function tapeImg(img){
+    if(!img||img.getAttribute('data-hrt')||!img.parentNode)return; img.setAttribute('data-hrt','1');
+    var wrap=document.createElement('span');wrap.className='hrt2-wrap';
+    wrap.style.cssText='position:relative;display:inline-block;overflow:hidden;line-height:0;max-width:100%;vertical-align:top;';
+    img.parentNode.insertBefore(wrap,img);wrap.appendChild(img);img.style.maxWidth='100%';img.style.display='block';
     for(var i=0;i<2;i++){
       var d=document.createElement('span');d.className='hrt2-band';
-      d.style.cssText='position:absolute;left:-25%;width:150%;padding:4.5% 0;z-index:6;pointer-events:none;white-space:nowrap;overflow:hidden;text-align:center;background:#111;color:#fff;font:700 12px/1 Arial,sans-serif;letter-spacing:.28em;box-shadow:0 1px 6px rgba(0,0,0,.25);top:'+(i?'52%':'42%')+';transform:rotate('+(i?'14':'-14')+'deg);'+(i?'opacity:.92;':'');
-      d.textContent=T;el.appendChild(d);
+      d.style.cssText='position:absolute;left:-25%;width:150%;padding:4.5% 0;z-index:20;pointer-events:none;white-space:nowrap;overflow:hidden;text-align:center;box-sizing:border-box;background:#111;color:#fff;font:700 12px/1 Arial,sans-serif;letter-spacing:.28em;box-shadow:0 1px 6px rgba(0,0,0,.25);top:'+(i?'52%':'42%')+';transform:rotate('+(i?'14':'-14')+'deg);'+(i?'opacity:.92;':'');
+      d.textContent=T;wrap.appendChild(d);
     }
   }
-  function runPdp(){
-    var no=(typeof window.iProductNo!=='undefined')?String(window.iProductNo):null;
-    if(!no||!SOLD[no])return;
-    var conts=document.querySelectorAll('.xans-product-addimage, .listdiv.RM-product-addimage, .prdImg, .xans-product-image');
-    for(var i=0;i<conts.length;i++){
-      var c=conts[i];
-      if(c.offsetParent===null)continue;
-      if(c.getBoundingClientRect().width<150)continue;
-      tape(c);return;
-    }
-    var imgs=document.querySelectorAll('img[src*="/web/product/"]');
-    for(var j=0;j<imgs.length;j++){
-      var im=imgs[j];
-      if(im.offsetParent===null||im.offsetWidth<150)continue;
-      if(im.parentElement){tape(im.parentElement);return;}
-    }
-  }
-  function go(){runPdp();setTimeout(runPdp,1500);setTimeout(runPdp,3500);}
+  function mainImg(){var imgs=document.querySelectorAll('img'),best=null,bt=1e9;for(var j=0;j<imgs.length;j++){var im=imgs[j];if(im.offsetParent===null||im.offsetWidth<250)continue;if(!/\\/product\\/|\\/upload\\//i.test(im.src))continue;var t=im.getBoundingClientRect().top+window.pageYOffset;if(t<bt){bt=t;best=im;}}return best;}
+  function runPdp(){var no=(typeof window.iProductNo!=='undefined')?String(window.iProductNo):null;if(!no||!SOLD[no])return;var img=mainImg();if(img)tapeImg(img);}
+  function runList(){var links=document.querySelectorAll('a[href*="product_no="], a[href*="/product/"]');for(var i=0;i<links.length;i++){var a=links[i];var no=hrefNo(a.getAttribute('href')||a.href);if(!no||!SOLD[no])continue;var li=a.closest?a.closest('li,.xans-product-listitem,.item,.prdItem'):null;li=li||a.parentElement;if(!li||li.getAttribute('data-hrt-b'))continue;var img=li.querySelector('img');if(!img)continue;li.setAttribute('data-hrt-b','1');tapeImg(img);}}
+  function go(){runPdp();runList();setTimeout(function(){runPdp();runList();},1500);setTimeout(function(){runPdp();runList();},3500);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
 })();`;
 
