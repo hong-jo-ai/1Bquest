@@ -143,6 +143,10 @@
     {
       "path": "/api/cron/preorder-unshipped",
       "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/cron/cafe24-claim-watch",
+      "schedule": "*/20 * * * *"
     }
   ]
 }
