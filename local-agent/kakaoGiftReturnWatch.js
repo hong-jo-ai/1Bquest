@@ -8,7 +8,7 @@
  *   "…반품 요청의 건…" 메일을 보낸다. 회수는 우리가 직접 접수해야 하는 채널이다(shipping.md §4).
  *   10/1 고민정 건은 하루 넘게 답이 없어 피오르드가 재촉 메일을 보냈다.
  *
- * 동작(10분마다):
+ * 동작(매일 11:00·16:00 — 사장님 2026-10-02: "10분마다는 과하다, 하루 두 번"):
  *   1) plvekorea@ 에서 song@fjord.kr 의 제목에 반품/교환이 들어간 메일을 읽고 본문의 `*항목 : 값` 블록을 뽑는다.
  *   2) 그 주문이 우리가 출고한 카카오선물 건인지 pp_shipments 로 확인한다(주문번호 일치). 아니면 손대지 않고 알린다.
  *   3) registerReturn — 착불 회수(서초 공급지 도착). 결과가 **2,200원·7890 대역**이 아니면 선불 사고라 회신하지 않고 알린다.
@@ -19,7 +19,7 @@
  *   기본은 드라이런(`--send` 가 있어야 실제 접수·회신).
  *
  * 실행: node kakaoGiftReturnWatch.js          드라이런(무엇을 할지 출력만)
- *       node kakaoGiftReturnWatch.js --send   실제 접수·회신·알림 (launchd, 10분마다)
+ *       node kakaoGiftReturnWatch.js --send   실제 접수·회신·알림 (launchd, 매일 11시·16시)
  */
 const fs = require("fs");
 const path = require("path");
