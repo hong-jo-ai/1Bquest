@@ -269,7 +269,14 @@ async function tgDoc(filePath, displayName, caption) {
     }
     const done = [], failed = [];
     for (const j of jobs) {
-      try { execFileSync("lpr", ["-P", printer, j.p]); done.push(j.label); log(`  인쇄 전송: ${j.label}`); }
+      try {
+        // 신세계 패킹리스트는 가로 A4 문서다 — 옵션 없이 보내면 세로로 찍혀 오른쪽이 잘린다(2026-10-02 실제로 잘림).
+        // 파일의 용지 크기(MediaBox)를 읽어 가로가 더 길면 가로·용지 맞춤으로 보낸다.
+        const mb = fs.readFileSync(j.p).toString("latin1").match(/\/MediaBox\s*\[\s*[\d.\-]+\s+[\d.\-]+\s+([\d.]+)\s+([\d.]+)\s*\]/);
+        const wide = !!mb && Number(mb[1]) > Number(mb[2]);
+        execFileSync("lpr", ["-P", printer, "-o", "media=A4", ...(wide ? ["-o", "landscape", "-o", "fit-to-page"] : []), j.p]);
+        done.push(j.label); log(`  인쇄 전송${wide ? "(가로)" : ""}: ${j.label}`);
+      }
       catch (e) { failed.push(j.label); log(`  인쇄 실패: ${j.label} — ${String(e.message).slice(0, 120)}`); }
     }
     printMsg = `🖨️ 인쇄 ${done.length}건 전송` + (failed.length ? ` · ⚠️실패 ${failed.length}건(${failed.join(", ")}) — 아래 첨부로 직접 인쇄` : "")
