@@ -60,13 +60,18 @@ async function gmailToken() {
   return j.access_token;
 }
 
-/** 오늘자 회신 초안 찾기 — 제목에 `YYYYMMDD 발주서` 가 든 DRAFT. */
+/** 오늘자 회신 초안 찾기 — 제목이 `YYYYMMDD 발주서 - 송장 회신` 꼴이고 **오늘 만들어진** DRAFT. */
 async function findDraft(H, ymd) {
   const list = await (await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults=50", { headers: H })).json();
   for (const d of list.drafts || []) {
     const full = await (await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${d.id}?format=full`, { headers: H })).json();
     const subject = (full.message?.payload?.headers || []).find((h) => h.name === "Subject")?.value || "";
-    if (subject.includes(`${ymd} 발주서`)) return { id: d.id, subject, message: full.message };
+    // 발주서 제목의 날짜는 **오늘이 아닐 수 있다** — 연휴 전에는 다음 영업일 날짜로 온다
+    // (2026-10-02 금요일 발주서 제목이 "20261006 발주서" 였고, 오늘 날짜만 찾다가 회신을 못 보냈다).
+    // 그래서 제목 날짜가 아니라 **오늘 만든 회신 초안**을 찾는다(chosunmallPoSync 가 10:30 에 만든다).
+    const made = new Date(Number(full.message?.internalDate || 0) + 9 * 3600 * 1000);
+    const madeYmd = `${made.getUTCFullYear()}${String(made.getUTCMonth() + 1).padStart(2, "0")}${String(made.getUTCDate()).padStart(2, "0")}`;
+    if (/\d{8} 발주서 - 송장 회신/.test(subject) && madeYmd === ymd) return { id: d.id, subject, message: full.message };
   }
   return null;
 }
