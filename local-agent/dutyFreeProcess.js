@@ -10,7 +10,8 @@
  *   ⑥ 텔레그램 요약
  *
  * 전제(iMac): LibreOffice(/Applications) + python3(openpyxl) + 나눔/Noto 한글폰트.
- * CLI: node dutyFreeProcess.js [--sinsegae p] [--lotte p] [--date YYYYMMDD] [--input dir] [--dry]
+ *   ⑤-2 서류 3종 + (있으면) 롯데 박스 부착 라벨을 레이저 프린터로 인쇄 — 2026-10-02 추가
+ * CLI: node dutyFreeProcess.js [--sinsegae p] [--lotte p] [--date YYYYMMDD] [--input dir] [--dry] [--no-print]
  */
 const fs = require("fs"), path = require("path"), os = require("os");
 const { execFileSync } = require("child_process");
@@ -246,6 +247,35 @@ async function tgDoc(filePath, displayName, caption) {
   } else boxMsg = "[DRY] 박스 미차감 / 송장 미발급";
   log("  " + boxMsg);
 
+  // ⑤-2 인쇄 — 서류 3종을 레이저 프린터로 바로 뽑는다(사장님 2026-10-02: "인쇄하는 것까지 자동으로").
+  //   제드가 승인 메일에 붙여 보내는 **롯데 박스 부착 라벨**("…입고명세서…롯데….pdf")이 입력 폴더에 최근 것으로 있으면 같이 뽑는다
+  //   (메일 첨부라 이 스크립트가 만들지 못한다 — 출고 전에 다운로드 폴더에 저장해 둘 것).
+  //   인쇄 실패는 출고 처리를 막지 않는다. 끄려면 --no-print, 프린터는 DUTYFREE_PRINTER.
+  let printMsg = "";
+  if (!DRY && !arg("no-print", false)) {
+    const printer = process.env.DUTYFREE_PRINTER || "SEC842519C7E5F1__M268x_M289x_Series_";
+    const order0 = (n) => (/패킹리스트/.test(n) ? 0 : /부착/.test(n) ? 1 : 2);
+    const jobs = [...pdfPaths].sort((a, b) => order0(a.nf) - order0(b.nf)).map((x) => ({ p: x.p, label: x.nf }));
+    if (lt) {
+      try {
+        const now = Date.now();
+        const box = fs.readdirSync(INPUT_DIR)
+          .filter((f) => /\.pdf$/i.test(f) && nfc(f).includes("입고명세서") && nfc(f).includes("롯데"))
+          .map((f) => ({ f, m: fs.statSync(path.join(INPUT_DIR, f)).mtimeMs }))
+          .filter((x) => now - x.m <= FRESH_MS).sort((a, b) => b.m - a.m)[0];
+        if (box) jobs.push({ p: path.join(INPUT_DIR, box.f), label: nfc(box.f) });
+        else log("  ⚠️ 롯데 박스 부착 라벨(입고명세서 PDF)이 입력 폴더에 없음 — 제드 메일 첨부를 따로 인쇄할 것");
+      } catch (e) { log("  롯데 박스 라벨 탐색 실패: " + e.message); }
+    }
+    const done = [], failed = [];
+    for (const j of jobs) {
+      try { execFileSync("lpr", ["-P", printer, j.p]); done.push(j.label); log(`  인쇄 전송: ${j.label}`); }
+      catch (e) { failed.push(j.label); log(`  인쇄 실패: ${j.label} — ${String(e.message).slice(0, 120)}`); }
+    }
+    printMsg = `🖨️ 인쇄 ${done.length}건 전송` + (failed.length ? ` · ⚠️실패 ${failed.length}건(${failed.join(", ")}) — 아래 첨부로 직접 인쇄` : "")
+      + (lt && !jobs.some((j) => j.label.includes("입고명세서")) ? " · ⚠️롯데 박스 라벨은 메일 첨부를 따로 인쇄" : "");
+  }
+
   // ⑥ 텔레그램: 요약 + PDF 첨부(인쇄용)
   const lines = ["📦 면세점 발주 처리 (출고일 " + date.replace(/(\d{4})(\d{2})(\d{2})/, "$1.$2.$3") + ")"];
   if (ss) lines.push(`• 신세계: ${ssN}품목 / ${ssQ}pcs`);
@@ -254,6 +284,7 @@ async function tgDoc(filePath, displayName, caption) {
   if (invoiceMsg.length) lines.push(`• 🏷️ 우체국 송장: ${invoiceMsg.join(" / ")}`);
   lines.push(`• ${boxMsg}`);
   if (invMsg) lines.push(`• ${invMsg}`);
+  if (printMsg) lines.push(`• ${printMsg}`);
   await tg(lines.join("\n"));
   // 첨부: 패킹리스트 → 박스라벨 → 거래명세서 순으로 정렬
   const order = (n) => (/패킹리스트/.test(n) ? 0 : /부착/.test(n) ? 1 : 2);
