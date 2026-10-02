@@ -281,6 +281,45 @@ async function tgDoc(filePath, displayName, caption) {
     }
     printMsg = `🖨️ 인쇄 ${done.length}건 전송` + (failed.length ? ` · ⚠️실패 ${failed.length}건(${failed.join(", ")}) — 아래 첨부로 직접 인쇄` : "")
       + (lt && !jobs.some((j) => j.label.includes("입고명세서")) ? " · ⚠️롯데 박스 라벨은 메일 첨부를 따로 인쇄" : "");
+
+    // ⑤-3 제품에 붙이는 바코드 라벨 — 출고 수량만큼 자동 인쇄(사장님 2026-10-02: "자동으로 함께 나와야지").
+    //   대장 = barcord generator/paulvice_{jewelry,watch}.json(엑셀에서 생성) + paulvice_dutyfree_extra.json(대장 엑셀에 아직 없는 신규 품목).
+    //   라벨의 3번째 줄이 자사 SKU(PVJ…/PV…/PVOVO…)라 발주제안서 ref 와 그대로 맞춘다. 두 면세점 수량을 합쳐 한 번에 뽑는다.
+    //   프린터 = 50×30mm 라벨 전용(CUPS 큐 Xprinter_XP_D465B). 중간에 멈추면 큐가 꺼진다 → 다시 켜고, 그래도 남으면 알린다.
+    try {
+      const BC = process.env.BARCODE_DIR || "/Users/mac/sungjo_ai/barcord generator"; // ⚠️ 폴더명이 barcord(오타)다
+      const need = {};
+      for (const it of [...(items.sinsegae || []), ...(items.lotte || [])]) if (it.ref && it.qty > 0) need[it.ref] = (need[it.ref] || 0) + it.qty;
+      const ledger = [];
+      for (const f of ["paulvice_watch.json", "paulvice_jewelry.json", "paulvice_dutyfree_extra.json"]) {
+        try { const d = JSON.parse(fs.readFileSync(path.join(BC, f), "utf8")); ledger.push(...(Array.isArray(d) ? d : d.labels || [])); } catch { /* 없는 파일은 건너뜀 */ }
+      }
+      const skuOf = (lb) => ((lb.lines || [])[2] || {}).text ? String(lb.lines[2].text).trim() : "";
+      const labels = [], missing = [];
+      for (const [ref, qty] of Object.entries(need)) {
+        const hit = ledger.find((lb) => skuOf(lb) === ref);
+        if (hit) labels.push({ ...hit, copies: qty }); else missing.push(`${ref}×${qty}`);
+      }
+      const total = labels.reduce((a, l) => a + l.copies, 0);
+      if (labels.length) {
+        const jf = path.join(BC, `dutyfree_${date}.json`);
+        fs.writeFileSync(jf, JSON.stringify(labels, null, 1));
+        const Q = "Xprinter_XP_D465B";
+        try { execFileSync("cupsenable", [Q]); } catch { /* 이미 켜져 있으면 무시 */ }
+        const o = execFileSync(PY, [path.join(BC, "label.py"), "print", jf, "-y"], { cwd: BC, encoding: "utf8", timeout: 180000 });
+        log("  바코드 라벨: " + o.trim().split("\n").slice(-2).join(" / "));
+        // 전송 뒤 큐가 멈췄는지 본다(용지 끝·덮개 열림이면 '프린터에 데이터를 보낼 수 없습니다'로 꺼진다)
+        await new Promise((r) => setTimeout(r, 15000));
+        let stuck = 0;
+        try { stuck = execFileSync("lpstat", ["-o", Q], { encoding: "utf8" }).trim().split("\n").filter(Boolean).length; } catch { /* 무시 */ }
+        if (stuck) { try { execFileSync("cupsenable", [Q]); } catch { /* 무시 */ } await new Promise((r) => setTimeout(r, 15000)); try { stuck = execFileSync("lpstat", ["-o", Q], { encoding: "utf8" }).trim().split("\n").filter(Boolean).length; } catch { stuck = 0; } }
+        printMsg += ` · 🏷️ 바코드 라벨 ${labels.length}종 ${total}장` + (stuck ? ` — ⚠️일부가 대기열에 멈춰 있음(라벨 용지·덮개 확인 후 "라벨 다시")` : "");
+      }
+      if (missing.length) { printMsg += ` · ⚠️대장에 없는 품목 ${missing.join(", ")} — 라벨 못 뽑음(paulvice_dutyfree_extra.json 에 추가)`; log("  바코드 대장에 없는 품목: " + missing.join(", ")); }
+    } catch (e) {
+      log("  바코드 라벨 인쇄 실패: " + String(e.message).slice(0, 200));
+      printMsg += " · ⚠️바코드 라벨 인쇄 실패 — 수동으로 뽑을 것";
+    }
   }
 
   // ⑥ 텔레그램: 요약 + PDF 첨부(인쇄용)
