@@ -332,8 +332,17 @@ async function main() {
       trackMsg = tr.skipped ? "카페24 송장 이미 입력됨" : "카페24 송장입력 완료(배송중)";
     } catch (e) { trackMsg = `⚠️ 카페24 송장입력 실패 — ${e.message}`; }
     log(trackMsg);
+    // 픽업 — 라벨을 뽑으면 묻지 않고 함께 예약한다(사장님 2026-10-02). 하루 한 번만 잡고, 마감(15:30)을 넘기면 다음 영업일.
+    let pickMsg = "픽업 예약 안 함(--no-pickup)";
+    if (!ARGV.includes("--no-pickup")) {
+      const pk = await require("./fedexPickup").ensurePickup(db, { trackingNumber: r.trackingNumber, weightKg: t.box && t.box.billableKg });
+      pickMsg = pk.error
+        ? `🔴 픽업 예약 실패(${pk.date}) — ${pk.error} → 직접 예약 필요`
+        : `🚚 픽업 ${pk.date} ${pk.window} · 확인번호 ${pk.confirmation}${pk.existing ? " (이미 잡힌 예약에 추가)" : ""}`;
+    }
+    log(pickMsg);
     const eng = (t.engravings.length || t.msgLooksEngraving) ? `\n\n✍️ 각인 — 새긴 뒤 인계\n${engravingLines(t).join("\n")}` : "";
-    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}\n${pr.printed ? "🖨️ 인쇄 전송" : "인쇄 안 함"} · ${trackMsg}${eng}\n⚠️ 픽업은 따로 예약해야 한다`).catch(() => {});
+    if (!QUIET) await relayText(`🏷️ 영문몰 라벨 발급\n${t.brand} ${t.orderNo} ${t.name}\n${r.trackingNumber} · ${r.service} · ${r.cost}\n${pr.printed ? "🖨️ 인쇄 전송" : "인쇄 안 함"} · ${trackMsg}\n${pickMsg}${eng}`).catch(() => {});
     return;
   }
 
