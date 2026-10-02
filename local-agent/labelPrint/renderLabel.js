@@ -39,7 +39,9 @@ const SENDER = {
   name: process.env.LABEL_SENDER_NAME || "해리엇와치스",
   addr: process.env.LABEL_SENDER_ADDR || "서울특별시 서초구 동산로 19 (양재동, 서울서초우체국) 해리엇와치스 앞",
   zip: process.env.LABEL_SENDER_ZIP || "06779",
-  mobile: process.env.LABEL_SENDER_MOBILE || "010) 2669-5082",
+  // 라벨에 찍는 번호는 우리가 정한다(접수 요청에는 발송인 전화가 안 들어간다). 2026-10-02 사장님: 대표번호 070 으로.
+  // ⚠️ 우체국 계약고객 시스템의 공급지 연락처(010-2669-5082)는 별개라 그대로다 — 거기까지 바꾸려면 우체국에서.
+  mobile: process.env.LABEL_SENDER_MOBILE || "070) 4571-4944",
 };
 
 function xmlTag(xml, tag) {
@@ -269,7 +271,7 @@ function renderLabel(s) {
     block(SENDER.addr, 71.5, 22.8, 54, 7.5, 9, 0.3);   // OZ: y 22.5~28.2
     R(SENDER.zip, 138, 23.6, 8);
     H(SENDER.name, 71.5, 32.4, 10);                     // OZ: y 32.4~35.3
-    R(`M: ${SENDER.mobile}`, SAFE_R, 33.4, 8);
+    R(`${/^01/.test(SENDER.mobile) ? "M" : "T"}: ${SENDER.mobile}`, SAFE_R, 33.4, 8);
 
     // ── 받는분 (세로 라벨 "받/는/분" 도 미리 인쇄) ──────────────
     // 11pt 두 줄이 기본. 주소가 길면(면세점 물류창고 등) 잘리지 않게 글자를 줄여 세 줄 이상으로 다 찍는다 —
