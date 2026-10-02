@@ -45,6 +45,7 @@ const JOBS: JobSpec[] = [
   { key: "heartbeat:hrt-scarce-sync", label: "해리엇 품절임박 배지 동기화(iMac)", maxHours: 28 },
   { key: "heartbeat:jed-mail-watch", label: "제드아이티씨 메일 감시(iMac·10분)", maxHours: 2 },
   { key: "heartbeat:fedex-label-watch", label: "페덱스 라벨 인증 메일 감시(iMac·1시간)", maxHours: 3 },
+  { key: "heartbeat:kakaogift-return-watch", label: "카카오선물 반품·교환 메일 → 회수 접수·회신(iMac·10분)", maxHours: 2 },
   { key: "heartbeat:fedex-duty-watch", label: "페덱스 미지급 관세 경고 → 고객 안내 메일(iMac·1시간)", maxHours: 3 },
   { key: "heartbeat:fedex-invoice-import", label: "페덱스 청구 내역 적재·월간 알림(iMac·1시간)", maxHours: 3 },
   // 매월 9일·24일. 실패하면 하트비트를 안 찍는다 — 한 회차를 놓쳐도 다음 회차 전에 잡히게 17일.
