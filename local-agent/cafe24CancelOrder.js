@@ -127,6 +127,17 @@ async function ensureLoggedIn(page) {
     await cancelPage.bringToFront().catch(() => {});
     log("취소처리 페이지 URL: " + cancelPage.url());
 
+    // 고객이 주문 화면에서 직접 '취소신청'(C00)한 품목은 취소처리 목록에 안 나온다("현재 취소 가능한 상품이 없습니다").
+    // 그 신청을 받는 화면은 order_cancel_handling.php — 같은 취소접수(#eCancelAccept)·구분·환불·확인 폼을 쓴다.
+    // (2026-10-03 고객 클레임 신청 기능을 켠 뒤 첫 건, 진중선 20261003-0000014)
+    const noItems = await cancelPage.evaluate(() => /현재 취소 가능한 상품이 없습니다/.test(document.body.innerText)).catch(() => false);
+    if (noItems) {
+      log("고객 취소신청 건 → 취소신청 처리 화면(order_cancel_handling)으로 이동");
+      await cancelPage.goto(`https://${MALL}.cafe24.com/admin/php/shop1/s_new/order_cancel_handling.php?order_id=${orderId}&mode=&menu_no=0`, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+      await sleep(4000);
+      log("취소신청 처리 URL: " + cancelPage.url());
+    }
+
     // 취소사유(구분) 셀렉트 존재 확인
     const hasSelect = await cancelPage.locator('select[name="cs_type"]').count().catch(() => 0);
     if (!hasSelect) {
